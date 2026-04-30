@@ -23,6 +23,111 @@ def _rotational_constants(coords, masses):
     return _INERTIA_TO_MHZ / eigvals
 
 
+def _jacobian_full(coords, masses, delta):
+    """Full 3x(3N) Jacobian for (A,B,C)."""
+    coords = np.asarray(coords, dtype=float)
+    masses = np.asarray(masses, dtype=float)
+    n = len(coords)
+    j_full = np.zeros((3, 3 * n))
+    flat = coords.ravel()
+    abs_flat = np.abs(flat)
+    local_delta = float(delta) * np.maximum(abs_flat, 1.0)
+    for i in range(3 * n):
+        di = local_delta[i]
+        fwd = flat.copy()
+        bwd = flat.copy()
+        fwd[i] += di
+        bwd[i] -= di
+        j_full[:, i] = (
+            _rotational_constants(fwd.reshape(n, 3), masses)
+            - _rotational_constants(bwd.reshape(n, 3), masses)
+        ) / (2 * di)
+    return j_full
+
+
+def sanitize_isotopologues(
+    isotopologues,
+    coords,
+    delta=1e-3,
+    jacobian_row_norm_max=1e9,
+    tiny_target_mhz=1e-3,
+):
+    """
+    Remove or downweight numerically unstable spectral components.
+
+    Returns
+    -------
+    cleaned : list[dict]
+    notes   : list[str]
+    """
+    cleaned = []
+    notes = []
+    labels = ["A", "B", "C"]
+    for iso_idx, iso in enumerate(isotopologues, start=1):
+        masses = np.asarray(iso["masses"], dtype=float)
+        obs = np.asarray(iso["obs_constants"], dtype=float)
+        idx = np.asarray(iso.get("component_indices", list(range(len(obs)))), dtype=int)
+        sig = np.asarray(iso.get("sigma_constants", np.ones(len(obs))), dtype=float)
+        alpha = np.asarray(iso.get("alpha_constants", np.zeros(len(obs))), dtype=float)
+
+        calc_abc = _rotational_constants(coords, masses)
+        j_full = _jacobian_full(coords, masses, delta)
+        keep = []
+        out_obs, out_sig, out_alpha = [], [], []
+        dropped = []
+        for k, comp in enumerate(idx):
+            comp = int(comp)
+            target = float(obs[k] + 0.5 * alpha[k])
+            calc = float(calc_abc[comp]) if 0 <= comp < 3 else np.nan
+            jn = float(np.linalg.norm(j_full[comp])) if 0 <= comp < 3 else np.inf
+            unstable = (not np.isfinite(calc)) or (not np.isfinite(jn))
+            unstable = unstable or (jn > jacobian_row_norm_max)
+            # Linear/near-linear A-like targets near zero are often ill-conditioned.
+            unstable = unstable or (abs(target) < tiny_target_mhz and comp == 0)
+            if unstable:
+                dropped.append(labels[comp] if 0 <= comp < 3 else f"R{comp}")
+                continue
+            keep.append(comp)
+            out_obs.append(float(obs[k]))
+            out_sig.append(max(float(sig[k]), 1e-12))
+            out_alpha.append(float(alpha[k]))
+
+        if not keep:
+            # Fail safe: keep the single most stable original component.
+            best_i = 0
+            best_norm = np.inf
+            for k, comp in enumerate(idx):
+                comp = int(comp)
+                if 0 <= comp < 3:
+                    nrm = float(np.linalg.norm(j_full[comp]))
+                    if np.isfinite(nrm) and nrm < best_norm:
+                        best_norm = nrm
+                        best_i = k
+            comp = int(idx[best_i])
+            keep = [comp]
+            out_obs = [float(obs[best_i])]
+            out_sig = [max(float(sig[best_i]), 1e-12)]
+            out_alpha = [float(alpha[best_i])]
+            dropped = [labels[int(c)] if 0 <= int(c) < 3 else f"R{int(c)}" for i, c in enumerate(idx) if i != best_i]
+
+        if dropped:
+            notes.append(
+                f"Iso {iso_idx}: dropped unstable components {', '.join(dropped)}; "
+                f"kept {', '.join(labels[c] if 0 <= c < 3 else f'R{c}' for c in keep)}."
+            )
+
+        cleaned.append(
+            {
+                "masses": masses,
+                "obs_constants": np.asarray(out_obs, dtype=float),
+                "component_indices": np.asarray(keep, dtype=int),
+                "sigma_constants": np.asarray(out_sig, dtype=float),
+                "alpha_constants": np.asarray(out_alpha, dtype=float),
+            }
+        )
+    return cleaned, notes
+
+
 class SpectralEngine:
     """
     Rotational constants and Jacobian for an arbitrary number of isotopologues.
