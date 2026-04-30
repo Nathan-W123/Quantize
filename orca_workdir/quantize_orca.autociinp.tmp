@@ -1,0 +1,192 @@
+C:\Users\Nathan\OneDrive\Work\Projects\Research\Test1\orca_workdir\quantize_orca.gbw         # The GBWName 
+4         # PrintLevel  
+2         # D4STep      
+2         # CanonStep   
+0 # MetadataI[0] HFType
+8 # MetadataI[1] CIType
+0 # MetadataI[2] MRContraction
+0 # MetadataI[3] DenominatorType
+0 # MetadataI[4] KeepInts
+0 # MetadataI[5] UseOldInts
+0 # MetadataI[6] NElCore
+-1 # MetadataI[7] NElActive
+-1 # MetadataI[8] NOrbActive
+0 # MetadataI[9] NMULT
+50 # MetadataI[10] MaxIter
+5 # MetadataI[11] MaxDIIS
+1 # MetadataI[12] DIISStartIter
+0 # MetadataI[13] FrozenCore
+1 # MetadataI[14] NumProc
+3 # MetadataI[15] 1-RDM (reduced density matrix)
+3 # MetadataI[16] 2-RDM (reduced density matrix)
+0 # MetadataI[17] DavidsonOpt
+0 # MetadataI[18] Nev4Renorm
+0 # MetadataI[19] UseGeneralModules
+0 # MetadataI[20] IntegralTransformationType
+0 # MetadataI[21] SpinDensity
+0 # MetadataI[22] TransitionDensity
+0 # MetadataI[23] ProjectSingles
+0 # MetadataI[24] RelaxCAS
+1 # MetadataI[25] ConstantIntermediates
+0 # MetadataI[26] ExplicitSingles
+-1 # MetadataI[27] OnlyRoot
+1 # MetadataI[28] DoGradient
+0 # MetadataI[29] DoCumulants
+0 # MetadataI[30] ExtremeThresh
+0 # MetadataI[31] SavePPPHAmplitudes
+2 # MetadataI[32] ZeroGuess
+0 # MetadataI[33] DoPerturbativeTriples
+0 # MetadataI[34] QuintetDensity
+0 # MetadataI[35] Polarizability
+0 # MetadataI[36] NMRShielding
+1 # MetadataI[37] DoTDA
+0 # MetadataI[38] NatOrbs
+0 # MetadataI[39] ExcludeHigherExcitationsDIIS
+0 # MetadataI[40] DoExcitedStateSingles
+0 # MetadataI[41] ESmethod_position
+10 # MetadataI[42] DVDmaxDim_position
+1 # MetadataI[43] DVDguess_position
+1 # MetadataI[44] DVDprecond_position
+0 # MetadataI[45] NoRecanon
+0 # MetadataI[46] RunROHFasUHF
+0 # MetadataI[47] ExtendedMctda
+0 # MetadataI[48] ReadMCTDA
+0 # MetadataI[49] Dcorr
+0 # MetadataI[50] DoCFGij
+0 # MetadataI[51] DoOffDiagDcorr
+1 # MetadataI[52] RespSolver
+0 # MetadataI[53] DoL2ResNorm
+               0.000e+00 # MetadataR[0] EWinMin
+               0.000e+00 # MetadataR[1] EWinMax
+               2.000e-01 # MetadataR[2] LevelShift
+               1.000e-01 # MetadataR[3] LThresh
+               1.000e-05 # MetadataR[4] STol
+               1.000e-06 # MetadataR[5] ETol
+               1.000e-06 # MetadataR[6] NThresh
+               1.000e-14 # MetadataR[7] D5Thresh
+               1.000e-14 # MetadataR[8] D4Thresh
+               1.000e-14 # MetadataR[9] D3Thresh
+               1.000e-05 # MetadataR[10] (null)
+1 # ExcFlags[0] IJAB
+1 # ExcFlags[1] ITAB
+1 # ExcFlags[2] TUAB
+1 # ExcFlags[3] IJTA
+1 # ExcFlags[4] ITUA
+1 # ExcFlags[5] ITAU
+1 # ExcFlags[6] TUVA
+1 # ExcFlags[7] IJTU
+1 # ExcFlags[8] ITUV
+1 # ExcFlags[9] TUVW
+1 # ExcFlags[10] IT
+1 # ExcFlags[11] IA
+1 # ExcFlags[12] TA
+1 # ExcFlags[13] TU
+1 # ExcFlags[14] o
+1 # ExcFlags[15] BRIA
+1 # ExcFlags[16] BRTA
+1 # ExcFlags[17] BRIT
+1 # ExcFlags[18] IJAB_aa
+1 # ExcFlags[19] IJAB_bb
+1 # ExcFlags[20] IJAB_ab
+1 # ExcFlags[21] IA_a
+1 # ExcFlags[22] IA_b
+1 # ExcFlags[23] IJKABC
+1 # ExcFlags[24] IJKABC_aaa
+1 # ExcFlags[25] IJKABC_aab
+1 # ExcFlags[26] IJKABC_abb
+1 # ExcFlags[27] IJKABC_bbb
+1 # ExcFlags[28] T4
+1 # ExcFlags[29] T4_aaaa
+1 # ExcFlags[30] T4_aaab
+1 # ExcFlags[31] T4_aabb
+1 # ExcFlags[32] T4_abbb
+1 # ExcFlags[33] T4_bbbb
+1 # ExcFlags[34] ITUA_aa
+              -1.000e+00 # NTHRESHS[0] IJAB
+              -1.000e+00 # NTHRESHS[1] ITAB
+              -1.000e+00 # NTHRESHS[2] TUAB
+              -1.000e+00 # NTHRESHS[3] IJTA
+              -1.000e+00 # NTHRESHS[4] ITUA
+              -1.000e+00 # NTHRESHS[5] ITAU
+              -1.000e+00 # NTHRESHS[6] TUVA
+              -1.000e+00 # NTHRESHS[7] IJTU
+              -1.000e+00 # NTHRESHS[8] ITUV
+              -1.000e+00 # NTHRESHS[9] TUVW
+              -1.000e+00 # NTHRESHS[10] IT
+              -1.000e+00 # NTHRESHS[11] IA
+              -1.000e+00 # NTHRESHS[12] TA
+              -1.000e+00 # NTHRESHS[13] TU
+              -1.000e+00 # NTHRESHS[14] o
+              -1.000e+00 # NTHRESHS[15] BRIA
+              -1.000e+00 # NTHRESHS[16] BRTA
+              -1.000e+00 # NTHRESHS[17] BRIT
+              -1.000e+00 # NTHRESHS[18] IJAB_aa
+              -1.000e+00 # NTHRESHS[19] IJAB_bb
+              -1.000e+00 # NTHRESHS[20] IJAB_ab
+              -1.000e+00 # NTHRESHS[21] IA_a
+              -1.000e+00 # NTHRESHS[22] IA_b
+              -1.000e+00 # NTHRESHS[23] IJKABC
+              -1.000e+00 # NTHRESHS[24] IJKABC_aaa
+              -1.000e+00 # NTHRESHS[25] IJKABC_aab
+              -1.000e+00 # NTHRESHS[26] IJKABC_abb
+              -1.000e+00 # NTHRESHS[27] IJKABC_bbb
+              -1.000e+00 # NTHRESHS[28] T4
+              -1.000e+00 # NTHRESHS[29] T4_aaaa
+              -1.000e+00 # NTHRESHS[30] T4_aaab
+              -1.000e+00 # NTHRESHS[31] T4_aabb
+              -1.000e+00 # NTHRESHS[32] T4_abbb
+              -1.000e+00 # NTHRESHS[33] T4_bbbb
+              -1.000e+00 # NTHRESHS[34] ITUA_aa
+-1 # multblocks (0) till max
+-1 # multblocks (1) till max
+-1 # multblocks (2) till max
+-1 # multblocks (3) till max
+-1 # multblocks (4) till max
+-1 # multblocks (5) till max
+-1 # multblocks (6) till max
+-1 # multblocks (7) till max
+-1 # multblocks (8) till max
+-1 # multblocks (9) till max
+-1 # multblocks (10) till max
+-1 # multblocks (11) till max
+-1 # multblocks (12) till max
+-1 # multblocks (13) till max
+-1 # multblocks (14) till max
+-1 # multblocks (15) till max
+-1 # multblocks (16) till max
+-1 # multblocks (17) till max
+-1 # multblocks (18) till max
+-1 # multblocks (19) till max
+-1 # multblocks (20) till max
+-1 # multblocks (21) till max
+-1 # multblocks (22) till max
+-1 # multblocks (23) till max
+-1 # multblocks (24) till max
+-1 # multblocks (25) till max
+-1 # multblocks (26) till max
+-1 # multblocks (27) till max
+-1 # multblocks (28) till max
+-1 # multblocks (29) till max
+-1 # multblocks (30) till max
+-1 # multblocks (31) till max
+1 # nroots(0) till NMULT
+0 # irreps (0) till NMULT
+-1 # nrootsrpa (0) till NMULT
+64 #DCI Maxiter
+10 #Maxdim
+2048 #NGuessmat
+  2.500000000000e-03 #TRPrint
+1 #PrintLevel
+-1 #RIter
+0 #GuessType
+ -1.000000000000e+00 #ETol
+ -1.000000000000e+00 #RTol
+  1.000000000000e-04 #DCI SecShift
+0 #CIPSIType
+500000 #CIBufferLength
+1 0 2.0480000000000000e+03 #CSFCIWithRI
+-1 #CIPSIOrbSweepWindow
+0 #DoCEPA0
+3 #CIPSI_CIMode
+  1.000000000000e-04 #TGen
+ -1.000000000000e-07 #TVar
