@@ -31,17 +31,31 @@ class SubspaceOptimizer:
     def __init__(
         self,
         sv_threshold=1e-3,
+        sv_min_abs=0.0,
         trust_radius=0.1,
+        null_trust_radius=None,
         lambda_damp=1e-4,
         objective_mode="split",
         alpha_quantum=1.0,
+        dynamic_quantum_weight=True,
+        quantum_weight_beta=2.0,
+        quantum_weight_min=0.25,
+        quantum_weight_max=5.0,
         use_internal_preconditioner=False,
     ):
         self.sv_threshold = sv_threshold
+        self.sv_min_abs = max(0.0, float(sv_min_abs))
         self.trust_radius = trust_radius
+        self.null_trust_radius = (
+            float(null_trust_radius) if null_trust_radius is not None else 0.5 * float(trust_radius)
+        )
         self.lambda_damp = lambda_damp
         self.objective_mode = objective_mode
         self.alpha_quantum = float(alpha_quantum)
+        self.dynamic_quantum_weight = bool(dynamic_quantum_weight)
+        self.quantum_weight_beta = float(quantum_weight_beta)
+        self.quantum_weight_min = float(quantum_weight_min)
+        self.quantum_weight_max = float(quantum_weight_max)
         self.use_internal_preconditioner = use_internal_preconditioner
 
     # ── Decomposition ─────────────────────────────────────────────────────────
@@ -58,7 +72,11 @@ class SubspaceOptimizer:
         rank : int         number of experimentally constrained directions
         """
         U, s, Vt = np.linalg.svd(J, full_matrices=True)
-        rank = int(np.sum(s > self.sv_threshold * s[0])) if s[0] > 0 else 0
+        if s[0] > 0:
+            cutoff = max(self.sv_threshold * s[0], self.sv_min_abs)
+            rank = int(np.sum(s > cutoff))
+        else:
+            rank = 0
         return U, s, Vt, rank
 
     # ── Range-space step (experimental) ──────────────────────────────────────
@@ -126,11 +144,24 @@ class SubspaceOptimizer:
         q = np.linalg.solve(BBt + reg, B @ dx)
         return B.T @ q
 
-    def _joint_step(self, J, residual, gradient, hessian):
+    def _joint_step(self, J, residual, gradient, hessian, alpha_q):
         JTJ = J.T @ J
-        rhs = J.T @ residual - self.alpha_quantum * gradient
-        A = JTJ + self.alpha_quantum * hessian + self.lambda_damp * np.eye(JTJ.shape[0])
+        rhs = J.T @ residual - alpha_q * gradient
+        A = JTJ + alpha_q * hessian + self.lambda_damp * np.eye(JTJ.shape[0])
         return np.linalg.solve(A, rhs)
+
+    def _effective_quantum_weight(self, J, rank):
+        """
+        Dynamic quantum dominance factor.
+        Stronger when spectral constraints are sparse relative to coordinate space.
+        """
+        if not self.dynamic_quantum_weight:
+            return self.alpha_quantum
+        n_params = max(1, J.shape[1])  # 3N coordinates
+        rank_frac = float(rank) / float(n_params)
+        scale = 1.0 + self.quantum_weight_beta * max(0.0, 1.0 - rank_frac)
+        alpha_eff = self.alpha_quantum * scale
+        return float(np.clip(alpha_eff, self.quantum_weight_min, self.quantum_weight_max))
 
     def step(self, J, residual, gradient, hessian, B=None):
         """
@@ -150,11 +181,16 @@ class SubspaceOptimizer:
         s    : array  full singular-value spectrum
         """
         U, s, Vt, rank = self.decompose(J)
+        alpha_q_eff = self._effective_quantum_weight(J, rank)
         if self.objective_mode == "joint":
-            dx = self._joint_step(J, residual, gradient, hessian)
+            dx = self._joint_step(J, residual, gradient, hessian, alpha_q_eff)
         else:
             dx_range = self.range_step(U, s, Vt, rank, residual)
             dx_null = self.null_step(Vt, rank, gradient, hessian)
+            dx_null = alpha_q_eff * dx_null
+            null_norm = np.linalg.norm(dx_null)
+            if null_norm > self.null_trust_radius:
+                dx_null *= self.null_trust_radius / null_norm
             dx = dx_range + dx_null
 
         if self.use_internal_preconditioner:
@@ -164,7 +200,7 @@ class SubspaceOptimizer:
         if norm > self.trust_radius:
             dx *= self.trust_radius / norm
 
-        return dx, rank, s
+        return dx, rank, s, alpha_q_eff
 
     def adapt_lambda(self, accepted, min_lambda=1e-8, max_lambda=1e2):
         """
@@ -173,10 +209,10 @@ class SubspaceOptimizer:
         """
         if accepted:
             self.lambda_damp = max(min_lambda, self.lambda_damp * 0.5)
-            self.trust_radius = min(0.2, self.trust_radius * 1.1)
         else:
             self.lambda_damp = min(max_lambda, self.lambda_damp * 2.0)
             self.trust_radius = max(1e-4, self.trust_radius * 0.5)
+            self.null_trust_radius = max(1e-4, self.null_trust_radius * 0.5)
 
     # ── Projectors (diagnostic / master use) ─────────────────────────────────
 
