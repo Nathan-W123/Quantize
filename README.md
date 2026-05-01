@@ -27,6 +27,14 @@ This project estimates molecular structure (bond lengths/angles) from isotopolog
 - `run_OCS.py` - OCS driver
 - `run_n.py` - larger-molecule demo driver
 
+## Repository Layout
+
+- `*.py` at project root: core implementation and run scripts
+- `notebooks/`: exploratory notebooks
+- `docs/`: notes and planning documents
+- `archive/`: archived example outputs/reference files
+- `results/`: local output directory for generated results (git-ignored)
+
 ## Requirements
 
 - Python 3.10+

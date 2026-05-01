@@ -1,0 +1,382 @@
+import numpy as np
+from scipy import constants
+from backend.conformer_mixture import ConformerMixture
+
+# h / (8π² · amu · Å²) → MHz; converts principal moments [amu·Å²] to rotational constants [MHz]
+_INERTIA_TO_MHZ = (constants.h / (8 * np.pi**2 * constants.atomic_mass * (1e-10)**2)) * 1e-6
+
+
+def _inertia_tensor(coords, masses):
+    """Inertia tensor (3×3) in amu·Å², centered at center of mass."""
+    cm = np.dot(masses, coords) / masses.sum()
+    r = coords - cm
+    r2 = np.einsum("ij,ij->i", r, r)
+    return np.einsum("i,jk->jk", masses * r2, np.eye(3)) - np.einsum("i,ij,ik->jk", masses, r, r)
+
+
+def _rotational_constants(coords, masses):
+    """
+    Rotational constants A ≥ B ≥ C in MHz from Cartesian coords (Å) and masses (amu).
+    Returns shape (3,).
+    """
+    eigvals = np.sort(np.linalg.eigvalsh(_inertia_tensor(coords, masses)))
+    eigvals = np.where(eigvals > 1e-10, eigvals, np.inf)
+    return _INERTIA_TO_MHZ / eigvals
+
+
+def _jacobian_full(coords, masses, delta):
+    """Full 3x(3N) Jacobian for (A,B,C)."""
+    coords = np.asarray(coords, dtype=float)
+    masses = np.asarray(masses, dtype=float)
+    n = len(coords)
+    j_full = np.zeros((3, 3 * n))
+    flat = coords.ravel()
+    abs_flat = np.abs(flat)
+    local_delta = float(delta) * np.maximum(abs_flat, 1.0)
+    for i in range(3 * n):
+        di = local_delta[i]
+        fwd = flat.copy()
+        bwd = flat.copy()
+        fwd[i] += di
+        bwd[i] -= di
+        j_full[:, i] = (
+            _rotational_constants(fwd.reshape(n, 3), masses)
+            - _rotational_constants(bwd.reshape(n, 3), masses)
+        ) / (2 * di)
+    return j_full
+
+
+def sanitize_isotopologues(
+    isotopologues,
+    coords,
+    delta=1e-3,
+    jacobian_row_norm_max=1e9,
+    tiny_target_mhz=1e-3,
+):
+    """
+    Remove or downweight numerically unstable spectral components.
+
+    Returns
+    -------
+    cleaned : list[dict]
+    notes   : list[str]
+    """
+    cleaned = []
+    notes = []
+    labels = ["A", "B", "C"]
+    for iso_idx, iso in enumerate(isotopologues, start=1):
+        masses = np.asarray(iso["masses"], dtype=float)
+        obs = np.asarray(iso["obs_constants"], dtype=float)
+        idx = np.asarray(iso.get("component_indices", list(range(len(obs)))), dtype=int)
+        sig = np.asarray(iso.get("sigma_constants", np.ones(len(obs))), dtype=float)
+        alpha = np.asarray(iso.get("alpha_constants", np.zeros(len(obs))), dtype=float)
+
+        calc_abc = _rotational_constants(coords, masses)
+        j_full = _jacobian_full(coords, masses, delta)
+        keep = []
+        out_obs, out_sig, out_alpha = [], [], []
+        dropped = []
+        for k, comp in enumerate(idx):
+            comp = int(comp)
+            target = float(obs[k] + 0.5 * alpha[k])
+            calc = float(calc_abc[comp]) if 0 <= comp < 3 else np.nan
+            jn = float(np.linalg.norm(j_full[comp])) if 0 <= comp < 3 else np.inf
+            unstable = (not np.isfinite(calc)) or (not np.isfinite(jn))
+            unstable = unstable or (jn > jacobian_row_norm_max)
+            # Linear/near-linear A-like targets near zero are often ill-conditioned.
+            unstable = unstable or (abs(target) < tiny_target_mhz and comp == 0)
+            if unstable:
+                dropped.append(labels[comp] if 0 <= comp < 3 else f"R{comp}")
+                continue
+            keep.append(comp)
+            out_obs.append(float(obs[k]))
+            out_sig.append(max(float(sig[k]), 1e-12))
+            out_alpha.append(float(alpha[k]))
+
+        if not keep:
+            # Fail safe: keep the single most stable original component.
+            best_i = 0
+            best_norm = np.inf
+            for k, comp in enumerate(idx):
+                comp = int(comp)
+                if 0 <= comp < 3:
+                    nrm = float(np.linalg.norm(j_full[comp]))
+                    if np.isfinite(nrm) and nrm < best_norm:
+                        best_norm = nrm
+                        best_i = k
+            comp = int(idx[best_i])
+            keep = [comp]
+            out_obs = [float(obs[best_i])]
+            out_sig = [max(float(sig[best_i]), 1e-12)]
+            out_alpha = [float(alpha[best_i])]
+            dropped = [labels[int(c)] if 0 <= int(c) < 3 else f"R{int(c)}" for i, c in enumerate(idx) if i != best_i]
+
+        if dropped:
+            notes.append(
+                f"Iso {iso_idx}: dropped unstable components {', '.join(dropped)}; "
+                f"kept {', '.join(labels[c] if 0 <= c < 3 else f'R{c}' for c in keep)}."
+            )
+
+        cleaned.append(
+            {
+                "name": iso.get("name", f"iso_{iso_idx}"),
+                "masses": masses,
+                "obs_constants": np.asarray(out_obs, dtype=float),
+                "component_indices": np.asarray(keep, dtype=int),
+                "sigma_constants": np.asarray(out_sig, dtype=float),
+                "alpha_constants": np.asarray(out_alpha, dtype=float),
+                "torsion_sensitive": bool(iso.get("torsion_sensitive", False)),
+                "rovib_table": iso.get("rovib_table", None),
+            }
+        )
+    return cleaned, notes
+
+
+class SpectralEngine:
+    """
+    Rotational constants and Jacobian for an arbitrary number of isotopologues.
+
+    Parameters
+    ----------
+    isotopologues : list of dict
+        Each entry requires:
+            'masses'        : array-like (N,)  atomic masses in amu
+            'obs_constants' : array-like (3,)  observed A, B, C in MHz
+    delta : float
+        Central finite-difference step in Angstroms.
+    """
+
+    def __init__(
+        self,
+        isotopologues,
+        delta=1e-3,
+        robust_loss="none",
+        robust_param=1.0,
+        sigma_floor_mhz=0.0,
+        sigma_cap_mhz=None,
+        max_weight=None,
+        component_weight_map=None,
+        torsion_aware_weighting=False,
+        torsion_a_weight=1.0,
+        conformer_defs=None,
+        conformer_weight_mode="fixed",
+        conformer_temperature_k=298.15,
+    ):
+        if not isotopologues:
+            raise ValueError("At least one isotopologue is required.")
+        self.isotopologues = [
+            {
+                "name": str(iso.get("name", f"iso_{k+1}")),
+                "masses": np.asarray(iso["masses"], dtype=float),
+                "obs_constants": np.asarray(iso["obs_constants"], dtype=float),
+                "component_indices": np.asarray(
+                    iso.get("component_indices", list(range(len(iso["obs_constants"])))),
+                    dtype=int,
+                ),
+                "sigma_constants": np.asarray(
+                    iso.get("sigma_constants", np.ones(len(iso["obs_constants"]))), dtype=float
+                ),
+                "alpha_constants": np.asarray(
+                    iso.get("alpha_constants", np.zeros(len(iso["obs_constants"]))), dtype=float
+                ),
+                "torsion_sensitive": bool(iso.get("torsion_sensitive", False)),
+                "rovib_table": iso.get("rovib_table", None),
+            }
+            for k, iso in enumerate(isotopologues)
+        ]
+        for iso in self.isotopologues:
+            n = len(iso["obs_constants"])
+            if len(iso["sigma_constants"]) != n or len(iso["alpha_constants"]) != n:
+                raise ValueError("obs_constants, sigma_constants, and alpha_constants must match in length.")
+            if len(iso["component_indices"]) != n:
+                raise ValueError("component_indices length must match obs_constants length.")
+        self.delta = delta
+        self.robust_loss = robust_loss.lower()
+        self.robust_param = max(float(robust_param), 1e-12)
+        self.sigma_floor_mhz = max(float(sigma_floor_mhz), 0.0)
+        self.sigma_cap_mhz = None if sigma_cap_mhz is None else max(float(sigma_cap_mhz), self.sigma_floor_mhz)
+        self.max_weight = None if max_weight is None else max(float(max_weight), 1e-12)
+        cwm = component_weight_map or {}
+        self.component_weight_map = {
+            int(k): float(v) for k, v in cwm.items() if int(k) in (0, 1, 2)
+        }
+        self.torsion_aware_weighting = bool(torsion_aware_weighting)
+        self.torsion_a_weight = float(torsion_a_weight)
+        self.conformer_mixture = None
+        if conformer_defs is not None:
+            self.conformer_mixture = ConformerMixture(
+                reference_coords=np.zeros((len(self.isotopologues[0]["masses"]), 3), dtype=float),
+                conformer_defs=conformer_defs,
+                weight_mode=conformer_weight_mode,
+                temperature_k=conformer_temperature_k,
+            )
+
+    def _effective_sigma(self, sigma):
+        """
+        Apply optional sigma floor/cap and maximum weighting.
+        """
+        sigma_eff = np.asarray(sigma, dtype=float).copy()
+        sigma_eff = np.maximum(sigma_eff, 1e-12)
+        if self.sigma_floor_mhz > 0.0:
+            sigma_eff = np.maximum(sigma_eff, self.sigma_floor_mhz)
+        if self.sigma_cap_mhz is not None:
+            sigma_eff = np.minimum(sigma_eff, self.sigma_cap_mhz)
+        if self.max_weight is not None:
+            sigma_eff = np.maximum(sigma_eff, 1.0 / self.max_weight)
+        return sigma_eff
+
+    def set_adaptive_controls(self, sigma_floor_mhz=None, max_weight=None, torsion_a_weight=None):
+        """
+        Update runtime weighting controls from external adaptive policy.
+        """
+        if sigma_floor_mhz is not None:
+            self.sigma_floor_mhz = max(float(sigma_floor_mhz), 0.0)
+            if self.sigma_cap_mhz is not None:
+                self.sigma_cap_mhz = max(self.sigma_cap_mhz, self.sigma_floor_mhz)
+        if max_weight is not None:
+            self.max_weight = max(float(max_weight), 1e-12)
+        if torsion_a_weight is not None:
+            self.torsion_a_weight = max(float(torsion_a_weight), 1e-12)
+
+    def _component_weights(self, iso):
+        idx = np.asarray(iso["component_indices"], dtype=int)
+        w = np.ones(len(idx), dtype=float)
+        for i, comp in enumerate(idx):
+            if int(comp) in self.component_weight_map:
+                w[i] *= float(self.component_weight_map[int(comp)])
+        if self.torsion_aware_weighting and iso.get("torsion_sensitive", False):
+            for i, comp in enumerate(idx):
+                if int(comp) == 0:
+                    w[i] *= self.torsion_a_weight
+        return np.maximum(w, 1e-12)
+
+    def rotational_constants(self, coords, masses):
+        """Computed (A, B, C) in MHz for given geometry and masses."""
+        return _rotational_constants(np.asarray(coords), np.asarray(masses))
+
+    def jacobian(self, coords, masses, component_indices=None):
+        """
+        (3 × 3N) Jacobian ∂(A,B,C)/∂(x₁,y₁,z₁,…,xₙ,yₙ,zₙ) via central differences.
+        Units: MHz / Å.
+        """
+        coords = np.asarray(coords, dtype=float)
+        masses = np.asarray(masses, dtype=float)
+        N = len(coords)
+        J_full = np.zeros((3, 3 * N))
+        flat = coords.ravel()
+        abs_flat = np.abs(flat)
+        local_delta = self.delta * np.maximum(abs_flat, 1.0)
+        for i in range(3 * N):
+            di = local_delta[i]
+            fwd = flat.copy(); fwd[i] += di
+            bwd = flat.copy(); bwd[i] -= di
+            J_full[:, i] = (
+                _rotational_constants(fwd.reshape(N, 3), masses)
+                - _rotational_constants(bwd.reshape(N, 3), masses)
+            ) / (2 * di)
+        if component_indices is None:
+            return J_full
+        return J_full[np.asarray(component_indices, dtype=int)]
+
+    def residuals(self, coords, masses, obs_constants, alpha_constants=None, component_indices=None):
+        """
+        Δ(A,B,C) = target equilibrium constants − calculated constants in MHz.
+        If alpha_constants are supplied, applies Be ≈ B0 + 0.5 * alpha.
+        """
+        if alpha_constants is None:
+            alpha_constants = np.zeros(len(obs_constants))
+        be_target = obs_constants + 0.5 * np.asarray(alpha_constants, dtype=float)
+        calc = _rotational_constants(np.asarray(coords), np.asarray(masses))
+        if component_indices is not None:
+            calc = calc[np.asarray(component_indices, dtype=int)]
+        return be_target - calc
+
+    def _robust_weight(self, scaled_residual):
+        """
+        Return diagonal robust reweighting for scaled residuals.
+        """
+        a = np.abs(scaled_residual)
+        if self.robust_loss == "none":
+            return np.ones_like(scaled_residual)
+        if self.robust_loss == "huber":
+            c = self.robust_param
+            return np.where(a <= c, 1.0, c / np.maximum(a, 1e-12))
+        if self.robust_loss == "cauchy":
+            c = self.robust_param
+            return 1.0 / (1.0 + (a / c) ** 2)
+        raise ValueError(f"Unknown robust_loss='{self.robust_loss}'. Use none|huber|cauchy.")
+
+    def stacked(self, coords):
+        """
+        Stacked (3k × 3N) Jacobian and (3k,) residual vector across all k isotopologues.
+        The SVD of the Jacobian determines which structural parameters are experimentally
+        constrained vs. assigned to the quantum null space.
+        """
+        coords = np.asarray(coords, dtype=float)
+        J_blocks, r_blocks = [], []
+        conf_coords = [coords]
+        conf_weights = np.array([1.0], dtype=float)
+        if self.conformer_mixture is not None:
+            conf_coords = self.conformer_mixture.conformer_coords(coords)
+            conf_weights = self.conformer_mixture.weights()
+        for iso in self.isotopologues:
+            j_mix = None
+            calc_mix = None
+            be_target = iso["obs_constants"] + 0.5 * np.asarray(iso["alpha_constants"], dtype=float)
+            idx = np.asarray(iso["component_indices"], dtype=int)
+            for w, cxyz in zip(conf_weights, conf_coords):
+                Jc = self.jacobian(cxyz, iso["masses"], idx)
+                calc_c = _rotational_constants(np.asarray(cxyz), np.asarray(iso["masses"]))[idx]
+                if j_mix is None:
+                    j_mix = w * Jc
+                    calc_mix = w * calc_c
+                else:
+                    j_mix += w * Jc
+                    calc_mix += w * calc_c
+            J = j_mix
+            r = be_target - calc_mix
+            sigma = self._effective_sigma(iso["sigma_constants"])
+            Jw = J / sigma[:, None]
+            rw = r / sigma
+            comp_w = self._component_weights(iso)
+            Jw = comp_w[:, None] * Jw
+            rw = comp_w * rw
+            robust_w = np.sqrt(self._robust_weight(rw))
+            J_blocks.append(robust_w[:, None] * Jw)
+            r_blocks.append(robust_w * rw)
+        return np.vstack(J_blocks), np.concatenate(r_blocks)
+
+    def stacked_unweighted(self, coords):
+        """
+        Return unweighted stacked Jacobian and residual vector in physical units.
+        Jacobian units: MHz/Å, residual units: MHz.
+        """
+        coords = np.asarray(coords, dtype=float)
+        J_blocks, r_blocks = [], []
+        conf_coords = [coords]
+        conf_weights = np.array([1.0], dtype=float)
+        if self.conformer_mixture is not None:
+            conf_coords = self.conformer_mixture.conformer_coords(coords)
+            conf_weights = self.conformer_mixture.weights()
+        for iso in self.isotopologues:
+            idx = np.asarray(iso["component_indices"], dtype=int)
+            j_mix = None
+            calc_mix = None
+            be_target = iso["obs_constants"] + 0.5 * np.asarray(iso["alpha_constants"], dtype=float)
+            for w, cxyz in zip(conf_weights, conf_coords):
+                Jc = self.jacobian(cxyz, iso["masses"], idx)
+                calc_c = _rotational_constants(np.asarray(cxyz), np.asarray(iso["masses"]))[idx]
+                if j_mix is None:
+                    j_mix = w * Jc
+                    calc_mix = w * calc_c
+                else:
+                    j_mix += w * Jc
+                    calc_mix += w * calc_c
+            J_blocks.append(j_mix)
+            r_blocks.append(be_target - calc_mix)
+        return np.vstack(J_blocks), np.concatenate(r_blocks)
+
+    def conformer_diagnostics(self):
+        if self.conformer_mixture is None:
+            return None
+        return self.conformer_mixture.diagnostics()

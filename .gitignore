@@ -1,0 +1,26 @@
+# Python bytecode/cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Tooling caches
+.pytest_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+
+# Logs
+*.log
+
+# Generated run artifacts
+orca_workdir/
+multistart_runs/
+bayes_tune_ocs_orca/
+
+# Local results/output
+results/
