@@ -8,8 +8,9 @@ Psi4 is not distributed via pip on Windows; use ``--backend orca`` (default if O
 or install Psi4 via conda and pass ``--backend psi4``.
 
 Examples:
-  python run_bayes_tune.py --backend orca --orca-exe "C:\\ORCA_6.1.1\\orca.exe" --n-calls 15
-  python run_bayes_tune.py --backend spectral-only --n-calls 20   # fast, no QM
+  python runs/run_bayes_tune.py --backend orca --n-calls 15   # ORCA on PATH or ./orca in cwd
+  python runs/run_bayes_tune.py --backend orca --orca-exe /path/to/orca --n-calls 15
+  python runs/run_bayes_tune.py --backend spectral-only --n-calls 20   # fast, no QM
 """
 
 from __future__ import annotations
@@ -22,9 +23,10 @@ from multiprocessing import freeze_support
 import numpy as np
 
 from backend.bayes_tune import tune_molecular_optimizer
-from backend.geometryguess import guess_linear_triatomic
+from backend.geometryguess import guess_geometry_molecular_input
+from backend.quantize import _find_orca
 
-_DEFAULT_ORCA = os.environ.get("ORCA_EXE", r"C:\ORCA_6.1.1\orca.exe")
+_DEFAULT_ORCA = os.environ.get("QUANTIZE_ORCA_EXE") or os.environ.get("ORCA_EXE") or None
 
 # ── Same isotopologue model as run_OCS.py ────────────────────────────────────
 m_O16 = 15.99491
@@ -47,14 +49,13 @@ obs_b0_values = {
 }
 
 elems = ["O", "C", "S"]
-coords = guess_linear_triatomic(
-    left_elem="O",
-    center_elem="C",
-    right_elem="S",
-    r_left_center=1.22,
-    r_center_right=1.50,
-    bend_deg=-1.1,
+coords, _elems_seed = guess_geometry_molecular_input(
+    None,
+    elems=elems,
+    bonds=[(0, 1), (1, 2)],
+    center=True,
 )
+assert list(_elems_seed) == elems
 
 isotopologues = [
     {
@@ -144,7 +145,12 @@ def main():
         default=None,
         help="Quantum backend. Default: orca if ORCA_EXE/default path exists, else spectral-only.",
     )
-    parser.add_argument("--orca-exe", type=str, default=_DEFAULT_ORCA, help="Path to orca.exe")
+    parser.add_argument(
+        "--orca-exe",
+        type=str,
+        default=_DEFAULT_ORCA,
+        help="Path to ORCA binary, or omit / null for PATH and ./orca in cwd",
+    )
     parser.add_argument("--n-calls", type=int, default=15, help="Number of BO evaluations.")
     parser.add_argument(
         "--max-iter",
@@ -153,13 +159,27 @@ def main():
         help="MolecularOptimizer max_iter per BO trial.",
     )
     parser.add_argument("--random-state", type=int, default=0)
-    parser.add_argument("--workdir", type=str, default="bayes_tune_ocs")
+    parser.add_argument(
+        "--workdir",
+        type=str,
+        default=".",
+        help="Root directory for trial workdirs (default: current directory)",
+    )
     parser.add_argument("--out-json", type=str, default="bayes_tune_best_params_small_molecules.json")
     args = parser.parse_args()
 
     backend = args.backend
     if backend is None:
-        backend = "orca" if args.orca_exe and os.path.isfile(args.orca_exe) else "spectral-only"
+        use_orca = False
+        if args.orca_exe and os.path.isfile(args.orca_exe):
+            use_orca = True
+        else:
+            try:
+                _find_orca(args.orca_exe)
+                use_orca = True
+            except RuntimeError:
+                pass
+        backend = "orca" if use_orca else "spectral-only"
 
     base = _base_optimizer_kwargs(args.workdir, args.max_iter, backend, args.orca_exe)
 
