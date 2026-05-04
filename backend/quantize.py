@@ -46,6 +46,8 @@ def _find_orca(executable):
     """
     Resolve the ORCA executable to an absolute path.
     Accepts a full path, a bare name ('orca'), or None (auto-detect).
+    Search order: PATH (:func:`shutil.which`), explicit path if it exists as a file,
+    then ``./orca`` or ``./orca.exe`` in the **current working directory**.
     Raises RuntimeError if not found.
     """
     if executable is None:
@@ -55,9 +57,14 @@ def _find_orca(executable):
         return found
     if os.path.isfile(executable):
         return os.path.abspath(executable)
+    for name in ("orca", "orca.exe"):
+        local = os.path.join(os.getcwd(), name)
+        if os.path.isfile(local):
+            return os.path.abspath(local)
     raise RuntimeError(
-        f"ORCA executable '{executable}' not found on PATH or filesystem.\n"
-        "Set orca_executable to the full path, e.g. r'C:\\orca\\orca.exe'."
+        f"ORCA executable '{executable}' not found on PATH, filesystem, or current directory.\n"
+        "Install ORCA, add it to PATH, place an ``orca`` binary in the working directory, or "
+        "set orca_executable to the full path, e.g. r'C:\\orca\\orca.exe'."
     )
 
 
@@ -92,7 +99,16 @@ class MolecularOptimizer:
         Convergence threshold on rotational-constant RMS residual [MHz].
     conv_energy : float
         Convergence threshold on absolute energy change between iterations
-        [Hartree]. Used only when quantum prior is enabled.
+        [Hartree]. Used for hybrid stall detection and optionally for null-space
+        convergence when ``null_convergence_requires_energy`` is True.
+    spectral_analytic_jacobian : bool
+        If True (default), ``SpectralEngine`` uses an analytic ∂(A,B,C)/∂x with
+        finite-difference fallback for degenerate principal moments.
+    spectral_jacobian_degeneracy_tol : float
+        Relative moment gap below which the Jacobian falls back to finite differences.
+    null_convergence_requires_energy : bool
+        If True, null-space convergence also requires ``|ΔE| < conv_energy``.
+        Default False avoids stalling when energy differences fluctuate iteration-to-iteration.
     conv_step_range : float
         Convergence threshold on the range-space component of the Cartesian
         step norm [Å].
@@ -173,6 +189,9 @@ class MolecularOptimizer:
         conformer_weight_mode="fixed",
         conformer_temperature_k=298.15,
         spectral_delta=1e-3,
+        spectral_analytic_jacobian=True,
+        spectral_jacobian_degeneracy_tol=1e-4,
+        null_convergence_requires_energy=False,
         auto_sanitize_spectral=True,
         sanitize_jacobian_row_norm_max=1e9,
         sanitize_tiny_target_mhz=1e-3,
@@ -238,6 +257,8 @@ class MolecularOptimizer:
             conformer_defs=(conformer_defs if use_conformer_mixture else None),
             conformer_weight_mode=conformer_weight_mode,
             conformer_temperature_k=conformer_temperature_k,
+            analytic_jacobian=bool(spectral_analytic_jacobian),
+            jacobian_degeneracy_tol=float(spectral_jacobian_degeneracy_tol),
         )
         if any(bool(iso.get("torsion_sensitive", False)) for iso in self.spectral.isotopologues):
             self.spectral.torsion_aware_weighting = True
@@ -298,6 +319,7 @@ class MolecularOptimizer:
         self.conv_step = conv_step
         self.conv_freq = conv_freq
         self.conv_energy = float(conv_energy)
+        self.null_convergence_requires_energy = bool(null_convergence_requires_energy)
         self.spectral_accept_relax = self._base_spectral_accept_relax
         self.conv_step_range = float(conv_step_range)
         self.conv_step_null = float(conv_step_null)
@@ -533,11 +555,16 @@ class MolecularOptimizer:
         orca_dir = os.path.dirname(os.path.abspath(self._orca_exe))
         if orca_dir not in env.get("PATH", ""):
             env["PATH"] = orca_dir + os.pathsep + env.get("PATH", "")
+        # Pass only the input *filename* (not an absolute path). ORCA's helper
+        # executables often break on spaces in paths (e.g. ".../YC Hack/...") when
+        # the full path is passed; cwd is already the job directory.
+        workdir = os.path.abspath(self.workdir)
+        inp_rel = os.path.basename(self._inp_path())
         result = subprocess.run(
-            [self._orca_exe, self._inp_path()],
+            [self._orca_exe, inp_rel],
             capture_output=True,
             text=True,
-            cwd=self.workdir,
+            cwd=workdir,
             env=env,
         )
         os.makedirs(self.workdir, exist_ok=True)
@@ -550,6 +577,46 @@ class MolecularOptimizer:
                 f"ORCA terminated with a non-zero exit code.\n"
                 f"--- ORCA stderr (last 3000 chars) ---\n{result.stderr[-3000:]}"
             )
+
+    def _require_orca_artefacts(self, need=("engrad", "hess")):
+        """
+        ORCA sometimes exits 0 without writing expected files (license limits, helper crash).
+        Fail fast with directory listing and tail of quantize_orca.out for debugging.
+        """
+        labels_paths = []
+        if "engrad" in need:
+            labels_paths.append(("engrad", self._engrad_path()))
+        if "hess" in need:
+            labels_paths.append(("hess", self._hess_path()))
+        missing = [(lab, p) for lab, p in labels_paths if not os.path.isfile(p)]
+        if not missing:
+            return
+        out_tail = ""
+        outp = self._out_path()
+        try:
+            if os.path.isfile(outp):
+                with open(outp, encoding="utf-8", errors="ignore") as f:
+                    out_tail = f.read()[-6000:]
+        except OSError:
+            out_tail = "(could not read quantize_orca.out)"
+        try:
+            names = sorted(os.listdir(self.workdir))
+            listing = "\n".join(names) if names else "(empty)"
+        except OSError as e:
+            listing = f"(could not list: {e})"
+        miss_str = "\n".join(f"  missing {lab}: {p}" for lab, p in missing)
+        raise RuntimeError(
+            "ORCA ran but expected output files were not found.\n"
+            f"{miss_str}\n"
+            f"workdir: {self.workdir}\n"
+            "Files present:\n"
+            f"{listing}\n\n"
+            "Common causes: (1) spaces in the full path to the job directory break some ORCA "
+            "helpers — clone the repo to a path without spaces, or use this codebase version "
+            "that invokes ORCA with a relative input name; (2) academic license allows only "
+            "one ORCA job — use max_workers=1; (3) see quantize_orca.out below.\n"
+            f"--- tail of quantize_orca.out ---\n{out_tail}"
+        )
 
     def _run_hessian(self):
         """Full Freq job: refreshes both gradient and Hessian."""
@@ -564,6 +631,7 @@ class MolecularOptimizer:
         print("  [ORCA] Running frequency calculation (gradient + Hessian)...")
         self._write_orca_input(job="hessian")
         self._exec_orca()
+        self._require_orca_artefacts(need=("engrad", "hess"))
         self.quantum = QuantumEngine(self._engrad_path(), self._hess_path(), self.elems)
         self._orca_ref_coords = self.coords.copy()
         print(f"  [ORCA] Done.  Energy = {self.quantum.energy:.10f} Hartree")
@@ -583,6 +651,7 @@ class MolecularOptimizer:
         print("  [ORCA] Running gradient update (EnGrad)...")
         self._write_orca_input(job="gradient")
         self._exec_orca()
+        self._require_orca_artefacts(need=("engrad",))
         energy, grad = parse_engrad(self._engrad_path())
         self.quantum.energy = energy
         self.quantum._gradient_bohr = grad
@@ -832,10 +901,9 @@ class MolecularOptimizer:
 
             wrms_before = float(np.sqrt(np.mean(residual_w ** 2)))
             mhz_rms_before = float(np.sqrt(np.mean(residual_mhz ** 2)))
-            dx, rank, sv, alpha_q_eff = self.optimizer.step(J, residual_w, g, H, B=B)
+            dx, rank, sv, alpha_q_eff, Vt = self.optimizer.step(J, residual_w, g, H, B=B)
             if self.symmetry is not None:
                 dx = self.symmetry.project_step(dx)
-            _, _, Vt, _ = self.optimizer.decompose(J)
             P_range = self.optimizer.range_projector(Vt, rank)
             P_null = self.optimizer.null_projector(Vt, rank)
             dx_range_norm = float(np.linalg.norm(P_range @ dx))
@@ -1006,9 +1074,10 @@ class MolecularOptimizer:
             if not self.spectral_only:
                 null_ok = (
                     dx_null_norm < self.conv_step_null and
-                    g_null_norm is not None and g_null_norm < self.conv_grad_null and
-                    energy_ok
+                    g_null_norm is not None and g_null_norm < self.conv_grad_null
                 )
+                if self.null_convergence_requires_energy:
+                    null_ok = null_ok and energy_ok
             if spectral_ok and null_ok:
                 print(f"\nConverged in {it + 1} iterations.")
                 converged = True

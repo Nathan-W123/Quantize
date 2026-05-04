@@ -9,7 +9,8 @@ __pycache__/
 venv/
 env/
 
-# Tooling caches
+# Tooling caches (all consolidated under .cache/)
+.cache/
 .pytest_cache/
 .mypy_cache/
 .ipynb_checkpoints/
@@ -20,7 +21,21 @@ env/
 # Generated run artifacts
 orca_workdir/
 multistart_runs/
+energy_minimize_runs/
 bayes_tune_ocs_orca/
 
 # Local results/output
 results/
+
+# Trial run artifacts (keep the directory stub, ignore contents)
+trials/*
+!trials/.gitkeep
+
+# ORCA scratch files (often written with workdir=. or under multistart_runs/)
+quantize_orca.inp
+quantize_orca.engrad
+quantize_orca.hess
+quantize_orca.out
+quantize_orca.err
+quantize_orca_rovib.out
+quantize_orca.vpt2

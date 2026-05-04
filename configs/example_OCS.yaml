@@ -1,0 +1,61 @@
+# OCS (carbonyl sulfide) — example generalized input file
+# Run with: python run_from_config.py configs/example_OCS.yaml
+#
+# Known reference geometry (for validation):
+#   r(C=O) = 1.1563 Å
+#   r(C=S) = 1.5610 Å
+#   angle  = 180.0°  (linear)
+#
+# Spectral data from microwave spectroscopy literature.
+
+# ── Job name ───────────────────────────────────────────────────────────────────
+name: OCS
+
+# ── Atoms ─────────────────────────────────────────────────────────────────────
+# Order: O (index 0), C (index 1), S (index 2)
+elements: [O, C, S]
+
+# ── Initial geometry ───────────────────────────────────────────────────────────
+# SMILES encodes bond order (O=C=S has two double bonds), so PubChem returns
+# an MMFF94-relaxed geometry with correct bond lengths — no manual guessing needed.
+# Requires internet access. Use method: bonds + bond_lengths if working offline.
+geometry:
+  smiles: O=C=S
+
+# ── Symmetry ──────────────────────────────────────────────────────────────────
+# Linear molecule with no inversion center → C∞v
+symmetry: Cinf_v
+
+# ── Spectral data ─────────────────────────────────────────────────────────────
+# OCS is linear so only the B rotational constant is observed (A = C = 0).
+# Two isotopologues: substituting 32S → 34S changes B and constrains r(C=S).
+# Source: microwave spectroscopy literature (Gordy & Cook / NIST).
+
+isotopologues:
+  - name: 16O-12C-32S
+    #        O               C               S
+    masses: [15.99491461956, 12.00000000000, 31.97207117440]
+    components: [B]                 # linear molecule — B only
+    obs_b0_mhz: [6081.4921]
+    alpha_mhz:  [25.24]             # Be = B0 + 0.5 * alpha
+    sigma_mhz:  [0.0001]
+
+  - name: 16O-12C-34S
+    #        O               C               S-34
+    masses: [15.99491461956, 12.00000000000, 33.96786700400]
+    components: [B]
+    obs_b0_mhz: [5932.8159]
+    alpha_mhz:  [24.32]
+    sigma_mhz:  [0.0002]
+
+# ── Quantum chemistry ──────────────────────────────────────────────────────────
+quantum:
+  backend:    orca
+  method:     wB97X-D4
+  basis:      def2-TZVPP
+  executable: null                  # searches PATH for orca
+
+# ── Run control ────────────────────────────────────────────────────────────────
+preset:    BALANCED
+rng_seed:  23
+write_xyz: false

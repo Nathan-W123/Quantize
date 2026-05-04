@@ -2,7 +2,7 @@ import numpy as np
 from multiprocessing import freeze_support
 from backend.geometryguess import guess_bent_triatomic
 from backend.multistart import run_multistart, select_best_result, underconstrained_success_score
-from run_settings import get_run_settings
+from runner.run_settings import get_run_settings
 from backend.spectral import sanitize_isotopologues
 from backend.symmetry import PointGroupSymmetry
 
@@ -207,8 +207,8 @@ def main():
         quantum_weight_min=0.25,
         quantum_weight_max=5.0,
         method_preset="fast",
-        orca_method="wB97X-D4",
-        orca_basis="def2-TZVPP",
+        orca_method=settings["orca_method"],
+        orca_basis=settings["orca_basis"],
         use_orca_rovib=False,
         rovib_recalc_every=1,
         rovib_source_mode="hybrid_auto",

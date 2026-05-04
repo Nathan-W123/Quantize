@@ -25,7 +25,7 @@ def _rotational_constants(coords, masses):
 
 
 def _jacobian_full(coords, masses, delta):
-    """Full 3x(3N) Jacobian for (A,B,C)."""
+    """Full 3x(3N) Jacobian for (A,B,C) via central finite differences."""
     coords = np.asarray(coords, dtype=float)
     masses = np.asarray(masses, dtype=float)
     n = len(coords)
@@ -43,6 +43,56 @@ def _jacobian_full(coords, masses, delta):
             _rotational_constants(fwd.reshape(n, 3), masses)
             - _rotational_constants(bwd.reshape(n, 3), masses)
         ) / (2 * di)
+    return j_full
+
+
+def _jacobian_full_analytic(coords, masses, delta, degeneracy_rel_tol=1e-4):
+    """
+    Full (3 × 3N) Jacobian ∂(A,B,C)/∂(flat x) in MHz/Å using dλ/dx = v^T (dI/dx) v
+    for principal moments λ of the inertia tensor (same ordering as ``_rotational_constants``).
+
+    Falls back to finite differences when moments are nearly degenerate or non-positive
+    (linear / pathological geometries).
+    """
+    coords = np.asarray(coords, dtype=float)
+    masses = np.asarray(masses, dtype=float)
+    n = len(coords)
+    I = _inertia_tensor(coords, masses)
+    evals, evecs = np.linalg.eigh(I)
+    if np.any(evals <= 1e-10):
+        return _jacobian_full(coords, masses, delta)
+    gaps = (evals[1] - evals[0], evals[2] - evals[1])
+    scale = max(float(np.mean(evals)), 1e-12)
+    if min(gaps) / scale < float(degeneracy_rel_tol):
+        return _jacobian_full(coords, masses, delta)
+
+    Mtot = float(masses.sum())
+    mfrac = masses / Mtot
+    cm = masses @ coords / Mtot
+    r = coords - cm
+
+    j_full = np.zeros((3, 3 * n))
+    for j_atom in range(n):
+        for a in range(3):
+            p = 3 * j_atom + a
+            dI = np.zeros((3, 3))
+            for i in range(n):
+                ci = (1.0 if i == j_atom else 0.0) - mfrac[j_atom]
+                ri = r[i]
+                dr2 = 2.0 * ri[a] * ci
+                for p_ax in range(3):
+                    for q_ax in range(3):
+                        delta_pq = 1.0 if p_ax == q_ax else 0.0
+                        d_inner = ci * (
+                            (1.0 if p_ax == a else 0.0) * ri[q_ax]
+                            + (1.0 if q_ax == a else 0.0) * ri[p_ax]
+                        )
+                        dI[p_ax, q_ax] += masses[i] * (delta_pq * dr2 - d_inner)
+            for s in range(3):
+                lam = evals[s]
+                v = evecs[:, s]
+                dlam = float(v @ dI @ v)
+                j_full[s, p] = -_INERTIA_TO_MHZ * dlam / (lam * lam)
     return j_full
 
 
@@ -72,7 +122,7 @@ def sanitize_isotopologues(
         alpha = np.asarray(iso.get("alpha_constants", np.zeros(len(obs))), dtype=float)
 
         calc_abc = _rotational_constants(coords, masses)
-        j_full = _jacobian_full(coords, masses, delta)
+        j_full = _jacobian_full_analytic(coords, masses, delta)
         keep = []
         out_obs, out_sig, out_alpha = [], [], []
         dropped = []
@@ -143,7 +193,12 @@ class SpectralEngine:
             'masses'        : array-like (N,)  atomic masses in amu
             'obs_constants' : array-like (3,)  observed A, B, C in MHz
     delta : float
-        Central finite-difference step in Angstroms.
+        Step scale used only when the Jacobian falls back to finite differences
+        (``analytic_jacobian=False`` or near-degenerate principal moments).
+    analytic_jacobian : bool
+        If True (default), use the analytic inertia derivative for ∂(A,B,C)/∂x.
+    jacobian_degeneracy_tol : float
+        If relative gaps between sorted principal moments are below this, use FD.
     """
 
     def __init__(
@@ -161,6 +216,8 @@ class SpectralEngine:
         conformer_defs=None,
         conformer_weight_mode="fixed",
         conformer_temperature_k=298.15,
+        analytic_jacobian=True,
+        jacobian_degeneracy_tol=1e-4,
     ):
         if not isotopologues:
             raise ValueError("At least one isotopologue is required.")
@@ -210,6 +267,8 @@ class SpectralEngine:
                 weight_mode=conformer_weight_mode,
                 temperature_k=conformer_temperature_k,
             )
+        self.analytic_jacobian = bool(analytic_jacobian)
+        self.jacobian_degeneracy_tol = max(float(jacobian_degeneracy_tol), 1e-15)
 
     def _effective_sigma(self, sigma):
         """
@@ -256,24 +315,20 @@ class SpectralEngine:
 
     def jacobian(self, coords, masses, component_indices=None):
         """
-        (3 × 3N) Jacobian ∂(A,B,C)/∂(x₁,y₁,z₁,…,xₙ,yₙ,zₙ) via central differences.
+        (3 × 3N) Jacobian ∂(A,B,C)/∂(x₁,y₁,z₁,…,xₙ,yₙ,zₙ).
+        Uses an analytic inertia derivative by default; finite differences when
+        ``analytic_jacobian`` is False or when principal moments are nearly degenerate.
         Units: MHz / Å.
         """
         coords = np.asarray(coords, dtype=float)
         masses = np.asarray(masses, dtype=float)
         N = len(coords)
-        J_full = np.zeros((3, 3 * N))
-        flat = coords.ravel()
-        abs_flat = np.abs(flat)
-        local_delta = self.delta * np.maximum(abs_flat, 1.0)
-        for i in range(3 * N):
-            di = local_delta[i]
-            fwd = flat.copy(); fwd[i] += di
-            bwd = flat.copy(); bwd[i] -= di
-            J_full[:, i] = (
-                _rotational_constants(fwd.reshape(N, 3), masses)
-                - _rotational_constants(bwd.reshape(N, 3), masses)
-            ) / (2 * di)
+        if self.analytic_jacobian:
+            J_full = _jacobian_full_analytic(
+                coords, masses, self.delta, self.jacobian_degeneracy_tol
+            )
+        else:
+            J_full = _jacobian_full(coords, masses, self.delta)
         if component_indices is None:
             return J_full
         return J_full[np.asarray(component_indices, dtype=int)]

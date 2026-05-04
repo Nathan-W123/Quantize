@@ -1,112 +1,135 @@
 import numpy as np
 from multiprocessing import freeze_support
+
 from backend.geometryguess import guess_linear_triatomic
 from backend.multistart import run_multistart, select_best_result, underconstrained_success_score
-from run_settings import get_run_settings
+from runner.run_settings import get_run_settings
 
-# ── OCS validation with two isotopologues (real-style B0 inputs) ──────────────
+# ── CO2 inversion scaffold (fill with real isotopologue data) ─────────────────
 #
-# This script validates hybrid inversion on a linear triatomic using two
-# isotopologues with B0 inputs and alpha corrections.
-# The expected geometry is the accepted near-equilibrium linear OCS structure.
+# Recommended for linear molecules:
+# - Start with B-only constraints (component index 1) for stable conditioning.
+# - Add more isotopologues to improve constrained rank.
 #
-# Accepted OCS geometry targets (reference values for validation):
-#   r(C=O) = 1.1563 Å
-#   r(C=S) = 1.5610 Å
-#   angle O-C-S = 180.0°
-#
-# Real-style source values used below:
-#   16O12C32S: B0 = 6081.4921 MHz, sigma = 0.0001, alpha = 25.24 MHz
-#   16O12C34S: B0 = 5932.8159 MHz, sigma = 0.0002, alpha = 24.32 MHz
+# Replace placeholder B0/sigma/alpha values below with literature values.
 
 # ── Isotopic masses (amu) ─────────────────────────────────────────────────────
-m_O16 = 15.99491
-m_C12 = 12.00000
-m_S32 = 31.97207
-m_S34 = 33.96787
+m_O16 = 15.99491461956
+m_O17 = 16.99913175650
+m_O18 = 17.99915961286
+m_C12 = 12.00000000000
+m_C13 = 13.00335483507
 
-# ── Accepted geometry (reference for validation printout) ─────────────────────
-r_CO_ref = 1.1563
-r_CS_ref = 1.5610
-ang_ref = 180.0
+# ── Candidate isotopologue masses (expand as needed) ─────────────────────────
+all_masses = {
+    "16O12C16O": np.array([m_O16, m_C12, m_O16]),
+    "16O13C16O": np.array([m_O16, m_C13, m_O16]),
+    "16O12C18O": np.array([m_O16, m_C12, m_O18]),
+    "18O12C18O": np.array([m_O18, m_C12, m_O18]),
+    "16O12C17O": np.array([m_O16, m_C12, m_O17]),
+}
 
-# ── Observed rotational data model ─────────────────────────────────────────────
-# For linear OCS, use B component only for stable conditioning.
-component_idx = [1]
+# ── Fill these with real data (MHz) ───────────────────────────────────────────
+# For linear CO2, B-only is usually the most stable:
+component_idx = [1]  # 0=A, 1=B, 2=C
+
 alpha_table = {
-    "16O12C32S": np.array([25.24]),  # MHz
-    "16O12C34S": np.array([24.32]),  # MHz
-}
-sigma_table = {
-    "16O12C32S": np.array([0.0001]),  # MHz
-    "16O12C34S": np.array([0.0002]),  # MHz
-}
-obs_b0_values = {
-    "16O12C32S": np.array([6081.4921]),  # MHz
-    "16O12C34S": np.array([5932.8159]),  # MHz
+    "16O12C16O": np.array([94.42]),
+    "18O12C18O": np.array([79.80]),
+    "16O12C18O": np.array([87.10]),
+    "16O13C16O": np.array([94.40]),
 }
 
-elems = ["O", "C", "S"]
+sigma_table = {
+    "16O12C16O": np.array([0.01]),
+    "18O12C18O": np.array([0.02]),
+    "16O12C18O": np.array([0.02]),
+    "16O13C16O": np.array([0.01]),
+}
+
+obs_b0_values = {
+    "16O12C16O": np.array([11698.472]),
+    "18O12C18O": np.array([10398.052]),
+    "16O12C18O": np.array([11048.254]),
+    "16O13C16O": np.array([11698.471]),
+}
+
+# ── Active isotopologue set for the run ──────────────────────────────────────
+active_isotopes = ["16O12C16O", "16O13C16O", "18O12C18O", "16O12C18O"]
+
+isotopologues = []
+for name in active_isotopes:
+    isotopologues.append(
+        {
+            "name": name,
+            "masses": all_masses[name].tolist(),
+            "component_indices": component_idx,
+            "obs_constants": obs_b0_values[name].tolist(),
+            "sigma_constants": sigma_table[name].tolist(),
+            "alpha_constants": alpha_table[name].tolist(),
+        }
+    )
+
+# ── Initial geometry guess (linear O-C-O) ────────────────────────────────────
+elems = ["O", "C", "O"]
 coords = guess_linear_triatomic(
     left_elem="O",
     center_elem="C",
-    right_elem="S",
-    r_left_center=1.22,
-    r_center_right=1.50,
-    bend_deg=-1.1,
+    right_elem="O",
+    r_left_center=1.16,
+    r_center_right=1.16,
+    bend_deg=0.0,
 )
 
-all_masses = {
-    "16O12C32S": np.array([m_O16, m_C12, m_S32]),
-    "16O12C34S": np.array([m_O16, m_C12, m_S34]),
-}
-
-isotopologues = [
-    {
-        "masses": all_masses["16O12C32S"].tolist(),
-        "component_indices": component_idx,
-        "obs_constants": obs_b0_values["16O12C32S"].tolist(),
-        "sigma_constants": sigma_table["16O12C32S"].tolist(),
-        "alpha_constants": alpha_table["16O12C32S"].tolist(),
-    },
-    {
-        "masses": all_masses["16O12C34S"].tolist(),
-        "component_indices": component_idx,
-        "obs_constants": obs_b0_values["16O12C34S"].tolist(),
-        "sigma_constants": sigma_table["16O12C34S"].tolist(),
-        "alpha_constants": alpha_table["16O12C34S"].tolist(),
-    },
-]
-
-# ── Backend / optimization controls ────────────────────────────────────────────
+# ── Backend / optimization controls ──────────────────────────────────────────
 USE_QUANTUM_PRIOR = True
-RNG_SEED = 23
+RNG_SEED = 29
 WRITE_XYZ = False
 PRESET_OVERRIDE = None
 
+
 def _metrics(arr):
-    o = arr[0]
+    o1 = arr[0]
     c = arr[1]
-    s = arr[2]
-    r_co = float(np.linalg.norm(o - c))
-    r_cs = float(np.linalg.norm(s - c))
-    v1 = o - c
-    v2 = s - c
+    o2 = arr[2]
+    r1 = float(np.linalg.norm(o1 - c))
+    r2 = float(np.linalg.norm(o2 - c))
+    v1 = o1 - c
+    v2 = o2 - c
     ang = float(np.degrees(np.arccos(
         np.clip(np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2)), -1.0, 1.0)
     )))
-    return r_co, r_cs, ang
+    return r1, r2, ang
+
+
+def _print_input_diagnostics():
+    labels = ["A", "B", "C"]
+    print("\nInput spectral targets (B0 + 0.5*alpha = Be):")
+    for iso in isotopologues:
+        name = iso.get("name", "iso")
+        idx = np.asarray(iso["component_indices"], dtype=int)
+        b0 = np.asarray(iso["obs_constants"], dtype=float)
+        alpha = np.asarray(iso["alpha_constants"], dtype=float)
+        be = b0 + 0.5 * alpha
+        comps = [labels[i] if 0 <= i < 3 else f"R{i}" for i in idx]
+        print(f"  {name} components: {comps}")
+        print(f"    B0    = {np.round(b0, 6).tolist()}")
+        print(f"    alpha = {np.round(alpha, 6).tolist()}")
+        print(f"    Be    = {np.round(be, 6).tolist()}")
 
 
 def main():
-    rng = np.random.default_rng(RNG_SEED)
-    settings = get_run_settings("ocs", PRESET_OVERRIDE)
+    _print_input_diagnostics()
+    settings = get_run_settings("co2", PRESET_OVERRIDE)
     preset = settings["preset_values"]
+
+    # Safety warning if placeholders were not replaced.
+    rng = np.random.default_rng(RNG_SEED)
     starts = [coords.copy()]
     for _ in range(int(preset["n_starts"]) - 1):
         jitter = np.zeros_like(coords)
-        jitter[0] = rng.normal(0.0, [0.06, 0.03, 0.03])  # O
-        jitter[2] = rng.normal(0.0, [0.06, 0.03, 0.03])  # S
+        jitter[0] = rng.normal(0.0, [0.04, 0.02, 0.02])
+        jitter[2] = rng.normal(0.0, [0.04, 0.02, 0.02])
         starts.append(coords + jitter)
 
     optimizer_kwargs = dict(
@@ -161,12 +184,12 @@ def main():
         quantum_weight_min=0.25,
         quantum_weight_max=5.0,
         method_preset="fast",
-        orca_method="wB97X-D4",
-        orca_basis="def2-TZVPP",
+        orca_method=settings["orca_method"],
+        orca_basis=settings["orca_basis"],
         use_orca_rovib=False,
         rovib_recalc_every=1,
         rovib_source_mode="hybrid_auto",
-        symmetry="Cinf_v",
+        symmetry="Dinf_h",
         debug_rank_diagnostics=False,
         debug_sv_count=6,
         base_workdir=".",
@@ -180,39 +203,39 @@ def main():
         isotopologues=isotopologues,
         optimizer_kwargs=optimizer_kwargs,
         max_workers=min(int(preset["max_workers"]), int(preset["n_starts"])),
-        job_name="ocs",
+        job_name="co2",
     )
     for r in results:
         r["metrics"] = _metrics(r["coords"])
 
     best = select_best_result(results, spectral_gate_abs=0.01, spectral_gate_rel=2.0)
     final_coords = best["coords"]
+
     if WRITE_XYZ:
-        with open("ocs_optimized.xyz", "w") as f:
+        with open("co2_optimized.xyz", "w") as f:
             f.write("3\n")
-            f.write("Best OCS geometry from parallel multistart\n")
+            f.write("Best CO2 geometry from parallel multistart\n")
             for e, (x, y, z) in zip(elems, final_coords):
                 f.write(f"{e:2s}  {x:16.10f}  {y:16.10f}  {z:16.10f}\n")
 
-    # ── Validation summary vs accepted geometry ───────────────────────────────────
-    r_CO, r_CS, ang_ocs = _metrics(final_coords)
+    r_co1, r_co2, ang_oco = _metrics(final_coords)
     all_metrics = np.array([r["metrics"] for r in results], dtype=float)
-    mean_rco, mean_rcs, mean_ang = all_metrics.mean(axis=0)
-    std_rco, std_rcs, std_ang = all_metrics.std(axis=0)
+    mean_r1, mean_r2, mean_ang = all_metrics.mean(axis=0)
+    std_r1, std_r2, std_ang = all_metrics.std(axis=0)
 
-    print("\n" + "=" * 64)
-    print("  OCS validation: recovered geometry vs accepted reference")
-    print("=" * 64)
-    print(f"  {'Parameter':<18}  {'Recovered':>12}  {'Reference':>12}  {'Error':>10}")
-    print("  " + "-" * 58)
-    print(f"  {'r(C=O) [A]':<18}  {r_CO:>12.6f}  {r_CO_ref:>12.6f}  {r_CO-r_CO_ref:>+10.6f}")
-    print(f"  {'r(C=S) [A]':<18}  {r_CS:>12.6f}  {r_CS_ref:>12.6f}  {r_CS-r_CS_ref:>+10.6f}")
-    print(f"  {'angle [deg]':<18}  {ang_ocs:>12.4f}  {ang_ref:>12.4f}  {ang_ocs-ang_ref:>+10.4f}")
-    print("=" * 64)
+    print("\n" + "=" * 60)
+    print("  CO2 inferred geometry from isotopologue data")
+    print("=" * 60)
+    print(f"  {'Parameter':<16}  {'Recovered':>12}")
+    print("  " + "-" * 32)
+    print(f"  {'r(C-O1) [A]':<16}  {r_co1:>12.6f}")
+    print(f"  {'r(C-O2) [A]':<16}  {r_co2:>12.6f}")
+    print(f"  {'angle [deg]':<16}  {ang_oco:>12.4f}")
+    print("=" * 60)
     print("  Multi-start consensus (mean ± std):")
-    print(f"    r(C=O):  {mean_rco:.6f} ± {std_rco:.6f} Å")
-    print(f"    r(C=S):  {mean_rcs:.6f} ± {std_rcs:.6f} Å")
-    print(f"    angle :  {mean_ang:.4f} ± {std_ang:.4f} deg")
+    print(f"    r(C-O1): {mean_r1:.6f} ± {std_r1:.6f} Å")
+    print(f"    r(C-O2): {mean_r2:.6f} ± {std_r2:.6f} Å")
+    print(f"    angle  : {mean_ang:.4f} ± {std_ang:.4f} deg")
     print(f"  Best run spectral RMS MHz: {best['freq_rms']:.6f}")
     print(f"  Best run energy (Eh):      {best['energy']:.10f}")
     score = underconstrained_success_score(results, best, isotopologues)
@@ -232,10 +255,7 @@ def main():
     )
     if score.get("conformer_weights_final") is not None:
         print(f"    Conformer weights (final): {np.round(score['conformer_weights_final'], 4).tolist()}")
-    print("  Input B0 targets (MHz):")
-    print("    16O12C32S: 6081.4921")
-    print("    16O12C34S: 5932.8159")
-    print("=" * 64)
+    print("=" * 60)
 
 
 if __name__ == "__main__":

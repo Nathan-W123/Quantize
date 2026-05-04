@@ -179,6 +179,8 @@ class SubspaceOptimizer:
         dx   : (3N,)  Cartesian step in Å (trust-radius clipped)
         rank : int    SVD rank
         s    : array  full singular-value spectrum
+        alpha_q_eff : float
+        Vt   : (3N, 3N) right singular vectors from the same SVD as ``rank`` (avoids recomputing SVD)
         """
         U, s, Vt, rank = self.decompose(J)
         alpha_q_eff = self._effective_quantum_weight(J, rank)
@@ -202,7 +204,7 @@ class SubspaceOptimizer:
         if norm > self.trust_radius:
             dx *= self.trust_radius / norm
 
-        return dx, rank, s, alpha_q_eff
+        return dx, rank, s, alpha_q_eff, Vt
 
     def adapt_lambda(self, accepted, min_lambda=1e-8, max_lambda=1e2):
         """

@@ -1,0 +1,112 @@
+# Quantize — generalized molecular input file
+# Usage:  python run_from_config.py configs/your_molecule.yaml
+#
+# Required fields: name, elements, geometry, isotopologues
+# Everything else has sensible defaults.
+
+# ── Job identifier ─────────────────────────────────────────────────────────────
+name: water                         # used in output and optional XYZ filename
+
+# ── Atom list ─────────────────────────────────────────────────────────────────
+# List element symbols in the atom order you will use throughout this file.
+# All masses, coordinates, and isotopologue entries must follow this same order.
+elements: [O, H, H]
+
+# ── Initial geometry ───────────────────────────────────────────────────────────
+# The optimizer refines whatever starting geometry you provide, so precision here
+# only affects convergence speed — but the starting point must be in the right
+# ballpark (correct bond order, roughly correct lengths).
+#
+# Recommended: supply a SMILES string (requires internet).
+# SMILES encodes bond order, so PubChem returns an MMFF94-relaxed geometry with
+# correct bond lengths automatically — no manual input needed.
+geometry:
+  smiles: O                        # water SMILES
+
+# Offline alternative — specify bond connectivity and approximate lengths.
+# Use bond_lengths for any molecule with double or triple bonds; omitting it
+# defaults to single-bond covalent radii which will be wrong for multiple bonds.
+# geometry:
+#   method: bonds
+#   bonds: [[0, 1], [0, 2]]        # 0-based atom index pairs
+#   bond_lengths: [1.01, 1.01]     # starting estimates (Å), one per bond — optional
+
+# Explicit Cartesian coordinates (Angstrom) — most precise starting point.
+# geometry:
+#   method: coords
+#   coords_angstrom:               # one [x, y, z] row per atom, same order as elements
+#     - [ 0.0000,  0.0000,  0.1174]   # O
+#     - [ 0.0000,  0.7572, -0.4696]   # H
+#     - [ 0.0000, -0.7572, -0.4696]   # H
+
+# ── Point-group symmetry (optional) ───────────────────────────────────────────
+# Constrains the optimization to the symmetric subspace.
+# Benefits: enforces equivalent bonds (e.g. equal O-H lengths in C2v water),
+#           reduces effective DOF, improves convergence for symmetric molecules.
+# Set to null to run without symmetry constraints.
+# Common values: C2v, Cs, C3v, Cinf_v, D2h, D6h, auto (infer from geometry)
+symmetry: C2v
+
+# ── Spectral data ─────────────────────────────────────────────────────────────
+# One block per isotopologue.  At least one is required; more isotopologues give
+# a better-constrained geometry.
+#
+# masses       — atomic masses in amu, in the same atom order as `elements`.
+# components   — which rotational constants are observed: any subset of [A, B, C].
+#                Asymmetric tops: [A, B, C].  Linear molecules: [B] only.
+# obs_b0_mhz   — observed ground-state rotational constants (MHz).
+# alpha_mhz    — vibrational corrections α.  Be = B0 + 0.5·α is used internally.
+#                Set all entries to 0.0 if corrections are unavailable (less accurate).
+# sigma_mhz    — measurement uncertainties (MHz).  Controls weighting in the fit.
+#                Use reported experimental uncertainties when known.
+
+isotopologues:
+  - name: H2-16O
+    masses:     [15.99491461956, 1.00782503207, 1.00782503207]
+    components: [A, B, C]
+    obs_b0_mhz: [835840.3, 435351.7, 278138.7]
+    alpha_mhz:  [-43390.0, 10560.0, 6240.0]
+    sigma_mhz:  [0.2, 0.2, 0.2]
+
+  - name: H2-18O
+    masses:     [17.99915961286, 1.00782503207, 1.00782503207]
+    components: [A, B, C]
+    obs_b0_mhz: [825366.1, 435331.6, 276950.5]
+    alpha_mhz:  [-42350.0, 10540.0, 6210.0]
+    sigma_mhz:  [0.2, 0.2, 0.2]
+
+  # Add more isotopologues by copying a block above.
+  # Example for HDO:
+  # - name: HDO
+  #   masses:     [15.99491461956, 1.00782503207, 2.01410177785]
+  #   components: [A, B, C]
+  #   obs_b0_mhz: [701932.3, 272913.3, 192055.2]
+  #   alpha_mhz:  [-28450.0, 5920.0, 3880.0]
+  #   sigma_mhz:  [0.3, 0.2, 0.2]
+
+# ── Quantum chemistry ──────────────────────────────────────────────────────────
+# backend:    orca | psi4 | none
+#             Use "none" for spectral-only mode (no quantum prior; geometry may be
+#             underdetermined if spectral data alone does not fully constrain it).
+# method:     any method string recognized by the backend (e.g. wB97X-D4, B3LYP,
+#             CCSD(T), MP2).
+# basis:      any basis set string recognized by the backend (e.g. def2-TZVPP,
+#             def2-SVP, cc-pVTZ).
+# executable: full path to the ORCA binary, or null to search PATH automatically.
+#             On Windows you may need: executable: C:/orca/orca.exe
+quantum:
+  backend:    orca
+  method:     wB97X-D4
+  basis:      def2-TZVPP
+  executable: null
+
+# ── Run control ────────────────────────────────────────────────────────────────
+# preset:    controls n_starts, convergence thresholds, and weighting policy.
+#            FAST_DEBUG  — 1 start, loose convergence.  Good for quick testing.
+#            BALANCED    — 3 starts, moderate convergence.  Good default.
+#            STRICT      — 5 starts, tight convergence.  Best accuracy.
+# rng_seed:  integer seed for multi-start jitter reproducibility.
+# write_xyz: if true, write the best optimized geometry to <name>_optimized.xyz.
+preset:    BALANCED
+rng_seed:  42
+write_xyz: false
