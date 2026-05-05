@@ -11,7 +11,10 @@ env/
 
 # Tooling caches (all consolidated under .cache/)
 .cache/
+.pytest_tmp/
 .pytest_cache/
+.pytest_cache_local/
+pytest-cache-files-*/
 .mypy_cache/
 .ipynb_checkpoints/
 
@@ -26,6 +29,7 @@ bayes_tune_ocs_orca/
 
 # Local results/output
 results/
+runs/
 
 # Trial run artifacts (keep the directory stub, ignore contents)
 trials/*

@@ -24,6 +24,7 @@ if str(_ROOT) not in sys.path:
 from backend.geometryguess import guess_geometry_molecular_input
 from backend.multistart import run_multistart, select_best_result, underconstrained_success_score
 from runner.run_settings import BASE_SETTINGS, GLOBAL_PRESETS
+from runner.usability import write_outputs
 
 _COMPONENT_MAP = {"A": 0, "B": 1, "C": 2}
 
@@ -173,8 +174,11 @@ def _compute_metrics(
     return metrics
 
 
-def main(cfg: dict[str, Any]) -> None:
+def main(cfg: dict[str, Any]) -> dict[str, Any]:
     name = str(cfg.get("name", "molecule")).strip()
+    managed_run = "_run_dir" in cfg
+    run_dir = Path(str(cfg.get("_run_dir") or ".")).resolve()
+    base_workdir = str(run_dir) if managed_run else "trials"
 
     # ── Geometry ──────────────────────────────────────────────────────────────
     coords, elems, bonds = _build_geometry(cfg)
@@ -192,6 +196,14 @@ def main(cfg: dict[str, Any]) -> None:
     orca_method = str(qsec.get("method", "wB97X-D4")).strip()
     orca_basis = str(qsec.get("basis", "def2-TZVPP")).strip()
     orca_exe = qsec.get("executable") or BASE_SETTINGS["orca_exe"]
+
+    # ── Rovibrational corrections (optional) ──────────────────────────────────
+    correction_table = cfg.get("corrections", None) or None
+    correction_mode = str(cfg.get("correction_mode", "hybrid_auto")).strip()
+    correction_sigma_vib_fraction = float(cfg.get("correction_sigma_vib_fraction", 0.1))
+    correction_elec = bool(cfg.get("correction_elec", False))
+    correction_sigma_elec_fraction = float(cfg.get("correction_sigma_elec_fraction", 0.1))
+    correction_bob_params = cfg.get("correction_bob_params", None) or None
 
     # ── Preset and run control ────────────────────────────────────────────────
     preset_name, preset = _resolve_preset(cfg.get("preset"))
@@ -266,11 +278,17 @@ def main(cfg: dict[str, Any]) -> None:
         use_orca_rovib=False,
         rovib_recalc_every=1,
         rovib_source_mode="hybrid_auto",
+        correction_table=correction_table,
+        correction_mode=correction_mode,
+        correction_sigma_vib_fraction=correction_sigma_vib_fraction,
+        correction_elec=correction_elec,
+        correction_sigma_elec_fraction=correction_sigma_elec_fraction,
+        correction_bob_params=correction_bob_params,
         symmetry=symmetry_spec,
         project_rigid_modes=True,
         debug_rank_diagnostics=False,
         debug_sv_count=6,
-        base_workdir="trials",
+        base_workdir=base_workdir,
         quantum_descent_tol=float(preset.get("quantum_descent_tol", 1e-5)),
     )
 
@@ -301,8 +319,8 @@ def main(cfg: dict[str, Any]) -> None:
 
     # ── Optional XYZ output ───────────────────────────────────────────────────
     if write_xyz:
-        xyz_path = f"{name}_optimized.xyz"
-        with open(xyz_path, "w") as fh:
+        xyz_path = run_dir / f"{name}_optimized.xyz"
+        with open(xyz_path, "w", encoding="utf-8") as fh:
             fh.write(f"{len(elems)}\n")
             fh.write(f"Optimized geometry: {name}\n")
             for e, (x, y, z) in zip(elems, best["coords"]):
@@ -361,6 +379,33 @@ def main(cfg: dict[str, Any]) -> None:
         verdict = "geometry regularized by quantum prior; low spectral confidence"
     print(f"  Verdict              : {verdict}")
     print("=" * w)
+
+    result_bundle = {
+        "name": name,
+        "run_dir": str(run_dir),
+        "cfg": cfg,
+        "elems": elems,
+        "bonds": bonds,
+        "results": results,
+        "best": best,
+        "score": score,
+        "best_metrics": best_metrics,
+        "all_metric_arrays": dict(all_metric_arrays),
+        "preset": preset_name,
+        "quantum": {
+            "backend": backend,
+            "method": orca_method,
+            "basis": orca_basis,
+        },
+    }
+    output_cfg = cfg.get("output", {}) or {}
+    if (managed_run or bool(output_cfg)) and output_cfg.get("artifacts", True):
+        artifacts = write_outputs(result_bundle)
+        result_bundle["artifacts"] = artifacts
+        print(f"[{name}] report       : {artifacts['report_md']}")
+        print(f"[{name}] residual CSV : {artifacts['residuals_csv']}")
+        print(f"[{name}] geometry CSV : {artifacts['geometry_csv']}")
+    return result_bundle
 
 
 if __name__ == "__main__":

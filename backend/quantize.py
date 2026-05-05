@@ -29,7 +29,14 @@ import numpy as np
 
 from backend.spectral import SpectralEngine, sanitize_isotopologues
 from backend.internal_prior import InternalPriorEngine
-from backend.rovib_corrections import resolve_alpha_components
+from backend.rovib_corrections import (
+    resolve_alpha_components,
+    resolve_corrections,
+    apply_corrections_to_isotopologues,
+    validate_correction_quality,
+    correction_summary,
+)
+from backend.correction_models import parse_correction_table
 from backend.autoconfig import AutoConfigEngine
 from backend.quantum import (
     QuantumEngine,
@@ -40,6 +47,13 @@ from backend.quantum import (
     wilson_B,
 )
 from backend.SVD import SubspaceOptimizer
+from backend.internal_fit import (
+    InternalCoordinateSet,
+    apply_internal_step,
+    spectral_jacobian_q,
+    quantum_terms_q,
+    build_internal_priors,
+)
 
 
 def _find_orca(executable):
@@ -222,6 +236,20 @@ class MolecularOptimizer:
         use_autoconfig=True,
         autoconfig_update_every=1,
         autoconfig_smoothing=0.4,
+        correction_table=None,
+        correction_mode="hybrid_auto",
+        correction_sigma_vib_fraction=0.1,
+        correction_elec=False,
+        correction_sigma_elec_fraction=0.1,
+        correction_bob_params=None,
+        coordinate_mode="cartesian",
+        ic_damping=1e-6,
+        ic_use_dihedrals=False,
+        ic_micro_iter=20,
+        ic_prior_weight=1.0,
+        ic_prior_sigma_bond=0.05,
+        ic_prior_sigma_angle_deg=3.0,
+        ic_prior_sigma_dihedral_deg=15.0,
     ):
         self.coords = np.asarray(coords, dtype=float).copy()
         self.elems = list(elems)
@@ -229,6 +257,38 @@ class MolecularOptimizer:
             preset_method, preset_basis = self._method_preset(method_preset)
             orca_method = preset_method
             orca_basis = preset_basis
+
+        # ── Rovibrational corrections (M1-M4) ────────────────────────────────
+        self._corrected_targets = None
+        _ctbl = parse_correction_table(correction_table)
+        _apply_corrections = bool(_ctbl) or correction_mode != "hybrid_auto"
+        if _apply_corrections or (correction_table is not None):
+            _ctbl = parse_correction_table(correction_table)
+        if _ctbl or correction_elec or correction_bob_params:
+            _corrected_targets = resolve_corrections(
+                isotopologues,
+                correction_table=_ctbl,
+                mode=str(correction_mode).strip().lower(),
+                sigma_vib_fraction=float(correction_sigma_vib_fraction),
+                elems=list(elems),
+                correction_elec=bool(correction_elec),
+                sigma_elec_fraction=float(correction_sigma_elec_fraction),
+                correction_bob_params=correction_bob_params or None,
+            )
+            _qc_warnings = validate_correction_quality(_corrected_targets)
+            print("\nRovibrational corrections applied:")
+            print(correction_summary(_corrected_targets))
+            for w in _qc_warnings:
+                print(f"[correction-warning] {w}")
+            isotopologues = apply_corrections_to_isotopologues(isotopologues, _corrected_targets)
+            self._corrected_targets = _corrected_targets
+            if use_orca_rovib:
+                print(
+                    "[correction-warning] use_orca_rovib=True is ignored when correction_table "
+                    "is supplied — corrections are pre-applied and alpha_constants are zeroed."
+                )
+                use_orca_rovib = False
+
         self.auto_sanitize_spectral = bool(auto_sanitize_spectral)
         self.sanitize_jacobian_row_norm_max = float(sanitize_jacobian_row_norm_max)
         self.sanitize_tiny_target_mhz = float(sanitize_tiny_target_mhz)
@@ -371,6 +431,22 @@ class MolecularOptimizer:
                 base_torsion_a_weight=self._base_torsion_a_weight,
                 smoothing=float(autoconfig_smoothing),
             )
+        _valid_modes = ("cartesian", "internal")
+        if str(coordinate_mode).strip().lower() not in _valid_modes:
+            raise ValueError(f"coordinate_mode must be one of {_valid_modes}, got '{coordinate_mode}'")
+        self.coordinate_mode = str(coordinate_mode).strip().lower()
+        self._ic_damping = max(float(ic_damping), 1e-14)
+        self._ic_use_dihedrals = bool(ic_use_dihedrals)
+        self._ic_micro_iter = max(1, int(ic_micro_iter))
+        self._ic_prior_weight = max(float(ic_prior_weight), 0.0)
+        self._ic_prior_sigma_bond = float(ic_prior_sigma_bond)
+        self._ic_prior_sigma_angle_deg = float(ic_prior_sigma_angle_deg)
+        self._ic_prior_sigma_dihedral_deg = float(ic_prior_sigma_dihedral_deg)
+        self._ic_initial_coords = None   # captured once after first geometry is confirmed
+        if self.coordinate_mode == "internal":
+            print(f"Internal-coordinate mode enabled: bonds+{'dihedrals+' if self._ic_use_dihedrals else ''}angles, "
+                  f"damping={self._ic_damping:.1e}, prior_weight={self._ic_prior_weight:.2f}")
+
         self._rigid_ref_masses = None
         if len(self.spectral.isotopologues) > 0:
             m = np.asarray(self.spectral.isotopologues[0]["masses"], dtype=float)
@@ -891,36 +967,86 @@ class MolecularOptimizer:
             J, residual_w = self.spectral.stacked(self.coords)
             _, residual_mhz = self.spectral.stacked_unweighted(self.coords)
             prior_wrms_before = None
-            if self.internal_prior is not None:
+            if self.internal_prior is not None and self.coordinate_mode == "cartesian":
                 Jp, rp = self.internal_prior.stacked(self.coords)
                 wp = float(np.sqrt(self.prior_weight))
                 J = np.vstack([J, wp * Jp])
                 residual_w = np.concatenate([residual_w, wp * rp])
                 prior_wrms_before = float(np.sqrt(np.mean(rp ** 2))) if rp.size else 0.0
+            elif self.internal_prior is not None and self.coordinate_mode == "internal":
+                # Native q-space priors are added in Phase 6; skip Cartesian prior in internal mode
+                prior_wrms_before = self.internal_prior.diagnostics(self.coords).get("prior_wrms", 0.0)
             B, _ = wilson_B(self.coords, self.elems)
+
+            # ── Internal-coordinate mode: transform J and quantum terms to q-space ──
+            _ic_coord_set = None
+            _ic_Bplus = None
+            _ic_g = g
+            _ic_H = H
+            _ic_prior_wrms = None
+            if self.coordinate_mode == "internal":
+                _ic_coord_set = InternalCoordinateSet(self.coords, self.elems, self._ic_use_dihedrals)
+                _ic_B_active = _ic_coord_set.active_B_matrix(self.coords)
+                _ic_Bplus = InternalCoordinateSet.damped_pseudoinverse(_ic_B_active, self._ic_damping)
+                J = spectral_jacobian_q(J, _ic_Bplus)           # (m, n_active)
+                _ic_g, _ic_H = quantum_terms_q(g, H, _ic_Bplus) # (n_active,), (n_active, n_active)
+
+                # Phase 6: native q-space internal priors
+                if self._ic_prior_weight > 0.0:
+                    if self._ic_initial_coords is None:
+                        self._ic_initial_coords = self.coords.copy()
+                    _J_prior, _r_prior, _ = build_internal_priors(
+                        _ic_coord_set, self.coords,
+                        sigma_bond=self._ic_prior_sigma_bond,
+                        sigma_angle_deg=self._ic_prior_sigma_angle_deg,
+                        sigma_dihedral_deg=self._ic_prior_sigma_dihedral_deg,
+                        prior_values=_ic_coord_set.active_values(self._ic_initial_coords),
+                    )
+                    _wp = float(np.sqrt(self._ic_prior_weight))
+                    J = np.vstack([J, _wp * _J_prior])
+                    residual_w = np.concatenate([residual_w, _wp * _r_prior])
+                    _ic_prior_wrms = float(np.sqrt(np.mean(_r_prior ** 2))) if _r_prior.size else 0.0
 
             wrms_before = float(np.sqrt(np.mean(residual_w ** 2)))
             mhz_rms_before = float(np.sqrt(np.mean(residual_mhz ** 2)))
-            dx, rank, sv, alpha_q_eff, Vt = self.optimizer.step(J, residual_w, g, H, B=B)
-            if self.symmetry is not None:
-                dx = self.symmetry.project_step(dx)
+            _svd_B = None if self.coordinate_mode == "internal" else B
+            dp, rank, sv, alpha_q_eff, Vt = self.optimizer.step(J, residual_w, _ic_g, _ic_H, B=_svd_B)
+
+            # ── Back-transform and compute trial geometry ─────────────────────
+            _orig_coords = self.coords  # reference before update (never mutated here)
+            if self.coordinate_mode == "internal":
+                # dp is a q-space step; back-transform to Cartesian via micro-iterations
+                _q_curr = _ic_coord_set.active_values(self.coords)
+                _q_target = _q_curr + dp
+                trial_coords, _bt_err = apply_internal_step(
+                    self.coords, _q_target, _ic_coord_set,
+                    max_micro=self._ic_micro_iter, damping=self._ic_damping,
+                )
+                dx = (trial_coords - _orig_coords).ravel()      # Cartesian displacement for diagnostics
+            else:
+                if self.symmetry is not None:
+                    dp = self.symmetry.project_step(dp)
+                dx = dp
+                trial_coords = self.coords + dx.reshape(-1, 3)
+
             P_range = self.optimizer.range_projector(Vt, rank)
             P_null = self.optimizer.null_projector(Vt, rank)
-            dx_range_norm = float(np.linalg.norm(P_range @ dx))
-            dx_null_norm = float(np.linalg.norm(P_null @ dx))
-            g_null_norm = None if self.spectral_only else float(np.linalg.norm(P_null @ g))
+            dx_range_norm = float(np.linalg.norm(P_range @ dp))
+            dx_null_norm = float(np.linalg.norm(P_null @ dp))
+            g_null_norm = None if self.spectral_only else float(np.linalg.norm(P_null @ _ic_g))
             autoconfig_controls = None
             if self.autoconfig is not None and ((it % self.autoconfig_update_every) == 0):
                 autoconfig_controls = self._apply_autoconfig(rank, sv, residual_mhz, _reject_streak)
-            trial_coords = self.coords + dx.reshape(-1, 3)
             geometry_valid, guardrail_stats = self._geometry_validity(trial_coords)
             _, residual_w_trial = self.spectral.stacked(trial_coords)
             prior_wrms_after = None
-            if self.internal_prior is not None:
+            if self.internal_prior is not None and self.coordinate_mode == "cartesian":
                 Jp_trial, rp_trial = self.internal_prior.stacked(trial_coords)
                 wp = float(np.sqrt(self.prior_weight))
                 residual_w_trial = np.concatenate([residual_w_trial, wp * rp_trial])
                 prior_wrms_after = float(np.sqrt(np.mean(rp_trial ** 2))) if rp_trial.size else 0.0
+            elif self.internal_prior is not None and self.coordinate_mode == "internal":
+                prior_wrms_after = self.internal_prior.diagnostics(trial_coords).get("prior_wrms", 0.0)
             _, residual_mhz_trial = self.spectral.stacked_unweighted(trial_coords)
             wrms_after = float(np.sqrt(np.mean(residual_w_trial ** 2)))
             mhz_rms_after = float(np.sqrt(np.mean(residual_mhz_trial ** 2)))
@@ -934,7 +1060,9 @@ class MolecularOptimizer:
             quantum_gate_active = False
             quantum_descent_tol_eff = self.quantum_descent_tol
             if not self.spectral_only:
-                model_delta = float(np.dot(g, dx) + 0.5 * dx @ (H @ dx))
+                # In internal mode g/_ic_H are in q-space and dp is the q-step.
+                # In Cartesian mode they are the original Cartesian terms.
+                model_delta = float(np.dot(_ic_g, dp) + 0.5 * dp @ (_ic_H @ dp))
                 if self.enforce_quantum_descent:
                     quantum_gate_active = True
                     # Recovery fallback: in persistent rejection during explore stage,
@@ -996,6 +1124,7 @@ class MolecularOptimizer:
                     g_null_norm=g_null_norm,
                     alpha_q_eff=alpha_q_eff,
                     model_delta=model_delta,
+                    backtransform_error=(_bt_err if self.coordinate_mode == "internal" else None),
                     spectral_accept=spectral_accept,
                     quantum_accept=quantum_accept,
                     quantum_gate_active=quantum_gate_active,
@@ -1204,5 +1333,56 @@ class MolecularOptimizer:
                 print(f"  {self.elems[i]}{i+1}-{self.elems[j]}{j+1}-{self.elems[k]}{k+1}:{'':>5}  {deg:>10.4f}")
 
         print("=" * 52)
+
+        return residual
+
+    def report_internal(self):
+        """
+        Extended report for internal-coordinate mode (Phase 7).
+
+        Prints bond/angle table with uncertainties and identifiability labels
+        derived from the internal-coordinate Jacobian at the final geometry.
+        Falls back to report() if not in internal mode.
+        """
+        if self.coordinate_mode != "internal":
+            return self.report()
+
+        from backend.uncertainty import uncertainty_table, print_uncertainty_table
+        from backend.identifiability import identifiability_table, print_identifiability_table
+
+        coord_set = InternalCoordinateSet(self.coords, self.elems, self._ic_use_dihedrals)
+        B_active = coord_set.active_B_matrix(self.coords)
+        Bplus = InternalCoordinateSet.damped_pseudoinverse(B_active, self._ic_damping)
+        J_spectral, residual = self.spectral.stacked(self.coords)
+        Jq = spectral_jacobian_q(J_spectral, Bplus)
+
+        # Collect prior sigmas for uncertainty and identifiability
+        if self._ic_prior_weight > 0.0:
+            _, _, sigma_prior = build_internal_priors(
+                coord_set, self.coords,
+                sigma_bond=self._ic_prior_sigma_bond,
+                sigma_angle_deg=self._ic_prior_sigma_angle_deg,
+                sigma_dihedral_deg=self._ic_prior_sigma_dihedral_deg,
+            )
+        else:
+            sigma_prior = None
+
+        # Print base report header and residuals
+        self.report()
+
+        # Print uncertainty table
+        unc_rows = uncertainty_table(
+            coord_set, self.coords, Jq,
+            sigma_prior=sigma_prior,
+            lambda_reg=self._ic_damping,
+        )
+        print("\n  Internal-coordinate uncertainties")
+        print_uncertainty_table(unc_rows)
+
+        # Print identifiability table
+        id_rows, sv, rank = identifiability_table(coord_set, Jq, sigma_prior)
+        print()
+        print_identifiability_table(id_rows, sv, rank)
+        print()
 
         return residual
