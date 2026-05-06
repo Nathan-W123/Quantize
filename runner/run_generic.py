@@ -23,6 +23,12 @@ if str(_ROOT) not in sys.path:
 
 from backend.geometryguess import guess_geometry_molecular_input
 from backend.multistart import run_multistart, select_best_result, underconstrained_success_score
+from runner.reporting import (
+    export_rovib_corrections_csv,
+    export_rovib_warnings_json,
+    export_semi_experimental_targets_csv,
+    generate_rovib_report_section,
+)
 from runner.run_settings import BASE_SETTINGS, GLOBAL_PRESETS
 
 _COMPONENT_MAP = {"A": 0, "B": 1, "C": 2}
@@ -132,7 +138,7 @@ def _build_isotopologue(iso: dict) -> dict:
             raise ValueError(f"Unknown component '{c}'. Use A, B, or C.")
         indices.append(_COMPONENT_MAP[s])
 
-    return {
+    out = {
         "name": str(iso.get("name", "iso")),
         "masses": [float(m) for m in iso["masses"]],
         "component_indices": indices,
@@ -140,6 +146,18 @@ def _build_isotopologue(iso: dict) -> dict:
         "sigma_constants": [float(v) for v in iso["sigma_mhz"]],
         "alpha_constants": [float(v) for v in iso["alpha_mhz"]],
     }
+    # Optional decomposed-delta channels (component-aligned to ``indices``).
+    for src_key, dst_key in (
+        ("delta_vib_mhz", "delta_vib_constants"),
+        ("delta_elec_mhz", "delta_elec_constants"),
+        ("delta_bob_mhz", "delta_bob_constants"),
+        ("sigma_correction_mhz", "sigma_correction_constants"),
+    ):
+        if src_key in iso and iso[src_key] is not None:
+            out[dst_key] = [float(v) for v in iso[src_key]]
+    if "rovib_source" in iso:
+        out["rovib_source"] = str(iso["rovib_source"])
+    return out
 
 
 def _compute_metrics(
@@ -361,6 +379,28 @@ def main(cfg: dict[str, Any]) -> None:
         verdict = "geometry regularized by quantum prior; low spectral confidence"
     print(f"  Verdict              : {verdict}")
     print("=" * w)
+
+    # ── Rovibrational correction exports / report ─────────────────────────────
+    rovib_isos = best.get("isotopologues") or isotopologues
+    has_corrections = any(
+        (iso.get("rovib_correction") is not None)
+        or (iso.get("delta_total_constants") is not None)
+        or (iso.get("alpha_constants") is not None)
+        for iso in rovib_isos
+    )
+    if has_corrections:
+        trial_dir = Path("trials") / name
+        trial_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            export_rovib_corrections_csv(rovib_isos, trial_dir / "rovib_corrections.csv")
+            export_semi_experimental_targets_csv(
+                rovib_isos, trial_dir / "semi_experimental_targets.csv"
+            )
+            export_rovib_warnings_json(rovib_isos, trial_dir / "rovib_warnings.json")
+        except OSError as exc:
+            print(f"[{name}] Warning: could not write rovib exports: {exc}")
+        print()
+        print(generate_rovib_report_section(rovib_isos))
 
 
 if __name__ == "__main__":

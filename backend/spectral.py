@@ -1,6 +1,8 @@
 import numpy as np
 from scipy import constants
 from backend.conformer_mixture import ConformerMixture
+from backend.correction_models import RovibCorrection
+from backend.rovib_corrections import effective_sigma_constants
 
 # h / (8π² · amu · Å²) → MHz; converts principal moments [amu·Å²] to rotational constants [MHz]
 _INERTIA_TO_MHZ = (constants.h / (8 * np.pi**2 * constants.atomic_mass * (1e-10)**2)) * 1e-6
@@ -120,15 +122,27 @@ def sanitize_isotopologues(
         idx = np.asarray(iso.get("component_indices", list(range(len(obs)))), dtype=int)
         sig = np.asarray(iso.get("sigma_constants", np.ones(len(obs))), dtype=float)
         alpha = np.asarray(iso.get("alpha_constants", np.zeros(len(obs))), dtype=float)
+        delta_total_in = iso.get("delta_total_constants")
+        delta_total = (
+            np.asarray(delta_total_in, dtype=float).ravel()
+            if delta_total_in is not None
+            else None
+        )
+
+        def _target(k_local, comp_local):
+            if delta_total is not None and k_local < delta_total.size and np.isfinite(delta_total[k_local]):
+                return float(obs[k_local] + delta_total[k_local])
+            return float(obs[k_local] + 0.5 * alpha[k_local])
 
         calc_abc = _rotational_constants(coords, masses)
         j_full = _jacobian_full_analytic(coords, masses, delta)
         keep = []
         out_obs, out_sig, out_alpha = [], [], []
+        out_delta_total = []
         dropped = []
         for k, comp in enumerate(idx):
             comp = int(comp)
-            target = float(obs[k] + 0.5 * alpha[k])
+            target = _target(k, comp)
             calc = float(calc_abc[comp]) if 0 <= comp < 3 else np.nan
             jn = float(np.linalg.norm(j_full[comp])) if 0 <= comp < 3 else np.inf
             unstable = (not np.isfinite(calc)) or (not np.isfinite(jn))
@@ -142,6 +156,10 @@ def sanitize_isotopologues(
             out_obs.append(float(obs[k]))
             out_sig.append(max(float(sig[k]), 1e-12))
             out_alpha.append(float(alpha[k]))
+            if delta_total is not None and k < delta_total.size:
+                out_delta_total.append(float(delta_total[k]))
+            else:
+                out_delta_total.append(np.nan)
 
         if not keep:
             # Fail safe: keep the single most stable original component.
@@ -159,6 +177,10 @@ def sanitize_isotopologues(
             out_obs = [float(obs[best_i])]
             out_sig = [max(float(sig[best_i]), 1e-12)]
             out_alpha = [float(alpha[best_i])]
+            if delta_total is not None and best_i < delta_total.size:
+                out_delta_total = [float(delta_total[best_i])]
+            else:
+                out_delta_total = [np.nan]
             dropped = [labels[int(c)] if 0 <= int(c) < 3 else f"R{int(c)}" for i, c in enumerate(idx) if i != best_i]
 
         if dropped:
@@ -167,18 +189,46 @@ def sanitize_isotopologues(
                 f"kept {', '.join(labels[c] if 0 <= c < 3 else f'R{c}' for c in keep)}."
             )
 
-        cleaned.append(
-            {
-                "name": iso.get("name", f"iso_{iso_idx}"),
-                "masses": masses,
-                "obs_constants": np.asarray(out_obs, dtype=float),
-                "component_indices": np.asarray(keep, dtype=int),
-                "sigma_constants": np.asarray(out_sig, dtype=float),
-                "alpha_constants": np.asarray(out_alpha, dtype=float),
-                "torsion_sensitive": bool(iso.get("torsion_sensitive", False)),
-                "rovib_table": iso.get("rovib_table", None),
-            }
-        )
+        # Slice the optional component-aligned correction vectors to keep them
+        # aligned with the surviving indices.
+        def _slice_optional(key):
+            v = iso.get(key)
+            if v is None:
+                return None
+            arr = np.asarray(v, dtype=float).ravel()
+            kept_idx = []
+            for k, comp in enumerate(idx):
+                if int(comp) in keep:
+                    kept_idx.append(k)
+            kept_idx = [k for k in kept_idx if k < arr.size]
+            return np.asarray([arr[k] for k in kept_idx], dtype=float) if kept_idx else None
+
+        cleaned_iso = {
+            "name": iso.get("name", f"iso_{iso_idx}"),
+            "masses": masses,
+            "obs_constants": np.asarray(out_obs, dtype=float),
+            "component_indices": np.asarray(keep, dtype=int),
+            "sigma_constants": np.asarray(out_sig, dtype=float),
+            "alpha_constants": np.asarray(out_alpha, dtype=float),
+            "torsion_sensitive": bool(iso.get("torsion_sensitive", False)),
+            "rovib_table": iso.get("rovib_table", None),
+        }
+        # Carry through optional rovib correction fields (may be None).
+        for key in (
+            "delta_vib_constants",
+            "delta_elec_constants",
+            "delta_bob_constants",
+            "sigma_correction_constants",
+            "sigma_effective_constants",
+        ):
+            sliced = _slice_optional(key)
+            if sliced is not None:
+                cleaned_iso[key] = sliced
+        if any(np.isfinite(out_delta_total)):
+            cleaned_iso["delta_total_constants"] = np.asarray(out_delta_total, dtype=float)
+        if iso.get("rovib_correction") is not None:
+            cleaned_iso["rovib_correction"] = iso["rovib_correction"]
+        cleaned.append(cleaned_iso)
     return cleaned, notes
 
 
@@ -221,8 +271,15 @@ class SpectralEngine:
     ):
         if not isotopologues:
             raise ValueError("At least one isotopologue is required.")
-        self.isotopologues = [
-            {
+        def _opt_arr(iso_dict, key):
+            v = iso_dict.get(key)
+            if v is None:
+                return None
+            return np.asarray(v, dtype=float)
+
+        self.isotopologues = []
+        for k, iso in enumerate(isotopologues):
+            entry = {
                 "name": str(iso.get("name", f"iso_{k+1}")),
                 "masses": np.asarray(iso["masses"], dtype=float),
                 "obs_constants": np.asarray(iso["obs_constants"], dtype=float),
@@ -239,8 +296,20 @@ class SpectralEngine:
                 "torsion_sensitive": bool(iso.get("torsion_sensitive", False)),
                 "rovib_table": iso.get("rovib_table", None),
             }
-            for k, iso in enumerate(isotopologues)
-        ]
+            for opt_key in (
+                "delta_vib_constants",
+                "delta_elec_constants",
+                "delta_bob_constants",
+                "delta_total_constants",
+                "sigma_correction_constants",
+                "sigma_effective_constants",
+            ):
+                arr = _opt_arr(iso, opt_key)
+                if arr is not None:
+                    entry[opt_key] = arr
+            if iso.get("rovib_correction") is not None:
+                entry["rovib_correction"] = iso["rovib_correction"]
+            self.isotopologues.append(entry)
         for iso in self.isotopologues:
             n = len(iso["obs_constants"])
             if len(iso["sigma_constants"]) != n or len(iso["alpha_constants"]) != n:
@@ -270,11 +339,64 @@ class SpectralEngine:
         self.analytic_jacobian = bool(analytic_jacobian)
         self.jacobian_degeneracy_tol = max(float(jacobian_degeneracy_tol), 1e-15)
 
-    def _effective_sigma(self, sigma):
+    def _be_target(self, iso):
+        """Return the Be target vector aligned with iso's component_indices.
+
+        Uses ``delta_total_constants`` when present and finite for an entry,
+        falling back to the legacy ``0.5 * alpha`` formula otherwise.
+        """
+        obs = np.asarray(iso["obs_constants"], dtype=float)
+        alpha = np.asarray(iso.get("alpha_constants", np.zeros_like(obs)), dtype=float)
+        dt = iso.get("delta_total_constants")
+        if dt is None:
+            return obs + 0.5 * alpha
+        dt_arr = np.asarray(dt, dtype=float).ravel()
+        out = obs + 0.5 * alpha
+        n = min(out.size, dt_arr.size)
+        for i in range(n):
+            if np.isfinite(dt_arr[i]):
+                out[i] = obs[i] + dt_arr[i]
+        return out
+
+    def effective_sigma_with_correction(self, iso):
+        """Return per-row effective sigma combining obs noise and correction uncertainty."""
+        sigma_obs = np.asarray(iso.get("sigma_constants", []), dtype=float)
+        sigma_corr = self._correction_sigma(iso, sigma_obs.size)
+        return np.sqrt(np.maximum(sigma_obs, 0.0) ** 2 + sigma_corr ** 2)
+
+    def _correction_sigma(self, iso, n):
+        """Return length-``n`` correction sigma aligned with the iso's components."""
+        out = np.zeros(int(n), dtype=float)
+        rc = iso.get("rovib_correction")
+        idx = np.asarray(iso.get("component_indices", list(range(int(n)))), dtype=int)
+        if isinstance(rc, RovibCorrection):
+            sd = rc.sigma_delta_vector()
+            for k in range(int(n)):
+                c = int(idx[k]) if k < len(idx) else -1
+                if 0 <= c < 3 and np.isfinite(sd[c]):
+                    out[k] = float(sd[c])
+            return out
+        sc = iso.get("sigma_correction_constants")
+        if sc is not None:
+            sc_arr = np.asarray(sc, dtype=float).ravel()
+            for k in range(int(n)):
+                if k < sc_arr.size and np.isfinite(sc_arr[k]):
+                    out[k] = max(float(sc_arr[k]), 0.0)
+        return out
+
+    def _effective_sigma(self, sigma, iso=None):
         """
         Apply optional sigma floor/cap and maximum weighting.
+
+        When ``iso`` is provided and contains correction-uncertainty data, the
+        observation sigma is first combined in quadrature with the correction
+        sigma so downstream weights reflect the full uncertainty budget on Be.
         """
         sigma_eff = np.asarray(sigma, dtype=float).copy()
+        if iso is not None:
+            sigma_corr = self._correction_sigma(iso, sigma_eff.size)
+            if np.any(sigma_corr > 0.0):
+                sigma_eff = np.sqrt(np.maximum(sigma_eff, 0.0) ** 2 + sigma_corr ** 2)
         sigma_eff = np.maximum(sigma_eff, 1e-12)
         if self.sigma_floor_mhz > 0.0:
             sigma_eff = np.maximum(sigma_eff, self.sigma_floor_mhz)
@@ -333,14 +455,26 @@ class SpectralEngine:
             return J_full
         return J_full[np.asarray(component_indices, dtype=int)]
 
-    def residuals(self, coords, masses, obs_constants, alpha_constants=None, component_indices=None):
+    def residuals(self, coords, masses, obs_constants, alpha_constants=None, component_indices=None, delta_total_constants=None):
         """
         Δ(A,B,C) = target equilibrium constants − calculated constants in MHz.
-        If alpha_constants are supplied, applies Be ≈ B0 + 0.5 * alpha.
+        If ``delta_total_constants`` are supplied, applies Be ≈ B0 + δ_total.
+        Otherwise, if alpha_constants are supplied, applies Be ≈ B0 + 0.5 * alpha.
         """
         if alpha_constants is None:
             alpha_constants = np.zeros(len(obs_constants))
-        be_target = obs_constants + 0.5 * np.asarray(alpha_constants, dtype=float)
+        if delta_total_constants is not None:
+            dt = np.asarray(delta_total_constants, dtype=float)
+            be_target = np.asarray(obs_constants, dtype=float).copy()
+            n = min(be_target.size, dt.size)
+            be_fallback = np.asarray(obs_constants, dtype=float) + 0.5 * np.asarray(alpha_constants, dtype=float)
+            for i in range(be_target.size):
+                if i < n and np.isfinite(dt[i]):
+                    be_target[i] = float(obs_constants[i] + dt[i])
+                else:
+                    be_target[i] = float(be_fallback[i])
+        else:
+            be_target = obs_constants + 0.5 * np.asarray(alpha_constants, dtype=float)
         calc = _rotational_constants(np.asarray(coords), np.asarray(masses))
         if component_indices is not None:
             calc = calc[np.asarray(component_indices, dtype=int)]
@@ -377,7 +511,7 @@ class SpectralEngine:
         for iso in self.isotopologues:
             j_mix = None
             calc_mix = None
-            be_target = iso["obs_constants"] + 0.5 * np.asarray(iso["alpha_constants"], dtype=float)
+            be_target = self._be_target(iso)
             idx = np.asarray(iso["component_indices"], dtype=int)
             for w, cxyz in zip(conf_weights, conf_coords):
                 Jc = self.jacobian(cxyz, iso["masses"], idx)
@@ -390,7 +524,7 @@ class SpectralEngine:
                     calc_mix += w * calc_c
             J = j_mix
             r = be_target - calc_mix
-            sigma = self._effective_sigma(iso["sigma_constants"])
+            sigma = self._effective_sigma(iso["sigma_constants"], iso=iso)
             Jw = J / sigma[:, None]
             rw = r / sigma
             comp_w = self._component_weights(iso)
@@ -417,7 +551,7 @@ class SpectralEngine:
             idx = np.asarray(iso["component_indices"], dtype=int)
             j_mix = None
             calc_mix = None
-            be_target = iso["obs_constants"] + 0.5 * np.asarray(iso["alpha_constants"], dtype=float)
+            be_target = self._be_target(iso)
             for w, cxyz in zip(conf_weights, conf_coords):
                 Jc = self.jacobian(cxyz, iso["masses"], idx)
                 calc_c = _rotational_constants(np.asarray(cxyz), np.asarray(iso["masses"]))[idx]

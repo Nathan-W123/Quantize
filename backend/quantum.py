@@ -243,64 +243,147 @@ def parse_hess(path):
     return H
 
 
-def parse_orca_rovib_alpha(path):
-    """
-    Parse ORCA output for vibration-rotation interaction constants alpha(A/B/C) in MHz.
+def parse_orca_rovib(path):
+    """Parse an ORCA output for vibration-rotation alpha constants and metadata.
 
     Returns
     -------
-    alpha_abc : ndarray shape (3,)
-        Entries for A, B, C respectively. Missing entries are NaN.
+    ParsedRovibResult
+        ``alpha_abc`` is a length-3 array (A, B, C) in MHz with NaN for
+        missing components.  ``parse_status`` is one of ``ok``, ``partial``,
+        or ``parse_failed``.  Warnings include detected resonances, imaginary
+        modes, low-frequency modes (< 50 cm^-1), and a marker if the run did
+        not appear to invoke VPT2.
     """
+    from backend.correction_models import ParsedRovibResult  # local import to avoid cycles
+
     alpha = np.full(3, np.nan, dtype=float)
+    frequencies: list[float] = []
+    warnings: list[str] = []
     label_to_idx = {"A": 0, "B": 1, "C": 2}
-    pat_labeled = re.compile(r"(?i)\balpha\(?\s*([ABC])\s*\)?\s*[:=]?\s*([-+]?\d+(?:\.\d+)?(?:[Ee][-+]?\d+)?)")
-    pat_row = re.compile(r"^\s*([ABC])\s+([-+]?\d+(?:\.\d+)?(?:[Ee][-+]?\d+)?)")
+
+    pat_labeled = re.compile(
+        r"(?i)\balpha\(?\s*([ABC])\s*\)?\s*[:=]?\s*([-+]?\d+(?:\.\d+)?(?:[Ee][-+]?\d+)?)"
+    )
+    pat_row = re.compile(
+        r"^\s*([ABC])\s+([-+]?\d+(?:\.\d+)?(?:[Ee][-+]?\d+)?)"
+    )
     pat_triplet = re.compile(
         r"(?i)\balpha[^0-9A-Za-z+-]*"
         r"([-+]?\d+(?:\.\d+)?(?:[Ee][-+]?\d+)?)\s+"
         r"([-+]?\d+(?:\.\d+)?(?:[Ee][-+]?\d+)?)\s+"
         r"([-+]?\d+(?:\.\d+)?(?:[Ee][-+]?\d+)?)"
     )
+    # Generic frequency table line: "<idx>: <freq cm**-1> ..."
+    pat_freq = re.compile(
+        r"^\s*\d+\s*:\s*([-+]?\d+(?:\.\d+)?)\s*(?:cm\*\*-1|cm-1|cm\^-1)?",
+        re.IGNORECASE,
+    )
 
     in_alpha_table = False
-    with open(path, encoding="utf-8", errors="ignore") as f:
-        for line in f:
-            low = line.lower()
-            if "vibrational-rotational" in low or "vibration-rotation" in low or "alpha constants" in low:
-                in_alpha_table = True
-            if in_alpha_table and not line.strip():
-                in_alpha_table = False
+    saw_vpt2_marker = False
+    in_freq_block = False
 
-            m = pat_labeled.search(line)
-            if m:
-                idx = label_to_idx[m.group(1).upper()]
-                alpha[idx] = float(m.group(2))
-                continue
-            m3 = pat_triplet.search(line)
-            if m3 and ("scaling param" not in line.lower()):
-                alpha[0] = float(m3.group(1))
-                alpha[1] = float(m3.group(2))
-                alpha[2] = float(m3.group(3))
-                continue
-            m2 = pat_row.match(line)
-            if m2 and "alpha" in low:
-                idx = label_to_idx[m2.group(1).upper()]
-                alpha[idx] = float(m2.group(2))
-                continue
-            if in_alpha_table:
-                # Generic table rows from some ORCA VPT2 formats:
-                #   A    <value> ...
-                #   B    <value> ...
-                #   C    <value> ...
-                m4 = pat_row.match(line)
-                if m4:
-                    key = m4.group(1).upper()
-                    if key in label_to_idx:
-                        idx = label_to_idx[key]
-                        if not np.isfinite(alpha[idx]):
-                            alpha[idx] = float(m4.group(2))
-    return alpha
+    try:
+        with open(path, encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                low = line.lower()
+                if "vpt2" in low or "second order" in low or "second-order" in low:
+                    saw_vpt2_marker = True
+                if "vibrational-rotational" in low or "vibration-rotation" in low or "alpha constants" in low:
+                    in_alpha_table = True
+                if in_alpha_table and not line.strip():
+                    in_alpha_table = False
+
+                # Detect VPT2 warnings / resonance markers.
+                if "warning" in low and ("vpt2" in low or "resonance" in low or "fermi" in low):
+                    warnings.append(line.strip())
+                elif "fermi" in low and "resonance" in low:
+                    warnings.append(line.strip())
+                elif "darling-dennison" in low or "coriolis resonance" in low:
+                    warnings.append(line.strip())
+
+                # Detect frequency tables (harmonic or fundamental).
+                if "vibrational frequencies" in low or "fundamental frequencies" in low:
+                    in_freq_block = True
+                    continue
+                if in_freq_block:
+                    if not line.strip():
+                        in_freq_block = False
+                    else:
+                        mfreq = pat_freq.match(line)
+                        if mfreq:
+                            try:
+                                frequencies.append(float(mfreq.group(1)))
+                            except ValueError:
+                                pass
+
+                m = pat_labeled.search(line)
+                if m:
+                    idx = label_to_idx[m.group(1).upper()]
+                    alpha[idx] = float(m.group(2))
+                    continue
+                m3 = pat_triplet.search(line)
+                if m3 and ("scaling param" not in low):
+                    alpha[0] = float(m3.group(1))
+                    alpha[1] = float(m3.group(2))
+                    alpha[2] = float(m3.group(3))
+                    continue
+                m2 = pat_row.match(line)
+                if m2 and "alpha" in low:
+                    idx = label_to_idx[m2.group(1).upper()]
+                    alpha[idx] = float(m2.group(2))
+                    continue
+                if in_alpha_table:
+                    m4 = pat_row.match(line)
+                    if m4:
+                        key = m4.group(1).upper()
+                        if key in label_to_idx:
+                            idx = label_to_idx[key]
+                            if not np.isfinite(alpha[idx]):
+                                alpha[idx] = float(m4.group(2))
+    except OSError as e:
+        warnings.append(f"could not read file: {e}")
+
+    freq_arr = np.asarray(frequencies, dtype=float) if frequencies else None
+
+    if freq_arr is not None and freq_arr.size:
+        imag = freq_arr[freq_arr < 0.0]
+        if imag.size:
+            warnings.append(
+                f"detected {imag.size} imaginary frequency mode(s) (min "
+                f"{float(np.min(imag)):.2f} cm^-1)"
+            )
+        low_modes = freq_arr[(freq_arr > 0.0) & (freq_arr < 50.0)]
+        if low_modes.size:
+            warnings.append(
+                f"detected {low_modes.size} low-frequency mode(s) below 50 cm^-1"
+            )
+
+    if not saw_vpt2_marker:
+        warnings.append("no VPT2/second-order marker found in output")
+
+    finite_count = int(np.sum(np.isfinite(alpha)))
+    if finite_count == 0:
+        parse_status = "parse_failed"
+    elif finite_count < 3:
+        parse_status = "partial"
+    else:
+        parse_status = "ok"
+
+    return ParsedRovibResult(
+        alpha_abc=alpha,
+        frequencies=freq_arr,
+        warnings=warnings,
+        source_files=[str(path)],
+        parse_status=parse_status,
+        units="MHz",
+    )
+
+
+def parse_orca_rovib_alpha(path):
+    """Backward-compatible wrapper returning just the alpha(A,B,C) vector."""
+    return parse_orca_rovib(path).alpha_abc
 
 
 # ── QuantumEngine ─────────────────────────────────────────────────────────────
