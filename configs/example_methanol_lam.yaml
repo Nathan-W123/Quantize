@@ -1,0 +1,210 @@
+# Methanol LAM worked example — full torsion pipeline (Phases 1-12)
+#
+# Demonstrates all LAM features:
+#   - RAM-lite torsion Hamiltonian with V3/V6 potential (Xu et al. 2008)
+#   - A/E C3 symmetry labeling and tunneling splitting export
+#   - Parameter fitting to observed torsional levels
+#   - Torsion scan potential fitting from CSV
+#   - Geometry-derived F/rho from Cartesian coordinates
+#   - LAM correction report integrated with rovibrational corrections
+#   - Auto-assignment of predicted to observed levels
+#
+# Run with:
+#   python Quantize/cli.py run configs/example_methanol_lam.yaml
+#
+# Quick CLI tools (no full QC run needed):
+#   python Quantize/cli.py lam-diagnose configs/example_methanol_lam.yaml --convergence
+#   python Quantize/cli.py lam-fit configs/example_methanol_lam.yaml --params Vcos_3,F,rho
+#   python Quantize/cli.py lam-scan scan_data.csv --n-harmonics 3 --symmetry-number 3
+#
+# Methanol reference parameters (Xu et al., J. Mol. Spectrosc. 251 (2008) 305-313):
+#   F   = 27.64684641 cm^-1   internal rotation constant
+#   rho = 0.8102062230        coupling parameter (= I_alpha / I_zz)
+#   V3  = 373.554746 cm^-1   3-fold barrier height
+#   V6  = -1.319650 cm^-1    6-fold correction
+#
+# Fourier potential convention (this codebase):
+#   V(a) = v0 + sum_n [ vcos_n*cos(n*a) + vsin_n*sin(n*a) ]
+# Mapping from RAM (1-cos) convention:
+#   v0    = V3/2 + V6/2  = 186.117548 cm^-1
+#   vcos3 = -V3/2        = -186.777373 cm^-1
+#   vcos6 = -V6/2        =   0.659825 cm^-1
+
+name: methanol_lam_full
+spectral_model: internal_rotor_bc
+coordinate_mode: internal
+
+internal_coordinates:
+  use_dihedrals: true
+  damping: 1.0e-6
+  microiterations: 20
+  prior_weight: 1.0
+  prior_sigma_bond: 0.06
+  prior_sigma_angle_deg: 4.0
+  prior_sigma_dihedral_deg: 20.0
+
+elements: [C, O, H, H, H, H]
+
+geometry:
+  smiles: CO
+
+symmetry: null
+
+isotopologues:
+  - name: 12CH3-16OH
+    masses: [12.0, 15.99491461957, 1.00782503207, 1.00782503207, 1.00782503207, 1.00782503207]
+    components: [A, B, C]
+    obs_b0_mhz: [127523.4, 24692.5, 23760.3]
+    alpha_mhz: [0.0, 0.0, 0.0]
+    sigma_mhz: [2.0, 0.05, 0.05]
+
+  - name: 13CH3-16OH
+    masses: [13.00335483507, 15.99491461957, 1.00782503207, 1.00782503207, 1.00782503207, 1.00782503207]
+    components: [A, B, C]
+    obs_b0_mhz: [126941.4, 23747.3, 22865.9]
+    alpha_mhz: [0.0, 0.0, 0.0]
+    sigma_mhz: [2.0, 0.05, 0.05]
+
+  - name: 12CH3-18OH
+    masses: [12.0, 17.99915961286, 1.00782503207, 1.00782503207, 1.00782503207, 1.00782503207]
+    components: [A, B, C]
+    obs_b0_mhz: [127285.3749, 23651.2578, 22787.1066]
+    alpha_mhz: [0.0, 0.0, 0.0]
+    sigma_mhz: [2.0, 0.05, 0.05]
+
+quantum:
+  backend: orca
+  method: wB97X-D4
+  basis: def2-TZVPP
+  executable: null
+
+preset: BALANCED
+rng_seed: 42
+write_xyz: true
+
+rovibrational_corrections:
+  mode: hybrid_auto
+
+# ── Torsion Hamiltonian block (RAM-lite, full LAM pipeline) ──────────────────
+torsion_hamiltonian:
+  enabled: true
+  F: 27.64684641
+  rho: 0.8102062230
+  A: 4.2510      # Equilibrium A rotational constant (cm^-1) — seeded from literature
+  B: 0.8231
+  C: 0.7927
+  n_basis: 15    # 2*n_basis+1 = 31 basis functions; converged for V3~374 cm^-1
+  n_levels: 10
+  J_values: [0, 1, 2]
+  K_values: [0, 1]
+  units: cm-1
+
+  # C3 symmetry labeling: A/E1/E2 blocks, tunneling splitting CSV export
+  symmetry_mode: c3
+  label_levels: true
+  export_symmetry_blocks: true
+
+  potential:
+    v0: 186.117548
+    vcos: {3: -186.777373, 6: 0.659825}
+    vsin: {}
+
+  # ── Fitting observed torsional levels ──────────────────────────────────────
+  # Observed A- and E-species ground state energies (J=0, K=0) from literature.
+  # Set fitting.enabled: true to run lam-fit (or CLI: quantize lam-fit config.yaml).
+  # Zero energy is defined relative to the vt=0 A ground state.
+  fitting:
+    enabled: false        # set true to activate parameter fitting
+    params: [Vcos_3, F, rho]
+    max_iter: 100
+
+  targets:
+    # vt=0 A (ground state, by definition zero)
+    - {J: 0, K: 0, level_index: 0, energy_cm-1: 0.0, symmetry: A}
+    # vt=0 E tunneling partner (~9.1 cm^-1 above A for methanol)
+    - {J: 0, K: 0, level_index: 1, energy_cm-1: 9.12, symmetry: E}
+    # vt=1 A
+    - {J: 0, K: 0, level_index: 2, energy_cm-1: 281.4, symmetry: A}
+    # vt=1 E
+    - {J: 0, K: 0, level_index: 3, energy_cm-1: 290.5, symmetry: E}
+
+  # ── Torsion transitions (alternative to targets) ──────────────────────────
+  # Uncomment to fit to observed torsion-rotation transition frequencies.
+  # transitions:
+  #   - {J_lo: 0, K_lo: 0, level_lo: 0, J_hi: 1, K_hi: 0, level_hi: 0, freq_cm-1: 1.053}
+
+  # ── Parameter uncertainty ─────────────────────────────────────────────────
+  uncertainty:
+    enabled: false          # set true when fitting is active and targets are supplied
+    include_completeness: false
+    damping: 1.0e-8
+    rank_tol: 1.0e-10
+    default_sigma_cm1: 0.5
+
+  # ── Torsion scan averaging ────────────────────────────────────────────────
+  # Quantum-thermal averaging of rotational constants over the torsional grid.
+  # Requires a torsion scan with rotational constants at each geometry.
+  # Set scan_average.enabled: true to activate (requires grid_points below).
+  scan_average:
+    enabled: false
+    method: quantum_thermal   # 'quantum', 'quantum_thermal', or 'boltzmann'
+    temperature_K: 300.0
+
+  # ── Torsion scan potential fit from CSV ───────────────────────────────────
+  # Fit Fourier potential from a CSV file of (angle, energy) pairs.
+  # CLI equivalent: quantize lam-scan torsion_scan.csv --n-harmonics 3 --symmetry-number 3
+  # scan:
+  #   csv_path: scans/methanol_torsion.csv
+  #   phi_col: phi_deg
+  #   energy_col: energy_cm1
+  #   csv_angle_unit: degrees
+  #   csv_energy_unit: cm-1
+  #   fit_potential:
+  #     enabled: true
+  #     n_harmonics: 3
+  #     symmetry_number: 3
+  #     cosine_only: true
+  #     zero_at_minimum: true
+
+  # ── Geometry coupling: F/rho from Cartesian geometry ─────────────────────
+  # Recomputes F and rho from the optimized geometry using the moment-of-inertia
+  # formula.  Uses the 'best' geometry from the multistart optimizer.
+  # Atom indices (0-based) for methanol C-O-H3 ordering [C, O, Hc1, Hc2, Hc3, Ho]:
+  #   top_indices   : [2, 3, 4]  (the three methyl H atoms)
+  #   axis_atom_indices: [0, 1]  (C and O define the rotation axis)
+  geometry_coupling:
+    enabled: false          # set true when optimized geometry is available
+    top_indices: [2, 3, 4]
+    axis_atom_indices: [0, 1]
+    dx_ang: 1.0e-4          # finite-difference step for Jacobian (Angstrom)
+
+  # ── Auto-assignment of predicted to observed levels ───────────────────────
+  # Matches predicted level energies to observed targets by proximity.
+  auto_assign:
+    enabled: false
+    max_delta_cm1: 5.0      # maximum allowed residual for a match
+
+  # ── LAM integration with rovibrational corrections ────────────────────────
+  # Controls how torsion-averaged constants combine with alpha corrections.
+  # Source is auto-classified from the above blocks:
+  #   'globally_fit'    when fitting.enabled
+  #   'torsion_averaged' when scan_average.enabled
+  #   'rovib_corrected' when torsion_hamiltonian.enabled (and above not set)
+  #   'rigid'           otherwise
+  # Set lam_integration.enabled: true to write the lam_correction report.
+  lam_integration:
+    enabled: false
+
+  # ── Plotting ─────────────────────────────────────────────────────────────
+  # Generate potential and wavefunction plots (requires matplotlib).
+  plot:
+    enabled: false
+    potential: true
+    wavefunctions: true
+    n_wavefunctions: 4
+    tunneling_splitting: true
+    format: png
+
+output:
+  root: runs
+  artifacts: true

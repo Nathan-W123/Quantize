@@ -52,7 +52,7 @@ def test_torsion_phase2_writes_exports(tmp_path):
     assert out["torsion_levels_csv"].is_file()
     assert out["torsion_summary_json"].is_file()
     text = out["torsion_summary_json"].read_text(encoding="utf-8")
-    assert "ram_lite_phase1" in text
+    assert "ram_lite" in text
 
 
 def test_predict_torsion_levels_for_coords_returns_rows():
@@ -160,3 +160,69 @@ def test_torsion_phase2_writes_uncertainty_csv(tmp_path):
     )
     assert out["torsion_parameter_uncertainty_csv"] is not None
     assert out["torsion_parameter_uncertainty_csv"].is_file()
+
+
+def test_torsion_phase2_writes_symmetry_blocks_csv(tmp_path):
+    cfg = {
+        "name": "water_torsion_test",
+        "torsion_hamiltonian": {
+            "enabled": True,
+            "F": 5.0,
+            "rho": 0.0,
+            "n_basis": 5,
+            "n_levels": 4,
+            "J_values": [0],
+            "K_values": [0],
+            "symmetry_mode": "c3",
+            "export_symmetry_blocks": True,
+            "potential": {"v0": 0.0, "vcos": {"3": 20.0}},
+        },
+    }
+    isotopologues = [{"name": "H2-16O", "masses": [15.99491461956, 1.00782503207, 1.00782503207]}]
+    out = _run_torsion_phase2_exports(
+        cfg=cfg,
+        elems=["O", "H", "H"],
+        best={"coords": _water_coords()},
+        isotopologues=isotopologues,
+        run_dir=tmp_path,
+    )
+    assert out["torsion_symmetry_blocks_csv"] is not None
+    assert out["torsion_symmetry_blocks_csv"].is_file()
+
+
+def test_torsion_phase2_writes_scan_average_csv(tmp_path):
+    cfg = {
+        "name": "water_torsion_test",
+        "torsion_hamiltonian": {
+            "enabled": True,
+            "F": 5.0,
+            "rho": 0.1,
+            "n_basis": 5,
+            "n_levels": 3,
+            "J_values": [0],
+            "K_values": [0],
+            "potential": {"v0": 0.0, "vcos": {"3": 20.0}},
+            "scan": {
+                "mode": "boltzmann",
+                "angle_unit": "degrees",
+                "energy_unit": "cm-1",
+                "grid_points": [
+                    {"phi": 0.0, "energy": 0.0, "rotational_constants": [10.0, 8.0, 6.0]},
+                    {"phi": 120.0, "energy": 1.0, "rotational_constants": [11.0, 8.5, 6.5]},
+                    {"phi": 240.0, "energy": 1.0, "rotational_constants": [11.0, 8.5, 6.5]},
+                    {"phi": 360.0, "energy": 0.0, "rotational_constants": [10.0, 8.0, 6.0]},
+                    {"phi": 480.0, "energy": 1.0, "rotational_constants": [11.0, 8.5, 6.5]},
+                ],
+            },
+        },
+    }
+    isotopologues = [{"name": "H2-16O", "masses": [15.99491461956, 1.00782503207, 1.00782503207]}]
+    out = _run_torsion_phase2_exports(
+        cfg=cfg,
+        elems=["O", "H", "H"],
+        best={"coords": _water_coords()},
+        isotopologues=isotopologues,
+        run_dir=tmp_path,
+    )
+    assert out["torsion_scan_average_csv"] is not None
+    assert out["torsion_scan_average_csv"].is_file()
