@@ -1,0 +1,122 @@
+# Methanol (ground torsional state, νt=0) — generalized input file
+# Run with:
+#   PYTHONPATH=. .venv/bin/python runner/run_from_config.py configs/example_methanol.yaml
+#
+# Atom order follows the methanol runner:
+#   C, O, Hc1, Hc2, Hc3, Ho
+
+name: methanol_vt0
+spectral_model: internal_rotor_bc
+
+# Coordinate mode:
+#   internal  -> bond/angle(/dihedral) optimization
+#   cartesian -> xyz optimization
+coordinate_mode: internal
+internal_coordinates:
+  use_dihedrals: true
+  damping: 1.0e-6
+  microiterations: 20
+  prior_weight: 1.0
+  prior_sigma_bond: 0.06
+  prior_sigma_angle_deg: 4.0
+  prior_sigma_dihedral_deg: 20.0
+
+elements: [C, O, H, H, H, H]
+
+# PubChem methanol geometry (MMFF) as seed.
+geometry:
+  smiles: CO
+
+# Methanol equilibrium minimum is approximately Cs, but multistart jitter
+# can break exact symmetry; keep unconstrained to avoid permutation failures.
+symmetry: null
+
+isotopologues:
+  - name: 12CH3-16OH
+    masses: [12.0, 15.99491461957, 1.00782503207, 1.00782503207, 1.00782503207, 1.00782503207]
+    components: [A, B, C]
+    obs_b0_mhz: [127523.4, 24692.5, 23760.3]
+    alpha_mhz: [0.0, 0.0, 0.0]
+    sigma_mhz: [2.0, 0.05, 0.05]
+
+  - name: 13CH3-16OH
+    masses: [13.00335483507, 15.99491461957, 1.00782503207, 1.00782503207, 1.00782503207, 1.00782503207]
+    components: [A, B, C]
+    obs_b0_mhz: [126941.4, 23747.3, 22865.9]
+    alpha_mhz: [0.0, 0.0, 0.0]
+    sigma_mhz: [2.0, 0.05, 0.05]
+
+  - name: 12CH3-18OH
+    masses: [12.0, 17.99915961286, 1.00782503207, 1.00782503207, 1.00782503207, 1.00782503207]
+    components: [A, B, C]
+    obs_b0_mhz: [127285.3749, 23651.2578, 22787.1066]
+    alpha_mhz: [0.0, 0.0, 0.0]
+    sigma_mhz: [2.0, 0.05, 0.05]
+
+  - name: CH3OD
+    masses: [12.0, 15.99491461957, 1.00782503207, 1.00782503207, 1.00782503207, 2.01410177785]
+    components: [A, B, C]
+    obs_b0_mhz: [127549.4, 22839.1, 22116.9]
+    alpha_mhz: [0.0, 0.0, 0.0]
+    sigma_mhz: [10.0, 0.2, 0.2]
+
+  - name: CD3OH
+    masses: [12.0, 15.99491461957, 2.01410177785, 2.01410177785, 2.01410177785, 1.00782503207]
+    components: [A, B, C]
+    obs_b0_mhz: [70819.0, 19856.0, 19266.0]
+    alpha_mhz: [0.0, 0.0, 0.0]
+    sigma_mhz: [5.0, 0.05, 0.05]
+
+quantum:
+  backend: orca
+  method: wB97X-D4
+  basis: def2-TZVPP
+  executable: null
+
+preset: BALANCED
+rng_seed: 31
+write_xyz: false
+
+# Optional rovibrational correction block
+rovibrational_corrections:
+  mode: hybrid_auto
+
+# Optional torsion Hamiltonian block (Phase 2/3/4).
+# For methanol this can be useful.
+# Parameters below are seeded from the CH3OH global RAM fit
+# (Xu et al., J. Mol. Spectrosc. 251 (2008) 305–313):
+#   F   = 27.64684641 cm^-1
+#   rho = 0.8102062230
+#   V3  = 373.554746 cm^-1
+#   V6  = -1.319650 cm^-1
+#
+# Note on mapping:
+# RAM commonly uses terms like (1 - cos(3a))/2 * V3.
+# This config's Fourier potential uses direct cos(n*a) coefficients:
+#   V(a) = v0 + vcos3*cos(3a) + vcos6*cos(6a) + ...
+# So we map approximately as:
+#   v0    += +V3/2  + V6/2
+#   vcos3 += -V3/2
+#   vcos6 += -V6/2
+torsion_hamiltonian:
+  enabled: false
+  F: 27.64684641
+  rho: 0.8102062230
+  n_basis: 10
+  n_levels: 12
+  J_values: [0, 1, 2]
+  K_values: [0, 1]
+  units: cm-1
+  potential:
+    v0: 186.117548
+    vcos: {3: -186.777373, 6: 0.659825}
+    vsin: {}
+  # Optional Phase-3 objective targets:
+  # use_in_selection: true
+  # selection_weight: 0.01
+  # targets:
+  #   - {J: 0, K: 0, level_index: 0, energy_cm-1: 12.34}
+
+output:
+  root: runs
+  artifacts: true

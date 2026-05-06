@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+from backend.spectral_model import normalize_spectral_model
 
 try:
     import yaml
@@ -170,10 +171,123 @@ def validate_config(cfg: dict[str, Any]) -> None:
         _check_numeric_list(iso.get("alpha_mhz"), f"{prefix}.alpha_mhz", n_comp)
         _check_numeric_list(iso.get("sigma_mhz"), f"{prefix}.sigma_mhz", n_comp, positive=True)
 
+    if "spectral_model" in cfg and cfg.get("spectral_model") is not None:
+        try:
+            normalize_spectral_model(str(cfg.get("spectral_model")))
+        except ValueError as exc:
+            raise ConfigError(str(exc)) from exc
+
     quantum = _expect_mapping(cfg, "quantum")
     backend = str(quantum.get("backend", "orca")).strip().lower()
     if backend not in VALID_BACKENDS:
         raise ConfigError("'quantum.backend' must be one of orca, psi4, or none.")
+
+    _validate_rovibrational_corrections_block(cfg)
+    _validate_torsion_block(cfg)
+
+
+_VALID_ROVIB_MODES = {
+    "hybrid_auto", "user_only", "orca_only",
+    "manual_alpha", "manual_delta", "none",
+    "strict_user", "strict_backend",
+}
+
+
+def _validate_rovibrational_corrections_block(cfg: dict[str, Any]) -> None:
+    """Validate the optional rovibrational_corrections: block."""
+    rc = cfg.get("rovibrational_corrections")
+    if rc is None:
+        return
+    if not isinstance(rc, dict):
+        raise ConfigError("'rovibrational_corrections' must be a mapping/object.")
+
+    mode = rc.get("mode")
+    if mode is not None and str(mode).strip().lower() not in _VALID_ROVIB_MODES:
+        raise ConfigError(
+            f"'rovibrational_corrections.mode' must be one of "
+            f"{sorted(_VALID_ROVIB_MODES)}, got '{mode}'."
+        )
+
+    correction_table = rc.get("correction_table")
+    if correction_table is not None:
+        p = Path(str(correction_table)).expanduser()
+        if not p.is_file():
+            raise ConfigError(
+                f"'rovibrational_corrections.correction_table' not found: {p}"
+            )
+        suf = p.suffix.lower()
+        if suf not in (".csv", ".yaml", ".yml"):
+            raise ConfigError(
+                "'rovibrational_corrections.correction_table' must be a .csv, .yaml, or .yml file."
+            )
+
+    for frac_key in ("sigma_vib_fraction", "sigma_elec_fraction"):
+        v = rc.get(frac_key)
+        if v is not None:
+            try:
+                fv = float(v)
+            except (TypeError, ValueError) as exc:
+                raise ConfigError(
+                    f"'rovibrational_corrections.{frac_key}' must be numeric."
+                ) from exc
+            if fv < 0.0:
+                raise ConfigError(
+                    f"'rovibrational_corrections.{frac_key}' must be >= 0."
+                )
+
+    elec = rc.get("electronic_correction")
+    if elec is not None and not isinstance(elec, bool):
+        raise ConfigError(
+            "'rovibrational_corrections.electronic_correction' must be true or false."
+        )
+
+    bob = rc.get("bob_params")
+    if bob is not None and not isinstance(bob, dict):
+        raise ConfigError(
+            "'rovibrational_corrections.bob_params' must be a mapping of element → component → u-value."
+        )
+
+
+def _validate_torsion_block(cfg: dict[str, Any]) -> None:
+    t = cfg.get("torsion_hamiltonian")
+    if t is None:
+        return
+    if not isinstance(t, dict):
+        raise ConfigError("'torsion_hamiltonian' must be a mapping/object.")
+    if "enabled" in t and not isinstance(t.get("enabled"), bool):
+        raise ConfigError("'torsion_hamiltonian.enabled' must be true or false.")
+    scan = t.get("scan")
+    if scan is None:
+        return
+    if not isinstance(scan, dict):
+        raise ConfigError("'torsion_hamiltonian.scan' must be a mapping/object.")
+    gps = scan.get("grid_points")
+    if gps is None or not isinstance(gps, list) or len(gps) == 0:
+        raise ConfigError("'torsion_hamiltonian.scan.grid_points' must be a non-empty list.")
+    for i, gp in enumerate(gps):
+        if not isinstance(gp, dict):
+            raise ConfigError(f"'torsion_hamiltonian.scan.grid_points[{i}]' must be a mapping/object.")
+        if "phi" not in gp:
+            raise ConfigError(f"'torsion_hamiltonian.scan.grid_points[{i}].phi' is required.")
+        try:
+            float(gp["phi"])
+        except (TypeError, ValueError) as exc:
+            raise ConfigError(
+                f"'torsion_hamiltonian.scan.grid_points[{i}].phi' must be numeric."
+            ) from exc
+    mode = str(scan.get("mode", "quantum")).strip().lower()
+    if mode not in {"quantum", "boltzmann"}:
+        raise ConfigError("'torsion_hamiltonian.scan.mode' must be 'quantum' or 'boltzmann'.")
+    if mode == "quantum":
+        hr = scan.get("hindered_rotor_model")
+        if hr is None or not isinstance(hr, dict):
+            raise ConfigError(
+                "'torsion_hamiltonian.scan.hindered_rotor_model' is required in quantum scan mode."
+            )
+        if hr.get("rotational_constant_F") is None:
+            raise ConfigError(
+                "'torsion_hamiltonian.scan.hindered_rotor_model.rotational_constant_F' is required in quantum mode."
+            )
 
 
 def safe_run_name(name: str | None) -> str:
@@ -257,7 +371,9 @@ def singular_values(coords: np.ndarray, spectral_isotopologues: list[dict[str, A
     return np.linalg.svd(J, compute_uv=False)
 
 
-def write_markdown_report(path: Path, result: dict[str, Any]) -> None:
+def write_markdown_report(path: Path, result: dict[str, Any], artifacts: dict[str, Any] | None = None) -> None:
+    from runner.reporting import generate_rovib_report_section
+
     best = result["best"]
     score = result.get("score", {})
     lines = [
@@ -275,6 +391,11 @@ def write_markdown_report(path: Path, result: dict[str, Any]) -> None:
                 f"- Constrained rank: `{score.get('constrained_rank', 'n/a')}/{score.get('internal_dof', 'n/a')}`",
             ]
         )
+
+    iso_snapshot = best.get("spectral_isotopologues_snapshot", [])
+    if iso_snapshot:
+        lines.extend(["", generate_rovib_report_section(iso_snapshot)])
+
     lines.extend(["", "## Final Geometry", "", "| atom | element | x (Ang) | y (Ang) | z (Ang) |", "|---:|---|---:|---:|---:|"])
     for i, (elem, xyz) in enumerate(zip(result["elems"], np.asarray(best["coords"], dtype=float))):
         lines.append(f"| {i} | {elem} | {xyz[0]:.8f} | {xyz[1]:.8f} | {xyz[2]:.8f} |")
@@ -284,7 +405,62 @@ def write_markdown_report(path: Path, result: dict[str, Any]) -> None:
             f"| {row['isotopologue']} | {row['component']} | {row['target_mhz']:.6f} | "
             f"{row['calculated_mhz']:.6f} | {row['residual_mhz']:.6f} |"
         )
-    lines.extend(["", "## Outputs", "", "- `exports/final_geometry.csv`", "- `exports/residuals.csv`", "- `plots/residuals.png`", "- `plots/singular_values.png`", "- `plots/convergence.png`"])
+    if result.get("torsion_objective_rows"):
+        torsion_rows = result["torsion_objective_rows"]
+        is_transition_mode = "J_lo" in torsion_rows[0]
+        lines.extend(
+            [
+                "",
+                "## Torsion Objective",
+                "",
+                f"- Torsion RMS (cm^-1): `{float(result.get('torsion_rms_cm-1', np.nan)):.6f}`",
+                "",
+            ]
+        )
+        if is_transition_mode:
+            lines.extend(
+                [
+                    "| J_lo | K_lo | level_lo | J_hi | K_hi | level_hi | Observed (cm^-1) | Predicted (cm^-1) | Residual (cm^-1) |",
+                    "|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+                ]
+            )
+            for row in torsion_rows:
+                lines.append(
+                    f"| {int(row['J_lo'])} | {int(row['K_lo'])} | {int(row['level_lo'])} | "
+                    f"{int(row['J_hi'])} | {int(row['K_hi'])} | {int(row['level_hi'])} | "
+                    f"{float(row['observed_cm-1']):.6f} | {float(row['predicted_cm-1']):.6f} | "
+                    f"{float(row['residual_cm-1']):.6f} |"
+                )
+        else:
+            lines.extend(
+                [
+                    "| J | K | Level | Observed (cm^-1) | Predicted (cm^-1) | Residual (cm^-1) |",
+                    "|---:|---:|---:|---:|---:|---:|",
+                ]
+            )
+            for row in torsion_rows:
+                lines.append(
+                    f"| {int(row['J'])} | {int(row['K'])} | {int(row['level_index'])} | "
+                    f"{float(row['observed_cm-1']):.6f} | {float(row['predicted_cm-1']):.6f} | "
+                    f"{float(row['residual_cm-1']):.6f} |"
+                )
+    lines.extend(["", "## Outputs", "", "- `exports/final_geometry.csv`", "- `exports/residuals.csv`"])
+    if artifacts:
+        if artifacts.get("rovib_corrections_csv") is not None:
+            lines.append("- `exports/rovib_corrections.csv`")
+        if artifacts.get("semi_experimental_targets_csv") is not None:
+            lines.append("- `exports/semi_experimental_targets.csv`")
+        if artifacts.get("rovib_warnings_json") is not None:
+            lines.append("- `exports/rovib_warnings.json`")
+        if artifacts.get("internal_uncertainty_csv") is not None:
+            lines.append("- `exports/internal_uncertainty.csv`")
+        if artifacts.get("internal_covariance_csv") is not None:
+            lines.append("- `exports/internal_covariance.csv`")
+        if artifacts.get("internal_identifiability_csv") is not None:
+            lines.append("- `exports/internal_identifiability.csv`")
+        if artifacts.get("torsion_objective_csv") is not None:
+            lines.append("- `exports/torsion_objective.csv`")
+    lines.extend(["- `plots/residuals.png`", "- `plots/singular_values.png`", "- `plots/convergence.png`"])
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -349,6 +525,12 @@ def write_plots(run_dir: Path, result: dict[str, Any]) -> list[Path]:
 
 def write_outputs(result: dict[str, Any]) -> dict[str, Path | list[Path]]:
     """Write CSV, Markdown, and plot artifacts for a completed generic run."""
+    from runner.reporting import (
+        export_rovib_corrections_csv,
+        export_rovib_warnings_json,
+        export_semi_experimental_targets_csv,
+    )
+
     run_dir = Path(result.get("run_dir") or ".").resolve()
     exports_dir = run_dir / "exports"
     exports_dir.mkdir(parents=True, exist_ok=True)
@@ -358,12 +540,149 @@ def write_outputs(result: dict[str, Any]) -> dict[str, Path | list[Path]]:
     residual_csv = exports_dir / "residuals.csv"
     write_final_geometry_csv(geom_csv, result["elems"], result["best"]["coords"])
 
-    rows = residual_rows(result["best"]["coords"], result["best"]["spectral_isotopologues_snapshot"])
+    iso_snapshot = result["best"].get("spectral_isotopologues_snapshot", [])
+    rows = residual_rows(result["best"]["coords"], iso_snapshot)
     result["residual_rows"] = rows
-    result["singular_values"] = singular_values(result["best"]["coords"], result["best"]["spectral_isotopologues_snapshot"]).tolist()
+    result["singular_values"] = singular_values(result["best"]["coords"], iso_snapshot).tolist()
     write_residuals_csv(residual_csv, rows)
 
+    artifacts: dict[str, Any] = {
+        "geometry_csv": geom_csv,
+        "residuals_csv": residual_csv,
+    }
+
+    # Rovib correction exports (written whenever isotopologue data exists).
+    if iso_snapshot:
+        rovib_csv = export_rovib_corrections_csv(iso_snapshot, exports_dir / "rovib_corrections.csv")
+        semi_csv = export_semi_experimental_targets_csv(iso_snapshot, exports_dir / "semi_experimental_targets.csv")
+        warn_json = export_rovib_warnings_json(iso_snapshot, exports_dir / "rovib_warnings.json")
+        artifacts["rovib_corrections_csv"] = rovib_csv
+        artifacts["semi_experimental_targets_csv"] = semi_csv
+        artifacts["rovib_warnings_json"] = warn_json
+
+    # Internal-coordinate uncertainty / identifiability exports.
+    cfg = result.get("cfg", {}) or {}
+    coord_mode = str(cfg.get("coordinate_mode", "cartesian")).strip().lower()
+    if coord_mode == "internal" and iso_snapshot:
+        from backend.internal_fit import InternalCoordinateSet, spectral_jacobian_q, build_internal_priors
+        from backend.spectral import SpectralEngine
+        from backend.uncertainty import uncertainty_table, compute_uncertainty
+        from backend.identifiability import identifiability_table
+
+        ic_cfg = cfg.get("internal_coordinates", {}) or {}
+        use_dihedrals = bool(ic_cfg.get("use_dihedrals", False))
+        damping = max(float(ic_cfg.get("damping", 1e-6)), 1e-14)
+        sigma_bond = float(ic_cfg.get("prior_sigma_bond", 0.04))
+        sigma_angle_deg = float(ic_cfg.get("prior_sigma_angle_deg", 2.0))
+        sigma_dihedral_deg = float(ic_cfg.get("prior_sigma_dihedral_deg", 15.0))
+
+        coord_set = InternalCoordinateSet(result["best"]["coords"], result["elems"], use_dihedrals=use_dihedrals)
+        B_active = coord_set.active_B_matrix(result["best"]["coords"])
+        if B_active.shape[0] > 0:
+            Bplus = InternalCoordinateSet.damped_pseudoinverse(B_active, damping)
+            J_spectral, _ = SpectralEngine(iso_snapshot).stacked(result["best"]["coords"])
+            Jq = spectral_jacobian_q(J_spectral, Bplus)
+            _, _, sigma_prior = build_internal_priors(
+                coord_set,
+                result["best"]["coords"],
+                sigma_bond=sigma_bond,
+                sigma_angle_deg=sigma_angle_deg,
+                sigma_dihedral_deg=sigma_dihedral_deg,
+            )
+
+            unc_rows = uncertainty_table(
+                coord_set,
+                result["best"]["coords"],
+                Jq,
+                sigma_prior=sigma_prior,
+                lambda_reg=damping,
+            )
+            unc_csv = exports_dir / "internal_uncertainty.csv"
+            with unc_csv.open("w", newline="", encoding="utf-8") as fh:
+                writer = csv.DictWriter(
+                    fh,
+                    fieldnames=[
+                        "name",
+                        "value",
+                        "value_unit",
+                        "std_err",
+                        "std_err_unit",
+                        "ci_lo",
+                        "ci_hi",
+                        "ci_unit",
+                    ],
+                )
+                writer.writeheader()
+                for r in unc_rows:
+                    writer.writerow(r)
+            artifacts["internal_uncertainty_csv"] = unc_csv
+
+            cov, _, _ = compute_uncertainty(
+                Jq,
+                sigma_prior=sigma_prior,
+                lambda_reg=damping,
+            )
+            cov_csv = exports_dir / "internal_covariance.csv"
+            with cov_csv.open("w", newline="", encoding="utf-8") as fh:
+                active_names = [ic.name for ic in coord_set.active_coords()]
+                writer = csv.writer(fh)
+                writer.writerow(["coordinate"] + active_names)
+                for i, row_name in enumerate(active_names):
+                    writer.writerow([row_name] + [f"{float(v):.12e}" for v in cov[i]])
+            artifacts["internal_covariance_csv"] = cov_csv
+
+            id_rows, sv, rank = identifiability_table(coord_set, Jq, sigma_prior)
+            id_csv = exports_dir / "internal_identifiability.csv"
+            with id_csv.open("w", newline="", encoding="utf-8") as fh:
+                writer = csv.DictWriter(
+                    fh,
+                    fieldnames=["name", "score", "label", "sv_rank"],
+                )
+                writer.writeheader()
+                for r in id_rows:
+                    writer.writerow(r)
+            artifacts["internal_identifiability_csv"] = id_csv
+            artifacts["internal_rank"] = rank
+            artifacts["internal_singular_values"] = [float(x) for x in sv]
+
+    if result.get("torsion_objective_rows"):
+        torsion_csv = exports_dir / "torsion_objective.csv"
+        torsion_rows = result["torsion_objective_rows"]
+        first = torsion_rows[0]
+        if "J_lo" in first:
+            fieldnames = [
+                "J_lo",
+                "K_lo",
+                "level_lo",
+                "J_hi",
+                "K_hi",
+                "level_hi",
+                "observed_cm-1",
+                "predicted_cm-1",
+                "residual_cm-1",
+            ]
+        else:
+            fieldnames = [
+                "J",
+                "K",
+                "level_index",
+                "observed_cm-1",
+                "predicted_cm-1",
+                "residual_cm-1",
+            ]
+        with torsion_csv.open("w", newline="", encoding="utf-8") as fh:
+            writer = csv.DictWriter(
+                fh,
+                fieldnames=fieldnames,
+            )
+            writer.writeheader()
+            for r in torsion_rows:
+                writer.writerow(r)
+        artifacts["torsion_objective_csv"] = torsion_csv
+
     report_md = run_dir / "report.md"
-    write_markdown_report(report_md, result)
+    write_markdown_report(report_md, result, artifacts=artifacts)
     plot_paths = write_plots(run_dir, result)
-    return {"geometry_csv": geom_csv, "residuals_csv": residual_csv, "report_md": report_md, "plots": plot_paths}
+    artifacts["report_md"] = report_md
+    artifacts["plots"] = plot_paths
+    return artifacts

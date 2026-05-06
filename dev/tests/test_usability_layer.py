@@ -61,6 +61,35 @@ def test_validate_config_reports_bad_sigma():
         validate_config(cfg)
 
 
+def test_validate_config_torsion_scan_requires_phi():
+    cfg = minimal_water_config()
+    cfg["torsion_hamiltonian"] = {
+        "enabled": True,
+        "F": 5.0,
+        "scan": {
+            "mode": "quantum",
+            "grid_points": [{"geometry": [[0.0, 0.0, 0.0]]}],
+            "hindered_rotor_model": {"rotational_constant_F": 5.0},
+        },
+    }
+    with pytest.raises(ConfigError, match="phi"):
+        validate_config(cfg)
+
+
+def test_validate_config_torsion_scan_quantum_requires_hr_model():
+    cfg = minimal_water_config()
+    cfg["torsion_hamiltonian"] = {
+        "enabled": True,
+        "F": 5.0,
+        "scan": {
+            "mode": "quantum",
+            "grid_points": [{"phi": 0.0}],
+        },
+    }
+    with pytest.raises(ConfigError, match="hindered_rotor_model"):
+        validate_config(cfg)
+
+
 def test_prepare_run_directory_copies_input(tmp_path):
     cfg = minimal_water_config()
     cfg["output"] = {"root": str(tmp_path / "runs")}
@@ -123,3 +152,154 @@ def test_write_outputs_creates_report_csvs_and_plots(tmp_path):
     assert (tmp_path / "plots" / "residuals.png").is_file()
     assert (tmp_path / "plots" / "singular_values.png").is_file()
     assert (tmp_path / "plots" / "convergence.png").is_file()
+
+
+def test_write_outputs_internal_mode_exports_internal_tables(tmp_path):
+    coords = np.array(
+        [
+            [0.0, 0.0, 0.1174],
+            [0.0, 0.7572, -0.4696],
+            [0.0, -0.7572, -0.4696],
+        ],
+        dtype=float,
+    )
+    result = {
+        "name": "water_internal",
+        "run_dir": str(tmp_path),
+        "elems": ["O", "H", "H"],
+        "cfg": {
+            "coordinate_mode": "internal",
+            "internal_coordinates": {
+                "use_dihedrals": False,
+                "damping": 1e-6,
+                "prior_sigma_bond": 0.04,
+                "prior_sigma_angle_deg": 2.0,
+                "prior_sigma_dihedral_deg": 15.0,
+            },
+        },
+        "best": {
+            "idx": 1,
+            "coords": coords,
+            "freq_rms": 1.23,
+            "energy": -76.0,
+            "history": [
+                {"iteration": 1, "freq_rms": 5.0, "step_norm": 1e-2},
+                {"iteration": 2, "freq_rms": 1.23, "step_norm": 1e-4},
+            ],
+            "spectral_isotopologues_snapshot": [
+                {
+                    "name": "H2-16O",
+                    "masses": [15.99491461956, 1.00782503207, 1.00782503207],
+                    "obs_constants": [835840.3, 435351.7, 278138.7],
+                    "sigma_constants": [0.2, 0.2, 0.2],
+                    "alpha_constants": [-43390.0, 10560.0, 6240.0],
+                    "component_indices": [0, 1, 2],
+                }
+            ],
+        },
+        "score": {"score": 75.0, "constrained_rank": 3, "internal_dof": 3},
+    }
+
+    artifacts = write_outputs(result)
+    assert artifacts["internal_uncertainty_csv"].is_file()
+    assert artifacts["internal_covariance_csv"].is_file()
+    assert artifacts["internal_identifiability_csv"].is_file()
+
+
+def test_write_outputs_exports_torsion_objective_csv(tmp_path):
+    coords = np.array(
+        [
+            [0.0, 0.0, 0.1174],
+            [0.0, 0.7572, -0.4696],
+            [0.0, -0.7572, -0.4696],
+        ],
+        dtype=float,
+    )
+    result = {
+        "name": "water_torsion",
+        "run_dir": str(tmp_path),
+        "elems": ["O", "H", "H"],
+        "cfg": {"coordinate_mode": "internal"},
+        "best": {
+            "idx": 1,
+            "coords": coords,
+            "freq_rms": 1.23,
+            "energy": -76.0,
+            "history": [{"iteration": 1, "freq_rms": 1.23, "step_norm": 1e-3}],
+            "spectral_isotopologues_snapshot": [
+                {
+                    "name": "H2-16O",
+                    "masses": [15.99491461956, 1.00782503207, 1.00782503207],
+                    "obs_constants": [835840.3, 435351.7, 278138.7],
+                    "sigma_constants": [0.2, 0.2, 0.2],
+                    "alpha_constants": [-43390.0, 10560.0, 6240.0],
+                    "component_indices": [0, 1, 2],
+                }
+            ],
+        },
+        "torsion_objective_rows": [
+            {
+                "J": 0,
+                "K": 0,
+                "level_index": 0,
+                "observed_cm-1": 10.0,
+                "predicted_cm-1": 9.5,
+                "residual_cm-1": 0.5,
+            }
+        ],
+        "torsion_rms_cm-1": 0.5,
+        "score": {"score": 75.0, "constrained_rank": 3, "internal_dof": 3},
+    }
+    artifacts = write_outputs(result)
+    assert artifacts["torsion_objective_csv"].is_file()
+
+
+def test_write_outputs_exports_torsion_transition_objective_csv(tmp_path):
+    coords = np.array(
+        [
+            [0.0, 0.0, 0.1174],
+            [0.0, 0.7572, -0.4696],
+            [0.0, -0.7572, -0.4696],
+        ],
+        dtype=float,
+    )
+    result = {
+        "name": "water_torsion_transition",
+        "run_dir": str(tmp_path),
+        "elems": ["O", "H", "H"],
+        "cfg": {"coordinate_mode": "internal"},
+        "best": {
+            "idx": 1,
+            "coords": coords,
+            "freq_rms": 1.23,
+            "energy": -76.0,
+            "history": [{"iteration": 1, "freq_rms": 1.23, "step_norm": 1e-3}],
+            "spectral_isotopologues_snapshot": [
+                {
+                    "name": "H2-16O",
+                    "masses": [15.99491461956, 1.00782503207, 1.00782503207],
+                    "component_indices": [0, 1, 2],
+                    "obs_constants": [835840.3, 435351.7, 278138.7],
+                    "sigma_constants": [0.2, 0.2, 0.2],
+                    "alpha_constants": [0.0, 0.0, 0.0],
+                }
+            ],
+        },
+        "torsion_objective_rows": [
+            {
+                "J_lo": 0,
+                "K_lo": 0,
+                "level_lo": 0,
+                "J_hi": 1,
+                "K_hi": 0,
+                "level_hi": 1,
+                "observed_cm-1": 10.0,
+                "predicted_cm-1": 9.5,
+                "residual_cm-1": 0.5,
+            }
+        ],
+        "torsion_rms_cm-1": 0.5,
+        "score": {"score": 75.0, "constrained_rank": 3, "internal_dof": 3},
+    }
+    artifacts = write_outputs(result)
+    assert artifacts["torsion_objective_csv"].is_file()
