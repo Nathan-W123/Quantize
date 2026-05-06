@@ -216,18 +216,52 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
     orca_exe = qsec.get("executable") or BASE_SETTINGS["orca_exe"]
 
     # ── Rovibrational corrections (optional) ──────────────────────────────────
-    correction_table = cfg.get("corrections", None) or None
-    correction_mode = str(cfg.get("correction_mode", "hybrid_auto")).strip()
-    correction_sigma_vib_fraction = float(cfg.get("correction_sigma_vib_fraction", 0.1))
-    correction_elec = bool(cfg.get("correction_elec", False))
-    correction_sigma_elec_fraction = float(cfg.get("correction_sigma_elec_fraction", 0.1))
-    correction_bob_params = cfg.get("correction_bob_params", None) or None
+    # Canonical key: rovibrational_corrections: {mode, correction_table, ...}
+    # Flat legacy keys (corrections, correction_mode, ...) are accepted as fallback.
+    _rc_block = cfg.get("rovibrational_corrections") or {}
+    correction_table = (
+        _rc_block.get("correction_table")
+        or cfg.get("corrections")
+        or None
+    )
+    correction_mode = str(
+        _rc_block.get("mode") or cfg.get("correction_mode") or "hybrid_auto"
+    ).strip()
+    correction_sigma_vib_fraction = float(
+        _rc_block.get("sigma_vib_fraction")
+        or cfg.get("correction_sigma_vib_fraction")
+        or 0.1
+    )
+    correction_elec = bool(
+        _rc_block.get("electronic_correction")
+        or cfg.get("correction_elec")
+        or False
+    )
+    correction_sigma_elec_fraction = float(
+        _rc_block.get("sigma_elec_fraction")
+        or cfg.get("correction_sigma_elec_fraction")
+        or 0.1
+    )
+    correction_bob_params = (
+        _rc_block.get("bob_params")
+        or cfg.get("correction_bob_params")
+        or None
+    )
 
     # ── Preset and run control ────────────────────────────────────────────────
     preset_name, preset = _resolve_preset(cfg.get("preset"))
     rng_seed = int(cfg.get("rng_seed", 42))
     write_xyz = bool(cfg.get("write_xyz", False))
     symmetry_spec = cfg.get("symmetry") or None
+    coordinate_mode = str(cfg.get("coordinate_mode", "cartesian")).strip().lower()
+    internal_cfg = cfg.get("internal_coordinates", {}) or {}
+    ic_use_dihedrals = bool(internal_cfg.get("use_dihedrals", False))
+    ic_damping = float(internal_cfg.get("damping", 1e-6))
+    ic_micro_iter = int(internal_cfg.get("microiterations", 20))
+    ic_prior_weight = float(internal_cfg.get("prior_weight", 1.0))
+    ic_prior_sigma_bond = float(internal_cfg.get("prior_sigma_bond", 0.04))
+    ic_prior_sigma_angle_deg = float(internal_cfg.get("prior_sigma_angle_deg", 2.0))
+    ic_prior_sigma_dihedral_deg = float(internal_cfg.get("prior_sigma_dihedral_deg", 15.0))
 
     # ── Multi-start seed geometries ───────────────────────────────────────────
     rng = np.random.default_rng(rng_seed)
@@ -302,6 +336,14 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
         correction_elec=correction_elec,
         correction_sigma_elec_fraction=correction_sigma_elec_fraction,
         correction_bob_params=correction_bob_params,
+        coordinate_mode=coordinate_mode,
+        ic_use_dihedrals=ic_use_dihedrals,
+        ic_damping=ic_damping,
+        ic_micro_iter=ic_micro_iter,
+        ic_prior_weight=ic_prior_weight,
+        ic_prior_sigma_bond=ic_prior_sigma_bond,
+        ic_prior_sigma_angle_deg=ic_prior_sigma_angle_deg,
+        ic_prior_sigma_dihedral_deg=ic_prior_sigma_dihedral_deg,
         symmetry=symmetry_spec,
         project_rigid_modes=True,
         debug_rank_diagnostics=False,
@@ -313,6 +355,7 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
     print(f"[{name}] elements     : {elems}")
     print(f"[{name}] isotopologues: {[iso['name'] for iso in isotopologues]}")
     print(f"[{name}] quantum      : {backend} / {orca_method} / {orca_basis}")
+    print(f"[{name}] coord mode   : {coordinate_mode}")
     print(f"[{name}] preset       : {preset_name}")
     print(f"[{name}] n_starts     : {preset['n_starts']}  max_workers: {preset['max_workers']}")
     if symmetry_spec:

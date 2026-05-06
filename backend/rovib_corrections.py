@@ -148,18 +148,80 @@ def resolve_alpha_components(
         c = int(comp)
         cand_user = None if user is None or c < 0 or c >= len(user) else user[c]
         cand_orca = None if parsed is None or c < 0 or c >= len(parsed) else parsed[c]
-        if mode == "user_only":
+        comp_label = _COMP_LABELS.get(c, f"R{c}")
+
+        if mode_str == "none":
+            out[i] = 0.0
+            sources_per_component.append("none")
+
+        elif mode_str in ("user_only", "manual_alpha"):
             if cand_user is not None and np.isfinite(cand_user):
                 out[i] = float(cand_user)
-        elif mode == "orca_only":
+                sources_per_component.append("user")
+            else:
+                sources_per_component.append("none")
+
+        elif mode_str == "strict_user":
+            if cand_user is None or not np.isfinite(cand_user):
+                raise ValueError(
+                    f"strict_user mode: no user alpha value for component {comp_label} "
+                    f"of isotopologue '{isotopologue_name}'."
+                )
+            out[i] = float(cand_user)
+            sources_per_component.append("user")
+
+        elif mode_str == "orca_only":
             if cand_orca is not None and np.isfinite(cand_orca):
                 out[i] = float(cand_orca)
-        else:
+                sources_per_component.append("orca")
+            else:
+                sources_per_component.append("none")
+
+        elif mode_str == "strict_backend":
+            if cand_orca is None or not np.isfinite(cand_orca):
+                raise ValueError(
+                    f"strict_backend mode: no backend alpha value for component {comp_label} "
+                    f"of isotopologue '{isotopologue_name}'."
+                )
+            out[i] = float(cand_orca)
+            sources_per_component.append("orca")
+
+        elif mode_str == "manual_delta":
+            # Delta is supplied directly via correction_table; alpha is not used.
+            # Force alpha contribution to zero to avoid stale legacy alpha carry-through.
+            out[i] = 0.0
+            sources_per_component.append("manual_delta")
+
+        else:  # hybrid_auto
             if cand_user is not None and np.isfinite(cand_user):
                 out[i] = float(cand_user)
+                sources_per_component.append("user")
             elif cand_orca is not None and np.isfinite(cand_orca):
                 out[i] = float(cand_orca)
-    return out
+                sources_per_component.append("orca")
+            else:
+                sources_per_component.append("none")
+                warnings.append(f"no alpha for component {comp_label} in hybrid_auto mode")
+
+    # Populate RovibCorrection fields from resolved values.
+    alpha_full = np.full(3, np.nan)
+    for i, comp in enumerate(idx):
+        c = int(comp)
+        if 0 <= c < 3:
+            alpha_full[c] = out[i]
+    correction.alpha_A = None if not np.isfinite(alpha_full[0]) else float(alpha_full[0])
+    correction.alpha_B = None if not np.isfinite(alpha_full[1]) else float(alpha_full[1])
+    correction.alpha_C = None if not np.isfinite(alpha_full[2]) else float(alpha_full[2])
+    correction.source = "+".join(dict.fromkeys(s for s in sources_per_component if s != "none")) or "none"
+    if all(s == "none" for s in sources_per_component):
+        correction.status = "missing_component"
+    elif any(s == "none" for s in sources_per_component) or warnings:
+        correction.status = "partial"
+    else:
+        correction.status = "ok"
+    correction.warnings = warnings
+
+    return out, correction
 
 
 # ── Data model ────────────────────────────────────────────────────────────────
