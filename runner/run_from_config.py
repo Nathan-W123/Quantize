@@ -23,7 +23,6 @@ Environment overrides (legacy style, highest priority in ``get_run_settings``):
 
 from __future__ import annotations
 
-import argparse
 import importlib
 import os
 import sys
@@ -39,16 +38,7 @@ except ModuleNotFoundError:
     print("NumPy is required. Install dependencies: pip install -r requirements.txt", file=sys.stderr)
     raise SystemExit(1) from None
 
-try:
-    import yaml
-except ModuleNotFoundError:
-    print(
-        "PyYAML is required for run_from_config.py.\n"
-        "  pip install PyYAML\n"
-        "or: pip install -r requirements.txt",
-        file=sys.stderr,
-    )
-    raise SystemExit(1) from None
+from runner.usability import ConfigError, load_config, prepare_run_directory, validate_config
 
 # Same molecule keys as ``run_molecule.py`` (maps CLI name → runner module).
 RUNNER_MODULES: dict[str, str] = {
@@ -65,14 +55,6 @@ RUNNER_MODULES: dict[str, str] = {
 
 _QUANTIZE_ORCA_ENV = ("QUANTIZE_ORCA_METHOD", "QUANTIZE_ORCA_BASIS")
 _ORCA_EXE_KEY = "ORCA_EXE"
-
-
-def _load_config(path: Path) -> dict:
-    text = path.read_text(encoding="utf-8")
-    data = yaml.safe_load(text)
-    if not isinstance(data, dict):
-        raise ValueError(f"Config {path} must be a YAML mapping (dictionary).")
-    return data
 
 
 def _apply_env_overrides(cfg: dict) -> dict[str, str | None]:
@@ -113,10 +95,10 @@ def _restore_env(saved: dict[str, str | None]) -> None:
             os.environ[_ORCA_EXE_KEY] = v
 
 
-def _run_generic(cfg: dict) -> None:
+def _run_generic(cfg: dict) -> dict | None:
     """Dispatch to the generic runner for new-style YAML (has 'elements' key)."""
     from runner.run_generic import main as generic_main
-    generic_main(cfg)
+    return generic_main(cfg)
 
 
 def _run_legacy(cfg: dict) -> None:
@@ -155,9 +137,11 @@ def _run_legacy(cfg: dict) -> None:
 
 
 def main() -> None:
+    import argparse
+
     parser = argparse.ArgumentParser(
         description=(
-            "Run quantize from a YAML config. "
+            "Run quantize from a YAML or JSON config. "
             "New-style: supply 'elements' + 'isotopologues' (see configs/template.yaml). "
             "Legacy: supply 'molecule' key to use a pre-built runner."
         )
@@ -165,14 +149,23 @@ def main() -> None:
     parser.add_argument(
         "config",
         type=Path,
-        help="Path to YAML file",
+        help="Path to YAML or JSON config file",
+    )
+    parser.add_argument(
+        "--no-run-dir",
+        action="store_true",
+        help="Do not create a managed output run directory.",
     )
     args = parser.parse_args()
     cfg_path = args.config.resolve()
-    if not cfg_path.is_file():
-        raise SystemExit(f"Config file not found: {cfg_path}")
-
-    cfg = _load_config(cfg_path)
+    try:
+        cfg = load_config(cfg_path)
+        validate_config(cfg)
+        if not args.no_run_dir:
+            run_dir = prepare_run_directory(cfg, cfg_path)
+            print(f"[run_from_config] run_dir={run_dir}")
+    except ConfigError as exc:
+        raise SystemExit(f"Config error: {exc}") from None
 
     if "elements" in cfg:
         _run_generic(cfg)

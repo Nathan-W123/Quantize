@@ -1,14 +1,27 @@
 """
 SVD subspace optimizer for hybrid spectroscopic / quantum structure determination.
 
-Decomposes the stacked rotational-constant Jacobian J (3k × 3N) to separate:
-  Range space  — Cartesian directions that move rotational constants;
-                 the experimental step Δx_range drives these toward observed values.
-  Null space   — Cartesian directions invisible to rotational constants;
-                 the quantum step Δx_null performs damped-Newton energy minimisation
-                 here, governed entirely by the ORCA gradient and Hessian.
+Operates in any parameter space p (Cartesian x or internal q):
 
-Combined step:  Δx = Δx_range + Δx_null  (clipped to trust radius).
+  Cartesian mode (coordinate_mode="cartesian"):
+    J  : (3k × 3N)   stacked rotational-constant Jacobian [MHz/Å]
+    p  : (3N,)        Cartesian coordinates [Å]
+    dp : (3N,)        Cartesian step returned by step()
+
+  Internal-coordinate mode (coordinate_mode="internal"):
+    J  : (3k × n_q)  spectral Jacobian in internal-coordinate space [MHz/Å or MHz/rad]
+    p  : (n_q,)       internal coordinates [Å, rad]
+    dp : (n_q,)       internal-coordinate step returned by step()
+    The caller is responsible for converting dp → dx via apply_internal_step().
+
+Decomposes J to separate:
+  Range space  — parameter directions that move rotational constants;
+                 the experimental step Δp_range drives these toward observed values.
+  Null space   — parameter directions invisible to rotational constants;
+                 the quantum step Δp_null performs damped-Newton energy minimisation
+                 here, governed entirely by the QC gradient and Hessian.
+
+Combined step:  Δp = Δp_range + Δp_null  (clipped to trust radius).
 """
 
 import numpy as np
@@ -85,15 +98,15 @@ class SubspaceOptimizer:
         """
         Least-squares step in the experimental range space.
 
-        Δx_range = V_r Σ_r⁻¹ U_r^T Δν
+        Δp_range = V_r Σ_r⁻¹ U_r^T Δν
 
         Parameters
         ----------
-        residual : (3k,)  observed − calculated rotational constants [MHz]
+        residual : (m,)   observed − calculated [observable units]
 
         Returns
         -------
-        dx_range : (3N,) in Angstroms
+        dp_range : (n_p,)  parameter step in range space
         """
         if rank == 0:
             return np.zeros(Vt.shape[1])
@@ -108,16 +121,16 @@ class SubspaceOptimizer:
         """
         Damped-Newton step in the quantum null space.
 
-        Δx_null = −V_⊥ (V_⊥^T H V_⊥ + λI)⁻¹ V_⊥^T g
+        Δp_null = −V_⊥ (V_⊥^T H V_⊥ + λI)⁻¹ V_⊥^T g
 
         Parameters
         ----------
-        gradient : (3N,)    energy gradient [Hartree/Å]
-        hessian  : (3N, 3N) energy Hessian  [Hartree/Å²]
+        gradient : (n_p,)      energy gradient in parameter space
+        hessian  : (n_p, n_p)  energy Hessian in parameter space
 
         Returns
         -------
-        dx_null : (3N,) in Angstroms
+        dp_null : (n_p,)  parameter step in null space
         """
         n = Vt.shape[1]
         if rank >= n:
@@ -165,46 +178,52 @@ class SubspaceOptimizer:
 
     def step(self, J, residual, gradient, hessian, B=None):
         """
-        Full hybrid step.
+        Full hybrid step in whatever parameter space J is defined over.
 
         Parameters
         ----------
-        J        : (3k, 3N) stacked rotational-constant Jacobian [MHz/Å]
-        residual : (3k,)    observed − calculated rotational constants [MHz]
-        gradient : (3N,)    energy gradient [Hartree/Å]
-        hessian  : (3N, 3N) energy Hessian [Hartree/Å²]
+        J        : (m, n_p)  stacked Jacobian [observable / parameter unit]
+                   Cartesian mode: (3k, 3N) in MHz/Å
+                   Internal mode : (3k, n_q) in MHz/Å or MHz/rad
+        residual : (m,)     observed − calculated [same observable unit]
+        gradient : (n_p,)   energy gradient in parameter space
+                   Cartesian: Hartree/Å;  Internal: already transformed via B+^T gx
+        hessian  : (n_p, n_p) energy Hessian in parameter space
+                   Cartesian: Hartree/Å²; Internal: B+^T Hx B+
 
         Returns
         -------
-        dx   : (3N,)  Cartesian step in Å (trust-radius clipped)
-        rank : int    SVD rank
-        s    : array  full singular-value spectrum
-        alpha_q_eff : float
-        Vt   : (3N, 3N) right singular vectors from the same SVD as ``rank`` (avoids recomputing SVD)
+        dp          : (n_p,)  parameter step (trust-radius clipped)
+                      Cartesian mode: Cartesian step dx [Å]
+                      Internal mode : internal step dq [Å, rad] — caller back-transforms
+        rank        : int     SVD rank
+        s           : array   full singular-value spectrum
+        alpha_q_eff : float   effective quantum weight used
+        Vt          : (n_p, n_p) right singular vectors (reuse to avoid recomputing SVD)
         """
         U, s, Vt, rank = self.decompose(J)
         alpha_q_eff = self._effective_quantum_weight(J, rank)
         if self.objective_mode == "joint":
-            dx = self._joint_step(J, residual, gradient, hessian, alpha_q_eff)
+            dp = self._joint_step(J, residual, gradient, hessian, alpha_q_eff)
         else:
-            dx_range = self.range_step(U, s, Vt, rank, residual)
-            dx_null = self.null_step(Vt, rank, gradient, hessian)
-            # Numerical safeguard: explicitly keep quantum correction in J-null space.
-            dx_null = self.null_projector(Vt, rank) @ dx_null
-            dx_null = alpha_q_eff * dx_null
-            null_norm = np.linalg.norm(dx_null)
+            dp_range = self.range_step(U, s, Vt, rank, residual)
+            dp_null = self.null_step(Vt, rank, gradient, hessian)
+            # Numerical safeguard: keep quantum correction strictly in J-null space.
+            dp_null = self.null_projector(Vt, rank) @ dp_null
+            dp_null = alpha_q_eff * dp_null
+            null_norm = np.linalg.norm(dp_null)
             if null_norm > self.null_trust_radius:
-                dx_null *= self.null_trust_radius / null_norm
-            dx = dx_range + dx_null
+                dp_null *= self.null_trust_radius / null_norm
+            dp = dp_range + dp_null
 
         if self.use_internal_preconditioner:
-            dx = self._apply_internal_preconditioner(dx, B)
+            dp = self._apply_internal_preconditioner(dp, B)
 
-        norm = np.linalg.norm(dx)
+        norm = np.linalg.norm(dp)
         if norm > self.trust_radius:
-            dx *= self.trust_radius / norm
+            dp *= self.trust_radius / norm
 
-        return dx, rank, s, alpha_q_eff, Vt
+        return dp, rank, s, alpha_q_eff, Vt
 
     def adapt_lambda(self, accepted, min_lambda=1e-8, max_lambda=1e2):
         """

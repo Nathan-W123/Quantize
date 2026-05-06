@@ -1,0 +1,36 @@
+name: water_spectral_only
+elements: [O, H, H]
+
+geometry:
+  method: coords
+  coords_angstrom:
+    - [0.0000, 0.0000, 0.1174]
+    - [0.0000, 0.7572, -0.4696]
+    - [0.0000, -0.7572, -0.4696]
+
+symmetry: C2v
+
+isotopologues:
+  - name: H2-16O
+    masses: [15.99491461956, 1.00782503207, 1.00782503207]
+    components: [A, B, C]
+    obs_b0_mhz: [835840.3, 435351.7, 278138.7]
+    alpha_mhz: [-43390.0, 10560.0, 6240.0]
+    sigma_mhz: [0.2, 0.2, 0.2]
+  - name: H2-18O
+    masses: [17.99915961286, 1.00782503207, 1.00782503207]
+    components: [A, B, C]
+    obs_b0_mhz: [825366.1, 435331.6, 276950.5]
+    alpha_mhz: [-42350.0, 10540.0, 6210.0]
+    sigma_mhz: [0.2, 0.2, 0.2]
+
+quantum:
+  backend: none
+
+preset: FAST_DEBUG
+rng_seed: 42
+write_xyz: true
+
+output:
+  root: runs
+  artifacts: true
