@@ -625,6 +625,62 @@ def _validate_torsion_block(cfg: dict[str, Any]) -> None:
                 if not isinstance(stage, dict):
                     raise ConfigError(f"'torsion_hamiltonian.fitting.stages[{i}]' must be a mapping/object.")
 
+    # --- fitting cross-validation (Phase 6 troubleshooting) ---
+    fit = t.get("fitting")
+    if isinstance(fit, dict) and fit.get("enabled", False):
+        has_targets = bool(t.get("targets"))
+        has_transitions = bool(t.get("transitions"))
+        if not has_targets and not has_transitions:
+            raise ConfigError(
+                "'torsion_hamiltonian.fitting.enabled' is true but neither 'targets' nor "
+                "'transitions' are provided. Add observed levels or transition frequencies to fit against."
+            )
+
+    # --- potential sign-convention warning ---
+    pot = t.get("potential")
+    if isinstance(pot, dict):
+        vcos = pot.get("vcos") or {}
+        if isinstance(vcos, dict):
+            for k, v in vcos.items():
+                try:
+                    ki, vi = int(k), float(v)
+                except (TypeError, ValueError):
+                    continue
+                if ki % 3 == 0 and vi > 0:
+                    raise ConfigError(
+                        f"'torsion_hamiltonian.potential.vcos[{k}]' = {vi:.4f} is positive. "
+                        f"In this codebase the Fourier convention is V(a) = v0 + sum vcos_n*cos(n*a). "
+                        f"A 3-fold barrier V3 maps to vcos3 = -V3/2 (negative). "
+                        f"If your barrier is {vi:.1f} cm^-1, set v0={vi:.4f} and vcos3={-vi:.4f}."
+                    )
+
+    # --- n_basis adequacy check ---
+    n_basis_v = t.get("n_basis")
+    pot_check = t.get("potential")
+    if n_basis_v is not None and isinstance(pot_check, dict):
+        nb_ok = True
+        try:
+            nb = int(n_basis_v)
+        except (TypeError, ValueError):
+            nb_ok = False
+        if nb_ok:
+            vcos_c = pot_check.get("vcos") or {}
+            if isinstance(vcos_c, dict):
+                coeff_vals = []
+                for v in vcos_c.values():
+                    try:
+                        coeff_vals.append(abs(float(v)))
+                    except (TypeError, ValueError):
+                        pass
+                max_barrier = max(coeff_vals, default=0.0)
+                if nb < 8 and max_barrier > 150.0:
+                    raise ConfigError(
+                        f"'torsion_hamiltonian.n_basis' = {nb} may be too small for a barrier "
+                        f"of ~{max_barrier:.0f} cm^-1. Use n_basis >= 10 for moderate barriers "
+                        f"(~200-500 cm^-1) and n_basis >= 15 for high barriers (> 500 cm^-1). "
+                        f"Run 'quantize lam-diagnose --convergence' to check basis convergence."
+                    )
+
     # --- geometry_coupling block (Phase 7) ---
     gc = t.get("geometry_coupling")
     if gc is not None:
@@ -632,6 +688,20 @@ def _validate_torsion_block(cfg: dict[str, Any]) -> None:
             raise ConfigError("'torsion_hamiltonian.geometry_coupling' must be a mapping/object.")
         if "enabled" in gc and not isinstance(gc["enabled"], bool):
             raise ConfigError("'torsion_hamiltonian.geometry_coupling.enabled' must be true or false.")
+        gc_enabled = bool(gc.get("enabled", False))
+        if gc_enabled:
+            if not gc.get("top_indices"):
+                raise ConfigError(
+                    "'torsion_hamiltonian.geometry_coupling.top_indices' is required when "
+                    "geometry_coupling.enabled is true. "
+                    "Specify the atom indices (0-based) of the rotating top (e.g. [2, 3, 4] for methyl H atoms)."
+                )
+            if not gc.get("axis_atom_indices"):
+                raise ConfigError(
+                    "'torsion_hamiltonian.geometry_coupling.axis_atom_indices' is required when "
+                    "geometry_coupling.enabled is true. "
+                    "Specify two atom indices (0-based) defining the rotation axis (e.g. [0, 1] for C-O)."
+                )
         top = gc.get("top_indices")
         if top is not None:
             if not isinstance(top, list) or not top:
@@ -875,7 +945,7 @@ def singular_values(coords: np.ndarray, spectral_isotopologues: list[dict[str, A
 
 
 def write_markdown_report(path: Path, result: dict[str, Any], artifacts: dict[str, Any] | None = None) -> None:
-    from runner.reporting import generate_rovib_report_section
+    from runner.reporting import generate_lam_report_section, generate_rovib_report_section
 
     best = result["best"]
     score = result.get("score", {})
@@ -898,6 +968,10 @@ def write_markdown_report(path: Path, result: dict[str, Any], artifacts: dict[st
     iso_snapshot = best.get("spectral_isotopologues_snapshot", [])
     if iso_snapshot:
         lines.extend(["", generate_rovib_report_section(iso_snapshot)])
+
+    torsion_summary = result.get("torsion_summary") or {}
+    if torsion_summary:
+        lines.extend(["", generate_lam_report_section(torsion_summary)])
 
     lines.extend(["", "## Final Geometry", "", "| atom | element | x (Ang) | y (Ang) | z (Ang) |", "|---:|---|---:|---:|---:|"])
     for i, (elem, xyz) in enumerate(zip(result["elems"], np.asarray(best["coords"], dtype=float))):

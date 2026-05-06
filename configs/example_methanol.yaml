@@ -81,25 +81,40 @@ write_xyz: false
 rovibrational_corrections:
   mode: hybrid_auto
 
-# Optional torsion Hamiltonian block (Phase 2/3/4).
-# For methanol this can be useful.
-# Parameters below are seeded from the CH3OH global RAM fit
-# (Xu et al., J. Mol. Spectrosc. 251 (2008) 305–313):
-#   F   = 27.64684641 cm^-1
-#   rho = 0.8102062230
-#   V3  = 373.554746 cm^-1
-#   V6  = -1.319650 cm^-1
+# ── Torsion Hamiltonian block (RAM-lite) ─────────────────────────────────────
 #
-# Note on mapping:
-# RAM commonly uses terms like (1 - cos(3a))/2 * V3.
-# This config's Fourier potential uses direct cos(n*a) coefficients:
-#   V(a) = v0 + vcos3*cos(3a) + vcos6*cos(6a) + ...
-# So we map approximately as:
-#   v0    += +V3/2  + V6/2
-#   vcos3 += -V3/2
-#   vcos6 += -V6/2
+# Parameters seeded from the CH3OH global RAM fit
+# (Xu et al., J. Mol. Spectrosc. 251 (2008) 305-313):
+#   F   = 27.64684641 cm^-1   (internal rotation constant)
+#   rho = 0.8102062230        (coupling parameter, dimensionless)
+#   V3  = 373.554746 cm^-1   (3-fold barrier)
+#   V6  = -1.319650 cm^-1    (6-fold correction)
+#
+# Potential convention (TorsionFourierPotential / direct Fourier form):
+#   V(a) = v0 + sum_n [ vcos_n*cos(n*a) + vsin_n*sin(n*a) ]
+#
+# RAM (1-cos) convention to this convention mapping:
+#   v0    = V3/2  + V6/2   =  186.117548
+#   vcos3 = -V3/2          = -186.777373
+#   vcos6 = -V6/2          =    0.659825
+#
+# n_basis: half-range of Fourier basis. Matrix size = 2*n_basis + 1.
+#   n_basis=10 → 21 basis functions. Increase for higher barriers.
+#
+# symmetry_mode: 'c3' enables A/E symmetry labeling and block output.
+#   Valid values: 'c3' (or '3fold', 'threefold'), null (no labeling).
+#
+# Phase-1 completeness terms (diagonal approximations):
+#   F4, F6  : higher-order kinetic terms in (m - rho*K)^4, ^6
+#   c_mk    : linear torsion-rotation coupling m*K
+#   c_k2    : K^2 correction
+#
+# F_alpha block: coordinate-dependent effective torsion constant.
+#   f0      : mean value (required, positive)
+#   fcos/fsin: Fourier harmonics of F(alpha)
+#
 torsion_hamiltonian:
-  enabled: false
+  enabled: true
   F: 27.64684641
   rho: 0.8102062230
   n_basis: 10
@@ -107,15 +122,72 @@ torsion_hamiltonian:
   J_values: [0, 1, 2]
   K_values: [0, 1]
   units: cm-1
+  symmetry_mode: c3         # A/E symmetry labeling for 3-fold barrier
+  label_levels: true        # attach symmetry labels to each level row
+  export_symmetry_blocks: false  # set true to diagonalize A/E1/E2 blocks separately
   potential:
     v0: 186.117548
     vcos: {3: -186.777373, 6: 0.659825}
     vsin: {}
-  # Optional Phase-3 objective targets:
-  # use_in_selection: true
+
+  # Phase-1 completeness terms (all zero by default — enable if fitting):
+  # F4: 0.0
+  # F6: 0.0
+  # c_mk: 0.0
+  # c_k2: 0.0
+
+  # Coordinate-dependent F(alpha) (optional):
+  # F_alpha:
+  #   f0: 27.64684641
+  #   fcos: {3: 0.2}    # small 3-fold modulation of F
+  #   fsin: {}
+
+  # Objective targets (compare predicted levels to observed — enable for fitting):
+  use_in_selection: false
   # selection_weight: 0.01
   # targets:
-  #   - {J: 0, K: 0, level_index: 0, energy_cm-1: 12.34}
+  #   - {J: 0, K: 0, level_index: 0, energy_cm-1: 0.0}    # vt=0 A ground
+  #   - {J: 0, K: 0, level_index: 1, energy_cm-1: 9.12}   # vt=0 E ground (tunnel split)
+
+  # Transition targets (observed transition frequencies in cm^-1):
+  # transitions:
+  #   - {J_lo: 0, K_lo: 0, level_lo: 0, J_hi: 1, K_hi: 0, level_hi: 0, freq_cm-1: 1.053}
+
+  # Parameter uncertainty (enable when targets are supplied):
+  uncertainty:
+    enabled: false
+    include_completeness: false
+    damping: 1.0e-8
+    rank_tol: 1.0e-10
+    default_sigma_cm1: 1.0
+
+  # Phase-2 scan averaging (supply a torsion scan to average A/B/C):
+  # scan:
+  #   name: methanol_scan
+  #   angle_unit: degrees
+  #   energy_unit: hartree
+  #   mode: quantum           # 'quantum', 'quantum_thermal', or 'boltzmann'
+  #   periodic: true
+  #   atoms: [0, 1, 5, 2]    # atom indices defining the torsion dihedral (ORCA output order)
+  #   hindered_rotor_model:
+  #     name: CH3_rotor
+  #     symmetry_number: 3
+  #     rotational_constant_F: 27.64684641
+  #     fourier_terms: {3: 373.554746}
+  #     basis_size: 81         # odd, >= 3; basis_size = 2*n_basis+1 (hindered_rotor convention)
+  #   # Optional CSV ingestion for potential fitting:
+  #   # csv_path: scans/methanol_torsion.csv
+  #   # phi_col: phi_deg
+  #   # energy_col: energy_cm1
+  #   # csv_angle_unit: degrees
+  #   # csv_energy_unit: cm-1
+  #   fit_potential:           # Phase-2: fit Fourier coefficients from scan energies
+  #     enabled: false
+  #     n_harmonics: 3         # highest harmonic order to fit (1..n_harmonics)
+  #     symmetry_number: 3     # only harmonics divisible by this are included
+  #     cosine_only: true      # omit sin terms (Cs-symmetric rotor)
+  #     zero_at_minimum: true  # shift v0 so min(V)=0
+  #   grid_points: []          # fill with {phi, energy, geometry, rotational_constants}
 
 output:
   root: runs

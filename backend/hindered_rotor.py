@@ -1,14 +1,32 @@
 """
-First-pass 1D hindered-rotor utilities for torsional averaging.
+1D hindered-rotor utilities for torsional probability weighting.
 
-This module builds and solves a simplified 1D hindered-rotor Hamiltonian
-for an internal torsion coordinate phi and returns probability weights that
-can be used to average rotational constants over a torsion scan.
+Builds and solves a 1D hindered-rotor Hamiltonian H = -F d^2/dphi^2 + V(phi)
+in a Fourier plane-wave basis and returns probability weights for averaging
+rotational constants over a torsion scan.
 
-Important limitation:
-- This is not a full torsion-rotation Hamiltonian.
-- It does not model full rovibrational/tunneling splitting structure.
-- It is intended as an additive approximation layer.
+basis_size convention
+---------------------
+``basis_size`` is the **full** size of the |m> basis (must be odd, >= 3).
+  m values: [-(basis_size-1)//2, ..., 0, ..., (basis_size-1)//2]
+  M = (basis_size - 1) // 2
+
+Relation to torsion_hamiltonian.py's ``n_basis``:
+  n_basis   (torsion_hamiltonian) = (basis_size - 1) // 2 = M
+  basis_size (this module)        = 2 * n_basis + 1
+
+Potential convention
+--------------------
+V(phi) = sum_n (V_n / 2) * (1 - cos(n*phi))   [RAM-style (1-cos) form]
+
+The torsion_hamiltonian module uses a different direct-Fourier convention:
+  V(alpha) = V0 + sum_n [ Vcos_n*cos(n*alpha) + Vsin_n*sin(n*alpha) ]
+  mapping: V0 = sum_n V_n/2, Vcos_n = -V_n/2.
+
+Limitations:
+- 1D model only; not a full torsion-rotation Hamiltonian.
+- Does not model tunneling splittings or full rovibrational structure.
+- Intended as an additive averaging layer.
 """
 
 from __future__ import annotations
