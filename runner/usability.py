@@ -248,23 +248,460 @@ def _validate_rovibrational_corrections_block(cfg: dict[str, Any]) -> None:
         )
 
 
+_VALID_TORSION_SYMMETRY_MODES = {"c3", "3fold", "threefold", "none", "off", "null", ""}
+_VALID_SCAN_ANGLE_UNITS = {"degrees", "deg", "degree", "radians", "rad", "radian"}
+_VALID_SCAN_ENERGY_UNITS = {"cm-1", "cm_1", "hartree", "ha", "kcal/mol", "kcal", "kj/mol", "kj"}
+
+
 def _validate_torsion_block(cfg: dict[str, Any]) -> None:
+    """Validate the optional torsion_hamiltonian: block (Phase 0+1+2 fields)."""
     t = cfg.get("torsion_hamiltonian")
     if t is None:
         return
     if not isinstance(t, dict):
         raise ConfigError("'torsion_hamiltonian' must be a mapping/object.")
-    if "enabled" in t and not isinstance(t.get("enabled"), bool):
+
+    # --- enabled ---
+    enabled_raw = t.get("enabled")
+    if enabled_raw is not None and not isinstance(enabled_raw, bool):
         raise ConfigError("'torsion_hamiltonian.enabled' must be true or false.")
+    enabled = bool(enabled_raw) if enabled_raw is not None else False
+
+    # --- units ---
+    if "units" in t and str(t["units"]).strip().lower() != "cm-1":
+        raise ConfigError("'torsion_hamiltonian.units' must be 'cm-1'.")
+
+    # --- F required if enabled ---
+    if enabled and "F" not in t:
+        raise ConfigError("'torsion_hamiltonian.F' is required when enabled is true.")
+
+    # --- scalar numeric fields ---
+    for fkey in ("F", "rho", "F4", "F6", "c_mk", "c_k2"):
+        v = t.get(fkey)
+        if v is not None:
+            try:
+                float(v)
+            except (TypeError, ValueError) as exc:
+                raise ConfigError(f"'torsion_hamiltonian.{fkey}' must be numeric.") from exc
+
+    # --- positive integer fields ---
+    for ikey in ("n_basis", "n_levels"):
+        v = t.get(ikey)
+        if v is not None:
+            try:
+                iv = int(v)
+            except (TypeError, ValueError) as exc:
+                raise ConfigError(f"'torsion_hamiltonian.{ikey}' must be an integer.") from exc
+            if iv < 1:
+                raise ConfigError(f"'torsion_hamiltonian.{ikey}' must be >= 1.")
+
+    # --- J_values, K_values ---
+    for jkkey in ("J_values", "K_values"):
+        v = t.get(jkkey)
+        if v is not None:
+            if not isinstance(v, list):
+                raise ConfigError(f"'torsion_hamiltonian.{jkkey}' must be a list.")
+            for i, jkv in enumerate(v):
+                try:
+                    iv = int(jkv)
+                except (TypeError, ValueError) as exc:
+                    raise ConfigError(f"'torsion_hamiltonian.{jkkey}[{i}]' must be an integer.") from exc
+                if iv < 0:
+                    raise ConfigError(f"'torsion_hamiltonian.{jkkey}[{i}]' must be >= 0.")
+
+    # --- symmetry_mode ---
+    sym = t.get("symmetry_mode")
+    if sym is not None and str(sym).strip().lower() not in _VALID_TORSION_SYMMETRY_MODES:
+        raise ConfigError(
+            f"'torsion_hamiltonian.symmetry_mode' must be one of "
+            f"{sorted(_VALID_TORSION_SYMMETRY_MODES)} or null."
+        )
+
+    # --- boolean flags ---
+    for bool_key in ("label_levels", "export_symmetry_blocks", "use_in_selection"):
+        v = t.get(bool_key)
+        if v is not None and not isinstance(v, bool):
+            raise ConfigError(f"'torsion_hamiltonian.{bool_key}' must be true or false.")
+
+    # --- selection_weight ---
+    sw = t.get("selection_weight")
+    if sw is not None:
+        try:
+            sw_f = float(sw)
+        except (TypeError, ValueError) as exc:
+            raise ConfigError("'torsion_hamiltonian.selection_weight' must be numeric.") from exc
+        if sw_f <= 0.0:
+            raise ConfigError("'torsion_hamiltonian.selection_weight' must be positive.")
+
+    # --- potential block ---
+    pot = t.get("potential")
+    if pot is not None:
+        if not isinstance(pot, dict):
+            raise ConfigError("'torsion_hamiltonian.potential' must be a mapping/object.")
+        if "v0" in pot:
+            try:
+                float(pot["v0"])
+            except (TypeError, ValueError) as exc:
+                raise ConfigError("'torsion_hamiltonian.potential.v0' must be numeric.") from exc
+        for vc_key in ("vcos", "vsin"):
+            vc = pot.get(vc_key)
+            if vc is not None:
+                if not isinstance(vc, dict):
+                    raise ConfigError(f"'torsion_hamiltonian.potential.{vc_key}' must be a mapping.")
+                for k, v in vc.items():
+                    try:
+                        ki = int(k)
+                    except (TypeError, ValueError) as exc:
+                        raise ConfigError(
+                            f"'torsion_hamiltonian.potential.{vc_key}' keys must be integers, got {k!r}."
+                        ) from exc
+                    if ki <= 0:
+                        raise ConfigError(
+                            f"'torsion_hamiltonian.potential.{vc_key}' keys must be positive integers."
+                        )
+                    try:
+                        float(v)
+                    except (TypeError, ValueError) as exc:
+                        raise ConfigError(
+                            f"'torsion_hamiltonian.potential.{vc_key}[{k}]' must be numeric."
+                        ) from exc
+
+    # --- F_alpha block ---
+    fa = t.get("F_alpha")
+    if fa is not None:
+        if not isinstance(fa, dict):
+            raise ConfigError("'torsion_hamiltonian.F_alpha' must be a mapping/object.")
+        if "f0" not in fa:
+            raise ConfigError("'torsion_hamiltonian.F_alpha.f0' is required.")
+        try:
+            f0_val = float(fa["f0"])
+        except (TypeError, ValueError) as exc:
+            raise ConfigError("'torsion_hamiltonian.F_alpha.f0' must be numeric.") from exc
+        if f0_val <= 0.0:
+            raise ConfigError(
+                "'torsion_hamiltonian.F_alpha.f0' must be positive (mean torsion constant)."
+            )
+        for fa_vc in ("fcos", "fsin"):
+            vc = fa.get(fa_vc)
+            if vc is not None:
+                if not isinstance(vc, dict):
+                    raise ConfigError(f"'torsion_hamiltonian.F_alpha.{fa_vc}' must be a mapping.")
+                for k, v in vc.items():
+                    try:
+                        int(k)
+                    except (TypeError, ValueError) as exc:
+                        raise ConfigError(
+                            f"'torsion_hamiltonian.F_alpha.{fa_vc}' keys must be integers."
+                        ) from exc
+                    try:
+                        float(v)
+                    except (TypeError, ValueError) as exc:
+                        raise ConfigError(
+                            f"'torsion_hamiltonian.F_alpha.{fa_vc}[{k}]' must be numeric."
+                        ) from exc
+
+    # --- targets list ---
+    targets = t.get("targets")
+    if targets is not None:
+        if not isinstance(targets, list):
+            raise ConfigError("'torsion_hamiltonian.targets' must be a list.")
+        for ti, targ in enumerate(targets):
+            if not isinstance(targ, dict):
+                raise ConfigError(f"'torsion_hamiltonian.targets[{ti}]' must be a mapping/object.")
+            for req_key in ("J", "K"):
+                if req_key not in targ:
+                    raise ConfigError(f"'torsion_hamiltonian.targets[{ti}].{req_key}' is required.")
+                try:
+                    iv = int(targ[req_key])
+                except (TypeError, ValueError) as exc:
+                    raise ConfigError(
+                        f"'torsion_hamiltonian.targets[{ti}].{req_key}' must be an integer."
+                    ) from exc
+                if iv < 0:
+                    raise ConfigError(
+                        f"'torsion_hamiltonian.targets[{ti}].{req_key}' must be >= 0."
+                    )
+            if "level_index" not in targ:
+                raise ConfigError(f"'torsion_hamiltonian.targets[{ti}].level_index' is required.")
+            try:
+                li = int(targ["level_index"])
+            except (TypeError, ValueError) as exc:
+                raise ConfigError(
+                    f"'torsion_hamiltonian.targets[{ti}].level_index' must be an integer."
+                ) from exc
+            if li < 0:
+                raise ConfigError(
+                    f"'torsion_hamiltonian.targets[{ti}].level_index' must be >= 0."
+                )
+            if "energy_cm-1" not in targ:
+                raise ConfigError(f"'torsion_hamiltonian.targets[{ti}].energy_cm-1' is required.")
+            try:
+                float(targ["energy_cm-1"])
+            except (TypeError, ValueError) as exc:
+                raise ConfigError(
+                    f"'torsion_hamiltonian.targets[{ti}].energy_cm-1' must be numeric."
+                ) from exc
+
+    # --- transitions list ---
+    transitions = t.get("transitions")
+    if transitions is not None:
+        if not isinstance(transitions, list):
+            raise ConfigError("'torsion_hamiltonian.transitions' must be a list.")
+        for ti, trans in enumerate(transitions):
+            if not isinstance(trans, dict):
+                raise ConfigError(
+                    f"'torsion_hamiltonian.transitions[{ti}]' must be a mapping/object."
+                )
+            for req_key in ("J_lo", "K_lo", "level_lo", "J_hi", "K_hi", "level_hi"):
+                if req_key not in trans:
+                    raise ConfigError(
+                        f"'torsion_hamiltonian.transitions[{ti}].{req_key}' is required."
+                    )
+                try:
+                    float(trans[req_key])
+                except (TypeError, ValueError) as exc:
+                    raise ConfigError(
+                        f"'torsion_hamiltonian.transitions[{ti}].{req_key}' must be numeric."
+                    ) from exc
+            # freq_cm-1 or freq_mhz required (Phase 4: allow MHz input)
+            has_freq = "freq_cm-1" in trans or "freq_mhz" in trans
+            if not has_freq:
+                raise ConfigError(
+                    f"'torsion_hamiltonian.transitions[{ti}]' must have 'freq_cm-1' or 'freq_mhz'."
+                )
+            for freq_key in ("freq_cm-1", "freq_mhz"):
+                v = trans.get(freq_key)
+                if v is not None:
+                    try:
+                        float(v)
+                    except (TypeError, ValueError) as exc:
+                        raise ConfigError(
+                            f"'torsion_hamiltonian.transitions[{ti}].{freq_key}' must be numeric."
+                        ) from exc
+            # optional symmetry selection fields (Phase 4)
+            for sym_key in ("symmetry_lo", "symmetry_hi"):
+                v = trans.get(sym_key)
+                if v is not None and not isinstance(v, str):
+                    raise ConfigError(
+                        f"'torsion_hamiltonian.transitions[{ti}].{sym_key}' must be a string (e.g. 'A', 'E')."
+                    )
+            # optional per-transition uncertainty
+            sig = trans.get("sigma_cm-1")
+            if sig is not None:
+                try:
+                    sv = float(sig)
+                except (TypeError, ValueError) as exc:
+                    raise ConfigError(
+                        f"'torsion_hamiltonian.transitions[{ti}].sigma_cm-1' must be numeric."
+                    ) from exc
+                if sv <= 0.0:
+                    raise ConfigError(
+                        f"'torsion_hamiltonian.transitions[{ti}].sigma_cm-1' must be positive."
+                    )
+
+    # --- uncertainty block ---
+    unc = t.get("uncertainty")
+    if unc is not None:
+        if not isinstance(unc, dict):
+            raise ConfigError("'torsion_hamiltonian.uncertainty' must be a mapping/object.")
+        if "enabled" in unc and not isinstance(unc["enabled"], bool):
+            raise ConfigError("'torsion_hamiltonian.uncertainty.enabled' must be true or false.")
+        if "include_completeness" in unc and not isinstance(unc["include_completeness"], bool):
+            raise ConfigError(
+                "'torsion_hamiltonian.uncertainty.include_completeness' must be true or false."
+            )
+        for fkey in ("damping", "rank_tol", "default_sigma_cm1"):
+            v = unc.get(fkey)
+            if v is not None:
+                try:
+                    fv = float(v)
+                except (TypeError, ValueError) as exc:
+                    raise ConfigError(
+                        f"'torsion_hamiltonian.uncertainty.{fkey}' must be numeric."
+                    ) from exc
+                if fv <= 0.0:
+                    raise ConfigError(
+                        f"'torsion_hamiltonian.uncertainty.{fkey}' must be positive."
+                    )
+
+    # --- auto_assign block (Phase 5) ---
+    aa = t.get("auto_assign")
+    if aa is not None:
+        if not isinstance(aa, dict):
+            raise ConfigError("'torsion_hamiltonian.auto_assign' must be a mapping/object.")
+        if "enabled" in aa and not isinstance(aa["enabled"], bool):
+            raise ConfigError("'torsion_hamiltonian.auto_assign.enabled' must be true or false.")
+        if "method" in aa and str(aa["method"]).strip().lower() not in {"global", "greedy", "auto"}:
+            raise ConfigError("'torsion_hamiltonian.auto_assign.method' must be global, greedy, or auto.")
+        v = aa.get("max_delta_cm1")
+        if v is not None:
+            try:
+                fv = float(v)
+            except (TypeError, ValueError) as exc:
+                raise ConfigError(
+                    "'torsion_hamiltonian.auto_assign.max_delta_cm1' must be numeric."
+                ) from exc
+            if fv <= 0.0:
+                raise ConfigError(
+                    "'torsion_hamiltonian.auto_assign.max_delta_cm1' must be positive."
+                )
+        v = aa.get("ambiguity_tol_cm1")
+        if v is not None:
+            try:
+                fv = float(v)
+            except (TypeError, ValueError) as exc:
+                raise ConfigError(
+                    "'torsion_hamiltonian.auto_assign.ambiguity_tol_cm1' must be numeric."
+                ) from exc
+            if fv < 0.0:
+                raise ConfigError(
+                    "'torsion_hamiltonian.auto_assign.ambiguity_tol_cm1' must be >= 0."
+                )
+        obs = aa.get("observed_cm1")
+        if obs is not None:
+            if not isinstance(obs, list):
+                raise ConfigError(
+                    "'torsion_hamiltonian.auto_assign.observed_cm1' must be a list of energies."
+                )
+            for i, v in enumerate(obs):
+                try:
+                    float(v)
+                except (TypeError, ValueError) as exc:
+                    raise ConfigError(
+                        f"'torsion_hamiltonian.auto_assign.observed_cm1[{i}]' must be numeric."
+                    ) from exc
+
+    # --- fitting block (Phase 6) ---
+    fit = t.get("fitting")
+    if fit is not None:
+        if not isinstance(fit, dict):
+            raise ConfigError("'torsion_hamiltonian.fitting' must be a mapping/object.")
+        if "enabled" in fit and not isinstance(fit["enabled"], bool):
+            raise ConfigError("'torsion_hamiltonian.fitting.enabled' must be true or false.")
+        for bkey in ("use_levels", "use_transitions"):
+            v = fit.get(bkey)
+            if v is not None and not isinstance(v, bool):
+                raise ConfigError(f"'torsion_hamiltonian.fitting.{bkey}' must be true or false.")
+        mi = fit.get("max_iter")
+        if mi is not None:
+            try:
+                iv = int(mi)
+            except (TypeError, ValueError) as exc:
+                raise ConfigError(
+                    "'torsion_hamiltonian.fitting.max_iter' must be an integer."
+                ) from exc
+            if iv < 1:
+                raise ConfigError("'torsion_hamiltonian.fitting.max_iter' must be >= 1.")
+        for fkey in ("xtol", "ftol", "damping"):
+            v = fit.get(fkey)
+            if v is not None:
+                try:
+                    fv = float(v)
+                except (TypeError, ValueError) as exc:
+                    raise ConfigError(
+                        f"'torsion_hamiltonian.fitting.{fkey}' must be numeric."
+                    ) from exc
+                if fv <= 0.0:
+                    raise ConfigError(
+                        f"'torsion_hamiltonian.fitting.{fkey}' must be positive."
+                    )
+        params = fit.get("params")
+        if params is not None:
+            if not isinstance(params, list):
+                raise ConfigError("'torsion_hamiltonian.fitting.params' must be a list of parameter names.")
+            for i, pn in enumerate(params):
+                if not isinstance(pn, str) or not str(pn).strip():
+                    raise ConfigError(
+                        f"'torsion_hamiltonian.fitting.params[{i}]' must be a non-empty string."
+                    )
+        for map_key in ("bounds", "priors"):
+            if map_key in fit and fit[map_key] is not None and not isinstance(fit[map_key], dict):
+                raise ConfigError(f"'torsion_hamiltonian.fitting.{map_key}' must be a mapping/object.")
+        stages = fit.get("stages")
+        if stages is not None:
+            if not isinstance(stages, list):
+                raise ConfigError("'torsion_hamiltonian.fitting.stages' must be a list.")
+            for i, stage in enumerate(stages):
+                if not isinstance(stage, dict):
+                    raise ConfigError(f"'torsion_hamiltonian.fitting.stages[{i}]' must be a mapping/object.")
+
+    # --- geometry_coupling block (Phase 7) ---
+    gc = t.get("geometry_coupling")
+    if gc is not None:
+        if not isinstance(gc, dict):
+            raise ConfigError("'torsion_hamiltonian.geometry_coupling' must be a mapping/object.")
+        if "enabled" in gc and not isinstance(gc["enabled"], bool):
+            raise ConfigError("'torsion_hamiltonian.geometry_coupling.enabled' must be true or false.")
+        top = gc.get("top_indices")
+        if top is not None:
+            if not isinstance(top, list) or not top:
+                raise ConfigError(
+                    "'torsion_hamiltonian.geometry_coupling.top_indices' must be a non-empty list of integers."
+                )
+            for i, t_idx in enumerate(top):
+                try:
+                    int(t_idx)
+                except (TypeError, ValueError) as exc:
+                    raise ConfigError(
+                        f"'torsion_hamiltonian.geometry_coupling.top_indices[{i}]' must be an integer."
+                    ) from exc
+        axis = gc.get("axis_atom_indices")
+        if axis is not None:
+            if not isinstance(axis, (list, tuple)) or len(axis) != 2:
+                raise ConfigError(
+                    "'torsion_hamiltonian.geometry_coupling.axis_atom_indices' must be a 2-element list of integers."
+                )
+            for i, a_idx in enumerate(axis):
+                try:
+                    int(a_idx)
+                except (TypeError, ValueError) as exc:
+                    raise ConfigError(
+                        f"'torsion_hamiltonian.geometry_coupling.axis_atom_indices[{i}]' must be an integer."
+                    ) from exc
+        dx = gc.get("dx_ang")
+        if dx is not None:
+            try:
+                dxv = float(dx)
+            except (TypeError, ValueError) as exc:
+                raise ConfigError(
+                    "'torsion_hamiltonian.geometry_coupling.dx_ang' must be numeric."
+                ) from exc
+            if dxv <= 0.0:
+                raise ConfigError("'torsion_hamiltonian.geometry_coupling.dx_ang' must be positive.")
+
+    # --- scan block ---
     scan = t.get("scan")
     if scan is None:
         return
     if not isinstance(scan, dict):
         raise ConfigError("'torsion_hamiltonian.scan' must be a mapping/object.")
+
+    au = scan.get("angle_unit")
+    if au is not None and str(au).strip().lower() not in _VALID_SCAN_ANGLE_UNITS:
+        raise ConfigError(
+            "'torsion_hamiltonian.scan.angle_unit' must be 'degrees' or 'radians'."
+        )
+    eu = scan.get("energy_unit")
+    if eu is not None and str(eu).strip().lower() not in _VALID_SCAN_ENERGY_UNITS:
+        raise ConfigError(
+            "'torsion_hamiltonian.scan.energy_unit' must be one of: cm-1, hartree, kcal/mol, kj/mol."
+        )
+    per = scan.get("periodic")
+    if per is not None and not isinstance(per, bool):
+        raise ConfigError("'torsion_hamiltonian.scan.periodic' must be true or false.")
+
     gps = scan.get("grid_points")
-    if gps is None or not isinstance(gps, list) or len(gps) == 0:
+    csv_path = scan.get("csv_path") or scan.get("path")
+    if csv_path is not None and not isinstance(csv_path, (str, Path)):
+        raise ConfigError("'torsion_hamiltonian.scan.csv_path' must be a path string.")
+    if gps is None:
+        if not csv_path:
+            raise ConfigError("'torsion_hamiltonian.scan.grid_points' must be a non-empty list.")
+    elif not isinstance(gps, list):
+        raise ConfigError("'torsion_hamiltonian.scan.grid_points' must be a list.")
+    elif len(gps) == 0 and not csv_path:
         raise ConfigError("'torsion_hamiltonian.scan.grid_points' must be a non-empty list.")
-    for i, gp in enumerate(gps):
+    for i, gp in enumerate(gps or []):
         if not isinstance(gp, dict):
             raise ConfigError(f"'torsion_hamiltonian.scan.grid_points[{i}]' must be a mapping/object.")
         if "phi" not in gp:
@@ -275,10 +712,21 @@ def _validate_torsion_block(cfg: dict[str, Any]) -> None:
             raise ConfigError(
                 f"'torsion_hamiltonian.scan.grid_points[{i}].phi' must be numeric."
             ) from exc
+        if "energy" in gp and gp["energy"] is not None:
+            try:
+                float(gp["energy"])
+            except (TypeError, ValueError) as exc:
+                raise ConfigError(
+                    f"'torsion_hamiltonian.scan.grid_points[{i}].energy' must be numeric."
+                ) from exc
+
     mode = str(scan.get("mode", "quantum")).strip().lower()
-    if mode not in {"quantum", "boltzmann"}:
-        raise ConfigError("'torsion_hamiltonian.scan.mode' must be 'quantum' or 'boltzmann'.")
-    if mode == "quantum":
+    if mode not in {"quantum", "boltzmann", "quantum_thermal", "thermal_quantum"}:
+        raise ConfigError(
+            "'torsion_hamiltonian.scan.mode' must be 'quantum', 'boltzmann', or 'quantum_thermal'."
+        )
+    has_grid_points = isinstance(gps, list) and len(gps) > 0
+    if mode in {"quantum", "quantum_thermal", "thermal_quantum"} and has_grid_points:
         hr = scan.get("hindered_rotor_model")
         if hr is None or not isinstance(hr, dict):
             raise ConfigError(
@@ -286,7 +734,62 @@ def _validate_torsion_block(cfg: dict[str, Any]) -> None:
             )
         if hr.get("rotational_constant_F") is None:
             raise ConfigError(
-                "'torsion_hamiltonian.scan.hindered_rotor_model.rotational_constant_F' is required in quantum mode."
+                "'torsion_hamiltonian.scan.hindered_rotor_model.rotational_constant_F'"
+                " is required in quantum mode."
+            )
+
+    # --- preprocess block (Phase 3) ---
+    pp = scan.get("preprocess")
+    if pp is not None:
+        if not isinstance(pp, dict):
+            raise ConfigError("'torsion_hamiltonian.scan.preprocess' must be a mapping/object.")
+        for bkey in ("sort", "deduplicate", "extend_by_symmetry"):
+            v = pp.get(bkey)
+            if v is not None and not isinstance(v, bool):
+                raise ConfigError(
+                    f"'torsion_hamiltonian.scan.preprocess.{bkey}' must be true or false."
+                )
+        tol = pp.get("endpoint_tol_rad")
+        if tol is not None:
+            try:
+                tv = float(tol)
+            except (TypeError, ValueError) as exc:
+                raise ConfigError(
+                    "'torsion_hamiltonian.scan.preprocess.endpoint_tol_rad' must be numeric."
+                ) from exc
+            if tv <= 0.0:
+                raise ConfigError(
+                    "'torsion_hamiltonian.scan.preprocess.endpoint_tol_rad' must be positive."
+                )
+
+    # --- fit_potential block (Phase 2) ---
+    fp = scan.get("fit_potential")
+    if fp is None or fp is False:
+        return
+    if fp is True:
+        return
+    if not isinstance(fp, dict):
+        raise ConfigError("'torsion_hamiltonian.scan.fit_potential' must be a mapping or bool.")
+    if "enabled" in fp and not isinstance(fp["enabled"], bool):
+        raise ConfigError("'torsion_hamiltonian.scan.fit_potential.enabled' must be true or false.")
+    for ikey in ("n_harmonics", "symmetry_number"):
+        v = fp.get(ikey)
+        if v is not None:
+            try:
+                iv = int(v)
+            except (TypeError, ValueError) as exc:
+                raise ConfigError(
+                    f"'torsion_hamiltonian.scan.fit_potential.{ikey}' must be an integer."
+                ) from exc
+            if iv < 1:
+                raise ConfigError(
+                    f"'torsion_hamiltonian.scan.fit_potential.{ikey}' must be >= 1."
+                )
+    for bkey in ("cosine_only", "zero_at_minimum"):
+        v = fp.get(bkey)
+        if v is not None and not isinstance(v, bool):
+            raise ConfigError(
+                f"'torsion_hamiltonian.scan.fit_potential.{bkey}' must be true or false."
             )
 
 
