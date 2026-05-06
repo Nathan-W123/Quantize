@@ -1,15 +1,33 @@
 """
-Phase-1 torsion-rotation Hamiltonian scaffold (RAM-lite).
+RAM-lite: Reduced-Axis-Method torsion-rotation Hamiltonian scaffold.
 
-This module is intentionally scoped as a first implementation:
-  - 1D torsional basis (|m> Fourier basis)
-  - periodic potential V(alpha) represented by cosine/sine Fourier terms
-  - reduced-axis-method-like diagonal coupling via (m - rho*K)^2
-  - optional rigid-rotor baseline energy for a chosen (J, K)
+This module implements a 1D RAM-lite Hamiltonian used as a first-pass
+torsional model. It is intentionally scoped:
+  - 1D Fourier basis: |m> states with m = -n_basis, ..., +n_basis
+  - Periodic potential V(alpha) as cosine/sine Fourier series
+  - Diagonal kinetic coupling via F*(m - rho*K)^2 (and optional F4/F6 terms)
+  - Optional C3 symmetry labeling via residue decomposition
+  - Not a full global RAM/IAM tensor-operator treatment
 
-It does NOT yet implement a complete global torsion-rotation fit, assignment,
-or full tensor coupling structure. The goal is a stable, testable foundation
-for later phases.
+n_basis convention
+------------------
+``n_basis`` is the **half-range** integer. The basis has size ``2*n_basis + 1``
+and m values: [-n_basis, -n_basis+1, ..., 0, ..., n_basis-1, n_basis].
+
+Relation to hindered_rotor.py's ``basis_size``:
+  basis_size (full odd size) = 2 * n_basis + 1
+  n_basis                    = (basis_size - 1) // 2
+
+Potential convention
+--------------------
+V(alpha) = V0 + sum_n [ Vcos_n * cos(n*alpha) + Vsin_n * sin(n*alpha) ]
+
+The hindered_rotor module uses a different RAM-style convention:
+  V(phi) = sum_n (V_n / 2) * (1 - cos(n*phi))
+which maps as: V0 = sum_n V_n/2, Vcos_n = -V_n/2.
+
+Later phases will add full torsion-rotation tensor coupling, assignment,
+and global fitting capability.
 """
 
 from __future__ import annotations
@@ -39,26 +57,26 @@ class TorsionHamiltonianSpec:
     """
     RAM-lite Hamiltonian specification for a single block (J, K).
 
-    Phase-1 operator model (diagonal kinetic/coupling extension):
+    Operator model (diagonal kinetic/coupling extension):
       H = E_rot(J,K)
-          + F * x^2
+          + F * x^2          [or F(alpha)*x^2 if F_alpha is set]
           + F4 * x^4
           + F6 * x^6
           + c_mk * m * K
           + c_k2 * K^2
           + V(alpha)
-      where x = (m - rho*K).
+      where x = (m - rho*K), m from basis.
 
-    Notes:
-      - This remains a simplified diagonal-in-|m> kinetic/coupling model.
-      - It is useful for controlled completeness upgrades, but is not a full
-        global RAM/IAM tensor-operator implementation.
+    Basis (n_basis convention):
+      m values: [-n_basis, ..., +n_basis], matrix size = 2*n_basis + 1.
+      Equivalent hindered_rotor basis_size = 2*n_basis + 1.
 
     Units:
-      - potential and energies in cm^-1 by default
-      - rotational constants in cm^-1
+      - all energies and rotational constants in cm^-1
       - F, F4, F6, c_mk, c_k2 in cm^-1
       - rho dimensionless
+
+    This is a diagonal-in-|m> approximation, not a full RAM/IAM tensor treatment.
     """
 
     F: float
@@ -697,4 +715,198 @@ def assign_levels_by_keys(
         "unmatched_predicted": sorted(unmatched_pred),
         "unmatched_target": sorted(unmatched_targ),
         "key_priority_used": key_specs,
+    }
+
+
+def auto_assign_levels_by_proximity(
+    predicted_rows: list[dict],
+    observed_energies_cm1: list[float],
+    *,
+    max_delta_cm1: float = float("inf"),
+    symmetry_filter: Optional[str] = None,
+    method: str = "global",
+    ambiguity_tol_cm1: float = 0.05,
+) -> dict:
+    """
+    Assign observed energies to predicted levels by energy proximity.
+
+    Uses a global minimum-cost assignment by default, falling back to the
+    historical greedy nearest-neighbour method for large candidate sets.
+    Optionally restricted to levels matching a symmetry label.
+
+    Parameters
+    ----------
+    predicted_rows : list of dicts with 'energy_cm-1' and optional
+                     'J', 'K', 'level_index', 'symmetry_label' keys
+    observed_energies_cm1 : observed energies to assign
+    max_delta_cm1 : maximum allowed |predicted - observed| for a match;
+                    unmatched entries are flagged in the output
+    symmetry_filter : if given, only consider predicted rows whose
+                      'symmetry_label' equals this string (e.g. 'A' or 'E')
+    method : 'global' (default), 'greedy', or 'auto'
+    ambiguity_tol_cm1 : warn when another candidate is this close to the
+                        selected candidate's absolute residual
+
+    Returns
+    -------
+    dict with:
+      assignments : list of dicts — one per observed energy, each with:
+          observed_cm-1, predicted_cm-1, delta_cm-1, predicted_row_index,
+          matched (bool), symmetry_label (if available)
+      rms_cm-1 : float — RMS over matched assignments (inf if none)
+      n_matched : int
+      n_unmatched : int
+      warnings : list[str]
+    """
+    obs = np.asarray([float(e) for e in observed_energies_cm1], dtype=float).ravel()
+    warnings: list[str] = []
+
+    # Filter candidate predicted rows by symmetry if requested.
+    candidate_indices = [
+        i for i, r in enumerate(predicted_rows)
+        if (symmetry_filter is None or
+            str(r.get("symmetry_label", "")).upper() == str(symmetry_filter).upper())
+        and "energy_cm-1" in r
+    ]
+    if not candidate_indices:
+        return {
+            "assignments": [],
+            "rms_cm-1": float("inf"),
+            "n_matched": 0,
+            "n_unmatched": int(obs.size),
+            "method_used": str(method or "global").strip().lower(),
+            "warnings": ["No predicted rows available for proximity assignment."],
+        }
+
+    pred_e = np.asarray(
+        [float(predicted_rows[i]["energy_cm-1"]) for i in candidate_indices], dtype=float
+    )
+
+    method_l = str(method or "global").strip().lower()
+    if method_l not in {"global", "greedy", "auto"}:
+        warnings.append(f"Unknown auto assignment method '{method}'; using global.")
+        method_l = "global"
+    if method_l == "auto":
+        method_l = "global" if len(candidate_indices) <= 18 else "greedy"
+    if method_l == "global" and len(candidate_indices) > 18:
+        warnings.append(
+            "Global proximity assignment skipped because more than 18 candidate levels "
+            "were available; using greedy assignment."
+        )
+        method_l = "greedy"
+
+    obs_order = np.argsort(obs, kind="stable")
+    assignments_by_obs_idx: dict[int, dict] = {}
+
+    matched_pairs: list[tuple[int, int]] = []
+    if method_l == "global":
+        n_obs = len(obs_order)
+        n_pred = len(candidate_indices)
+        inf = float("inf")
+        dp: dict[tuple[int, int], tuple[float, list[tuple[int, int]]]] = {
+            (0, 0): (0.0, [])
+        }
+        for pos in range(n_obs):
+            next_dp: dict[tuple[int, int], tuple[float, list[tuple[int, int]]]] = {}
+            obs_idx = int(obs_order[pos])
+            obs_val = float(obs[obs_idx])
+            for (_old_pos, mask), (cost, pairs) in dp.items():
+                # Leave this observation unmatched with a finite penalty so the
+                # assignment can still complete when max_delta filters all rows.
+                penalty = float(max_delta_cm1)
+                if not np.isfinite(penalty):
+                    penalty = max(float(np.max(np.abs(pred_e - obs_val))) * 2.0, 1.0)
+                else:
+                    penalty = penalty * 1.000001
+                un_key = (pos + 1, mask)
+                un_cost = cost + penalty ** 2
+                if un_cost < next_dp.get(un_key, (inf, []))[0]:
+                    next_dp[un_key] = (un_cost, pairs)
+                for cand in range(n_pred):
+                    if mask & (1 << cand):
+                        continue
+                    delta = abs(float(pred_e[cand]) - obs_val)
+                    if delta > float(max_delta_cm1):
+                        continue
+                    key = (pos + 1, mask | (1 << cand))
+                    new_cost = cost + delta ** 2
+                    if new_cost < next_dp.get(key, (inf, []))[0]:
+                        next_dp[key] = (new_cost, pairs + [(obs_idx, cand)])
+            dp = next_dp
+        if dp:
+            _best_key, (_best_cost, matched_pairs) = min(dp.items(), key=lambda kv: kv[1][0])
+    else:
+        available = set(range(len(candidate_indices)))
+        for obs_idx in obs_order:
+            obs_val = float(obs[obs_idx])
+            if not available:
+                break
+            avail_list = sorted(available)
+            deltas = np.abs(pred_e[avail_list] - obs_val)
+            best_pos = int(np.argmin(deltas))
+            best_cand = avail_list[best_pos]
+            best_delta = float(deltas[best_pos])
+            if best_delta <= float(max_delta_cm1):
+                available.discard(best_cand)
+                matched_pairs.append((int(obs_idx), int(best_cand)))
+
+    matched_by_obs = {obs_idx: cand for obs_idx, cand in matched_pairs}
+    for obs_idx in range(obs.size):
+        obs_val = float(obs[obs_idx])
+        if int(obs_idx) not in matched_by_obs:
+            nearest_delta = float(np.min(np.abs(pred_e - obs_val))) if pred_e.size else float("inf")
+            warnings.append(
+                f"Observed energy {obs_val:.4f} cm^-1 has no match within "
+                f"{max_delta_cm1:.2f} cm^-1 (nearest delta={nearest_delta:.4f})."
+            )
+            assignments_by_obs_idx[int(obs_idx)] = {
+                "observed_cm-1": obs_val,
+                "predicted_cm-1": float("nan"),
+                "delta_cm-1": float("inf"),
+                "predicted_row_index": -1,
+                "matched": False,
+            }
+            continue
+        best_cand = int(matched_by_obs[int(obs_idx)])
+        best_delta = abs(float(pred_e[best_cand]) - obs_val)
+        pred_row_global = candidate_indices[best_cand]
+        pred_row = predicted_rows[pred_row_global]
+
+        entry: dict = {
+            "observed_cm-1": obs_val,
+            "predicted_cm-1": float(pred_e[best_cand]),
+            "delta_cm-1": best_delta,
+            "predicted_row_index": pred_row_global,
+            "matched": True,
+            "assignment_method": method_l,
+        }
+        for k in ("J", "K", "level_index", "symmetry_label", "symmetry_sublabel"):
+            if k in pred_row:
+                entry[k] = pred_row[k]
+        all_deltas = np.sort(np.abs(pred_e - obs_val))
+        if all_deltas.size > 1 and float(all_deltas[1] - all_deltas[0]) <= float(ambiguity_tol_cm1):
+            warnings.append(
+                f"Observed energy {obs_val:.4f} cm^-1 has ambiguous proximity assignment "
+                f"(nearest deltas differ by {float(all_deltas[1] - all_deltas[0]):.4f} cm^-1)."
+            )
+        assignments_by_obs_idx[int(obs_idx)] = entry
+
+    # Reassemble in original observation order.
+    assignments = [assignments_by_obs_idx.get(i, {
+        "observed_cm-1": float(obs[i]),
+        "predicted_cm-1": float("nan"),
+        "delta_cm-1": float("inf"),
+        "predicted_row_index": -1,
+        "matched": False,
+    }) for i in range(obs.size)]
+
+    matched_deltas = [r["delta_cm-1"] for r in assignments if r["matched"]]
+    rms = float(np.sqrt(np.mean(np.asarray(matched_deltas, dtype=float) ** 2))) if matched_deltas else float("inf")
+    return {
+        "assignments": assignments,
+        "rms_cm-1": rms,
+        "n_matched": int(len(matched_deltas)),
+        "n_unmatched": int(obs.size - len(matched_deltas)),
+        "method_used": method_l,
+        "warnings": warnings,
     }
