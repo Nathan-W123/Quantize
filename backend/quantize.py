@@ -57,6 +57,92 @@ from backend.internal_fit import (
 )
 
 
+def build_correction_from_iso(iso, method=None, basis=None, backend=None):
+    """Build a :class:`RovibCorrection` from isotopologue dict legacy/new fields.
+
+    This keeps backward compatibility for runs that provide correction vectors
+    directly on isotopologue inputs without an explicit `rovib_correction` object.
+    """
+    name = str(iso.get("name", "iso"))
+    corr = RovibCorrection(
+        isotopologue=name,
+        method=method,
+        basis=basis,
+        backend=backend,
+        source=str(iso.get("rovib_source", "iso_input")),
+        status="ok",
+    )
+
+    idx = np.asarray(
+        iso.get("component_indices", list(range(len(iso.get("obs_constants", []))))),
+        dtype=int,
+    )
+    alpha = np.asarray(iso.get("alpha_constants", np.zeros(len(idx))), dtype=float).ravel()
+    dv = iso.get("delta_vib_constants")
+    de = iso.get("delta_elec_constants")
+    db = iso.get("delta_bob_constants")
+    sc = iso.get("sigma_correction_constants")
+
+    def _pick(vec, k):
+        if vec is None:
+            return None
+        arr = np.asarray(vec, dtype=float).ravel()
+        if k >= arr.size:
+            return None
+        v = float(arr[k])
+        return v if np.isfinite(v) else None
+
+    for k, comp in enumerate(idx):
+        c = int(comp)
+        if c == 0:
+            if k < alpha.size and np.isfinite(alpha[k]):
+                corr.alpha_A = float(alpha[k])
+            v = _pick(dv, k)
+            if v is not None:
+                corr.delta_vib_A = v
+            v = _pick(de, k)
+            if v is not None:
+                corr.delta_elec_A = v
+            v = _pick(db, k)
+            if v is not None:
+                corr.delta_bob_A = v
+            v = _pick(sc, k)
+            if v is not None:
+                corr.sigma_delta_A = v
+        elif c == 1:
+            if k < alpha.size and np.isfinite(alpha[k]):
+                corr.alpha_B = float(alpha[k])
+            v = _pick(dv, k)
+            if v is not None:
+                corr.delta_vib_B = v
+            v = _pick(de, k)
+            if v is not None:
+                corr.delta_elec_B = v
+            v = _pick(db, k)
+            if v is not None:
+                corr.delta_bob_B = v
+            v = _pick(sc, k)
+            if v is not None:
+                corr.sigma_delta_B = v
+        elif c == 2:
+            if k < alpha.size and np.isfinite(alpha[k]):
+                corr.alpha_C = float(alpha[k])
+            v = _pick(dv, k)
+            if v is not None:
+                corr.delta_vib_C = v
+            v = _pick(de, k)
+            if v is not None:
+                corr.delta_elec_C = v
+            v = _pick(db, k)
+            if v is not None:
+                corr.delta_bob_C = v
+            v = _pick(sc, k)
+            if v is not None:
+                corr.sigma_delta_C = v
+
+    return corr
+
+
 def _find_orca(executable):
     """
     Resolve the ORCA executable to an absolute path.
@@ -860,6 +946,8 @@ class MolecularOptimizer:
     def _run_rovib_isotopologue_specific(self):
         """Run one ORCA VPT2 job per isotopologue, with mass overrides."""
         cache_dir = self.workdir
+        mode_norm = str(self.rovib_source_mode or "").strip().lower()
+        strict_mode = mode_norm.startswith("strict_")
         for iso in self.spectral.isotopologues:
             label = str(iso.get("name", "iso"))
             masses = np.asarray(iso["masses"], dtype=float)
@@ -874,9 +962,11 @@ class MolecularOptimizer:
             cached = load_cached_correction(cache_dir, cache_key, label)
             parsed_alpha = None
             warnings_list: list[str] = []
+            run_status = "unknown"
             if cached is not None:
                 parsed_alpha = cached.alpha_vector()
                 warnings_list = list(cached.warnings or [])
+                run_status = str(cached.status or "ok")
                 print(f"  [ORCA] Cache hit for isotopologue '{label}'.")
             else:
                 print(f"  [ORCA] Running VPT2 for isotopologue '{label}' (mass-overridden)...")
@@ -888,6 +978,7 @@ class MolecularOptimizer:
                     parsed = parse_orca_rovib(outp)
                     parsed_alpha = parsed.alpha_abc
                     warnings_list = list(parsed.warnings)
+                    run_status = str(parsed.parse_status or "unknown")
                     if parsed.parse_status == "parse_failed":
                         print(
                             f"  [ORCA] Warning: VPT2 parse failed for '{label}'; "
@@ -895,6 +986,7 @@ class MolecularOptimizer:
                         )
                 except Exception as exc:  # noqa: BLE001
                     warnings_list.append(f"VPT2 run failed: {exc}")
+                    run_status = "vpt2_failed"
                     print(f"  [ORCA] Warning: VPT2 run failed for '{label}': {exc}")
 
             idx = np.asarray(iso["component_indices"], dtype=int)
@@ -914,10 +1006,18 @@ class MolecularOptimizer:
                     backend="orca",
                 )
             except ValueError as e:
+                if strict_mode:
+                    raise RuntimeError(
+                        f"Strict rovib mode failed for isotopologue '{label}': {e}"
+                    ) from e
                 print(f"  [ORCA] Strict mode rejected isotopologue '{label}': {e}")
                 continue
 
             correction.warnings = list(correction.warnings) + warnings_list
+            if run_status not in ("", "unknown", None):
+                correction.status = run_status
+            if correction.status == "ok" and correction.warnings:
+                correction.status = "partial"
             correction.geometry_hash = cache_key
             iso["alpha_constants"] = resolved
             iso["rovib_correction"] = correction
@@ -997,6 +1097,8 @@ class MolecularOptimizer:
         else:
             parent_masses = None
 
+        mode_norm = str(self.rovib_source_mode or "").strip().lower()
+        strict_mode = mode_norm.startswith("strict_")
         for iso_idx, iso in enumerate(self.spectral.isotopologues):
             label = str(iso.get("name", f"iso_{iso_idx + 1}"))
             idx = np.asarray(iso["component_indices"], dtype=int)
@@ -1014,6 +1116,10 @@ class MolecularOptimizer:
                     backend="orca",
                 )
             except ValueError as e:
+                if strict_mode:
+                    raise RuntimeError(
+                        f"Strict rovib mode failed for isotopologue '{label}': {e}"
+                    ) from e
                 print(f"  [ORCA] Strict mode rejected isotopologue '{label}': {e}")
                 continue
             iso_warnings = list(warnings_list)
@@ -1031,6 +1137,10 @@ class MolecularOptimizer:
                     "parent-only VPT2 correction applied to non-parent isotopologue"
                 )
             correction.warnings = list(correction.warnings) + iso_warnings
+            if parsed.parse_status:
+                correction.status = str(parsed.parse_status)
+            if correction.status == "ok" and correction.warnings:
+                correction.status = "partial"
             iso["alpha_constants"] = resolved
             iso["rovib_correction"] = correction
             self._refresh_iso_delta_total(iso, correction)
@@ -1386,6 +1496,10 @@ class MolecularOptimizer:
                     alpha_q_eff=alpha_q_eff,
                     model_delta=model_delta,
                     backtransform_error=(_bt_err if self.coordinate_mode == "internal" else None),
+                    internal_rank=(rank if self.coordinate_mode == "internal" else None),
+                    internal_singular_values=(sv.tolist() if self.coordinate_mode == "internal" else None),
+                    dq_range_norm=(dx_range_norm if self.coordinate_mode == "internal" else None),
+                    dq_null_norm=(dx_null_norm if self.coordinate_mode == "internal" else None),
                     spectral_accept=spectral_accept,
                     quantum_accept=quantum_accept,
                     quantum_gate_active=quantum_gate_active,

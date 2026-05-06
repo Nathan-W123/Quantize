@@ -111,6 +111,22 @@ preset:    BALANCED
 rng_seed:  42
 write_xyz: false
 
+# ── Coordinate parameterization ───────────────────────────────────────────────
+# coordinate_mode:
+#   cartesian  — current default optimizer space
+#   internal   — optimize in bond/angle(/dihedral) space with dq→dx backtransform
+coordinate_mode: cartesian
+
+# Internal-coordinate controls (used when coordinate_mode: internal).
+internal_coordinates:
+  use_dihedrals: false
+  damping: 1.0e-6
+  microiterations: 20
+  prior_weight: 1.0
+  prior_sigma_bond: 0.04
+  prior_sigma_angle_deg: 2.0
+  prior_sigma_dihedral_deg: 15.0
+
 # Output management. When run through `python -m cli run ...` or
 # `python runner/run_from_config.py ...`, Quantize creates a timestamped run
 # directory under `root`, copies the input config, and writes reports, CSVs,
