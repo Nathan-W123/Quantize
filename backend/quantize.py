@@ -29,11 +29,21 @@ import numpy as np
 
 from backend.spectral import SpectralEngine, sanitize_isotopologues
 from backend.internal_prior import InternalPriorEngine
-from backend.rovib_corrections import resolve_alpha_components
+from backend.rovib_corrections import (
+    resolve_alpha_components,
+    build_correction_from_iso,
+)
+from backend.correction_models import COMPONENTS, RovibCorrection
+from backend.rovib_cache import (
+    make_rovib_cache_key,
+    load_cached_correction,
+    save_cached_correction,
+)
 from backend.autoconfig import AutoConfigEngine
 from backend.quantum import (
     QuantumEngine,
     parse_engrad,
+    parse_orca_rovib,
     parse_orca_rovib_alpha,
     _detect_bonds,
     _detect_angles,
@@ -232,6 +242,50 @@ class MolecularOptimizer:
         self.auto_sanitize_spectral = bool(auto_sanitize_spectral)
         self.sanitize_jacobian_row_norm_max = float(sanitize_jacobian_row_norm_max)
         self.sanitize_tiny_target_mhz = float(sanitize_tiny_target_mhz)
+        # Materialize per-iso RovibCorrection from user-supplied keys (deltas,
+        # alpha tables, sigma_correction). This populates delta_total upfront
+        # so the sanitizer carries it through cleanly.
+        prepped_isos = []
+        for iso in isotopologues:
+            iso_copy = dict(iso)
+            corr = iso_copy.get("rovib_correction")
+            if not isinstance(corr, RovibCorrection):
+                corr = build_correction_from_iso(
+                    iso_copy,
+                    method=orca_method,
+                    basis=orca_basis,
+                    backend=quantum_backend,
+                )
+            iso_copy["rovib_correction"] = corr
+            # Compute delta_total aligned to the iso's component_indices.
+            idx = np.asarray(
+                iso_copy.get(
+                    "component_indices",
+                    list(range(len(iso_copy.get("obs_constants", [])))),
+                ),
+                dtype=int,
+            )
+            total = corr.delta_total_vector()  # length 3
+            dt = np.full(len(idx), np.nan, dtype=float)
+            for k, comp in enumerate(idx):
+                c = int(comp)
+                if 0 <= c < 3 and np.isfinite(total[c]):
+                    dt[k] = float(total[c])
+            if np.any(np.isfinite(dt)):
+                iso_copy["delta_total_constants"] = dt
+            # sigma_correction_constants from the correction object (if any).
+            sd = corr.sigma_delta_vector()
+            sc = np.zeros(len(idx), dtype=float)
+            any_sc = False
+            for k, comp in enumerate(idx):
+                c = int(comp)
+                if 0 <= c < 3 and np.isfinite(sd[c]):
+                    sc[k] = float(sd[c])
+                    any_sc = True
+            if any_sc and "sigma_correction_constants" not in iso_copy:
+                iso_copy["sigma_correction_constants"] = sc
+            prepped_isos.append(iso_copy)
+        isotopologues = prepped_isos
         spectral_isotopologues = isotopologues
         if self.auto_sanitize_spectral:
             spectral_isotopologues, sanitize_notes = sanitize_isotopologues(
@@ -658,6 +712,178 @@ class MolecularOptimizer:
         self._orca_ref_coords = self.coords.copy()
         print(f"  [ORCA] Done.  Energy = {energy:.10f} Hartree")
 
+    # ── Isotopologue-specific VPT2 helpers ────────────────────────────────────
+
+    def _iso_rovib_inp_path(self, label):
+        safe = "".join(ch if ch.isalnum() or ch in ("-", "_", ".") else "_" for ch in str(label))
+        return os.path.join(self.workdir, f"quantize_orca_rovib_{safe}.inp")
+
+    def _iso_rovib_out_path(self, label):
+        safe = "".join(ch if ch.isalnum() or ch in ("-", "_", ".") else "_" for ch in str(label))
+        return os.path.join(self.workdir, f"quantize_orca_rovib_{safe}.out")
+
+    def _write_orca_rovib_input_for_iso(self, iso_masses, label):
+        """Write a VPT2 input that overrides per-atom masses for isotope substitution."""
+        method_line = f"{self.orca_method} {self.orca_basis}".strip()
+        lines = [f"! {method_line} TightSCF VPT2"]
+        lines += [
+            "%vpt2",
+            "  VPT2 On",
+            "  PrintLevel 2",
+            "  MinimiseOrcaPrint True",
+            "end",
+            "%method",
+            "  Z_Tol 1e-12",
+            "end",
+            "%pal",
+            "  nprocs 1",
+            "end",
+        ]
+        masses = np.asarray(iso_masses, dtype=float).ravel()
+        lines.append(f"* xyz {self.charge} {self.multiplicity}")
+        for elem, (x, y, z) in zip(self.elems, self.coords):
+            lines.append(f"  {elem:2s}  {x:16.10f}  {y:16.10f}  {z:16.10f}")
+        lines.append("*")
+        # Apply explicit isotope masses through %coords M block. Use the
+        # current geometry too so the block is self-contained for some ORCA
+        # versions that re-read coords from %coords.
+        lines.append("%coords")
+        lines.append(f"  CTyp xyz")
+        lines.append(f"  Charge {self.charge}")
+        lines.append(f"  Mult {self.multiplicity}")
+        lines.append("  Coords")
+        for (elem, (x, y, z)), m in zip(zip(self.elems, self.coords), masses):
+            lines.append(
+                f"    {elem:2s}  {x:16.10f}  {y:16.10f}  {z:16.10f}  M = {float(m):.8f}"
+            )
+        lines.append("  end")
+        lines.append("end\n")
+        os.makedirs(self.workdir, exist_ok=True)
+        with open(self._iso_rovib_inp_path(label), "w") as f:
+            f.write("\n".join(lines))
+
+    def _exec_orca_named(self, inp_path, out_path):
+        """Run ORCA on a specific input and capture its output to ``out_path``."""
+        if self._orca_exe is None:
+            raise RuntimeError(
+                "ORCA executable not found.  Provide orca_executable= or call load_orca()."
+            )
+        env = os.environ.copy()
+        orca_dir = os.path.dirname(os.path.abspath(self._orca_exe))
+        if orca_dir not in env.get("PATH", ""):
+            env["PATH"] = orca_dir + os.pathsep + env.get("PATH", "")
+        workdir = os.path.abspath(self.workdir)
+        inp_rel = os.path.basename(inp_path)
+        result = subprocess.run(
+            [self._orca_exe, inp_rel],
+            capture_output=True,
+            text=True,
+            cwd=workdir,
+            env=env,
+        )
+        os.makedirs(self.workdir, exist_ok=True)
+        with open(out_path, "w", encoding="utf-8", errors="ignore") as f:
+            f.write(result.stdout or "")
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"ORCA terminated with non-zero exit code while running rovib job '{inp_rel}'.\n"
+                f"--- ORCA stderr (last 3000 chars) ---\n{(result.stderr or '')[-3000:]}"
+            )
+
+    def _run_rovib_isotopologue_specific(self):
+        """Run one ORCA VPT2 job per isotopologue, with mass overrides."""
+        cache_dir = self.workdir
+        for iso in self.spectral.isotopologues:
+            label = str(iso.get("name", "iso"))
+            masses = np.asarray(iso["masses"], dtype=float)
+            cache_key = make_rovib_cache_key(
+                self.coords,
+                masses,
+                self.orca_method,
+                self.orca_basis,
+                "orca",
+                self.rovib_source_mode,
+            )
+            cached = load_cached_correction(cache_dir, cache_key, label)
+            parsed_alpha = None
+            warnings_list: list[str] = []
+            if cached is not None:
+                parsed_alpha = cached.alpha_vector()
+                warnings_list = list(cached.warnings or [])
+                print(f"  [ORCA] Cache hit for isotopologue '{label}'.")
+            else:
+                print(f"  [ORCA] Running VPT2 for isotopologue '{label}' (mass-overridden)...")
+                self._write_orca_rovib_input_for_iso(masses, label)
+                inp = self._iso_rovib_inp_path(label)
+                outp = self._iso_rovib_out_path(label)
+                try:
+                    self._exec_orca_named(inp, outp)
+                    parsed = parse_orca_rovib(outp)
+                    parsed_alpha = parsed.alpha_abc
+                    warnings_list = list(parsed.warnings)
+                    if parsed.parse_status == "parse_failed":
+                        print(
+                            f"  [ORCA] Warning: VPT2 parse failed for '{label}'; "
+                            "falling back to existing alpha."
+                        )
+                except Exception as exc:  # noqa: BLE001
+                    warnings_list.append(f"VPT2 run failed: {exc}")
+                    print(f"  [ORCA] Warning: VPT2 run failed for '{label}': {exc}")
+
+            idx = np.asarray(iso["component_indices"], dtype=int)
+            user_tbl = iso.get("rovib_table", None)
+            try:
+                resolved, correction = resolve_alpha_components(
+                    existing_alpha_by_component=iso.get(
+                        "alpha_constants", np.zeros(len(idx), dtype=float)
+                    ),
+                    component_indices=idx,
+                    parsed_alpha_abc=parsed_alpha,
+                    user_alpha_abc=user_tbl,
+                    mode=self.rovib_source_mode,
+                    isotopologue_name=label,
+                    method=self.orca_method,
+                    basis=self.orca_basis,
+                    backend="orca",
+                )
+            except ValueError as e:
+                print(f"  [ORCA] Strict mode rejected isotopologue '{label}': {e}")
+                continue
+
+            correction.warnings = list(correction.warnings) + warnings_list
+            correction.geometry_hash = cache_key
+            iso["alpha_constants"] = resolved
+            iso["rovib_correction"] = correction
+            self._refresh_iso_delta_total(iso, correction)
+            if cached is None and parsed_alpha is not None and np.isfinite(parsed_alpha).any():
+                try:
+                    save_cached_correction(cache_dir, cache_key, label, correction)
+                except OSError:
+                    pass
+
+    def _refresh_iso_delta_total(self, iso, correction: RovibCorrection):
+        """Compute delta_total_constants from a correction and store on iso."""
+        idx = np.asarray(iso["component_indices"], dtype=int)
+        total = correction.delta_total_vector()  # length 3
+        out = np.full(len(idx), np.nan, dtype=float)
+        for k, comp in enumerate(idx):
+            c = int(comp)
+            if 0 <= c < 3 and np.isfinite(total[c]):
+                out[k] = float(total[c])
+        if np.any(np.isfinite(out)):
+            iso["delta_total_constants"] = out
+        # Also fold sigma_delta -> sigma_correction_constants.
+        sd = correction.sigma_delta_vector()
+        sigma_corr = np.zeros(len(idx), dtype=float)
+        any_set = False
+        for k, comp in enumerate(idx):
+            c = int(comp)
+            if 0 <= c < 3 and np.isfinite(sd[c]):
+                sigma_corr[k] = float(sd[c])
+                any_set = True
+        if any_set:
+            iso["sigma_correction_constants"] = sigma_corr
+
     def _run_rovib(self):
         """
         Optional ORCA anharmonic run to extract alpha(A/B/C) and populate
@@ -665,19 +891,27 @@ class MolecularOptimizer:
         """
         if self.quantum_backend != "orca":
             return
-        print("  [ORCA] Running rovibrational correction calculation (AnFreq)...")
+        if self.rovib_source_mode == "orca_vpt2_isotopologue_specific":
+            self._run_rovib_isotopologue_specific()
+            return
+
+        print("  [ORCA] Running rovibrational correction calculation (VPT2)...")
         self._write_orca_input(job="rovib")
         self._exec_orca()
-        # Preserve the AnFreq output for debugging; later jobs overwrite quantize_orca.out.
+        # Preserve the rovib output for debugging; later jobs overwrite quantize_orca.out.
         try:
             shutil.copyfile(self._out_path(), self._rovib_out_path())
         except OSError:
             pass
-        alpha_abc = parse_orca_rovib_alpha(self._out_path())
-        if not np.isfinite(alpha_abc).any():
+        parsed = parse_orca_rovib(self._out_path())
+        alpha_abc = parsed.alpha_abc
+        warnings_list = list(parsed.warnings)
+        if parsed.parse_status == "parse_failed":
             vpt2_path = os.path.join(self.workdir, "quantize_orca.vpt2")
             if os.path.isfile(vpt2_path):
-                alpha_abc = parse_orca_rovib_alpha(vpt2_path)
+                parsed_fallback = parse_orca_rovib(vpt2_path)
+                alpha_abc = parsed_fallback.alpha_abc
+                warnings_list += list(parsed_fallback.warnings)
         if not np.isfinite(alpha_abc).any():
             print(
                 "  [ORCA] Warning: could not parse alpha constants from rovibrational output; "
@@ -686,17 +920,53 @@ class MolecularOptimizer:
                 f"{os.path.join(self.workdir, 'quantize_orca.vpt2')}"
             )
             return
-        for iso in self.spectral.isotopologues:
+
+        # Identify the parent isotopologue (assume index 0) so we can warn when
+        # a parent-only correction is broadcast onto isotopically-substituted ones.
+        if self.spectral.isotopologues:
+            parent_masses = np.asarray(
+                self.spectral.isotopologues[0]["masses"], dtype=float
+            )
+        else:
+            parent_masses = None
+
+        for iso_idx, iso in enumerate(self.spectral.isotopologues):
+            label = str(iso.get("name", f"iso_{iso_idx + 1}"))
             idx = np.asarray(iso["component_indices"], dtype=int)
             user_tbl = iso.get("rovib_table", None)
-            resolved = resolve_alpha_components(
-                existing_alpha_by_component=iso.get("alpha_constants", np.zeros(len(idx), dtype=float)),
-                component_indices=idx,
-                parsed_alpha_abc=alpha_abc,
-                user_alpha_abc=user_tbl,
-                mode=self.rovib_source_mode,
-            )
+            try:
+                resolved, correction = resolve_alpha_components(
+                    existing_alpha_by_component=iso.get("alpha_constants", np.zeros(len(idx), dtype=float)),
+                    component_indices=idx,
+                    parsed_alpha_abc=alpha_abc,
+                    user_alpha_abc=user_tbl,
+                    mode=self.rovib_source_mode,
+                    isotopologue_name=label,
+                    method=self.orca_method,
+                    basis=self.orca_basis,
+                    backend="orca",
+                )
+            except ValueError as e:
+                print(f"  [ORCA] Strict mode rejected isotopologue '{label}': {e}")
+                continue
+            iso_warnings = list(warnings_list)
+            iso_masses = np.asarray(iso["masses"], dtype=float)
+            if (
+                parent_masses is not None
+                and iso_idx > 0
+                and (
+                    iso_masses.shape != parent_masses.shape
+                    or not np.allclose(iso_masses, parent_masses)
+                )
+                and self.rovib_source_mode in ("hybrid_auto", "orca_only")
+            ):
+                iso_warnings.append(
+                    "parent-only VPT2 correction applied to non-parent isotopologue"
+                )
+            correction.warnings = list(correction.warnings) + iso_warnings
             iso["alpha_constants"] = resolved
+            iso["rovib_correction"] = correction
+            self._refresh_iso_delta_total(iso, correction)
         print(f"  [ORCA] Updated isotopologue alpha_constants using mode={self.rovib_source_mode}.")
 
     def _update_orca(self):
@@ -1173,7 +1443,7 @@ class MolecularOptimizer:
             calc_all = self.spectral.rotational_constants(self.coords, iso["masses"])
             idx = iso["component_indices"]
             calc = calc_all[idx]
-            target = iso["obs_constants"] + 0.5 * iso["alpha_constants"]
+            target = self.spectral._be_target(iso)
             for i, comp in enumerate(idx):
                 lbl = labels[int(comp)] if 0 <= int(comp) < len(labels) else f"R{int(comp)}"
                 print(
