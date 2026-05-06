@@ -59,7 +59,26 @@ On Windows, activate with `.venv\Scripts\activate` or `Activate.ps1`.
 
 ## Running
 
-From the project root, either use the dispatcher:
+From the project root, the config-first interface is:
+
+```bash
+python -m cli validate configs/example_water_spectral_only.yaml
+python -m cli run configs/example_water_spectral_only.yaml
+python -m cli run configs/example_water_legacy.json
+```
+
+`run` creates a timestamped directory under `runs/` by default, copies the input
+config, and writes `report.md`, `exports/residuals.csv`,
+`exports/final_geometry.csv`, and diagnostic plots under `plots/`.
+
+The lower-level runner remains available for compatibility:
+
+```bash
+python runner/run_from_config.py configs/template.yaml
+python runner/run_from_config.py configs/example_water_spectral_only.yaml --no-run-dir
+```
+
+You can also use the molecule dispatchers:
 
 ```bash
 python run_molecule.py water

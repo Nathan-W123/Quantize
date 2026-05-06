@@ -110,3 +110,11 @@ quantum:
 preset:    BALANCED
 rng_seed:  42
 write_xyz: false
+
+# Output management. When run through `python -m cli run ...` or
+# `python runner/run_from_config.py ...`, Quantize creates a timestamped run
+# directory under `root`, copies the input config, and writes reports, CSVs,
+# and diagnostic plots there.
+output:
+  root: runs
+  artifacts: true
