@@ -11,8 +11,11 @@ Provides:
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, Union
+
+import numpy as np
 
 # ── Physical constants ────────────────────────────────────────────────────────
 
@@ -241,3 +244,86 @@ def propagate_sigma(sigma_exp: float, *correction_sigmas: Optional[float]) -> fl
             if v > 0.0:
                 total += v * v
     return float(total ** 0.5)
+
+
+# ── Structured correction dataclasses ────────────────────────────────────────
+
+COMPONENTS = ("A", "B", "C")
+
+
+@dataclass
+class RovibCorrection:
+    """Isotopologue-specific rovibrational correction record."""
+
+    isotopologue: str
+    alpha_A: Optional[float] = None
+    alpha_B: Optional[float] = None
+    alpha_C: Optional[float] = None
+    delta_vib_A: Optional[float] = None
+    delta_vib_B: Optional[float] = None
+    delta_vib_C: Optional[float] = None
+    delta_elec_A: float = 0.0
+    delta_elec_B: float = 0.0
+    delta_elec_C: float = 0.0
+    delta_bob_A: float = 0.0
+    delta_bob_B: float = 0.0
+    delta_bob_C: float = 0.0
+    sigma_delta_A: Optional[float] = None
+    sigma_delta_B: Optional[float] = None
+    sigma_delta_C: Optional[float] = None
+    source: str = "unknown"
+    backend: Optional[str] = None
+    method: Optional[str] = None
+    basis: Optional[str] = None
+    geometry_hash: Optional[str] = None
+    status: str = "unknown"
+    warnings: list[str] = field(default_factory=list)
+
+    def alpha_vector(self) -> np.ndarray:
+        return np.array([
+            np.nan if self.alpha_A is None else self.alpha_A,
+            np.nan if self.alpha_B is None else self.alpha_B,
+            np.nan if self.alpha_C is None else self.alpha_C,
+        ], dtype=float)
+
+    def delta_vib_vector(self) -> np.ndarray:
+        alpha = self.alpha_vector()
+        out = []
+        for val, a in zip(
+            [self.delta_vib_A, self.delta_vib_B, self.delta_vib_C], alpha
+        ):
+            if val is not None:
+                out.append(val)
+            elif np.isfinite(a):
+                out.append(0.5 * a)
+            else:
+                out.append(np.nan)
+        return np.array(out, dtype=float)
+
+    def delta_elec_vector(self) -> np.ndarray:
+        return np.array([self.delta_elec_A, self.delta_elec_B, self.delta_elec_C], dtype=float)
+
+    def delta_bob_vector(self) -> np.ndarray:
+        return np.array([self.delta_bob_A, self.delta_bob_B, self.delta_bob_C], dtype=float)
+
+    def delta_total_vector(self) -> np.ndarray:
+        return self.delta_vib_vector() + self.delta_elec_vector() + self.delta_bob_vector()
+
+    def sigma_delta_vector(self) -> np.ndarray:
+        return np.array([
+            np.nan if self.sigma_delta_A is None else self.sigma_delta_A,
+            np.nan if self.sigma_delta_B is None else self.sigma_delta_B,
+            np.nan if self.sigma_delta_C is None else self.sigma_delta_C,
+        ], dtype=float)
+
+
+@dataclass
+class ParsedRovibResult:
+    """Structured result from an ORCA VPT2 parse."""
+
+    alpha_abc: np.ndarray
+    frequencies: Optional[np.ndarray] = None
+    warnings: list[str] = field(default_factory=list)
+    source_files: list[str] = field(default_factory=list)
+    parse_status: str = "unknown"
+    units: str = "MHz"

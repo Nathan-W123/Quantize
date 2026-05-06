@@ -2,7 +2,6 @@ import numpy as np
 from scipy import constants
 from backend.conformer_mixture import ConformerMixture
 from backend.correction_models import RovibCorrection
-from backend.rovib_corrections import effective_sigma_constants
 
 # h / (8π² · amu · Å²) → MHz; converts principal moments [amu·Å²] to rotational constants [MHz]
 _INERTIA_TO_MHZ = (constants.h / (8 * np.pi**2 * constants.atomic_mass * (1e-10)**2)) * 1e-6

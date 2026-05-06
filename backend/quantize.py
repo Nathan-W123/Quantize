@@ -36,7 +36,7 @@ from backend.rovib_corrections import (
     validate_correction_quality,
     correction_summary,
 )
-from backend.correction_models import parse_correction_table
+from backend.correction_models import parse_correction_table, RovibCorrection, ParsedRovibResult
 from backend.autoconfig import AutoConfigEngine
 from backend.quantum import (
     QuantumEngine,
