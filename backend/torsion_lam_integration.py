@@ -104,25 +104,36 @@ def lam_uncertainty_contribution(
     torsion_rms_cm1: float,
     n_torsion_levels: int,
     *,
+    sigma_averaged_cm1: Optional[np.ndarray] = None,
     scale_factor: float = 1.0,
 ) -> float:
     """
     Estimate the uncertainty in B constants from torsional averaging.
 
-    Uses the RMS residual of torsion-level predictions as a proxy:
+    When ``sigma_averaged_cm1`` is provided (propagated from grid-point uncertainties
+    via ``propagate_averaging_uncertainty``), it is used directly and the heuristic
+    is bypassed.  The reported value is the maximum component (A, B, or C), which is
+    conservative and gives a single scalar for the LAM report.
 
+    Fallback heuristic (when sigma_averaged_cm1 is None):
       sigma_B_lam ≈ scale_factor * torsion_rms_cm1 / sqrt(n_torsion_levels)
 
     Parameters
     ----------
     torsion_rms_cm1 : RMS of torsion level/transition residuals [cm^-1]
     n_torsion_levels : number of levels used
-    scale_factor : optional tuning factor (default 1.0)
+    sigma_averaged_cm1 : (3,) propagated uncertainty on averaged [A,B,C] [cm^-1].
+        When supplied, replaces the heuristic.
+    scale_factor : optional tuning factor for the heuristic (default 1.0)
 
     Returns
     -------
     float : estimated sigma_B [cm^-1]
     """
+    if sigma_averaged_cm1 is not None:
+        sa = np.asarray(sigma_averaged_cm1, dtype=float).ravel()
+        if sa.size >= 1:
+            return float(np.max(sa))
     if float(torsion_rms_cm1) < 0.0:
         raise ValueError("torsion_rms_cm1 must be non-negative.")
     if int(n_torsion_levels) < 1:
@@ -189,6 +200,7 @@ def lam_correction_report(
     B_rigid_cm1: np.ndarray,
     *,
     B_torsion_avg_cm1: Optional[np.ndarray] = None,
+    sigma_torsion_avg_cm1: Optional[np.ndarray] = None,
     alpha_full_cm1: Optional[np.ndarray] = None,
     torsional_mode_alphas_cm1: Optional[list[np.ndarray]] = None,
     torsion_rms_cm1: float = 0.0,
@@ -205,6 +217,9 @@ def lam_correction_report(
     ----------
     B_rigid_cm1 : (3,) rigid equilibrium constants
     B_torsion_avg_cm1 : (3,) torsion-averaged constants from torsion_average.py
+    sigma_torsion_avg_cm1 : (3,) propagated uncertainty on averaged constants [cm^-1].
+        When provided, replaces the heuristic in lam_uncertainty_contribution.
+        Comes from ``propagate_averaging_uncertainty()["sigma_total"]``.
     alpha_full_cm1 : (3,) full alpha vector (all modes, including torsion)
     torsional_mode_alphas_cm1 : list of (3,) alpha contributions for torsional modes
         to subtract before applying rovib correction
@@ -217,6 +232,7 @@ def lam_correction_report(
     dict from combine_lam_corrections plus:
       lam_uncertainty_cm-1 : float
       torsion_rms_cm-1 : float
+      sigma_B_torsion_avg_cm-1 : list[float] | None  — per-constant propagated sigma
     """
     B = np.asarray(B_rigid_cm1, dtype=float).ravel()[:3]
 
@@ -234,9 +250,17 @@ def lam_correction_report(
 
     report = combine_lam_corrections(B, alpha_nt, torsion_corr, source=source)
     report["lam_uncertainty_cm-1"] = lam_uncertainty_contribution(
-        float(torsion_rms_cm1), max(int(n_torsion_levels), 1)
+        float(torsion_rms_cm1),
+        max(int(n_torsion_levels), 1),
+        sigma_averaged_cm1=sigma_torsion_avg_cm1,
     )
     report["torsion_rms_cm-1"] = float(torsion_rms_cm1)
+    if sigma_torsion_avg_cm1 is not None:
+        report["sigma_B_torsion_avg_cm-1"] = (
+            np.asarray(sigma_torsion_avg_cm1, dtype=float).ravel()[:3].tolist()
+        )
+    else:
+        report["sigma_B_torsion_avg_cm-1"] = None
     return report
 
 

@@ -161,6 +161,21 @@ torsion_hamiltonian:
   # transitions:
   #   - {J_lo: 0, K_lo: 0, level_lo: 0, J_hi: 1, K_hi: 0, level_hi: 0, freq_cm-1: 1.053}
 
+  # ── Joint fitting: torsional levels + observed rotational constants ────────
+  # Uncomment targets_rotational to fit F, rho, and Vcos_n simultaneously
+  # against torsional levels (targets above) AND ground-state A/B/C constants.
+  # Requires torsion_hamiltonian.scan.grid_points to be populated so that
+  # quantum-thermal averaging can predict the effective rotational constants.
+  # Units: obs_cm1 in cm^-1; sigma_cm1 is the 1-sigma measurement uncertainty.
+  #
+  # targets_rotational:
+  #   - {component: A, obs_cm1: 4.25527, sigma_cm1: 0.0001}  # methanol B0(A) literature
+  #   - {component: B, obs_cm1: 0.82342, sigma_cm1: 0.0001}
+  #   - {component: C, obs_cm1: 0.79310, sigma_cm1: 0.0001}
+  #
+  # Fitting control when targets_rotational is active:
+  #   sigma_rot_cm1: 0.05   # default rot-constant uncertainty if sigma_cm1 not set per target
+
   # ── Parameter uncertainty ─────────────────────────────────────────────────
   uncertainty:
     enabled: false          # set true when fitting is active and targets are supplied

@@ -8,6 +8,8 @@ import numpy as np
 import pytest
 
 from backend.torsion_fitter import (
+    TorsionRotationalTarget,
+    fit_torsion_joint,
     fit_torsion_to_levels,
     fit_torsion_to_transitions,
     select_fit_params,
@@ -307,4 +309,159 @@ def test_phase2_with_fitting_enabled():
         assert "fitting_rms_cm-1" in summary_text
     finally:
         shutil.rmtree(run_dir, ignore_errors=True)
+
+
+# ── TestFitTorsionJoint ────────────────────────────────────────────────────────
+
+def _make_joint_scan(abc_grid):
+    """Build a minimal TorsionScan with pre-filled rotational constants."""
+    from backend.torsion_average import TorsionGridPoint, TorsionScan
+
+    gps = []
+    for i, abc in enumerate(abc_grid):
+        gps.append(
+            TorsionGridPoint(
+                phi=float(i) * 60.0,
+                geometry=np.zeros((3, 3)),
+                rotational_constants=np.asarray(abc, dtype=float),
+            )
+        )
+    return TorsionScan(
+        name="joint_test", atoms=None, grid_points=gps,
+        angle_unit="degrees", energy_unit="hartree", periodic=True,
+    )
+
+
+def _make_joint_spec(F=27.6, V3=60.0, n_basis=10) -> TorsionHamiltonianSpec:
+    return TorsionHamiltonianSpec(
+        F=F, rho=0.0, A=0.0, B=0.0, C=0.0,
+        potential=TorsionFourierPotential(
+            v0=V3 / 2.0, vcos={3: -V3 / 2.0}, vsin={}, units="cm-1"
+        ),
+        n_basis=n_basis, units="cm-1",
+    )
+
+
+class TestFitTorsionJoint:
+    def _truth_spec(self):
+        return _make_spec(F=27.6, rho=0.81, Vcos3=-186.8)
+
+    def _perturbed_spec(self, delta_vcos3=10.0):
+        return _make_spec(F=27.6, rho=0.81, Vcos3=-186.8 + delta_vcos3)
+
+    def _level_rows(self, spec):
+        return _synthetic_levels(spec, J_values=(0,), K_values=(0,), n_levels=4)
+
+    def _build_scan(self):
+        # Constant-abc scan: averaging returns the constant value regardless of weights
+        abc = [4.25, 0.823, 0.793]
+        abc_grid = [abc] * 6  # six equally spaced points
+        return _make_joint_scan(abc_grid)
+
+    def _build_spec(self):
+        return _make_joint_spec()
+
+    def test_output_keys_present(self):
+        truth = self._truth_spec()
+        level_rows = self._level_rows(truth)
+        obs_abc = np.array([4.25, 0.823, 0.793])
+        rot_targets = [
+            TorsionRotationalTarget(component="A", obs_cm1=float(obs_abc[0]), sigma_cm1=0.1),
+            TorsionRotationalTarget(component="B", obs_cm1=float(obs_abc[1]), sigma_cm1=0.1),
+        ]
+        scan = self._build_scan()
+        spec = self._perturbed_spec(delta_vcos3=5.0)
+        params = select_fit_params(spec, ["Vcos_3"])
+        result = fit_torsion_joint(
+            spec, level_rows, rot_targets, scan,
+            elements=["O", "H", "H"],
+            params=params, max_iter=5,
+        )
+        for key in ("rms_cm-1", "rms_level_cm-1", "rms_rot_cm-1", "n_level_obs",
+                    "n_rot_obs", "converged", "param_values", "fitted_spec"):
+            assert key in result, f"Missing key: {key}"
+
+    def test_n_obs_counts_match_inputs(self):
+        truth = self._truth_spec()
+        level_rows = self._level_rows(truth)
+        rot_targets = [
+            TorsionRotationalTarget(component="B", obs_cm1=0.823, sigma_cm1=0.05),
+        ]
+        scan = self._build_scan()
+        params = select_fit_params(truth, ["Vcos_3"])
+        result = fit_torsion_joint(
+            truth, level_rows, rot_targets, scan,
+            elements=["O", "H", "H"],
+            params=params, max_iter=3,
+        )
+        assert result["n_level_obs"] == len(level_rows)
+        assert result["n_rot_obs"] == 1
+
+    def test_converges_on_self_consistent_data(self):
+        """Fitting Vcos_3 against data generated from the same spec should recover it."""
+        truth = self._truth_spec()
+        level_rows = self._level_rows(truth)
+        # Constant-abc scan → averaged value equals that constant regardless of model params
+        obs_abc = np.array([4.25, 0.823, 0.793])
+        rot_targets = [
+            TorsionRotationalTarget(component="A", obs_cm1=float(obs_abc[0]), sigma_cm1=0.05),
+            TorsionRotationalTarget(component="B", obs_cm1=float(obs_abc[1]), sigma_cm1=0.05),
+            TorsionRotationalTarget(component="C", obs_cm1=float(obs_abc[2]), sigma_cm1=0.05),
+        ]
+        scan = _make_joint_scan([obs_abc.tolist()] * 7)
+        spec = self._perturbed_spec(delta_vcos3=15.0)
+        params = select_fit_params(spec, ["Vcos_3"])
+        result = fit_torsion_joint(
+            spec, level_rows, rot_targets, scan,
+            elements=["O", "H", "H"],
+            params=params, max_iter=50, ftol=1e-12, xtol=1e-10,
+        )
+        assert result["converged"]
+        assert result["rms_cm-1"] < 0.05
+
+    def test_no_level_rows_fits_rotational_only(self):
+        truth = self._truth_spec()
+        obs_abc = np.array([4.25, 0.823, 0.793])
+        rot_targets = [
+            TorsionRotationalTarget(component="B", obs_cm1=float(obs_abc[1]), sigma_cm1=0.05),
+        ]
+        scan = _make_joint_scan([obs_abc.tolist()] * 6)
+        params = select_fit_params(truth, ["Vcos_3"])
+        result = fit_torsion_joint(
+            truth, [], rot_targets, scan,
+            elements=["O", "H", "H"],
+            params=params, max_iter=5,
+        )
+        assert result["n_level_obs"] == 0
+        assert result["n_rot_obs"] == 1
+        assert np.isnan(result["rms_level_cm-1"])
+
+    def test_no_rot_targets_behaves_like_level_fit(self):
+        truth = self._truth_spec()
+        level_rows = self._level_rows(truth)
+        scan = self._build_scan()
+        spec = self._perturbed_spec(delta_vcos3=10.0)
+        params = select_fit_params(spec, ["Vcos_3"])
+        joint_result = fit_torsion_joint(
+            spec, level_rows, [], scan,
+            elements=["O", "H", "H"],
+            params=params, max_iter=30,
+        )
+        level_result = fit_torsion_to_levels(spec, level_rows, params=params, max_iter=30)
+        assert joint_result["n_rot_obs"] == 0
+        assert np.isnan(joint_result["rms_rot_cm-1"])
+        # Both should reach similar RMS (no rotational data pulling in either case)
+        assert abs(joint_result["rms_cm-1"] - level_result["rms_cm-1"]) < 0.01
+
+    def test_invalid_component_raises(self):
+        truth = self._truth_spec()
+        rot_targets = [TorsionRotationalTarget(component="X", obs_cm1=0.5, sigma_cm1=0.05)]
+        scan = self._build_scan()
+        params = select_fit_params(truth, ["Vcos_3"])
+        with pytest.raises(ValueError, match="component"):
+            fit_torsion_joint(
+                truth, [], rot_targets, scan,
+                elements=["O", "H", "H"],
+                params=params, max_iter=2,
+            )
 

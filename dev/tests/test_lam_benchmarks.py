@@ -539,3 +539,74 @@ class TestAlphaDependentConstants:
             H, *_ = build_full_torsion_rotation_hamiltonian(spec, J)
             max_anti = float(np.max(np.abs(H - H.conj().T)))
             assert max_anti < 1e-10, f"Hamiltonian not Hermitian at J={J}: max|H-H†|={max_anti:.2e}"
+
+
+# ── Pipeline routing ──────────────────────────────────────────────────────────
+
+class TestCollectLevelRowsRouting:
+    """_collect_level_rows routes to full Hamiltonian when CD or alpha-dep active."""
+
+    def _base_spec(self):
+        pot = TorsionFourierPotential(v0=_V0, vcos={3: _VCOS3, 6: _VCOS6})
+        return TorsionHamiltonianSpec(
+            F=_F, rho=_RHO, A=4.251, B=0.823, C=0.793,
+            n_basis=10, potential=pot,
+        )
+
+    def test_ram_lite_path_when_no_cd(self):
+        from runner.run_generic import _use_full_hamiltonian
+        spec = self._base_spec()
+        assert not _use_full_hamiltonian(spec)
+
+    def test_full_path_when_dj_nonzero(self):
+        from runner.run_generic import _use_full_hamiltonian
+        spec = self._base_spec()
+        spec.DJ = 2.5e-4
+        assert _use_full_hamiltonian(spec)
+
+    def test_full_path_when_djk_nonzero(self):
+        from runner.run_generic import _use_full_hamiltonian
+        spec = self._base_spec()
+        spec.DJK = -1.7e-3
+        assert _use_full_hamiltonian(spec)
+
+    def test_full_path_when_alpha_dep_set(self):
+        from runner.run_generic import _use_full_hamiltonian
+        from backend.torsion_hamiltonian import TorsionEffectiveConstantFourier
+        spec = self._base_spec()
+        spec.B_alpha = TorsionEffectiveConstantFourier(f0=0.823, fcos={3: -0.003})
+        assert _use_full_hamiltonian(spec)
+
+    def test_collect_rows_full_path_returns_ka_kc(self):
+        from runner.run_generic import _collect_level_rows
+        spec = self._base_spec()
+        spec.DJ = 2.5e-4
+        rows, warns, _ = _collect_level_rows(spec, [0, 1], [], n_levels=6,
+                                              symmetry_mode=None, label_levels=False)
+        assert len(rows) > 0
+        assert all("Ka" in r for r in rows)
+        assert all("Kc" in r for r in rows)
+        assert all("energy_cm-1" in r for r in rows)
+
+    def test_collect_rows_full_cd_lowers_energies_vs_plain(self):
+        from runner.run_generic import _collect_level_rows
+        spec_plain = self._base_spec()
+        spec_cd = self._base_spec()
+        spec_cd.DJ = 2.5e-4
+
+        rows_plain, _, _ = _collect_level_rows(spec_plain, [1], [0], n_levels=6,
+                                               symmetry_mode=None, label_levels=False)
+        rows_cd, _, _ = _collect_level_rows(spec_cd, [1], [], n_levels=6,
+                                            symmetry_mode=None, label_levels=False)
+
+        e_plain = sorted(r["energy_cm-1"] for r in rows_plain)
+        e_cd = sorted(r["energy_cm-1"] for r in rows_cd)
+        # DJ > 0 adds -DJ*J(J+1)^2 < 0 to every level at J=1
+        assert e_cd[0] < e_plain[0]
+
+    def test_collect_rows_ram_lite_path_has_symmetry_labels(self):
+        from runner.run_generic import _collect_level_rows
+        spec = self._base_spec()
+        rows, _, _ = _collect_level_rows(spec, [0], [0], n_levels=4,
+                                         symmetry_mode="c3", label_levels=True)
+        assert any("symmetry_label" in r for r in rows)

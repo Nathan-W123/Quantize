@@ -37,6 +37,7 @@ from backend.torsion_hamiltonian import (
     solve_ram_lite_levels,
     torsion_objective_from_levels,
 )
+from backend.torsion_rot_hamiltonian import solve_full_torsion_rotation_levels
 from backend.torsion_uncertainty import (
     covariance_from_matched_level_residuals,
     default_torsion_parameters,
@@ -787,6 +788,8 @@ def _run_torsion_phase2_exports(
     if isinstance(fitting_cfg, dict) and bool(fitting_cfg.get("enabled", False)):
         from backend.torsion_fitter import fit_torsion_to_levels as _fit_levels
         from backend.torsion_fitter import fit_torsion_to_transitions as _fit_trans
+        from backend.torsion_fitter import fit_torsion_joint as _fit_joint
+        from backend.torsion_fitter import TorsionRotationalTarget as _TorsionRotTarget
         from backend.torsion_fitter import select_fit_params as _select_params
 
         def _run_one_fit(stage_cfg: dict[str, Any], current_spec: TorsionHamiltonianSpec) -> dict[str, Any]:
@@ -809,6 +812,76 @@ def _run_torsion_phase2_exports(
             use_transitions = bool(stage_cfg.get("use_transitions", fitting_cfg.get("use_transitions", True)))
             level_targets = tcfg.get("targets") or []
             transition_targets = tcfg.get("transitions") or []
+
+            # Joint fitting path: torsional levels/transitions + rotational constants
+            rot_targets_cfg = stage_cfg.get("targets_rotational") or fitting_cfg.get("targets_rotational") or []
+            if rot_targets_cfg and isinstance(rot_targets_cfg, list):
+                rotational_targets = [
+                    _TorsionRotTarget(
+                        component=str(rt["component"]),
+                        obs_cm1=float(rt["obs_cm1"]),
+                        sigma_cm1=float(rt.get("sigma_cm1", 0.05)),
+                        isotopologue=str(rt.get("isotopologue", "")),
+                    )
+                    for rt in rot_targets_cfg
+                    if isinstance(rt, dict) and "component" in rt and "obs_cm1" in rt
+                ]
+                joint_level_rows = list(level_targets) if (use_levels and level_targets) else []
+                # Build scan and model from config for quantum averaging
+                scan_cfg = tcfg.get("scan") or {}
+                gp_list_raw = scan_cfg.get("grid_points") or []
+                ref_coords = np.asarray(best["coords"], dtype=float)
+                joint_gp_list: list[TorsionGridPoint] = []
+                for p_raw in gp_list_raw:
+                    if not isinstance(p_raw, dict) or "phi" not in p_raw:
+                        continue
+                    g = p_raw.get("geometry", ref_coords.tolist())
+                    rc = p_raw.get("rotational_constants")
+                    joint_gp_list.append(TorsionGridPoint(
+                        phi=float(p_raw["phi"]),
+                        geometry=np.asarray(g, dtype=float),
+                        energy=(None if p_raw.get("energy") is None else float(p_raw["energy"])),
+                        rotational_constants=(None if rc is None else np.asarray(rc, dtype=float)),
+                        weight=(None if p_raw.get("weight") is None else float(p_raw["weight"])),
+                    ))
+                if not joint_gp_list:
+                    return {
+                        "fitted_spec": current_spec,
+                        "param_names": [],
+                        "warnings": ["targets_rotational requires torsion_hamiltonian.scan.grid_points."],
+                    }
+                joint_scan = TorsionScan(
+                    name=str(scan_cfg.get("name", "joint_fit_scan")),
+                    atoms=tuple(scan_cfg.get("atoms")) if scan_cfg.get("atoms") else None,
+                    grid_points=joint_gp_list,
+                    angle_unit=str(scan_cfg.get("angle_unit", "degrees")),
+                    energy_unit=str(scan_cfg.get("energy_unit", "hartree")),
+                    periodic=bool(scan_cfg.get("periodic", True)),
+                )
+                joint_kwargs = {k: v for k, v in fit_kwargs.items()
+                                if k not in ("bounds", "default_sigma_cm1")}
+                joint_kwargs["sigma_level_cm1"] = float(
+                    stage_cfg.get("default_sigma_cm1", fitting_cfg.get("default_sigma_cm1", 0.1))
+                )
+                joint_kwargs["sigma_rot_cm1"] = float(
+                    stage_cfg.get("sigma_rot_cm1", fitting_cfg.get("sigma_rot_cm1", 0.05))
+                )
+                use_thermal = str(scan_cfg.get("mode", "quantum")).strip().lower() in {
+                    "quantum_thermal", "thermal_quantum"
+                }
+                joint_kwargs["use_thermal"] = use_thermal
+                joint_kwargs["temperature_K"] = float(scan_cfg.get("temperature_K", 298.15))
+                joint_kwargs["max_states"] = int(scan_cfg.get("max_states", 6))
+                return _fit_joint(
+                    current_spec,
+                    joint_level_rows,
+                    rotational_targets,
+                    joint_scan,
+                    elems,
+                    masses=masses,
+                    **joint_kwargs,
+                )
+
             if use_levels and level_targets:
                 return _fit_levels(current_spec, level_targets, **fit_kwargs)
             if use_transitions and transition_targets:
@@ -986,6 +1059,55 @@ def _run_torsion_phase2_exports(
                 except Exception as exc:
                     all_warnings.append(f"geometry_coupling: {exc}")
 
+    # Phase-3 line list
+    line_list_csv: Path | None = None
+    ll_lines: list = []
+    line_list_cfg = tcfg.get("line_list") or {}
+    if isinstance(line_list_cfg, dict) and bool(line_list_cfg.get("enabled", False)):
+        try:
+            from backend.torsion_intensities import (
+                compute_torsion_line_list,
+                format_line_list_for_csv,
+            )
+            ll_max_freq = line_list_cfg.get("max_freq_mhz")
+            ll_min_strength = float(line_list_cfg.get("min_line_strength", 0.0))
+            ll_transition_type = str(line_list_cfg.get("transition_type", "a"))
+            ll_rotor_fold = int(line_list_cfg.get("rotor_fold", 3))
+            ll_n_levels = int(line_list_cfg.get("n_levels", n_levels))
+            ll_J = [int(x) for x in (line_list_cfg.get("J_values") or J_values)]
+            ll_K = [int(x) for x in (line_list_cfg.get("K_values") or K_values)]
+            ll_pure_torsional = bool(line_list_cfg.get("include_pure_torsional", True))
+            ll_rotational = bool(line_list_cfg.get("include_rotational", True))
+            ll_lines = compute_torsion_line_list(
+                spec,
+                J_values=ll_J,
+                K_values=ll_K,
+                n_levels=ll_n_levels,
+                symmetry_mode=symmetry_mode,
+                rotor_fold=ll_rotor_fold,
+                transition_type=ll_transition_type,
+                max_freq_mhz=float(ll_max_freq) if ll_max_freq is not None else None,
+                min_line_strength=ll_min_strength,
+                include_pure_torsional=ll_pure_torsional,
+                include_rotational=ll_rotational,
+            )
+            if ll_lines:
+                line_list_csv = exports_dir / "torsion_line_list.csv"
+                _ll_fields = [
+                    "freq_cm-1", "freq_mhz",
+                    "J_lo", "K_lo", "vt_lo", "symmetry_lo",
+                    "J_hi", "K_hi", "vt_hi", "symmetry_hi",
+                    "line_strength", "honl_london", "nuclear_spin_weight",
+                    "relative_intensity", "allowed",
+                ]
+                with line_list_csv.open("w", newline="", encoding="utf-8") as fh:
+                    writer = csv.DictWriter(fh, fieldnames=_ll_fields, extrasaction="ignore")
+                    writer.writeheader()
+                    for row in format_line_list_for_csv(ll_lines):
+                        writer.writerow(row)
+        except Exception as exc:
+            all_warnings.append(f"line_list generation failed: {exc}")
+
     summary_json = exports_dir / "torsion_summary.json"
     summary: dict[str, Any] = {
         "model": "ram_lite",
@@ -1048,6 +1170,9 @@ def _run_torsion_phase2_exports(
         summary["auto_assign_n_unmatched"] = int(auto_assign_result.get("n_unmatched", 0))
         summary["auto_assign_rms_cm-1"] = float(auto_assign_result.get("rms_cm-1", float("nan")))
         summary["auto_assign_method"] = str(auto_assign_result.get("method_used", ""))
+    if line_list_csv is not None:
+        summary["line_list_csv"] = str(line_list_csv)
+        summary["line_list_n_lines"] = len(ll_lines)
     if fit_result:
         summary["fitting_rms_cm-1"] = float(fit_result.get("rms_cm-1", float("nan")))
         summary["fitting_rms_cm-1_init"] = float(fit_result.get("rms_cm-1_init", float("nan")))
@@ -1090,6 +1215,7 @@ def _run_torsion_phase2_exports(
         "torsion_fitted_levels_csv": fitted_levels_csv,
         "torsion_fitted_transition_objective_csv": fitted_transition_csv,
         "torsion_transition_summary_csv": transition_summary_csv,
+        "torsion_line_list_csv": line_list_csv,
     }
 
 
@@ -1155,6 +1281,21 @@ def _build_torsion_spec_from_config(
     return spec, symmetry_mode, label_levels
 
 
+def _use_full_hamiltonian(spec: "TorsionHamiltonianSpec") -> bool:
+    """Return True when the spec requires the full coupled Hamiltonian.
+
+    Triggered by any nonzero CD constant or any alpha-dependent rotational
+    constant.  In these cases solve_full_torsion_rotation_levels must be used
+    because build_ram_lite_hamiltonian does not apply those terms.
+    """
+    if any(abs(float(getattr(spec, name, 0.0))) > 0.0
+           for name in ("DJ", "DJK", "DK", "d1", "d2")):
+        return True
+    if spec.A_alpha is not None or spec.B_alpha is not None or spec.C_alpha is not None:
+        return True
+    return False
+
+
 def _collect_level_rows(
     spec: "TorsionHamiltonianSpec",
     J_values: list[int],
@@ -1164,48 +1305,84 @@ def _collect_level_rows(
     label_levels: bool,
     return_blocks: bool = False,
 ) -> tuple[list[dict[str, Any]], list[str], list[dict[str, Any]]]:
-    """Solve and collect torsion level rows for a grid of (J, K) blocks."""
+    """Solve and collect torsion level rows for a grid of (J, K) blocks.
+
+    Routes to solve_full_torsion_rotation_levels when CD constants or
+    alpha-dependent rotational constants are active; otherwise uses the
+    faster RAM-lite single-K-block path.
+    """
     rows: list[dict[str, Any]] = []
     block_rows: list[dict[str, Any]] = []
     all_warnings: list[str] = []
-    for J in J_values:
-        for K in K_values:
-            out = solve_ram_lite_levels(
-                spec, J=J, K=K, n_levels=n_levels,
-                symmetry_mode=symmetry_mode, label_levels=label_levels,
-                return_blocks=return_blocks,
+
+    if _use_full_hamiltonian(spec):
+        # Full coupled solver: one call per J, all K blocks simultaneously.
+        # K_values is ignored — the full Hamiltonian spans K = -J..+J.
+        # C3 symmetry labeling and block export are not available on this path.
+        if symmetry_mode is not None:
+            all_warnings.append(
+                "symmetry_mode is set but the full coupled Hamiltonian is active "
+                "(CD constants or alpha-dependent A/B/C); C3 labeling is unavailable "
+                "on this path. Use RAM-lite (zero CD, no alpha constants) for A/E labels."
             )
+        for J in J_values:
+            out = solve_full_torsion_rotation_levels(spec, J, n_levels=n_levels)
             all_warnings.extend(list(out.get("warnings", [])))
-            sym_labels = out.get("symmetry_labels")
-            sym_sublabels = out.get("symmetry_sublabels")
-            sym_purity = out.get("symmetry_purity")
+            Ka_labels = out.get("Ka_labels")
+            Kc_labels = out.get("Kc_labels")
             for level_idx, energy in enumerate(out["energies_cm-1"]):
                 row: dict[str, Any] = {
-                    "J": J, "K": K,
+                    "J": J,
+                    "K": int(Ka_labels[level_idx]) if Ka_labels is not None else 0,
                     "level_index": level_idx,
                     "energy_cm-1": float(energy),
                 }
-                if sym_labels is not None and level_idx < len(sym_labels):
-                    row["symmetry_label"] = str(sym_labels[level_idx])
-                if sym_sublabels is not None and level_idx < len(sym_sublabels):
-                    row["symmetry_sublabel"] = str(sym_sublabels[level_idx])
-                if sym_purity is not None and level_idx < len(sym_purity):
-                    row["symmetry_purity"] = float(sym_purity[level_idx])
+                if Ka_labels is not None:
+                    row["Ka"] = int(Ka_labels[level_idx])
+                if Kc_labels is not None:
+                    row["Kc"] = int(Kc_labels[level_idx])
                 rows.append(row)
+    else:
+        # RAM-lite path: independent (J, K) blocks; supports C3 symmetry labeling.
+        for J in J_values:
+            for K in K_values:
+                out = solve_ram_lite_levels(
+                    spec, J=J, K=K, n_levels=n_levels,
+                    symmetry_mode=symmetry_mode, label_levels=label_levels,
+                    return_blocks=return_blocks,
+                )
+                all_warnings.extend(list(out.get("warnings", [])))
+                sym_labels = out.get("symmetry_labels")
+                sym_sublabels = out.get("symmetry_sublabels")
+                sym_purity = out.get("symmetry_purity")
+                for level_idx, energy in enumerate(out["energies_cm-1"]):
+                    row: dict[str, Any] = {
+                        "J": J, "K": K,
+                        "level_index": level_idx,
+                        "energy_cm-1": float(energy),
+                    }
+                    if sym_labels is not None and level_idx < len(sym_labels):
+                        row["symmetry_label"] = str(sym_labels[level_idx])
+                    if sym_sublabels is not None and level_idx < len(sym_sublabels):
+                        row["symmetry_sublabel"] = str(sym_sublabels[level_idx])
+                    if sym_purity is not None and level_idx < len(sym_purity):
+                        row["symmetry_purity"] = float(sym_purity[level_idx])
+                    rows.append(row)
 
-            if return_blocks:
-                for block_name, block in (out.get("symmetry_blocks") or {}).items():
-                    for block_idx, energy in enumerate(block.get("energies_cm-1", [])):
-                        block_rows.append(
-                            {
-                                "J": J,
-                                "K": K,
-                                "block": str(block_name),
-                                "residue": int(block.get("residue", -1)),
-                                "block_level_index": int(block_idx),
-                                "energy_cm-1": float(energy),
-                            }
-                        )
+                if return_blocks:
+                    for block_name, block in (out.get("symmetry_blocks") or {}).items():
+                        for block_idx, energy in enumerate(block.get("energies_cm-1", [])):
+                            block_rows.append(
+                                {
+                                    "J": J,
+                                    "K": K,
+                                    "block": str(block_name),
+                                    "residue": int(block.get("residue", -1)),
+                                    "block_level_index": int(block_idx),
+                                    "energy_cm-1": float(energy),
+                                }
+                            )
+
     return rows, all_warnings, block_rows
 
 
