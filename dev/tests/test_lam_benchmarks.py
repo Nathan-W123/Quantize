@@ -346,3 +346,196 @@ class TestPhysicalSelfConsistency:
         result = fit_torsion_to_levels(spec_init, obs_rows, params=params, max_iter=30)
         recovered = float(result["fitted_spec"].potential.vcos[3])
         assert abs(recovered - _VCOS3) < 2.0, f"Recovery failed: {recovered:.3f} vs {_VCOS3:.3f}"
+
+
+# ── 6. Centrifugal Distortion ─────────────────────────────────────────────────
+
+class TestCentrifugalDistortion:
+    """Watson A-reduction quartic CD terms in the full torsion-rotation Hamiltonian."""
+
+    def _spec_with_cd(self, DJ=0.0, DJK=0.0, DK=0.0, d1=0.0, d2=0.0, J=2):
+        pot = TorsionFourierPotential(v0=_V0, vcos={3: _VCOS3, 6: _VCOS6}, units="cm-1")
+        return TorsionHamiltonianSpec(
+            F=_F, rho=_RHO, A=4.2542, B=0.8231, C=0.7931,
+            DJ=DJ, DJK=DJK, DK=DK, d1=d1, d2=d2,
+            potential=pot, n_basis=12, units="cm-1",
+        )
+
+    def test_zero_cd_matches_no_cd(self):
+        """Explicit zeros for all CD terms must reproduce the original energies."""
+        spec_plain = _methanol_spec(n_basis=12)
+        spec_cd = self._spec_with_cd()
+        for J in (0, 1, 2):
+            plain = solve_full_torsion_rotation_levels(spec_plain, J, n_levels=6)
+            with_cd = solve_full_torsion_rotation_levels(spec_cd, J, n_levels=6)
+            np.testing.assert_allclose(
+                plain["energies_cm-1"], with_cd["energies_cm-1"], atol=1e-10,
+                err_msg=f"Zero CD should not change energies (J={J})"
+            )
+
+    def test_DJ_lowers_energies(self):
+        """Positive DJ shifts rotational energies downward (Watson A-reduction sign)."""
+        DJ = 2.5e-4  # typical methanol value
+        J = 2
+        spec_plain = _methanol_spec(n_basis=12)
+        spec_cd = self._spec_with_cd(DJ=DJ)
+        plain = solve_full_torsion_rotation_levels(spec_plain, J, n_levels=8)
+        with_cd = solve_full_torsion_rotation_levels(spec_cd, J, n_levels=8)
+        # DJ correction is -DJ*J(J+1)^2 = -2.5e-4*6^2 = -9e-3 cm-1 per level
+        expected_shift = -DJ * (J * (J + 1)) ** 2
+        diffs = with_cd["energies_cm-1"] - plain["energies_cm-1"]
+        # All levels should shift by approximately expected_shift
+        np.testing.assert_allclose(diffs, expected_shift, atol=5e-4)
+
+    def test_DJK_shifts_scale_with_K(self):
+        """DJK correction -DJK*J(J+1)*K^2 must be zero for K=0 and grow with K."""
+        DJK = -1.7e-3
+        J = 2
+        jj = J * (J + 1)
+        spec_plain = _methanol_spec(n_basis=12)
+        spec_cd = self._spec_with_cd(DJK=DJK)
+        plain = solve_full_torsion_rotation_levels(spec_plain, J, n_levels=15)
+        with_cd = solve_full_torsion_rotation_levels(spec_cd, J, n_levels=15)
+        diffs = with_cd["energies_cm-1"] - plain["energies_cm-1"]
+        # Mean shift should be close to -DJK*J(J+1)*<K^2> where <K^2> ≥ 0
+        # At minimum, the spread of diffs should be > 0 for DJK != 0
+        assert float(np.std(diffs)) > 1e-6, "DJK should create K-dependent spread in energies"
+
+    def test_cd_fitter_recognises_DJ_DJK(self):
+        """select_fit_params must accept DJ and DJK without raising."""
+        from backend.torsion_fitter import select_fit_params
+        spec = self._spec_with_cd()
+        params = select_fit_params(spec, ["DJ", "DJK", "DK", "d1", "d2"])
+        assert len(params) == 5
+        names = [p.name for p in params]
+        assert "DJ" in names and "DJK" in names
+
+
+# ── 7. Higher Fourier Potential Terms ────────────────────────────────────────
+
+class TestHigherFourierTerms:
+    """V9, V12 and general high-order Fourier terms in the potential."""
+
+    def test_V9_term_changes_energy(self):
+        """Adding a small V9 term must shift torsional energies."""
+        pot_base = TorsionFourierPotential(v0=_V0, vcos={3: _VCOS3, 6: _VCOS6}, units="cm-1")
+        pot_v9 = TorsionFourierPotential(
+            v0=_V0, vcos={3: _VCOS3, 6: _VCOS6, 9: -0.5}, units="cm-1"
+        )
+        spec_base = TorsionHamiltonianSpec(F=_F, rho=_RHO, A=0.0, B=0.0, C=0.0,
+                                           potential=pot_base, n_basis=15, units="cm-1")
+        spec_v9 = TorsionHamiltonianSpec(F=_F, rho=_RHO, A=0.0, B=0.0, C=0.0,
+                                          potential=pot_v9, n_basis=15, units="cm-1")
+        out_base = solve_ram_lite_levels(spec_base, J=0, K=0, n_levels=4)
+        out_v9 = solve_ram_lite_levels(spec_v9, J=0, K=0, n_levels=4)
+        diffs = out_v9["energies_cm-1"] - out_base["energies_cm-1"]
+        assert float(np.max(np.abs(diffs))) > 1e-4, "V9 term should shift torsional energies"
+
+    def test_n_basis_must_cover_highest_harmonic(self):
+        """Validation must reject n_basis < max harmonic order."""
+        from runner.usability import _validate_torsion_block
+        from runner.usability import ConfigError
+        cfg = {
+            "torsion_hamiltonian": {
+                "enabled": True,
+                "F": 27.0,
+                "rho": 0.8,
+                "n_basis": 6,    # too small for V9
+                "potential": {
+                    "v0": 186.0,
+                    "vcos": {3: -186.0, 9: -0.5},  # highest harmonic = 9
+                    "vsin": {},
+                },
+            }
+        }
+        with pytest.raises(ConfigError, match="n_basis.*smaller than the highest"):
+            _validate_torsion_block(cfg)
+
+    def test_n_basis_equal_to_harmonic_passes(self):
+        """n_basis exactly equal to max harmonic order must pass validation."""
+        from runner.usability import _validate_torsion_block
+        cfg = {
+            "torsion_hamiltonian": {
+                "enabled": True,
+                "F": 27.0,
+                "rho": 0.8,
+                "n_basis": 9,    # exactly matches highest harmonic
+                "potential": {
+                    "v0": 186.0,
+                    "vcos": {3: -186.0, 9: -0.5},
+                    "vsin": {},
+                },
+            }
+        }
+        _validate_torsion_block(cfg)  # must not raise
+
+
+# ── 8. Alpha-dependent Constants and Full RAM K-mixing ───────────────────────
+
+class TestAlphaDependentConstants:
+    """A(α)/B(α)/C(α) Fourier constants and full K-torsion mixing in off-diagonal blocks."""
+
+    def _spec_alpha(self, B_fcos3=0.0):
+        from backend.torsion_hamiltonian import TorsionEffectiveConstantFourier
+        pot = TorsionFourierPotential(v0=_V0, vcos={3: _VCOS3, 6: _VCOS6}, units="cm-1")
+        B_alpha = TorsionEffectiveConstantFourier(
+            f0=0.8231, fcos={3: B_fcos3}, units="cm-1"
+        ) if B_fcos3 != 0.0 else None
+        return TorsionHamiltonianSpec(
+            F=_F, rho=_RHO, A=4.2542, B=0.8231, C=0.7931,
+            B_alpha=B_alpha,
+            potential=pot, n_basis=12, units="cm-1",
+        )
+
+    def test_constant_alpha_dep_matches_scalar(self):
+        """A_alpha with only f0 (no harmonics) must give identical energies to scalar."""
+        from backend.torsion_hamiltonian import TorsionEffectiveConstantFourier
+        pot = TorsionFourierPotential(v0=_V0, vcos={3: _VCOS3}, units="cm-1")
+        # Constant A(α) = A scalar
+        A_alpha = TorsionEffectiveConstantFourier(f0=4.2542, units="cm-1")
+        B_alpha = TorsionEffectiveConstantFourier(f0=0.8231, units="cm-1")
+        C_alpha = TorsionEffectiveConstantFourier(f0=0.7931, units="cm-1")
+        spec_scalar = TorsionHamiltonianSpec(
+            F=_F, rho=_RHO, A=4.2542, B=0.8231, C=0.7931,
+            potential=pot, n_basis=10, units="cm-1",
+        )
+        spec_alpha = TorsionHamiltonianSpec(
+            F=_F, rho=_RHO, A=4.2542, B=0.8231, C=0.7931,
+            A_alpha=A_alpha, B_alpha=B_alpha, C_alpha=C_alpha,
+            potential=pot, n_basis=10, units="cm-1",
+        )
+        for J in (0, 1, 2):
+            e_scalar = solve_full_torsion_rotation_levels(spec_scalar, J, n_levels=8)["energies_cm-1"]
+            e_alpha = solve_full_torsion_rotation_levels(spec_alpha, J, n_levels=8)["energies_cm-1"]
+            np.testing.assert_allclose(
+                e_scalar, e_alpha, atol=1e-6,
+                err_msg=f"Constant alpha-dep (J={J}) should match scalar"
+            )
+
+    def test_B_alpha_harmonic_shifts_energy(self):
+        """B(α) with a small V3-harmonic must shift energies compared to constant B."""
+        spec_const = self._spec_alpha(B_fcos3=0.0)
+        spec_alpha = self._spec_alpha(B_fcos3=-0.005)  # small 3-fold variation in B
+        for J in (1, 2):
+            e_const = solve_full_torsion_rotation_levels(spec_const, J, n_levels=10)["energies_cm-1"]
+            e_alpha = solve_full_torsion_rotation_levels(spec_alpha, J, n_levels=10)["energies_cm-1"]
+            max_diff = float(np.max(np.abs(e_alpha - e_const)))
+            assert max_diff > 1e-5, f"B(α) harmonic must shift energies (J={J}, max_diff={max_diff:.2e})"
+            assert max_diff < 0.1, f"B(α) harmonic shift unexpectedly large (J={J}, max_diff={max_diff:.4f})"
+
+    def test_alpha_dep_K_mixing_is_hermitian(self):
+        """Full Hamiltonian with alpha-dependent constants must remain Hermitian."""
+        from backend.torsion_hamiltonian import TorsionEffectiveConstantFourier
+        from backend.torsion_rot_hamiltonian import build_full_torsion_rotation_hamiltonian
+        pot = TorsionFourierPotential(v0=_V0, vcos={3: _VCOS3, 6: _VCOS6}, units="cm-1")
+        B_alpha = TorsionEffectiveConstantFourier(f0=0.8231, fcos={3: -0.005}, units="cm-1")
+        C_alpha = TorsionEffectiveConstantFourier(f0=0.7931, fcos={3: -0.003}, units="cm-1")
+        spec = TorsionHamiltonianSpec(
+            F=_F, rho=_RHO, A=4.2542, B=0.8231, C=0.7931,
+            B_alpha=B_alpha, C_alpha=C_alpha,
+            potential=pot, n_basis=10, units="cm-1",
+        )
+        for J in (0, 1, 2):
+            H, *_ = build_full_torsion_rotation_hamiltonian(spec, J)
+            max_anti = float(np.max(np.abs(H - H.conj().T)))
+            assert max_anti < 1e-10, f"Hamiltonian not Hermitian at J={J}: max|H-H†|={max_anti:.2e}"

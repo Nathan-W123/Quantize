@@ -646,7 +646,9 @@ def _validate_torsion_block(cfg: dict[str, Any]) -> None:
                     ki, vi = int(k), float(v)
                 except (TypeError, ValueError):
                     continue
-                if ki % 3 == 0 and vi > 0:
+                # Only check the fundamental 3-fold term — higher harmonics (V6, V9…)
+                # are overtone corrections whose sign is physically independent.
+                if ki == 3 and vi > 0:
                     raise ConfigError(
                         f"'torsion_hamiltonian.potential.vcos[{k}]' = {vi:.4f} is positive. "
                         f"In this codebase the Fourier convention is V(a) = v0 + sum vcos_n*cos(n*a). "
@@ -665,21 +667,36 @@ def _validate_torsion_block(cfg: dict[str, Any]) -> None:
             nb_ok = False
         if nb_ok:
             vcos_c = pot_check.get("vcos") or {}
-            if isinstance(vcos_c, dict):
-                coeff_vals = []
-                for v in vcos_c.values():
+            vsin_c = pot_check.get("vsin") or {}
+            coeff_vals = []
+            max_harmonic = 0
+            for src in (vcos_c, vsin_c):
+                if not isinstance(src, dict):
+                    continue
+                for k, v in src.items():
                     try:
-                        coeff_vals.append(abs(float(v)))
+                        ki = int(k)
+                        vi = abs(float(v))
                     except (TypeError, ValueError):
-                        pass
-                max_barrier = max(coeff_vals, default=0.0)
-                if nb < 8 and max_barrier > 150.0:
-                    raise ConfigError(
-                        f"'torsion_hamiltonian.n_basis' = {nb} may be too small for a barrier "
-                        f"of ~{max_barrier:.0f} cm^-1. Use n_basis >= 10 for moderate barriers "
-                        f"(~200-500 cm^-1) and n_basis >= 15 for high barriers (> 500 cm^-1). "
-                        f"Run 'quantize lam-diagnose --convergence' to check basis convergence."
-                    )
+                        continue
+                    coeff_vals.append(vi)
+                    if ki > max_harmonic:
+                        max_harmonic = ki
+            max_barrier = max(coeff_vals, default=0.0)
+            # n_basis must be >= highest harmonic order to represent V_n correctly
+            if max_harmonic > 0 and nb < max_harmonic:
+                raise ConfigError(
+                    f"'torsion_hamiltonian.n_basis' = {nb} is smaller than the highest "
+                    f"potential harmonic order {max_harmonic}. Set n_basis >= {max_harmonic} "
+                    f"so that V_{max_harmonic} is correctly represented in the Fourier basis."
+                )
+            if nb < 8 and max_barrier > 150.0:
+                raise ConfigError(
+                    f"'torsion_hamiltonian.n_basis' = {nb} may be too small for a barrier "
+                    f"of ~{max_barrier:.0f} cm^-1. Use n_basis >= 10 for moderate barriers "
+                    f"(~200-500 cm^-1) and n_basis >= 15 for high barriers (> 500 cm^-1). "
+                    f"Run 'quantize lam-diagnose --convergence' to check basis convergence."
+                )
 
     # --- geometry_coupling block (Phase 7) ---
     gc = t.get("geometry_coupling")
