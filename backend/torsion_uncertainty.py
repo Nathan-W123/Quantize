@@ -76,6 +76,11 @@ def _spec_to_nested_dict(spec: TorsionHamiltonianSpec) -> dict:
         "A": float(spec.A),
         "B": float(spec.B),
         "C": float(spec.C),
+        "DJ": float(spec.DJ),
+        "DJK": float(spec.DJK),
+        "DK": float(spec.DK),
+        "d1": float(spec.d1),
+        "d2": float(spec.d2),
         "n_basis": int(spec.n_basis),
         "units": str(spec.units),
         "potential": {
@@ -130,6 +135,11 @@ def unpack_torsion_parameters(
     updated.A = float(d["A"])
     updated.B = float(d["B"])
     updated.C = float(d["C"])
+    updated.DJ = float(d.get("DJ", 0.0))
+    updated.DJK = float(d.get("DJK", 0.0))
+    updated.DK = float(d.get("DK", 0.0))
+    updated.d1 = float(d.get("d1", 0.0))
+    updated.d2 = float(d.get("d2", 0.0))
     updated.n_basis = int(d["n_basis"])
     updated.units = str(d["units"])
     updated.potential.v0 = float(d["potential"]["v0"])

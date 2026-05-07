@@ -63,6 +63,12 @@ def select_fit_params(
         "f6": TorsionParameter("F6", ("F6",), step_abs=1e-10, step_rel=1e-4),
         "c_mk": TorsionParameter("c_mk", ("c_mk",), step_abs=1e-7, step_rel=1e-4),
         "c_k2": TorsionParameter("c_k2", ("c_k2",), step_abs=1e-7, step_rel=1e-4),
+        # Watson A-reduction quartic centrifugal distortion (cm-1)
+        "dj": TorsionParameter("DJ", ("DJ",), step_abs=1e-9, step_rel=1e-4),
+        "djk": TorsionParameter("DJK", ("DJK",), step_abs=1e-9, step_rel=1e-4),
+        "dk": TorsionParameter("DK", ("DK",), step_abs=1e-9, step_rel=1e-4),
+        "d1": TorsionParameter("d1", ("d1",), step_abs=1e-10, step_rel=1e-4),
+        "d2": TorsionParameter("d2", ("d2",), step_abs=1e-11, step_rel=1e-4),
     }
     result: list[TorsionParameter] = []
     for raw in param_names:
@@ -94,7 +100,8 @@ def select_fit_params(
             )
         else:
             raise ValueError(
-                f"Unknown parameter name '{name}'. Valid: F, rho, v0, F4, F6, c_mk, c_k2, Vcos_<n>, Vsin_<n>."
+                f"Unknown parameter name '{name}'. Valid: F, rho, v0, F4, F6, c_mk, c_k2, "
+                f"DJ, DJK, DK, d1, d2, Vcos_<n>, Vsin_<n>."
             )
     return result
 

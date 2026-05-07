@@ -1101,7 +1101,8 @@ def _build_torsion_spec_from_config(
     Build a TorsionHamiltonianSpec from a torsion_hamiltonian config block.
 
     Returns (spec, symmetry_mode, label_levels).
-    Supports Phase-1 fields: F4, F6, c_mk, c_k2, F_alpha, symmetry_mode, label_levels.
+    Supports all fields including centrifugal distortion (DJ/DJK/DK/d1/d2)
+    and alpha-dependent constants (A_alpha/B_alpha/C_alpha).
     """
     A_cm1 = float(tcfg.get("A_cm-1", abc_cm1[0]))
     B_cm1 = float(tcfg.get("B_cm-1", abc_cm1[1]))
@@ -1112,6 +1113,11 @@ def _build_torsion_spec_from_config(
     F6 = float(tcfg.get("F6", 0.0))
     c_mk = float(tcfg.get("c_mk", 0.0))
     c_k2 = float(tcfg.get("c_k2", 0.0))
+    DJ = float(tcfg.get("DJ", 0.0))
+    DJK = float(tcfg.get("DJK", 0.0))
+    DK = float(tcfg.get("DK", 0.0))
+    d1 = float(tcfg.get("d1", 0.0))
+    d2 = float(tcfg.get("d2", 0.0))
     n_basis = int(tcfg.get("n_basis", 7))
     units = str(tcfg.get("units", "cm-1"))
 
@@ -1121,10 +1127,11 @@ def _build_torsion_spec_from_config(
     vsin = {int(k): float(v) for k, v in (p.get("vsin", {}) or {}).items()}
     pot = TorsionFourierPotential(v0=v0, vcos=vcos, vsin=vsin, units=units)
 
-    F_alpha = None
-    fa_cfg = tcfg.get("F_alpha")
-    if isinstance(fa_cfg, dict) and "f0" in fa_cfg:
-        F_alpha = TorsionEffectiveConstantFourier(
+    def _parse_fourier_constant(cfg_key: str) -> "TorsionEffectiveConstantFourier | None":
+        fa_cfg = tcfg.get(cfg_key)
+        if not isinstance(fa_cfg, dict) or "f0" not in fa_cfg:
+            return None
+        return TorsionEffectiveConstantFourier(
             f0=float(fa_cfg["f0"]),
             fcos={int(k): float(v) for k, v in (fa_cfg.get("fcos", {}) or {}).items()},
             fsin={int(k): float(v) for k, v in (fa_cfg.get("fsin", {}) or {}).items()},
@@ -1134,7 +1141,12 @@ def _build_torsion_spec_from_config(
     spec = TorsionHamiltonianSpec(
         F=F_cm1, rho=rho, F4=F4, F6=F6, c_mk=c_mk, c_k2=c_k2,
         A=A_cm1, B=B_cm1, C=C_cm1,
-        potential=pot, F_alpha=F_alpha,
+        DJ=DJ, DJK=DJK, DK=DK, d1=d1, d2=d2,
+        potential=pot,
+        F_alpha=_parse_fourier_constant("F_alpha"),
+        A_alpha=_parse_fourier_constant("A_alpha"),
+        B_alpha=_parse_fourier_constant("B_alpha"),
+        C_alpha=_parse_fourier_constant("C_alpha"),
         n_basis=n_basis, units=units,
     )
 

@@ -15,8 +15,13 @@ env/
 .pytest_cache/
 .pytest_cache_local/
 pytest-cache-files-*/
+pytest-of-*/
 .mypy_cache/
 .ipynb_checkpoints/
+
+# Pytest tmp_path and miscellaneous tool scratch dirs in project root
+tmp*/
+codex_tmp/
 
 # Logs
 *.log

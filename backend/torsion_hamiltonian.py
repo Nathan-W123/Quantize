@@ -88,8 +88,22 @@ class TorsionHamiltonianSpec:
     A: float = 0.0
     B: float = 0.0
     C: float = 0.0
+    # Watson A-reduction quartic centrifugal distortion (cm-1)
+    # Diagonal: -DJ*J(J+1)^2 - DJK*J(J+1)*K^2 - DK*K^4
+    # Off-diagonal ΔK=±2: -d1*J(J+1)*f(J,K) - d2*(K^2+(K±2)^2)/4*f(J,K)
+    DJ: float = 0.0
+    DJK: float = 0.0
+    DK: float = 0.0
+    d1: float = 0.0
+    d2: float = 0.0
     potential: TorsionFourierPotential = field(default_factory=TorsionFourierPotential)
     F_alpha: Optional["TorsionEffectiveConstantFourier"] = None
+    # Alpha-dependent rotational constants as Fourier series (optional).
+    # When set, the full Hamiltonian uses matrix-valued A(α)/B(α)/C(α),
+    # enabling full torsion-state mixing in K±2 off-diagonal blocks.
+    A_alpha: Optional["TorsionEffectiveConstantFourier"] = None
+    B_alpha: Optional["TorsionEffectiveConstantFourier"] = None
+    C_alpha: Optional["TorsionEffectiveConstantFourier"] = None
     n_basis: int = 7
     units: str = "cm-1"
     warnings: list[str] = field(default_factory=list)

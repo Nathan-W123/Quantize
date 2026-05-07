@@ -2,15 +2,22 @@
 Full torsion-rotation Hamiltonian extending RAM-lite.
 
 Implements a coupled torsion-rotation Hamiltonian in the direct-product
-basis |J, K, m> (symmetric-top projection K, Fourier torsion index m),
-including asymmetric-top off-diagonal K-coupling:
+basis |J, K, m> (symmetric-top projection K, Fourier torsion index m).
 
-  H = H_rot(J,K) + F*(m - rho*K)^2 + V(alpha) + H_asym(J,K,K+/-2)
+Hamiltonian (Watson A-reduction, prolate convention z = a-axis):
 
-Rotational part uses prolate-reduction convention (z = a-axis):
+  H = H_rot + F*(m - rho*K)^2 + V(alpha) + H_asym + H_cd
 
-  H_rot = (B+C)/2 * J(J+1) + [A - (B+C)/2] * K^2
-  H_asym: delta_K = +-2 elements = (B-C)/4 * sqrt([J(J+1)-K(K+1)][J(J+1)-(K+1)(K+2)])
+  H_rot   = (B+C)/2 * J(J+1) + [A - (B+C)/2] * K^2
+  H_asym  : ΔK=±2,  (B-C)/4 * f(J,K)   where f = sqrt[J(J+1)-K(K+1)][J(J+1)-(K+1)(K+2)]
+  H_cd    : Watson A-reduction quartic centrifugal distortion
+              diagonal: -DJ*J(J+1)^2 - DJK*J(J+1)*K^2 - DK*K^4
+              ΔK=±2:   (-d1*J(J+1) - d2*(K^2+(K±2)^2)/4) * f(J,K)
+
+Alpha-dependent constants (optional):
+  When spec.A_alpha / B_alpha / C_alpha are provided as Fourier series,
+  the diagonal rotational block and the ΔK=±2 coupling become full
+  n_m×n_m Fourier matrices, yielding complete torsion-rotation K-mixing.
 
 RAM-lite (single-K block) remains available via ``solve_ram_lite_levels``
 in torsion_hamiltonian.py and is the recommended fast path for most tasks.
@@ -33,6 +40,7 @@ from backend.torsion_hamiltonian import (
     TorsionHamiltonianSpec,
     _validate_units,
     basis_m_values,
+    effective_torsion_constant_matrix,
     fourier_potential_matrix,
 )
 
@@ -64,9 +72,22 @@ def build_full_torsion_rotation_hamiltonian(
     Basis ordering: for each K in [-J, ..., J], for each m in m_vals.
     Total dimension = (2J+1) * (2*n_basis+1).
 
+    Hamiltonian includes:
+      H = H_rot(J,K) + F*(m - rho*K)^2 + V(alpha) + H_asym(J,K,K+/-2)
+          + H_cd  (Watson A-reduction quartic centrifugal distortion)
+
+    Centrifugal distortion (Watson A-reduction):
+      Diagonal:      -DJ*J(J+1)^2 - DJK*J(J+1)*K^2 - DK*K^4
+      Off-diag ΔK=2: [-d1*J(J+1) - d2*(K^2+(K+2)^2)/4] * f(J,K)
+
+    When spec.A_alpha / B_alpha / C_alpha are set (alpha-dependent constants),
+    the diagonal rotational blocks and the K±2 off-diagonal coupling become
+    full n_m×n_m Fourier matrices, enabling complete torsion-K mixing.
+
     Parameters
     ----------
-    spec : TorsionHamiltonianSpec — A, B, C, F, rho, potential, n_basis
+    spec : TorsionHamiltonianSpec — A, B, C, F, rho, DJ/DJK/DK/d1/d2,
+           potential, n_basis, and optional A_alpha/B_alpha/C_alpha
     J : rotational quantum number (>= 0)
 
     Returns
@@ -91,9 +112,33 @@ def build_full_torsion_rotation_hamiltonian(
     C = float(spec.C)
     rho = float(spec.rho)
     F = float(spec.F)
-    asym_factor = (B - C) / 4.0
+    DJ = float(spec.DJ)
+    DJK = float(spec.DJK)
+    DK = float(spec.DK)
+    d1 = float(spec.d1)
+    d2 = float(spec.d2)
+
+    jj = float(J_int * (J_int + 1))  # J(J+1)
 
     V_mat = fourier_potential_matrix(m_vals, spec.potential)  # (n_m, n_m)
+
+    # Build Fourier matrices for alpha-dependent constants when provided.
+    # These replace scalar A/B/C with full n_m×n_m matrices in the Hamiltonian.
+    use_alpha = (spec.A_alpha is not None or
+                 spec.B_alpha is not None or
+                 spec.C_alpha is not None)
+    if use_alpha:
+        A_mat = (effective_torsion_constant_matrix(m_vals, spec.A_alpha)
+                 if spec.A_alpha is not None else A * np.eye(n_m, dtype=complex))
+        B_mat = (effective_torsion_constant_matrix(m_vals, spec.B_alpha)
+                 if spec.B_alpha is not None else B * np.eye(n_m, dtype=complex))
+        C_mat = (effective_torsion_constant_matrix(m_vals, spec.C_alpha)
+                 if spec.C_alpha is not None else C * np.eye(n_m, dtype=complex))
+        BpC_half = (B_mat + C_mat) * 0.5   # (B(α)+C(α))/2 matrix
+        BmC_qtr = (B_mat - C_mat) * 0.25   # (B(α)-C(α))/4 matrix
+        warns.append(
+            "Alpha-dependent rotational constants active: full K-torsion mixing in off-diagonal blocks."
+        )
 
     H = np.zeros((dim, dim), dtype=complex)
 
@@ -102,25 +147,44 @@ def build_full_torsion_rotation_hamiltonian(
         rs = ki * n_m
         re = rs + n_m
 
-        # Diagonal K-block: rotational diagonal + kinetic + potential
-        E_rot_k = (B + C) / 2.0 * J_int * (J_int + 1) + (A - (B + C) / 2.0) * k * k
-        x = m_vals - rho * k
-        kin_diag = F * x ** 2
-        H[rs:re, rs:re] += np.diag((E_rot_k + kin_diag).astype(complex)) + V_mat
+        # Watson A-reduction CD diagonal correction (scalar, same for all m)
+        E_cd = -DJ * jj * jj - DJK * jj * k * k - DK * k ** 4
 
-        # Off-diagonal: K coupling to K+2 block (and by Hermiticity, K-2)
+        # Kinetic F*(m - rho*K)^2 — diagonal in m
+        x = m_vals - rho * k
+        kin_diag = np.diag((F * x ** 2 + E_cd).astype(complex))
+
+        if use_alpha:
+            # Rotational energy as full n_m×n_m matrix
+            rot_mat = BpC_half * jj + (A_mat - BpC_half) * float(k * k)
+            H[rs:re, rs:re] += rot_mat.astype(complex) + kin_diag + V_mat
+        else:
+            E_rot_k = (B + C) / 2.0 * jj + (A - (B + C) / 2.0) * k * k
+            H[rs:re, rs:re] += np.diag(np.full(n_m, E_rot_k, dtype=complex)) + kin_diag + V_mat
+
+        # Off-diagonal K±2 coupling
         ki2 = ki + 2
         if ki2 < n_K:
-            coupling = asym_factor * _jk_asym_coupling(J_int, k)
-            if abs(coupling) > 1e-15:
-                cs = ki2 * n_m
-                ce = cs + n_m
-                # Off-diagonal block is diagonal in m (torsion index unchanged)
-                cpl_block = coupling * np.eye(n_m, dtype=complex)
-                H[rs:re, cs:ce] += cpl_block
-                H[cs:ce, rs:re] += cpl_block  # Hermitian conjugate (real coupling)
+            k2 = int(K_vals[ki2])   # = k + 2
+            cs = ki2 * n_m
+            ce = cs + n_m
+            asym_elem = _jk_asym_coupling(J_int, k)
+            if abs(asym_elem) > 1e-15:
+                # CD corrections to K±2 (scalar regardless of alpha-dep mode)
+                d1_corr = -d1 * jj * asym_elem
+                d2_corr = -d2 * (k * k + k2 * k2) / 4.0 * asym_elem
 
-    # Enforce Hermiticity numerically
+                if use_alpha:
+                    # Full matrix: (B(α)-C(α))/4 mixes torsion states
+                    cpl_block = (BmC_qtr * asym_elem
+                                 + (d1_corr + d2_corr) * np.eye(n_m)).astype(complex)
+                else:
+                    asym_scalar = (B - C) / 4.0 * asym_elem + d1_corr + d2_corr
+                    cpl_block = (asym_scalar * np.eye(n_m, dtype=complex))
+
+                H[rs:re, cs:ce] += cpl_block
+                H[cs:ce, rs:re] += cpl_block.conj().T
+
     H = 0.5 * (H + H.conj().T)
     return H, K_vals, m_vals, warns
 

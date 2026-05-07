@@ -72,6 +72,20 @@ isotopologues:
     alpha_mhz: [0.0, 0.0, 0.0]
     sigma_mhz: [2.0, 0.05, 0.05]
 
+  - name: CH3OD
+    masses: [12.0, 15.99491461957, 1.00782503207, 1.00782503207, 1.00782503207, 2.01410177785]
+    components: [A, B, C]
+    obs_b0_mhz: [127549.4, 22839.1, 22116.9]
+    alpha_mhz: [0.0, 0.0, 0.0]
+    sigma_mhz: [10.0, 0.2, 0.2]
+
+  - name: CD3OH
+    masses: [12.0, 15.99491461957, 2.01410177785, 2.01410177785, 2.01410177785, 1.00782503207]
+    components: [A, B, C]
+    obs_b0_mhz: [70819.0, 19856.0, 19266.0]
+    alpha_mhz: [0.0, 0.0, 0.0]
+    sigma_mhz: [5.0, 0.05, 0.05]
+
 quantum:
   backend: orca
   method: wB97X-D4
@@ -104,8 +118,22 @@ torsion_hamiltonian:
   label_levels: true
   export_symmetry_blocks: true
 
+  # ── Centrifugal distortion (Watson A-reduction, quartic) ─────────────────
+  # Diagonal:      -DJ*J(J+1)^2 - DJK*J(J+1)*K^2 - DK*K^4  (cm-1)
+  # Off-diag ΔK=±2: (-d1*J(J+1) - d2*(K^2+(K±2)^2)/4) * f(J,K)
+  # Typical methanol values (Brown et al.): DJ~2.5e-4, DJK~-1.7e-3 cm-1
+  # Set to 0.0 for pure RAM torsional model; enable when fitting rotational transitions.
+  DJ: 0.0
+  DJK: 0.0
+  DK: 0.0
+  d1: 0.0
+  d2: 0.0
+
   potential:
     v0: 186.117548
+    # Higher Fourier terms V9/V12 are supported — just add entries here.
+    # Example: vcos: {3: -186.777373, 6: 0.659825, 9: -0.05}
+    # Ensure n_basis >= highest harmonic order (e.g. n_basis >= 9 for V9).
     vcos: {3: -186.777373, 6: 0.659825}
     vsin: {}
 
@@ -165,6 +193,24 @@ torsion_hamiltonian:
   #     symmetry_number: 3
   #     cosine_only: true
   #     zero_at_minimum: true
+
+  # ── Alpha-dependent rotational constants (Step 3) ────────────────────────
+  # A(α), B(α), C(α) as Fourier series: f0 + Σ fcos_n*cos(nα) + fsin_n*sin(nα)
+  # When set, the full Hamiltonian uses matrix-valued constants enabling complete
+  # torsion-K mixing in off-diagonal blocks (full RAM K-mixing, Step 4).
+  # Populate from a QC torsion scan using runner/torsion_average.py output.
+  # A_alpha:
+  #   f0: 4.2510      # α-averaged A (cm-1)
+  #   fcos: {3: -0.012, 6: 0.002}
+  #   fsin: {}
+  # B_alpha:
+  #   f0: 0.8231
+  #   fcos: {3: -0.003}
+  #   fsin: {}
+  # C_alpha:
+  #   f0: 0.7927
+  #   fcos: {3: -0.002}
+  #   fsin: {}
 
   # ── Geometry coupling: F/rho from Cartesian geometry ─────────────────────
   # Recomputes F and rho from the optimized geometry using the moment-of-inertia

@@ -1,9 +1,0 @@
-{
-  "molecule": "water",
-  "preset": "FAST_DEBUG",
-  "orca_method": "wB97X-D4",
-  "orca_basis": "def2-TZVPP",
-  "output": {
-    "root": "runs"
-  }
-}

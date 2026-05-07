@@ -115,7 +115,7 @@ write_xyz: false
 # coordinate_mode:
 #   cartesian  — current default optimizer space
 #   internal   — optimize in bond/angle(/dihedral) space with dq→dx backtransform
-coordinate_mode: cartesian
+coordinate_mode: internal
 
 # Internal-coordinate controls (used when coordinate_mode: internal).
 internal_coordinates:
