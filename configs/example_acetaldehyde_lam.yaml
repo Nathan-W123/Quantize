@@ -1,0 +1,143 @@
+# Acetaldehyde (CH3CHO) LAM worked example — RAM-lite torsion pipeline
+#
+# Literature parameters: Kleiner et al., J. Mol. Spectrosc. 175, 1-13 (1996)
+#   F    = 5.1724 cm^-1    internal rotation constant
+#   rho  = 0.0609           coupling parameter (I_alpha / I_zz)
+#   V3   = 163.4 cm^-1     3-fold barrier height
+#
+# Rotational constants (effective B0, cm^-1):
+#   A = 1.7626  (~52842 MHz)
+#   B = 0.3413  (~10240 MHz)
+#   C = 0.2884  (~8648  MHz)
+#
+# RAM-lite vt=0 A/E tunneling splitting ≈ 0.276 cm^-1 (E above A)
+# (Full RAM effective splitting ~1.18 cm^-1 includes torsion-rotation coupling beyond RAM-lite)
+#
+# Fourier potential convention (this codebase):
+#   V(α) = v0 + vcos_3 * cos(3α)
+# Mapping from barrier height V3:
+#   v0    =  V3/2 = 81.7 cm^-1
+#   vcos3 = -V3/2 = -81.7 cm^-1
+#
+# Acetaldehyde has lower V3/F (~31.6) than methanol (~13.5), but the barrier
+# is still well above the nearly-free-rotor limit (V3/F >> 2), so RAM-lite
+# gives a reliable result for the torsional levels.  The asymmetric-top
+# character (B − C = 0.053 cm^-1 ≈ 16% of B) means RAM-lite reliability
+# is 'moderate' — full RAM treatment would be needed for a precision global fit.
+#
+# Run with:
+#   python Quantize/cli.py run configs/example_acetaldehyde_lam.yaml
+
+name: acetaldehyde_lam
+spectral_model: internal_rotor_bc
+coordinate_mode: internal
+
+internal_coordinates:
+  use_dihedrals: true
+  damping: 1.0e-6
+  microiterations: 20
+  prior_weight: 1.0
+  prior_sigma_bond: 0.06
+  prior_sigma_angle_deg: 4.0
+  prior_sigma_dihedral_deg: 20.0
+
+# Acetaldehyde: CH3CHO  (methyl C, carbonyl C, carbonyl O, 3× methyl H, aldehyde H)
+elements: [C, C, O, H, H, H, H]
+
+geometry:
+  smiles: CC=O
+
+symmetry: null
+
+isotopologues:
+  - name: CH3CHO_parent
+    masses: [12.0, 12.0, 15.99491461957,
+             1.00782503207, 1.00782503207, 1.00782503207, 1.00782503207]
+    components: [A, B, C]
+    obs_b0_mhz: [52842.4, 10240.6, 8648.0]
+    alpha_mhz: [0.0, 0.0, 0.0]
+    sigma_mhz: [5.0, 0.1, 0.1]
+
+quantum:
+  backend: orca
+  method: wB97X-D4
+  basis: def2-TZVPP
+  executable: null
+
+preset: BALANCED
+rng_seed: 42
+write_xyz: true
+
+rovibrational_corrections:
+  mode: hybrid_auto
+
+# ── Torsion Hamiltonian block (RAM-lite, Kleiner et al. 1996) ─────────────────
+torsion_hamiltonian:
+  enabled: true
+  F: 5.1724
+  rho: 0.0609
+  A: 1.7626
+  B: 0.3413
+  C: 0.2884
+  n_basis: 12    # 2*n_basis+1 = 25 basis functions; converged for V3=163 cm^-1
+  n_levels: 8
+  J_values: [0, 1, 2]
+  K_values: [0, 1]
+  units: cm-1
+
+  # C3 symmetry labeling: A/E species and tunneling splitting CSV export
+  symmetry_mode: c3
+  label_levels: true
+  export_symmetry_blocks: true
+
+  # Centrifugal distortion — set from fitted rotational spectrum when available
+  DJ: 0.0
+  DJK: 0.0
+  DK: 0.0
+  d1: 0.0
+  d2: 0.0
+
+  potential:
+    v0: 81.7        # V3/2 = 163.4/2
+    vcos: {3: -81.7}  # -V3/2
+    vsin: {}
+
+  # RAM-lite torsional levels (exact solution to H = F*m^2 + V(alpha), converged).
+  # Zero of energy = vt=0 A ground state.
+  # Note: full RAM effective splitting ~1.18 cm^-1 includes torsion-rotation coupling.
+  targets:
+    # vt=0 A (ground state, by definition zero)
+    - {J: 0, K: 0, level_index: 0, energy_cm-1: 0.0, symmetry: A}
+    # vt=0 E tunneling partner (≈0.276 cm^-1 above A in RAM-lite)
+    - {J: 0, K: 0, level_index: 1, energy_cm-1: 0.276, symmetry: E}
+
+  # Parameter fitting (disabled by default — enable to fit F and V3)
+  fitting:
+    enabled: false
+    params: [Vcos_3, F]
+    max_iter: 100
+
+  # Parameter uncertainty
+  uncertainty:
+    enabled: false
+    include_completeness: false
+    damping: 1.0e-8
+    rank_tol: 1.0e-10
+    default_sigma_cm1: 0.1
+
+  # LAM integration
+  lam_integration:
+    enabled: false
+
+  # Plotting
+  plot:
+    enabled: false
+    potential: true
+    wavefunctions: true
+    n_wavefunctions: 4
+    tunneling_splitting: true
+    format: png
+
+output:
+  root: runs
+  artifacts: true

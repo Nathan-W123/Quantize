@@ -604,6 +604,20 @@ def _run_torsion_phase2_exports(
         )
 
     spec, symmetry_mode, label_levels = _build_torsion_spec_from_config(tcfg, abc_cm1)
+
+    # RAM-lite reliability assessment — runs immediately after spec construction
+    try:
+        from backend.torsion_reliability import assess_ram_lite_reliability
+        _reliability = assess_ram_lite_reliability(spec)
+        _reliability_dict: dict = {
+            "score": _reliability.score,
+            "flags": _reliability.flags,
+            "ram_lite_error_bound_cm1": _reliability.ram_lite_error_bound_cm1,
+        }
+    except Exception as _rel_exc:
+        _reliability_dict = {"score": "unknown", "flags": [str(_rel_exc)],
+                             "ram_lite_error_bound_cm1": float("nan")}
+
     export_blocks = bool(tcfg.get("export_symmetry_blocks", False))
     n_levels = int(tcfg.get("n_levels", 8))
     J_values = [int(x) for x in (tcfg.get("J_values") or [0])]
@@ -1173,6 +1187,7 @@ def _run_torsion_phase2_exports(
     if line_list_csv is not None:
         summary["line_list_csv"] = str(line_list_csv)
         summary["line_list_n_lines"] = len(ll_lines)
+    summary["reliability"] = _reliability_dict
     if fit_result:
         summary["fitting_rms_cm-1"] = float(fit_result.get("rms_cm-1", float("nan")))
         summary["fitting_rms_cm-1_init"] = float(fit_result.get("rms_cm-1_init", float("nan")))
