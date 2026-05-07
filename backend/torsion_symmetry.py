@@ -34,6 +34,50 @@ from backend.torsion_hamiltonian import (
 _C3_RESIDUE_LABEL: dict[int, str] = {0: "A", 1: "E1", 2: "E2"}
 _C3_LABEL_RESIDUE: dict[str, int] = {"A": 0, "E1": 1, "E2": 2, "E": 1}
 
+# Nuclear-spin statistical weights by rotor fold
+# C3 (CH3): spin-1/2 protons → A:E = 1:2
+# C2 (CH2): spin-1/2 protons → A:B = 1:3
+C3_NUCLEAR_SPIN_WEIGHTS: dict[str, int] = {"A": 1, "E": 2, "E1": 2, "E2": 2}
+C2_NUCLEAR_SPIN_WEIGHTS: dict[str, int] = {"A": 1, "B": 3}
+
+_ROTOR_FOLD_WEIGHTS: dict[int, dict[str, int]] = {
+    3: C3_NUCLEAR_SPIN_WEIGHTS,
+    2: C2_NUCLEAR_SPIN_WEIGHTS,
+}
+
+
+def nuclear_spin_weight(symmetry_label: str, rotor_fold: int = 3) -> int:
+    """
+    Return the nuclear-spin statistical weight for a symmetry species.
+
+    Parameters
+    ----------
+    symmetry_label : 'A', 'E', 'E1', 'E2' (C3 rotor) or 'A', 'B' (C2 rotor)
+    rotor_fold : 3 for CH3-type, 2 for CH2-type
+
+    Returns
+    -------
+    int weight
+
+    Raises
+    ------
+    ValueError for unknown rotor_fold or label
+    """
+    label = str(symmetry_label).strip().upper()
+    table = _ROTOR_FOLD_WEIGHTS.get(int(rotor_fold))
+    if table is None:
+        raise ValueError(
+            f"nuclear_spin_weight not implemented for rotor_fold={rotor_fold}. "
+            f"Supported: {sorted(_ROTOR_FOLD_WEIGHTS.keys())}."
+        )
+    w = table.get(label)
+    if w is None:
+        raise ValueError(
+            f"Unknown symmetry label {symmetry_label!r} for rotor_fold={rotor_fold}. "
+            f"Known: {sorted(table.keys())}."
+        )
+    return int(w)
+
 
 # ── Wang transformation ───────────────────────────────────────────────────────
 

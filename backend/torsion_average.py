@@ -16,13 +16,13 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from backend.hindered_rotor import (
-    HinderedRotorModel,
-    solve_hindered_rotor,
-    boltzmann_torsion_weights,
-    torsional_probability_on_grid,
-)
+from backend.hindered_rotor import boltzmann_torsion_weights
 from backend.spectral import _rotational_constants
+from backend.torsion_hamiltonian import (
+    TorsionHamiltonianSpec,
+    solve_ram_lite_levels,
+    torsion_probability_density,
+)
 
 
 _DEFAULT_ELEMENT_MASS = {
@@ -47,6 +47,7 @@ class TorsionGridPoint:
     geometry: np.ndarray
     energy: float | None = None
     rotational_constants: np.ndarray | None = None
+    sigma_abc: np.ndarray | None = None  # (3,) uncertainty on [A,B,C] in cm^-1
     weight: float | None = None
     label: str | None = None
     metadata: dict = field(default_factory=dict)
@@ -115,6 +116,66 @@ def get_or_compute_grid_rotational_constants(elements, scan: TorsionScan, masses
     return np.asarray(out, dtype=float)
 
 
+def get_grid_sigma_abc(scan: TorsionScan) -> np.ndarray | None:
+    """
+    Extract per-grid-point rotational constant uncertainties from scan.
+
+    Returns (G,3) float array when any grid point has sigma_abc set,
+    or None when no uncertainties are provided (triggers heuristic fallback).
+    """
+    sigmas = []
+    any_set = False
+    for gp in scan.grid_points:
+        if gp.sigma_abc is not None:
+            s = np.asarray(gp.sigma_abc, dtype=float).ravel()
+            if s.size != 3:
+                raise ValueError("TorsionGridPoint.sigma_abc must have length 3 (A, B, C).")
+            sigmas.append(s)
+            any_set = True
+        else:
+            sigmas.append(np.zeros(3, dtype=float))
+    return np.asarray(sigmas, dtype=float) if any_set else None
+
+
+def propagate_averaging_uncertainty(
+    constants_grid: np.ndarray,
+    weights: np.ndarray,
+    averaged: np.ndarray,
+    sigma_grid: np.ndarray | None,
+) -> dict:
+    """
+    Propagate grid-point uncertainties through weighted averaging.
+
+    Two independent contributions:
+      sigma_statistical    = sqrt(Σ_g w_g² σ_g²)   — from grid-point measurement errors
+      sigma_representational = sqrt(Σ_g w_g (C_g - C_avg)²) — physical spread of constants
+
+    Both are combined in quadrature as sigma_total.  When sigma_grid is None only the
+    representational term is computed (sigma_statistical = 0).
+
+    Returns
+    -------
+    dict with keys sigma_statistical, sigma_representational, sigma_total — each (3,) array.
+    """
+    C = np.asarray(constants_grid, dtype=float)
+    w = np.asarray(weights, dtype=float).ravel()
+    avg = np.asarray(averaged, dtype=float)
+
+    var_repr = np.sum(w[:, None] * (C - avg[None, :]) ** 2, axis=0)
+
+    if sigma_grid is not None:
+        sg = np.asarray(sigma_grid, dtype=float)
+        var_stat = np.sum((w[:, None] ** 2) * (sg ** 2), axis=0)
+    else:
+        var_stat = np.zeros(3, dtype=float)
+
+    return {
+        "sigma_statistical": np.sqrt(var_stat),
+        "sigma_representational": np.sqrt(var_repr),
+        "sigma_total": np.sqrt(var_stat + var_repr),
+    }
+
+
 def average_rotational_constants_with_weights(constants_grid, weights) -> np.ndarray:
     """Weighted average of constants grid (G,3) with normalized weights (G,)."""
     C = np.asarray(constants_grid, dtype=float)
@@ -132,7 +193,11 @@ def average_rotational_constants_with_weights(constants_grid, weights) -> np.nda
     return np.sum(w[:, None] * C, axis=0)
 
 
-def _scan_warnings(scan: TorsionScan, model: HinderedRotorModel | None = None) -> list[str]:
+def _scan_warnings(
+    scan: TorsionScan,
+    spec: TorsionHamiltonianSpec | None = None,
+    symmetry_number: int = 1,
+) -> list[str]:
     warnings: list[str] = []
     G = len(scan.grid_points)
     if G < 5:
@@ -144,17 +209,18 @@ def _scan_warnings(scan: TorsionScan, model: HinderedRotorModel | None = None) -
         if span < 1.7 * np.pi:
             warnings.append("periodic torsion grid does not cover close to 0..2pi range.")
 
-    if model is not None:
-        if int(model.symmetry_number) > 1:
-            bad_terms = [n for n in model.fourier_terms.keys() if int(n) > 0 and int(n) % int(model.symmetry_number) != 0]
+    if spec is not None:
+        if int(symmetry_number) > 1:
+            vcos_keys = [int(n) for n in spec.potential.vcos.keys() if int(n) > 0]
+            bad_terms = [n for n in vcos_keys if n % int(symmetry_number) != 0]
             if bad_terms:
                 warnings.append(
-                    "symmetry_number > 1 but Fourier terms include non-multiple harmonics; verify torsion symmetry assumptions."
+                    "symmetry_number > 1 but Fourier terms include non-multiple harmonics; "
+                    "verify torsion symmetry assumptions."
                 )
-        max_n = max([int(n) for n in model.fourier_terms.keys() if int(n) > 0], default=0)
-        M = (int(model.basis_size) - 1) // 2
-        if max_n > 0 and M < max_n:
-            warnings.append("basis_size may be too small relative to highest Fourier term.")
+        max_n = max((int(n) for n in spec.potential.vcos.keys() if int(n) > 0), default=0)
+        if max_n > 0 and int(spec.n_basis) < max_n:
+            warnings.append("n_basis may be too small relative to highest Fourier term.")
 
     if not scan.periodic and scan.atoms is not None:
         warnings.append("torsion scan is marked nonperiodic; torsional averaging interpretation may be limited.")
@@ -162,37 +228,60 @@ def _scan_warnings(scan: TorsionScan, model: HinderedRotorModel | None = None) -
     return warnings
 
 
+def _prob_weights_from_spec(
+    spec: TorsionHamiltonianSpec,
+    phi_radians: np.ndarray,
+    state_index: int = 0,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Compute normalized probability weights on the scan phi grid for one eigenstate.
+
+    Returns (weights, energies_cm1) where weights sum to 1.
+    """
+    result = solve_ram_lite_levels(spec, J=0, K=0)
+    eigvecs = result["eigenvectors"]
+    m_vals = result["m_values"]
+    e_cm1 = result["energies_cm-1"]
+    if state_index < 0 or state_index >= eigvecs.shape[1]:
+        raise ValueError(f"state_index {state_index} out of range for basis size {eigvecs.shape[1]}.")
+    psi = eigvecs[:, int(state_index)]
+    p = torsion_probability_density(psi, phi_radians, m_vals)
+    s = float(np.sum(p))
+    if s <= 0.0:
+        raise ValueError("Computed torsional probabilities sum to zero.")
+    return p / s, e_cm1
+
+
 def average_torsion_scan_quantum(
     elements,
     scan: TorsionScan,
-    model: HinderedRotorModel,
+    spec: TorsionHamiltonianSpec,
     masses=None,
     state_index: int = 0,
+    symmetry_number: int = 1,
 ) -> dict:
-    """Average A/B/C using quantum hindered-rotor weights from state `state_index`."""
+    """Average A/B/C using quantum torsion-Hamiltonian weights from eigenstate `state_index`."""
     phi = ensure_phi_radians(scan)
     C = get_or_compute_grid_rotational_constants(elements, scan, masses=masses)
 
-    warnings = _scan_warnings(scan, model=model)
-    if model.rotational_constant_F is None:
-        warnings.append("quantum mode requested but rotational_constant_F is missing.")
-        raise ValueError("quantum mode requires model.rotational_constant_F.")
-
-    prob = torsional_probability_on_grid(model, phi, state_index=state_index)
-    w = np.asarray(prob["weights"], dtype=float)
-    warnings.extend(list(prob.get("warnings", [])))
+    warnings = _scan_warnings(scan, spec=spec, symmetry_number=symmetry_number)
+    w, e_cm1 = _prob_weights_from_spec(spec, phi, state_index=state_index)
 
     if float(np.max(w)) > 0.95:
         warnings.append("torsional weights collapse to one grid point; correction may be fragile.")
 
     avg = average_rotational_constants_with_weights(C, w)
+    sigma_grid = get_grid_sigma_abc(scan)
+    unc = propagate_averaging_uncertainty(C, w, avg, sigma_grid)
     return {
         "averaged_constants": np.asarray(avg, dtype=float),
+        "sigma_averaged": unc["sigma_total"],
+        "uncertainty_breakdown": unc,
         "grid_constants": np.asarray(C, dtype=float),
         "weights": np.asarray(w, dtype=float),
         "phi_radians": np.asarray(phi, dtype=float),
         "state_index": int(state_index),
-        "torsional_energies_cm1": np.asarray(prob.get("energies_cm1", []), dtype=float),
+        "torsional_energies_cm1": np.asarray(e_cm1, dtype=float),
         "warnings": list(dict.fromkeys(warnings)),
         "method": "quantum_hindered_rotor",
     }
@@ -201,30 +290,33 @@ def average_torsion_scan_quantum(
 def average_torsion_scan_quantum_thermal(
     elements,
     scan: TorsionScan,
-    model: HinderedRotorModel,
+    spec: TorsionHamiltonianSpec,
     masses=None,
     temperature_K: float = 298.15,
     max_states: int = 6,
+    symmetry_number: int = 1,
 ) -> dict:
     """
     Thermal quantum averaging over multiple torsional eigenstates.
 
-    Uses state populations from hindered-rotor eigen-energies and combines
-    per-state torsional probability weights on the supplied phi grid.
+    Uses state populations from torsion-Hamiltonian eigen-energies and combines
+    per-state probability weights on the supplied phi grid.
     """
     if temperature_K <= 0.0:
         raise ValueError("temperature_K must be > 0.")
     phi = ensure_phi_radians(scan)
     C = get_or_compute_grid_rotational_constants(elements, scan, masses=masses)
-    warnings = _scan_warnings(scan, model=model)
+    warnings = _scan_warnings(scan, spec=spec, symmetry_number=symmetry_number)
 
-    solved = solve_hindered_rotor(model)
-    e_cm1 = np.asarray(solved["energies_cm1"], dtype=float)
+    result = solve_ram_lite_levels(spec, J=0, K=0)
+    e_cm1 = np.asarray(result["energies_cm-1"], dtype=float)
+    eigvecs = result["eigenvectors"]
+    m_vals = result["m_values"]
     if e_cm1.size == 0:
         raise ValueError("No torsional eigen-energies available.")
     n_states = min(max(1, int(max_states)), int(e_cm1.size))
     e_sel = e_cm1[:n_states]
-    # Convert to Hartree for Boltzmann factors.
+    # Boltzmann populations — energy offset cancels
     e_h = e_sel / 219474.6313705
     beta = 1.0 / (3.166811563e-6 * float(temperature_K))
     pop_raw = np.exp(-beta * (e_h - np.min(e_h)))
@@ -232,16 +324,23 @@ def average_torsion_scan_quantum_thermal(
 
     w_total = np.zeros(phi.size, dtype=float)
     for i in range(n_states):
-        p_i = torsional_probability_on_grid(model, phi, state_index=i)
-        w_total += float(pops[i]) * np.asarray(p_i["weights"], dtype=float)
-        warnings.extend(list(p_i.get("warnings", [])))
+        psi_i = eigvecs[:, i]
+        p_i = torsion_probability_density(psi_i, phi, m_vals)
+        s_i = float(np.sum(p_i))
+        if s_i > 0:
+            p_i = p_i / s_i
+        w_total += float(pops[i]) * p_i
 
     w_total = w_total / np.sum(w_total)
     if float(np.max(w_total)) > 0.95:
         warnings.append("thermal quantum weights collapse strongly to one grid point.")
     avg = average_rotational_constants_with_weights(C, w_total)
+    sigma_grid = get_grid_sigma_abc(scan)
+    unc = propagate_averaging_uncertainty(C, w_total, avg, sigma_grid)
     return {
         "averaged_constants": np.asarray(avg, dtype=float),
+        "sigma_averaged": unc["sigma_total"],
+        "uncertainty_breakdown": unc,
         "grid_constants": np.asarray(C, dtype=float),
         "weights": np.asarray(w_total, dtype=float),
         "phi_radians": np.asarray(phi, dtype=float),
@@ -273,13 +372,17 @@ def average_torsion_scan_boltzmann(
         energy_unit=scan.energy_unit,
     )
 
-    warnings = _scan_warnings(scan, model=None)
+    warnings = _scan_warnings(scan, spec=None)
     if float(np.max(w)) > 0.95:
         warnings.append("Boltzmann weights collapse to one grid point; correction may be fragile.")
 
     avg = average_rotational_constants_with_weights(C, w)
+    sigma_grid = get_grid_sigma_abc(scan)
+    unc = propagate_averaging_uncertainty(C, w, avg, sigma_grid)
     return {
         "averaged_constants": np.asarray(avg, dtype=float),
+        "sigma_averaged": unc["sigma_total"],
+        "uncertainty_breakdown": unc,
         "grid_constants": np.asarray(C, dtype=float),
         "weights": np.asarray(w, dtype=float),
         "phi_radians": np.asarray(phi, dtype=float),
@@ -294,7 +397,7 @@ def torsional_motion_correction(
     elements,
     reference_geometry,
     scan: TorsionScan,
-    model: HinderedRotorModel | None = None,
+    spec: TorsionHamiltonianSpec | None = None,
     masses=None,
     mode: str = "quantum",
     temperature_K: float = 298.15,
@@ -315,15 +418,12 @@ def torsional_motion_correction(
 
     mode_key = str(mode).strip().lower()
     if mode_key == "quantum":
-        if model is None:
-            raise ValueError("quantum mode requires a HinderedRotorModel.")
-        avg_out = average_torsion_scan_quantum(elements, scan, model, masses=masses, state_index=0)
+        if spec is None:
+            raise ValueError("quantum mode requires a TorsionHamiltonianSpec.")
+        avg_out = average_torsion_scan_quantum(elements, scan, spec, masses=masses, state_index=0)
     elif mode_key == "boltzmann":
         avg_out = average_torsion_scan_boltzmann(
-            elements,
-            scan,
-            masses=masses,
-            temperature_K=float(temperature_K),
+            elements, scan, masses=masses, temperature_K=float(temperature_K),
         )
     else:
         raise ValueError("mode must be 'quantum' or 'boltzmann'.")

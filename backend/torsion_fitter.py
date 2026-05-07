@@ -26,10 +26,16 @@ from __future__ import annotations
 
 import math
 from copy import deepcopy
+from dataclasses import dataclass
 from typing import Optional
 
 import numpy as np
 
+from backend.torsion_average import (
+    TorsionScan,
+    average_torsion_scan_quantum,
+    average_torsion_scan_quantum_thermal,
+)
 from backend.torsion_hamiltonian import TorsionHamiltonianSpec, solve_ram_lite_levels
 from backend.torsion_uncertainty import (
     TorsionParameter,
@@ -42,6 +48,24 @@ from backend.torsion_uncertainty import (
 )
 
 _MHZ_PER_CM1 = 29979.2458
+
+
+@dataclass
+class TorsionRotationalTarget:
+    """
+    Observed effective rotational constant for joint torsion + rotation fitting.
+
+    component    : 'A', 'B', or 'C'
+    obs_cm1      : observed B0 value in cm^-1
+    sigma_cm1    : measurement uncertainty in cm^-1
+    isotopologue : label for reporting (not used in fitting logic)
+    """
+    component: str
+    obs_cm1: float
+    sigma_cm1: float = 0.05
+    isotopologue: str = ""
+
+
 
 
 def select_fit_params(
@@ -555,6 +579,222 @@ def fit_torsion_to_transitions(
         "n_iter": n_iter,
         "converged": converged,
         "residuals_cm-1": res_final,
+        "std_err": std_err,
+        "covariance": covariance,
+        "correlation": correlation,
+        "bounds_lower": lower,
+        "bounds_upper": upper,
+        "priors_used": [
+            {"parameter": params[i].name, "value": value, "sigma": sigma}
+            for i, value, sigma in priors_norm
+        ],
+        "warnings": warnings,
+    }
+
+
+def fit_torsion_joint(
+    spec,
+    level_rows: list[dict],
+    rotational_targets: list["TorsionRotationalTarget"],
+    scan: "TorsionScan",
+    elements,
+    masses=None,
+    params: list | None = None,
+    *,
+    sigma_level_cm1: float = 0.1,
+    sigma_rot_cm1: float = 0.05,
+    temperature_K: float = 298.15,
+    use_thermal: bool = False,
+    max_states: int = 6,
+    max_iter: int = 50,
+    damping: float = 1e-4,
+    step_abs: float = 1e-6,
+    step_rel: float = 1e-4,
+    xtol: float = 1e-8,
+    ftol: float = 1e-10,
+    bounds: Optional[dict | list | tuple] = None,
+    priors: Optional[dict] = None,
+) -> dict:
+    """
+    Joint Gauss-Newton fit of torsion parameters to both level energies and
+    torsion-averaged rotational constants.
+
+    Fits F, rho, and/or Vcos_n simultaneously against:
+      - observed torsional level energies / transition frequencies (``level_rows``)
+      - observed ground-state rotational constants A/B/C (``rotational_targets``)
+
+    The torsional Hamiltonian spec is used directly for both level prediction and
+    quantum probability-density averaging, keeping both data streams in sync.
+
+    Parameters
+    ----------
+    spec : TorsionHamiltonianSpec
+    level_rows : list of dicts with 'obs_cm1' and optionally 'sigma_cm1', 'type',
+        'J', 'symmetry' — same format as fit_torsion_to_levels / fit_torsion_to_transitions
+    rotational_targets : list of TorsionRotationalTarget
+    scan : TorsionScan — torsion grid used for quantum averaging
+    elements : sequence of element symbols
+    masses : optional explicit masses (defaults to built-in element masses)
+    sigma_level_cm1 : default uncertainty on torsional levels [cm^-1]
+    sigma_rot_cm1 : default uncertainty on rotational constants [cm^-1]
+    temperature_K : temperature for quantum-thermal averaging (if use_thermal=True)
+    use_thermal : if True use quantum_thermal averaging; otherwise ground-state quantum
+    max_states : max torsional states for thermal averaging
+    max_iter, damping, step_abs, step_rel, xtol, ftol : Gauss-Newton controls
+    priors : optional list of prior dicts (same format as fit_torsion_to_levels)
+
+    Returns
+    -------
+    dict with all standard fitting keys plus:
+      rms_level_cm-1 : RMS on torsional levels only
+      rms_rot_cm-1 : RMS on rotational constants only
+      n_level_obs : number of level observations
+      n_rot_obs : number of rotational observations
+    """
+    from backend.torsion_average import average_torsion_scan_quantum_thermal
+
+    warnings: list[str] = []
+
+    if params is None:
+        params = select_fit_params(spec)
+    if not params:
+        warnings.append("No free parameters selected for joint fitting.")
+
+    # ── Build level observations ────────────────────────────────────────────
+    _component_map = {"A": 0, "B": 1, "C": 2}
+    level_requests = _torsion_level_requests_from_rows(level_rows) if level_rows else []
+    level_obs = _obs_energies_from_rows(level_rows) if level_rows else np.array([], dtype=float)
+    level_sigma = np.maximum(
+        _obs_sigmas_from_rows(level_rows, sigma_level_cm1) if level_rows else np.array([], dtype=float),
+        1e-12,
+    )
+    level_weights = 1.0 / level_sigma ** 2 if level_sigma.size > 0 else np.array([], dtype=float)
+
+    # ── Build rotational observations ───────────────────────────────────────
+    rot_comp_indices = []
+    rot_obs = []
+    rot_sigma = []
+    for rt in rotational_targets:
+        ci = _component_map.get(str(rt.component).upper())
+        if ci is None:
+            raise ValueError(
+                f"TorsionRotationalTarget.component must be 'A', 'B', or 'C'; got {rt.component!r}"
+            )
+        rot_comp_indices.append(ci)
+        rot_obs.append(float(rt.obs_cm1))
+        s = float(rt.sigma_cm1) if float(rt.sigma_cm1) > 0 else sigma_rot_cm1
+        rot_sigma.append(s)
+    rot_obs = np.asarray(rot_obs, dtype=float)
+    rot_sigma = np.asarray(rot_sigma, dtype=float)
+    rot_weights = 1.0 / rot_sigma ** 2 if rot_sigma.size > 0 else np.array([], dtype=float)
+
+    # ── Pack initial parameters ─────────────────────────────────────────────
+    p0 = pack_torsion_parameters(spec, params)
+    lower, upper = _normalise_bounds(params, bounds)
+    priors_norm = _normalise_priors(params, priors)
+
+    n_level = len(level_requests)
+    n_rot = len(rot_obs)
+
+    def _obs_fn(pvec: np.ndarray):
+        s_cur = unpack_torsion_parameters(spec, params, pvec)
+        level_pred = np.array([], dtype=float)
+        if n_level > 0:
+            level_pred = torsion_level_observables(s_cur, level_requests)
+        rot_pred = np.array([], dtype=float)
+        if n_rot > 0:
+            if use_thermal:
+                avg_out = average_torsion_scan_quantum_thermal(
+                    elements,
+                    scan,
+                    s_cur,
+                    masses=masses,
+                    temperature_K=float(temperature_K),
+                    max_states=int(max_states),
+                )
+            else:
+                from backend.torsion_average import average_torsion_scan_quantum
+                avg_out = average_torsion_scan_quantum(
+                    elements,
+                    scan,
+                    s_cur,
+                    masses=masses,
+                    state_index=0,
+                )
+            avg_abc = np.asarray(avg_out["averaged_constants"], dtype=float)
+            rot_pred = avg_abc[rot_comp_indices]
+        return np.concatenate([level_pred, rot_pred])
+
+    obs_full = np.concatenate([level_obs, rot_obs])
+    weights_full = np.concatenate([level_weights, rot_weights]) if n_rot > 0 else level_weights
+
+    p = p0.copy()
+    J0, pred0 = finite_difference_jacobian(_obs_fn, p, step_abs=step_abs, step_rel=step_rel)
+    res0 = obs_full - pred0
+    rms0 = float(np.sqrt(np.mean(weights_full * res0 ** 2) / np.mean(weights_full)))
+
+    converged = False
+    n_iter = 0
+    rms_final = rms0
+
+    for n_iter in range(1, int(max_iter) + 1):
+        J_aug, res_aug, w_aug = _augment_with_priors(J0, res0, weights_full, p, priors_norm)
+        dp = _gauss_newton_step(J_aug, res_aug, w_aug, damping=damping)
+        p_new = np.clip(p + dp, lower, upper)
+        J_new, pred_new = finite_difference_jacobian(
+            _obs_fn, p_new, step_abs=step_abs, step_rel=step_rel
+        )
+        res_new = obs_full - pred_new
+        rms_new = float(np.sqrt(np.mean(weights_full * res_new ** 2) / np.mean(weights_full)))
+
+        xtol_check = float(np.max(np.abs(p_new - p) / (np.abs(p) + 1e-12)))
+        rms_change = abs(rms_new - rms_final)
+        p, J0, res0, rms_final = p_new, J_new, res_new, rms_new
+
+        if xtol_check < float(xtol) and rms_change < float(ftol):
+            converged = True
+            break
+
+    fitted_spec = unpack_torsion_parameters(spec, params, p)
+    pred_final = _obs_fn(p)
+
+    # ── Split residuals for per-stream RMS ─────────────────────────────────
+    res_level = (obs_full[:n_level] - pred_final[:n_level]) if n_level > 0 else np.array([], dtype=float)
+    res_rot = (obs_full[n_level:] - pred_final[n_level:]) if n_rot > 0 else np.array([], dtype=float)
+    rms_level = float(np.sqrt(np.mean(res_level ** 2))) if res_level.size > 0 else float("nan")
+    rms_rot = float(np.sqrt(np.mean(res_rot ** 2))) if res_rot.size > 0 else float("nan")
+
+    res_final_full = obs_full - pred_final
+    rms_final = float(np.sqrt(np.mean(weights_full * res_final_full ** 2) / np.mean(weights_full)))
+
+    J_final, _ = finite_difference_jacobian(_obs_fn, p, step_abs=step_abs, step_rel=step_rel)
+    J_unc, res_unc, weights_unc = _augment_with_priors(
+        J_final, res_final_full, weights_full, p, priors_norm
+    )
+    std_err, covariance, correlation = _uncertainty_from_jacobian(
+        J_unc, res_unc, weights_unc, damping, len(obs_full), len(params)
+    )
+
+    if not converged:
+        warnings.append(
+            f"Joint Gauss-Newton did not converge after {max_iter} iterations "
+            f"(final RMS={rms_final:.6f} cm^-1)."
+        )
+
+    return {
+        "fitted_spec": fitted_spec,
+        "param_names": [pp.name for pp in params],
+        "param_values": p,
+        "param_values_init": p0,
+        "rms_cm-1": rms_final,
+        "rms_cm-1_init": rms0,
+        "rms_level_cm-1": rms_level,
+        "rms_rot_cm-1": rms_rot,
+        "n_level_obs": n_level,
+        "n_rot_obs": n_rot,
+        "n_iter": n_iter,
+        "converged": converged,
+        "residuals_cm-1": res_final_full,
         "std_err": std_err,
         "covariance": covariance,
         "correlation": correlation,

@@ -29,6 +29,65 @@ Full notation, derivations, and formulas used in code live in **[MATH.typ](MATH.
 | [`backend/symmetry.py`](backend/symmetry.py) | Optional point-group projection of steps and coordinates |
 | [`backend/autoconfig.py`](backend/autoconfig.py) | Adaptive trust region / damping / weight policy from diagnostics |
 
+## Torsion / Large-Amplitude Motion (LAM) pipeline
+
+A self-contained torsion-rotation pipeline handles molecules with an internal methyl (or other Cn) rotor. It uses a RAM-lite (rho-axis method) Hamiltonian in a Fourier basis |m⟩ and is independent of the geometry-inversion loop above.
+
+### Torsion backend modules
+
+| Module | Role |
+|--------|------|
+| [`backend/torsion_hamiltonian.py`](backend/torsion_hamiltonian.py) | `TorsionHamiltonianSpec`, Fourier potential matrix, `solve_ram_lite_levels`, `torsion_probability_density` |
+| [`backend/torsion_rot_hamiltonian.py`](backend/torsion_rot_hamiltonian.py) | Full J-block torsion-rotation Hamiltonian with centrifugal distortion |
+| [`backend/torsion_symmetry.py`](backend/torsion_symmetry.py) | C3 block decomposition (A/E1/E2), tunneling splittings, selection rules, nuclear-spin weights |
+| [`backend/torsion_average.py`](backend/torsion_average.py) | Quantum and Boltzmann torsion-scan averaging of A/B/C constants; rigorous uncertainty propagation |
+| [`backend/torsion_intensities.py`](backend/torsion_intensities.py) | `⟨ψ\|cos(α)\|ψ⟩` matrix elements, Hönl-London factors, complete line-list generation |
+| [`backend/torsion_fitter.py`](backend/torsion_fitter.py) | Damped Gauss-Newton fitting to levels, transitions, or joint levels + rotational constants |
+| [`backend/torsion_uncertainty.py`](backend/torsion_uncertainty.py) | Jacobian, covariance, Fisher information, identifiability |
+| [`backend/torsion_lam_integration.py`](backend/torsion_lam_integration.py) | LAM correction report with uncertainty propagation into the main spectral fit |
+| [`backend/hindered_rotor.py`](backend/hindered_rotor.py) | Independent 1D hindered-rotor solver (legacy; used for Boltzmann weight helper only) |
+
+### What the torsion pipeline provides
+
+**Energy levels and tunneling** — `solve_ram_lite_levels` diagonalises the RAM-lite Hamiltonian for any (J, K) block. `torsion_symmetry` decomposes levels into A/E1/E2 species and reports A–E tunneling splittings (validated against methanol literature values).
+
+**Scan averaging with uncertainty propagation** — `torsion_average` weights torsion-scan geometries by the quantum probability density |ψ(α)|² of any eigenstate (or a thermal mixture), producing effective A/B/C constants with rigorously propagated uncertainties from both grid-point measurement errors (Hessian-diagonal σ) and representational scatter.
+
+**Line intensities** — `torsion_intensities` computes |⟨ψ_hi|cos(α)|ψ_lo⟩|² transition dipole matrix elements, applies Hönl-London factors (symmetric-top approximation), applies C3 nuclear-spin statistical weights (A:E = 1:2 for CH₃), and exports a complete sorted line list as CSV. Selection rules (A↔A, E↔E allowed; A↔E forbidden) are enforced automatically.
+
+**Parameter fitting** — `torsion_fitter` provides three fitting modes:
+- `fit_torsion_to_levels` — fit to observed torsional level energies
+- `fit_torsion_to_transitions` — fit to observed transition frequencies
+- `fit_torsion_joint` — joint fit to torsional levels **and** torsion-averaged rotational constants (A/B/C) simultaneously via a unified Gauss-Newton loop
+
+### Torsion config keys
+
+Add a `torsion_hamiltonian` block to a run config to activate the pipeline:
+
+```yaml
+torsion_hamiltonian:
+  enabled: true
+  F: 5.1753          # internal rotation constant (cm-1)
+  rho: 0.0812        # coupling between internal and overall rotation
+  n_basis: 12        # Fourier basis truncation (|m| ≤ n_basis)
+  potential:
+    v0: 185.5        # potential offset (cm-1)
+    vcos: {3: -185.5}   # cos(3α) term
+  line_list:
+    enabled: true
+    max_freq_mhz: 50000
+    min_line_strength: 1e-6
+  fitting:
+    enabled: true
+    params: [Vcos_3, F]
+    targets:         # observed torsional levels
+      - {J: 0, K: 0, level_index: 0, energy_cm-1: 0.0}
+    targets_rotational:   # joint fit: observed B0 constants
+      - {component: B, obs_cm1: 0.8220, sigma_cm1: 0.002}
+```
+
+See [`configs/example_methanol_lam.yaml`](configs/example_methanol_lam.yaml) for a complete working example.
+
 ## Repository layout
 
 - **`backend/`** — core library (spectral, quantum, optimizer, priors, symmetry).
