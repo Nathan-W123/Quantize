@@ -6,6 +6,10 @@ This module computes effective motion-averaged A/B/C constants from a supplied
 - quantum hindered-rotor weights, or
 - Boltzmann weights.
 
+For molecules with multiple rotamers, conformer_torsion_average() weights
+per-conformer torsion-averaged constants by Boltzmann factors from the
+conformer relative energies.
+
 Important limitation:
 - This is not a full torsion-rotation Hamiltonian treatment.
 """
@@ -51,6 +55,23 @@ class TorsionGridPoint:
     weight: float | None = None
     label: str | None = None
     metadata: dict = field(default_factory=dict)
+
+
+@dataclass
+class ConformerTorsionSpec:
+    """
+    Single conformer with Boltzmann energy and optional per-conformer torsion scan.
+
+    When torsion_scan and torsion_hamiltonian are both provided, the effective
+    rotational constants for this conformer are computed via quantum-thermal
+    torsion averaging.  Otherwise rotational_constants_cm1 is used directly.
+    """
+
+    rotational_constants_cm1: np.ndarray    # (3,) rigid-body [A, B, C] in cm^-1
+    relative_energy_cm1: float              # energy above global minimum (cm^-1)
+    torsion_scan: "TorsionScan | None" = None
+    torsion_hamiltonian: "TorsionHamiltonianSpec | None" = None
+    geometry: np.ndarray | None = None      # (N,3) optimized geometry (optional)
 
 
 @dataclass
@@ -390,6 +411,116 @@ def average_torsion_scan_boltzmann(
         "torsional_energies_cm1": np.array([], dtype=float),
         "warnings": list(dict.fromkeys(warnings)),
         "method": "boltzmann_torsion_average",
+    }
+
+
+def conformer_torsion_average(
+    conformers: list[ConformerTorsionSpec],
+    elements=None,
+    masses=None,
+    temperature_K: float = 298.15,
+    max_states: int = 6,
+) -> dict:
+    """
+    Boltzmann-average rotational constants over multiple conformers.
+
+    For each conformer, computes quantum-thermal torsion-averaged constants when
+    ``torsion_scan`` and ``torsion_hamiltonian`` are provided, or uses the rigid-body
+    ``rotational_constants_cm1`` directly otherwise.
+
+    Conformer Boltzmann weights use relative_energy_cm1 and kT = 0.695035 * T cm^-1.
+
+    Final effective constants:
+        C_eff = Σ_c w_c × C_c
+
+    Uncertainty from two independent contributions (combined in quadrature):
+        sigma_torsion    = sqrt(Σ_c w_c² σ_c²)   — per-conformer torsion averaging error
+        sigma_scatter    = sqrt(Σ_c w_c (C_c − C_eff)²)  — physical spread across conformers
+
+    Parameters
+    ----------
+    conformers : list[ConformerTorsionSpec], at least 1
+    elements : element symbols (required when torsion_scan present without prefilled constants)
+    masses : optional explicit atomic masses
+    temperature_K : Boltzmann temperature in Kelvin
+    max_states : maximum torsional eigenstates for thermal averaging
+
+    Returns
+    -------
+    dict with keys:
+      conformer_constants      (NC, 3) — per-conformer effective constants
+      conformer_weights        (NC,)   — normalized Boltzmann weights
+      conformer_energies_cm1   (NC,)   — shifted relative energies (min = 0)
+      averaged_constants       (3,)    — Boltzmann-averaged constants
+      sigma_averaged           (3,)    — total uncertainty
+      uncertainty_breakdown    dict    — sigma_torsion, sigma_conformer_scatter, sigma_total
+      temperature_K            float
+      n_conformers             int
+      warnings                 list[str]
+      method                   str
+    """
+    if not conformers:
+        raise ValueError("conformers must be a non-empty list.")
+    if temperature_K <= 0.0:
+        raise ValueError("temperature_K must be > 0.")
+
+    # kB/hc = 0.695035 cm^-1/K
+    kT_cm1 = 0.695035 * float(temperature_K)
+
+    energies = np.asarray([float(c.relative_energy_cm1) for c in conformers], dtype=float)
+    energies = energies - np.min(energies)
+    raw_weights = np.exp(-energies / kT_cm1)
+    weights = raw_weights / np.sum(raw_weights)
+
+    conformer_constants: list[np.ndarray] = []
+    conformer_sigmas: list[np.ndarray] = []
+    warnings: list[str] = []
+
+    for i, conf in enumerate(conformers):
+        if conf.torsion_scan is not None and conf.torsion_hamiltonian is not None:
+            avg_out = average_torsion_scan_quantum_thermal(
+                elements, conf.torsion_scan, conf.torsion_hamiltonian,
+                masses=masses, temperature_K=temperature_K, max_states=max_states,
+            )
+            C_c = avg_out["averaged_constants"]
+            sigma_c = avg_out["sigma_averaged"]
+            warnings.extend(
+                [f"conformer {i}: {w}" for w in avg_out.get("warnings", [])]
+            )
+        else:
+            C_c = np.asarray(conf.rotational_constants_cm1, dtype=float).ravel()
+            if C_c.size != 3:
+                raise ValueError(f"conformer {i}: rotational_constants_cm1 must have length 3.")
+            sigma_c = np.zeros(3, dtype=float)
+
+        conformer_constants.append(C_c)
+        conformer_sigmas.append(sigma_c)
+
+    C_arr = np.asarray(conformer_constants, dtype=float)   # (NC, 3)
+    sig_arr = np.asarray(conformer_sigmas, dtype=float)    # (NC, 3)
+    w = weights                                             # (NC,)
+
+    C_eff = np.sum(w[:, None] * C_arr, axis=0)
+
+    var_torsion = np.sum((w[:, None] ** 2) * (sig_arr ** 2), axis=0)
+    var_scatter = np.sum(w[:, None] * (C_arr - C_eff[None, :]) ** 2, axis=0)
+    sigma_total = np.sqrt(var_torsion + var_scatter)
+
+    return {
+        "conformer_constants": C_arr,
+        "conformer_weights": w,
+        "conformer_energies_cm1": energies,
+        "averaged_constants": C_eff,
+        "sigma_averaged": sigma_total,
+        "uncertainty_breakdown": {
+            "sigma_torsion": np.sqrt(var_torsion),
+            "sigma_conformer_scatter": np.sqrt(var_scatter),
+            "sigma_total": sigma_total,
+        },
+        "temperature_K": float(temperature_K),
+        "n_conformers": len(conformers),
+        "warnings": list(dict.fromkeys(warnings)),
+        "method": "conformer_boltzmann_torsion_average",
     }
 
 
