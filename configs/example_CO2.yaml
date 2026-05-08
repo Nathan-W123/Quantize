@@ -1,0 +1,74 @@
+# CO2 (carbon dioxide) — example generalized input file
+# Run with: python run_from_config.py configs/example_CO2.yaml
+
+name: CO2
+coordinate_mode: internal
+
+# Linear O=C=O
+# Order: O (0), C (1), O (2)
+elements: [O, C, O]
+
+geometry:
+  smiles: O=C=O
+
+symmetry: Dinf_h
+
+isotopologues:
+  - name: 16O-12C-16O
+    masses: [15.99491461956, 12.00000000000, 15.99491461956]
+    components: [B]
+    obs_b0_mhz: [39057.9]
+    alpha_mhz: [120.0]
+    sigma_mhz: [0.002]
+
+  - name: 16O-13C-16O
+    masses: [15.99491461956, 13.00335483507, 15.99491461956]
+    components: [B]
+    obs_b0_mhz: [37295.0]
+    alpha_mhz: [115.0]
+    sigma_mhz: [0.003]
+
+quantum:
+  backend: none
+
+preset: BALANCED
+rng_seed: 11
+write_xyz: false
+
+internal_coordinates:
+  use_dihedrals: false
+  damping: 1.0e-6
+  microiterations: 20
+  prior_weight: 1.0
+  prior_sigma_bond: 0.04
+  prior_sigma_angle_deg: 2.0
+  prior_sigma_dihedral_deg: 15.0
+
+internal_priors:
+  mode: soft
+  freeze_sigma_floor: 1.0e-6
+  adaptive:
+    identifiability_gamma: 2.0
+    min_sigma_scale: 0.5
+    max_sigma_scale: 3.0
+  user_priors: []
+
+# Optional torsion Hamiltonian block (kept for schema consistency).
+# CO2 is not a torsional rotor, so keep disabled.
+torsion_hamiltonian:
+  enabled: false
+  F: 5.0
+  rho: 0.1
+  n_basis: 7
+  n_levels: 8
+  J_values: [0, 1]
+  K_values: [0]
+  units: cm-1
+  potential:
+    v0: 0.0
+    vcos: {3: -20.0}
+    vsin: {}
+
+output:
+  root: runs
+  artifacts: true

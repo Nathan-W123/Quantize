@@ -1,0 +1,70 @@
+# SO2 (sulfur dioxide) — example generalized input file
+# Run with: python run_from_config.py configs/example_SO2.yaml
+
+name: SO2
+coordinate_mode: internal
+
+elements: [S, O, O]
+
+geometry:
+  smiles: O=S=O
+
+symmetry: C2v
+
+isotopologues:
+  - name: 32S-16O2
+    masses: [31.97207117440, 15.99491461956, 15.99491461956]
+    components: [A, B, C]
+    obs_b0_mhz: [60778.5, 10316.1, 8832.2]
+    alpha_mhz: [1400.0, 130.0, 120.0]
+    sigma_mhz: [0.5, 0.05, 0.05]
+
+  - name: 34S-16O2
+    masses: [33.96786700400, 15.99491461956, 15.99491461956]
+    components: [A, B, C]
+    obs_b0_mhz: [59644.0, 10118.9, 8668.4]
+    alpha_mhz: [1370.0, 128.0, 118.0]
+    sigma_mhz: [0.6, 0.06, 0.06]
+
+quantum:
+  backend: none
+
+preset: BALANCED
+rng_seed: 13
+write_xyz: false
+
+internal_coordinates:
+  use_dihedrals: false
+  damping: 1.0e-6
+  microiterations: 20
+  prior_weight: 1.0
+  prior_sigma_bond: 0.04
+  prior_sigma_angle_deg: 2.0
+  prior_sigma_dihedral_deg: 15.0
+
+internal_priors:
+  mode: soft
+  freeze_sigma_floor: 1.0e-6
+  adaptive:
+    identifiability_gamma: 2.0
+    min_sigma_scale: 0.5
+    max_sigma_scale: 3.0
+  user_priors: []
+
+torsion_hamiltonian:
+  enabled: false
+  F: 5.0
+  rho: 0.1
+  n_basis: 7
+  n_levels: 8
+  J_values: [0, 1]
+  K_values: [0]
+  units: cm-1
+  potential:
+    v0: 0.0
+    vcos: {3: -20.0}
+    vsin: {}
+
+output:
+  root: runs
+  artifacts: true

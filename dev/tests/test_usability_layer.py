@@ -11,9 +11,11 @@ from runner.usability import (
     ConfigError,
     load_config,
     prepare_run_directory,
+    rebuild_report_from_run_dir,
     validate_config,
     write_outputs,
 )
+from runner.config_schema import CONFIG_SCHEMA_VERSION
 
 
 def minimal_water_config():
@@ -50,6 +52,7 @@ def test_load_config_accepts_json(tmp_path):
     cfg = load_config(path)
 
     assert cfg["name"] == "water_test"
+    assert cfg["schema_version"] == CONFIG_SCHEMA_VERSION
     validate_config(cfg)
 
 
@@ -122,6 +125,38 @@ def test_validate_config_internal_priors_user_prior_shape():
     validate_config(cfg)
 
 
+def test_validate_config_conformer_mixture_shape():
+    cfg = minimal_water_config()
+    cfg["conformer_mixture"] = {
+        "enabled": True,
+        "weight_mode": "boltzmann",
+        "temperature_k": 250.0,
+        "conformers": [
+            {
+                "name": "c1",
+                "weight": 0.6,
+                "relative_energy_cm1": 0.0,
+                "coords_angstrom": [
+                    [0.0, 0.0, 0.1174],
+                    [0.0, 0.7572, -0.4696],
+                    [0.0, -0.7572, -0.4696],
+                ],
+            },
+            {
+                "name": "c2",
+                "weight": 0.4,
+                "relative_energy_kcal_mol": 0.2,
+                "offset_angstrom": [
+                    [0.0, 0.0, 0.0],
+                    [0.001, 0.0, 0.0],
+                    [0.0, -0.001, 0.0],
+                ],
+            },
+        ],
+    }
+    validate_config(cfg)
+
+
 def test_prepare_run_directory_copies_input(tmp_path):
     cfg = minimal_water_config()
     cfg["output"] = {"root": str(tmp_path / "runs")}
@@ -134,6 +169,7 @@ def test_prepare_run_directory_copies_input(tmp_path):
     assert (run_dir / "plots").is_dir()
     assert (run_dir / "exports").is_dir()
     assert (run_dir / "input.yaml").is_file()
+    assert (run_dir / "run_metadata.json").is_file()
     assert Path(cfg["_run_dir"]) == run_dir
 
 
@@ -176,6 +212,8 @@ def test_write_outputs_creates_report_csvs_and_plots(tmp_path):
     artifacts = write_outputs(result)
 
     assert artifacts["report_md"].is_file()
+    assert artifacts["report_html"].is_file()
+    assert artifacts["report_payload_json"].is_file()
     assert artifacts["geometry_csv"].is_file()
     assert artifacts["residuals_csv"].is_file()
     with artifacts["residuals_csv"].open(newline="", encoding="utf-8") as fh:
@@ -184,6 +222,47 @@ def test_write_outputs_creates_report_csvs_and_plots(tmp_path):
     assert (tmp_path / "plots" / "residuals.png").is_file()
     assert (tmp_path / "plots" / "singular_values.png").is_file()
     assert (tmp_path / "plots" / "convergence.png").is_file()
+    assert (tmp_path / "plots" / "predicted_vs_observed.png").is_file()
+    assert (tmp_path / "plots" / "normalized_residuals.png").is_file()
+    assert artifacts["artifact_manifest_json"].is_file()
+
+
+def test_rebuild_report_from_run_dir(tmp_path):
+    coords = np.array(
+        [
+            [0.0, 0.0, 0.1174],
+            [0.0, 0.7572, -0.4696],
+            [0.0, -0.7572, -0.4696],
+        ],
+        dtype=float,
+    )
+    result = {
+        "name": "water_report_rebuild",
+        "run_dir": str(tmp_path),
+        "elems": ["O", "H", "H"],
+        "best": {
+            "idx": 1,
+            "coords": coords,
+            "freq_rms": 1.23,
+            "energy": -76.0,
+            "history": [{"iteration": 1, "freq_rms": 1.23, "step_norm": 1e-3}],
+            "spectral_isotopologues_snapshot": [
+                {
+                    "name": "H2-16O",
+                    "masses": [15.99491461956, 1.00782503207, 1.00782503207],
+                    "obs_constants": [835840.3, 435351.7, 278138.7],
+                    "sigma_constants": [0.2, 0.2, 0.2],
+                    "alpha_constants": [-43390.0, 10560.0, 6240.0],
+                    "component_indices": [0, 1, 2],
+                }
+            ],
+        },
+        "score": {"score": 75.0, "constrained_rank": 3, "internal_dof": 3},
+    }
+    write_outputs(result)
+    out = rebuild_report_from_run_dir(tmp_path)
+    assert out["report_md"].is_file()
+    assert out["report_html"].is_file()
 
 
 def test_write_outputs_internal_mode_exports_internal_tables(tmp_path):
@@ -237,6 +316,12 @@ def test_write_outputs_internal_mode_exports_internal_tables(tmp_path):
     assert artifacts["internal_covariance_csv"].is_file()
     assert artifacts["internal_identifiability_csv"].is_file()
     assert artifacts["internal_prior_sensitivity_csv"].is_file()
+    assert artifacts["internal_prior_provenance_csv"].is_file()
+    with artifacts["internal_prior_provenance_csv"].open(newline="", encoding="utf-8") as fh:
+        rows = list(csv.DictReader(fh))
+    assert rows
+    assert "source" in rows[0]
+    assert "mode" in rows[0]
 
 
 def test_write_outputs_exports_torsion_objective_csv(tmp_path):
@@ -336,3 +421,44 @@ def test_write_outputs_exports_torsion_transition_objective_csv(tmp_path):
     }
     artifacts = write_outputs(result)
     assert artifacts["torsion_objective_csv"].is_file()
+
+
+def test_write_outputs_exports_conformer_history(tmp_path):
+    coords = np.array(
+        [
+            [0.0, 0.0, 0.1174],
+            [0.0, 0.7572, -0.4696],
+            [0.0, -0.7572, -0.4696],
+        ],
+        dtype=float,
+    )
+    result = {
+        "name": "water_conf_mix",
+        "run_dir": str(tmp_path),
+        "elems": ["O", "H", "H"],
+        "cfg": {"coordinate_mode": "internal"},
+        "best": {
+            "idx": 1,
+            "coords": coords,
+            "freq_rms": 1.23,
+            "energy": -76.0,
+            "history": [
+                {"iteration": 1, "freq_rms": 2.0, "conformer_weights": [0.7, 0.3], "prior_wrms": 1.1},
+                {"iteration": 2, "freq_rms": 1.2, "conformer_weights": [0.8, 0.2], "prior_wrms": 1.0},
+            ],
+            "spectral_isotopologues_snapshot": [
+                {
+                    "name": "H2-16O",
+                    "masses": [15.99491461956, 1.00782503207, 1.00782503207],
+                    "obs_constants": [835840.3, 435351.7, 278138.7],
+                    "sigma_constants": [0.2, 0.2, 0.2],
+                    "alpha_constants": [-43390.0, 10560.0, 6240.0],
+                    "component_indices": [0, 1, 2],
+                }
+            ],
+        },
+        "score": {"score": 75.0, "constrained_rank": 3, "internal_dof": 3},
+    }
+    artifacts = write_outputs(result)
+    assert artifacts["conformer_weights_history_csv"].is_file()
+    assert artifacts["conformer_summary_json"].is_file()

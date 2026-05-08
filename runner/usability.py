@@ -4,12 +4,14 @@ import csv
 import json
 import re
 import shutil
-from datetime import datetime
+import hashlib
+from datetime import datetime, UTC
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 from backend.spectral_model import normalize_spectral_model
+from runner.config_schema import CONFIG_SCHEMA_VERSION, normalize_config
 
 try:
     import yaml
@@ -51,7 +53,7 @@ def load_config(path: Path | str) -> dict[str, Any]:
         raise ConfigError(f"Could not parse {cfg_path}: {exc}") from exc
     if not isinstance(data, dict):
         raise ConfigError(f"Config {cfg_path} must contain a mapping/object at top level.")
-    return data
+    return normalize_config(data)
 
 
 def _expect_mapping(cfg: dict[str, Any], key: str) -> dict[str, Any]:
@@ -88,6 +90,11 @@ def validate_config(cfg: dict[str, Any]) -> None:
     """Validate supported legacy and generalized config shapes with clear errors."""
     if not isinstance(cfg, dict):
         raise ConfigError("Config must be a mapping/object.")
+    schema_v = str(cfg.get("schema_version", CONFIG_SCHEMA_VERSION)).strip()
+    if schema_v != CONFIG_SCHEMA_VERSION:
+        raise ConfigError(
+            f"'schema_version' must be '{CONFIG_SCHEMA_VERSION}' for this build (got '{schema_v}')."
+        )
 
     has_elements = "elements" in cfg
     has_molecule = "molecule" in cfg
@@ -154,19 +161,37 @@ def validate_config(cfg: dict[str, Any]) -> None:
     isotopologues = _as_list(cfg.get("isotopologues"), "isotopologues")
     if not isotopologues:
         raise ConfigError("'isotopologues' must contain at least one entry.")
+    seen_iso_names: set[str] = set()
     for iso_i, iso in enumerate(isotopologues):
         if not isinstance(iso, dict):
             raise ConfigError(f"'isotopologues[{iso_i}]' must be a mapping/object.")
         prefix = f"isotopologues[{iso_i}]"
+        iso_name = str(iso.get("name", "")).strip()
+        if not iso_name:
+            raise ConfigError(f"'{prefix}.name' is required and cannot be blank.")
+        if iso_name in seen_iso_names:
+            raise ConfigError(f"Duplicate isotopologue name '{iso_name}' in '{prefix}.name'.")
+        seen_iso_names.add(iso_name)
         _check_numeric_list(iso.get("masses"), f"{prefix}.masses", n_atoms, positive=True)
         comps = iso.get("components", ["A", "B", "C"])
         comps = _as_list(comps, f"{prefix}.components")
         if not comps:
             raise ConfigError(f"'{prefix}.components' must contain at least one component.")
+        norm_comps: list[str] = []
         for comp in comps:
-            if str(comp).strip().upper() not in COMPONENT_LABELS:
+            c = str(comp).strip().upper()
+            if c not in COMPONENT_LABELS:
                 raise ConfigError(f"'{prefix}.components' values must be A, B, or C.")
+            norm_comps.append(c)
+        if len(set(norm_comps)) != len(norm_comps):
+            raise ConfigError(f"'{prefix}.components' contains duplicate entries; each of A/B/C can appear once.")
         n_comp = len(comps)
+        if "obs_b0_mhz" not in iso:
+            raise ConfigError(f"'{prefix}.obs_b0_mhz' is required (one value per listed component).")
+        if "alpha_mhz" not in iso:
+            raise ConfigError(f"'{prefix}.alpha_mhz' is required (one value per listed component).")
+        if "sigma_mhz" not in iso:
+            raise ConfigError(f"'{prefix}.sigma_mhz' is required (one value per listed component).")
         _check_numeric_list(iso.get("obs_b0_mhz"), f"{prefix}.obs_b0_mhz", n_comp)
         _check_numeric_list(iso.get("alpha_mhz"), f"{prefix}.alpha_mhz", n_comp)
         _check_numeric_list(iso.get("sigma_mhz"), f"{prefix}.sigma_mhz", n_comp, positive=True)
@@ -183,6 +208,7 @@ def validate_config(cfg: dict[str, Any]) -> None:
         raise ConfigError("'quantum.backend' must be one of orca, psi4, or none.")
 
     _validate_rovibrational_corrections_block(cfg)
+    _validate_conformer_mixture_block(cfg, n_atoms=n_atoms)
     _validate_torsion_block(cfg)
     _validate_internal_priors_block(cfg, n_atoms=n_atoms)
 
@@ -331,6 +357,60 @@ def _validate_rovibrational_corrections_block(cfg: dict[str, Any]) -> None:
 _VALID_TORSION_SYMMETRY_MODES = {"c3", "3fold", "threefold", "none", "off", "null", ""}
 _VALID_SCAN_ANGLE_UNITS = {"degrees", "deg", "degree", "radians", "rad", "radian"}
 _VALID_SCAN_ENERGY_UNITS = {"cm-1", "cm_1", "hartree", "ha", "kcal/mol", "kcal", "kj/mol", "kj"}
+
+
+def _validate_conformer_mixture_block(cfg: dict[str, Any], n_atoms: int) -> None:
+    cm = cfg.get("conformer_mixture")
+    if cm is None:
+        return
+    if not isinstance(cm, dict):
+        raise ConfigError("'conformer_mixture' must be a mapping/object.")
+    if "enabled" in cm and not isinstance(cm["enabled"], bool):
+        raise ConfigError("'conformer_mixture.enabled' must be true or false.")
+    mode = str(cm.get("weight_mode", "fixed")).strip().lower()
+    if mode not in {"fixed", "boltzmann"}:
+        raise ConfigError("'conformer_mixture.weight_mode' must be fixed or boltzmann.")
+    if "temperature_k" in cm:
+        try:
+            t = float(cm["temperature_k"])
+        except (TypeError, ValueError) as exc:
+            raise ConfigError("'conformer_mixture.temperature_k' must be numeric.") from exc
+        if t <= 0.0:
+            raise ConfigError("'conformer_mixture.temperature_k' must be > 0.")
+    conformers = cm.get("conformers")
+    if conformers is None:
+        return
+    if not isinstance(conformers, list):
+        raise ConfigError("'conformer_mixture.conformers' must be a list.")
+    for i, c in enumerate(conformers):
+        p = f"conformer_mixture.conformers[{i}]"
+        if not isinstance(c, dict):
+            raise ConfigError(f"'{p}' must be a mapping/object.")
+        if "weight" in c and c["weight"] is not None:
+            try:
+                w = float(c["weight"])
+            except (TypeError, ValueError) as exc:
+                raise ConfigError(f"'{p}.weight' must be numeric.") from exc
+            if w < 0.0:
+                raise ConfigError(f"'{p}.weight' must be >= 0.")
+        for ekey in ("energy", "relative_energy_cm1", "relative_energy_kcal_mol"):
+            if ekey in c and c[ekey] is not None:
+                try:
+                    float(c[ekey])
+                except (TypeError, ValueError) as exc:
+                    raise ConfigError(f"'{p}.{ekey}' must be numeric.") from exc
+        if "coords_angstrom" in c and c["coords_angstrom"] is not None:
+            rows = _as_list(c["coords_angstrom"], f"{p}.coords_angstrom")
+            if len(rows) != n_atoms:
+                raise ConfigError(f"'{p}.coords_angstrom' must have {n_atoms} rows.")
+            for j, row in enumerate(rows):
+                _check_numeric_list(row, f"{p}.coords_angstrom[{j}]", 3)
+        if "offset_angstrom" in c and c["offset_angstrom"] is not None:
+            rows = _as_list(c["offset_angstrom"], f"{p}.offset_angstrom")
+            if len(rows) != n_atoms:
+                raise ConfigError(f"'{p}.offset_angstrom' must have {n_atoms} rows.")
+            for j, row in enumerate(rows):
+                _check_numeric_list(row, f"{p}.offset_angstrom[{j}]", 3)
 
 
 def _validate_torsion_block(cfg: dict[str, Any]) -> None:
@@ -987,7 +1067,23 @@ def prepare_run_directory(cfg: dict[str, Any], config_path: Path | None = None) 
     (run_dir / "plots").mkdir(exist_ok=True)
     (run_dir / "exports").mkdir(exist_ok=True)
     if config_path is not None and config_path.is_file():
-        shutil.copy2(config_path, run_dir / f"input{config_path.suffix.lower()}")
+        copied = run_dir / f"input{config_path.suffix.lower()}"
+        shutil.copy2(config_path, copied)
+    else:
+        copied = None
+    # Run metadata snapshot for reproducibility.
+    cfg_blob = json.dumps(cfg, sort_keys=True, default=str)
+    meta = {
+        "schema_version": cfg.get("schema_version", CONFIG_SCHEMA_VERSION),
+        "created_at": datetime.now(UTC).isoformat(),
+        "name": cfg.get("name", cfg.get("molecule", "quantize_run")),
+        "preset": cfg.get("preset"),
+        "coordinate_mode": cfg.get("coordinate_mode"),
+        "config_path": (str(config_path.resolve()) if config_path else None),
+        "copied_config": (str(copied) if copied else None),
+        "config_sha256": hashlib.sha256(cfg_blob.encode("utf-8")).hexdigest(),
+    }
+    (run_dir / "run_metadata.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
     cfg["_run_dir"] = str(run_dir.resolve())
     return run_dir.resolve()
 
@@ -1134,10 +1230,98 @@ def write_markdown_report(path: Path, result: dict[str, Any], artifacts: dict[st
             lines.append("- `exports/internal_identifiability.csv`")
         if artifacts.get("internal_prior_sensitivity_csv") is not None:
             lines.append("- `exports/internal_prior_sensitivity.csv`")
+        if artifacts.get("internal_prior_provenance_csv") is not None:
+            lines.append("- `exports/internal_prior_provenance.csv`")
+        if artifacts.get("conformer_weights_history_csv") is not None:
+            lines.append("- `exports/conformer_weights_history.csv`")
+        if artifacts.get("conformer_summary_json") is not None:
+            lines.append("- `exports/conformer_summary.json`")
         if artifacts.get("torsion_objective_csv") is not None:
             lines.append("- `exports/torsion_objective.csv`")
     lines.extend(["- `plots/residuals.png`", "- `plots/singular_values.png`", "- `plots/convergence.png`"])
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def write_html_report(path: Path, result: dict[str, Any], artifacts: dict[str, Any] | None = None) -> None:
+    """Write a lightweight publication-friendly HTML report."""
+    best = result["best"]
+    score = result.get("score", {})
+    rows = result.get("residual_rows", [])
+    geom_rows = []
+    for i, (elem, xyz) in enumerate(zip(result["elems"], np.asarray(best["coords"], dtype=float))):
+        geom_rows.append(
+            "<tr>"
+            f"<td>{i}</td><td>{elem}</td>"
+            f"<td>{xyz[0]:.8f}</td><td>{xyz[1]:.8f}</td><td>{xyz[2]:.8f}</td>"
+            "</tr>"
+        )
+
+    residual_rows_html = []
+    for r in rows:
+        residual_rows_html.append(
+            "<tr>"
+            f"<td>{r['isotopologue']}</td><td>{r['component']}</td>"
+            f"<td>{float(r['target_mhz']):.6f}</td><td>{float(r['calculated_mhz']):.6f}</td>"
+            f"<td>{float(r['residual_mhz']):.6f}</td><td>{float(r.get('sigma_mhz', np.nan)):.6f}</td>"
+            "</tr>"
+        )
+
+    out_lines = [
+        "<!doctype html>",
+        "<html lang='en'>",
+        "<head>",
+        "<meta charset='utf-8'>",
+        "<meta name='viewport' content='width=device-width, initial-scale=1'>",
+        f"<title>Quantize Report: {result.get('name', 'run')}</title>",
+        "<style>",
+        "body{font-family:Georgia,'Times New Roman',serif;max-width:1100px;margin:2rem auto;padding:0 1rem;line-height:1.5;color:#111;}",
+        "h1,h2{margin:.6rem 0;}",
+        ".meta{background:#f7f7f7;border:1px solid #ddd;padding:.8rem;}",
+        "table{border-collapse:collapse;width:100%;margin:.8rem 0;}",
+        "th,td{border:1px solid #ddd;padding:.35rem .45rem;text-align:left;font-size:.95rem;}",
+        "th{background:#f2f2f2;}",
+        ".grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;}",
+        ".muted{color:#555;}",
+        "</style>",
+        "</head>",
+        "<body>",
+        f"<h1>Quantize Report: {result.get('name', 'run')}</h1>",
+        "<div class='meta'>",
+        f"<div><strong>Run directory:</strong> {result.get('run_dir', '.')}</div>",
+        f"<div><strong>Best start:</strong> {best.get('idx', 'n/a')}</div>",
+        f"<div><strong>Spectral RMS:</strong> {float(best.get('freq_rms', np.nan)):.6f} MHz</div>",
+        f"<div><strong>Final energy:</strong> {float(best.get('energy', np.nan)):.10g} Eh</div>",
+        f"<div><strong>Success score:</strong> {float(score.get('score', np.nan)):.1f}</div>",
+        f"<div><strong>Constrained rank:</strong> {score.get('constrained_rank', 'n/a')}/{score.get('internal_dof', 'n/a')}</div>",
+        "</div>",
+        "<h2>Final Geometry</h2>",
+        "<table><thead><tr><th>atom</th><th>element</th><th>x (Ang)</th><th>y (Ang)</th><th>z (Ang)</th></tr></thead><tbody>",
+        *geom_rows,
+        "</tbody></table>",
+        "<h2>Residuals</h2>",
+        "<table><thead><tr><th>isotopologue</th><th>component</th><th>target MHz</th><th>calculated MHz</th><th>residual MHz</th><th>sigma MHz</th></tr></thead><tbody>",
+        *residual_rows_html,
+        "</tbody></table>",
+        "<h2>Artifacts</h2>",
+        "<ul>",
+        "<li>exports/final_geometry.csv</li>",
+        "<li>exports/residuals.csv</li>",
+        "<li>plots/residuals.png</li>",
+        "<li>plots/singular_values.png</li>",
+        "<li>plots/convergence.png</li>",
+        "<li>plots/predicted_vs_observed.png</li>",
+        "<li>plots/normalized_residuals.png</li>",
+        "</ul>",
+    ]
+    if artifacts and artifacts.get("internal_prior_sensitivity_csv") is not None:
+        out_lines.extend(
+            [
+                "<h2>Prior Sensitivity</h2>",
+                "<p class='muted'>See <code>exports/internal_prior_sensitivity.csv</code> for coordinate-level sensitivity labels.</p>",
+            ]
+        )
+    out_lines.extend(["</body>", "</html>"])
+    path.write_text("\n".join(out_lines) + "\n", encoding="utf-8")
 
 
 def write_plots(run_dir: Path, result: dict[str, Any]) -> list[Path]:
@@ -1196,6 +1380,40 @@ def write_plots(run_dir: Path, result: dict[str, Any]) -> list[Path]:
         fig.savefig(path, dpi=160)
         plt.close(fig)
         paths.append(path)
+
+    if rows:
+        obs = [float(r["target_mhz"]) for r in rows]
+        pred = [float(r["calculated_mhz"]) for r in rows]
+        lo = min(obs + pred)
+        hi = max(obs + pred)
+        fig, ax = plt.subplots(figsize=(5.5, 5.5))
+        ax.scatter(obs, pred, c="#264653", edgecolors="white", linewidth=0.6, s=55)
+        ax.plot([lo, hi], [lo, hi], linestyle="--", color="#e76f51", linewidth=1.1)
+        ax.set_xlabel("Observed (MHz)")
+        ax.set_ylabel("Predicted (MHz)")
+        ax.set_title("Predicted vs Observed")
+        fig.tight_layout()
+        path = plots_dir / "predicted_vs_observed.png"
+        fig.savefig(path, dpi=160)
+        plt.close(fig)
+        paths.append(path)
+
+        sigma = [max(float(r.get("sigma_mhz", 1.0)), 1e-12) for r in rows]
+        z = [float(r["residual_mhz"]) / s for r, s in zip(rows, sigma)]
+        labels = [f"{r['isotopologue']} {r['component']}" for r in rows]
+        fig, ax = plt.subplots(figsize=(max(6, 0.55 * len(labels)), 4))
+        ax.axhline(0.0, color="black", linewidth=0.8)
+        ax.axhline(+3.0, color="#b22222", linewidth=0.7, linestyle="--")
+        ax.axhline(-3.0, color="#b22222", linewidth=0.7, linestyle="--")
+        ax.bar(range(len(z)), z, color="#1f7a8c")
+        ax.set_ylabel("Normalized residual (sigma)")
+        ax.set_xticks(range(len(labels)))
+        ax.set_xticklabels(labels, rotation=45, ha="right")
+        fig.tight_layout()
+        path = plots_dir / "normalized_residuals.png"
+        fig.savefig(path, dpi=160)
+        plt.close(fig)
+        paths.append(path)
     return paths
 
 
@@ -1226,6 +1444,54 @@ def write_outputs(result: dict[str, Any]) -> dict[str, Path | list[Path]]:
         "geometry_csv": geom_csv,
         "residuals_csv": residual_csv,
     }
+
+    # Conformer-mixture diagnostics (if present in optimization history).
+    hist = list(result.get("best", {}).get("history", []) or [])
+    conformer_rows = []
+    for h in hist:
+        weights = h.get("conformer_weights")
+        if weights is None:
+            continue
+        for j, w in enumerate(list(weights)):
+            conformer_rows.append(
+                {
+                    "iteration": int(h.get("iteration", 0)),
+                    "conformer_index": int(j),
+                    "weight": float(w),
+                    "freq_rms_mhz": float(h.get("freq_rms", np.nan)),
+                    "prior_wrms": float(h.get("prior_wrms", np.nan))
+                    if h.get("prior_wrms") is not None
+                    else np.nan,
+                }
+            )
+    if conformer_rows:
+        conf_csv = exports_dir / "conformer_weights_history.csv"
+        with conf_csv.open("w", newline="", encoding="utf-8") as fh:
+            writer = csv.DictWriter(
+                fh,
+                fieldnames=["iteration", "conformer_index", "weight", "freq_rms_mhz", "prior_wrms"],
+            )
+            writer.writeheader()
+            for r in conformer_rows:
+                writer.writerow(r)
+        artifacts["conformer_weights_history_csv"] = conf_csv
+        final = [r for r in conformer_rows if r["iteration"] == max(x["iteration"] for x in conformer_rows)]
+        conf_json = exports_dir / "conformer_summary.json"
+        conf_json.write_text(
+            json.dumps(
+                {
+                    "n_iterations_with_conformer_data": len({r["iteration"] for r in conformer_rows}),
+                    "n_conformers": len(final),
+                    "final_weights": [
+                        {"conformer_index": int(r["conformer_index"]), "weight": float(r["weight"])}
+                        for r in final
+                    ],
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        artifacts["conformer_summary_json"] = conf_json
 
     # Rovib correction exports (written whenever isotopologue data exists).
     if iso_snapshot:
@@ -1260,7 +1526,7 @@ def write_outputs(result: dict[str, Any]) -> dict[str, Path | list[Path]]:
             Bplus = InternalCoordinateSet.damped_pseudoinverse(B_active, damping)
             J_spectral, residual_w = SpectralEngine(iso_snapshot).stacked(result["best"]["coords"])
             Jq = spectral_jacobian_q(J_spectral, Bplus)
-            _, _, sigma_prior = build_internal_priors(
+            _, _, sigma_prior, prior_meta = build_internal_priors(
                 coord_set,
                 result["best"]["coords"],
                 sigma_bond=sigma_bond,
@@ -1272,7 +1538,9 @@ def write_outputs(result: dict[str, Any]) -> dict[str, Path | list[Path]]:
                 freeze_sigma_floor=float(ip_cfg.get("freeze_sigma_floor", 1e-6)),
                 spectral_jacobian_q=Jq,
                 adaptive_config=dict(ip_cfg.get("adaptive", {}) or {}),
+                return_metadata=True,
             )
+            prior_meta_map = {str(m.get("name", "")): m for m in prior_meta}
 
             dominance = classify_prior_dominance(Jq, sigma_prior, coord_set.active_names())
             sensitivity_rows = prior_sensitivity_analysis(
@@ -1318,12 +1586,105 @@ def write_outputs(result: dict[str, Any]) -> dict[str, Path | list[Path]]:
                         "prior_sensitivity",
                         "prior_delta",
                         "prior_delta_unit",
+                        "prior_source",
+                        "prior_mode",
+                        "prior_target",
+                        "prior_target_unit",
+                        "prior_sigma",
+                        "prior_sigma_unit",
+                        "prior_confidence",
+                        "prior_notes",
+                        "prior_identifiability_score",
+                        "prior_sigma_scale",
                     ],
                 )
                 writer.writeheader()
                 for r in unc_rows:
-                    writer.writerow(r)
+                    meta = prior_meta_map.get(str(r.get("name", "")), {})
+                    target = meta.get("target_value")
+                    sig_v = meta.get("sigma")
+                    units = str(meta.get("units", ""))
+                    kind = str(meta.get("kind", ""))
+                    if kind in {"angle", "dihedral"} and units in {"radian", "rad"}:
+                        target = np.degrees(float(target)) if target is not None else target
+                        sig_v = np.degrees(float(sig_v)) if sig_v is not None else sig_v
+                        units = "deg"
+                    elif kind == "bond" and units in {"angstrom", "a", "å"}:
+                        units = "Å"
+                    row = dict(r)
+                    row.update(
+                        {
+                            "prior_source": meta.get("source", ""),
+                            "prior_mode": meta.get("mode", ""),
+                            "prior_target": target,
+                            "prior_target_unit": units,
+                            "prior_sigma": sig_v,
+                            "prior_sigma_unit": units,
+                            "prior_confidence": meta.get("confidence"),
+                            "prior_notes": meta.get("notes"),
+                            "prior_identifiability_score": meta.get("identifiability_score"),
+                            "prior_sigma_scale": meta.get("sigma_scale"),
+                        }
+                    )
+                    writer.writerow(row)
             artifacts["internal_uncertainty_csv"] = unc_csv
+
+            prior_csv = exports_dir / "internal_prior_provenance.csv"
+            with prior_csv.open("w", newline="", encoding="utf-8") as fh:
+                writer = csv.DictWriter(
+                    fh,
+                    fieldnames=[
+                        "name",
+                        "kind",
+                        "atoms",
+                        "atom_types",
+                        "bond_order",
+                        "source",
+                        "mode",
+                        "target_value",
+                        "target_unit",
+                        "sigma",
+                        "sigma_unit",
+                        "confidence",
+                        "notes",
+                        "identifiability_score",
+                        "sigma_scale",
+                        "global_sigma_scale",
+                    ],
+                )
+                writer.writeheader()
+                for m in prior_meta:
+                    kind = str(m.get("kind", ""))
+                    units = str(m.get("units", ""))
+                    target = m.get("target_value")
+                    sig_v = m.get("sigma")
+                    if kind in {"angle", "dihedral"} and units in {"radian", "rad"}:
+                        target = np.degrees(float(target)) if target is not None else target
+                        sig_v = np.degrees(float(sig_v)) if sig_v is not None else sig_v
+                        units = "deg"
+                    elif kind == "bond" and units in {"angstrom", "a", "å"}:
+                        units = "Å"
+                    writer.writerow(
+                        {
+                            "name": m.get("name"),
+                            "kind": kind,
+                            "atoms": "-".join(str(int(a) + 1) for a in (m.get("atoms") or ())),
+                            "atom_types": "-".join(str(a) for a in (m.get("atom_types") or ())),
+                            "bond_order": m.get("bond_order"),
+                            "source": m.get("source"),
+                            "mode": m.get("mode"),
+                            "target_value": target,
+                            "target_unit": units,
+                            "sigma": sig_v,
+                            "sigma_unit": units,
+                            "confidence": m.get("confidence"),
+                            "notes": m.get("notes"),
+                            "identifiability_score": m.get("identifiability_score"),
+                            "sigma_scale": m.get("sigma_scale"),
+                            "global_sigma_scale": m.get("global_sigma_scale"),
+                        }
+                    )
+            artifacts["internal_prior_provenance_csv"] = prior_csv
 
             sens_csv = exports_dir / "internal_prior_sensitivity.csv"
             with sens_csv.open("w", newline="", encoding="utf-8") as fh:
@@ -1409,7 +1770,73 @@ def write_outputs(result: dict[str, Any]) -> dict[str, Path | list[Path]]:
 
     report_md = run_dir / "report.md"
     write_markdown_report(report_md, result, artifacts=artifacts)
+    report_html = run_dir / "report.html"
+    write_html_report(report_html, result, artifacts=artifacts)
     plot_paths = write_plots(run_dir, result)
     artifacts["report_md"] = report_md
+    artifacts["report_html"] = report_html
     artifacts["plots"] = plot_paths
+    report_payload = {
+        "name": result.get("name"),
+        "run_dir": str(run_dir),
+        "elems": result.get("elems", []),
+        "best": {
+            "idx": result.get("best", {}).get("idx"),
+            "freq_rms": result.get("best", {}).get("freq_rms"),
+            "energy": result.get("best", {}).get("energy"),
+            "coords": np.asarray(result.get("best", {}).get("coords", []), dtype=float).tolist(),
+            "history": list(result.get("best", {}).get("history", []) or []),
+        },
+        "score": result.get("score", {}),
+        "residual_rows": rows,
+        "singular_values": list(result.get("singular_values", [])),
+    }
+    report_payload_path = run_dir / "report_payload.json"
+    report_payload_path.write_text(json.dumps(report_payload, indent=2), encoding="utf-8")
+    artifacts["report_payload_json"] = report_payload_path
+    # Artifact manifest for quick navigation.
+    def _jsonify_artifact_value(v: Any) -> Any:
+        if isinstance(v, Path):
+            return str(v)
+        if isinstance(v, (list, tuple)):
+            return [str(p) if isinstance(p, Path) else p for p in v]
+        if isinstance(v, (str, int, float, bool)) or v is None:
+            return v
+        return str(v)
+
+    manifest = {
+        "written_at": datetime.now(UTC).isoformat(),
+        "run_dir": str(run_dir),
+        "artifacts": {k: _jsonify_artifact_value(v) for k, v in artifacts.items()},
+    }
+    manifest_path = run_dir / "artifact_manifest.json"
+    manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    artifacts["artifact_manifest_json"] = manifest_path
     return artifacts
+
+
+def rebuild_report_from_run_dir(run_dir: Path | str) -> dict[str, Any]:
+    """Regenerate report + plots from an existing managed run directory."""
+    run_path = Path(run_dir).expanduser().resolve()
+    payload_path = run_path / "report_payload.json"
+    if not payload_path.is_file():
+        raise ConfigError(
+            f"Cannot rebuild report for '{run_path}': missing report_payload.json. "
+            "Run `quantize run <config>` first with artifacts enabled."
+        )
+    payload = json.loads(payload_path.read_text(encoding="utf-8"))
+    required = {"name", "run_dir", "elems", "best", "residual_rows"}
+    missing = [k for k in required if k not in payload]
+    if missing:
+        raise ConfigError(f"Malformed report payload: missing keys {missing}.")
+
+    report_md = run_path / "report.md"
+    report_html = run_path / "report.html"
+    write_markdown_report(report_md, payload, artifacts=None)
+    write_html_report(report_html, payload, artifacts=None)
+    plot_paths = write_plots(run_path, payload)
+    return {
+        "report_md": report_md,
+        "report_html": report_html,
+        "plots": plot_paths,
+    }

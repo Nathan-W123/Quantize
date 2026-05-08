@@ -284,7 +284,10 @@ def underconstrained_success_score(results, best_result, isotopologues, internal
 
     history = best_result.get("history", [])
     last = history[-1] if history else {}
-    constrained_rank = int(last.get("rank", 0))
+    # Use spectral_rows (observations before priors are stacked) as the rank ceiling so
+    # that prior-inflated full-J rank doesn't exceed internal_dof and show >100%.
+    spectral_rows = int(last.get("spectral_rows", last.get("rank", 0)))
+    constrained_rank = min(int(last.get("rank", 0)), spectral_rows, internal_dof)
     rank_fraction = min(1.0, max(0.0, constrained_rank / float(internal_dof)))
 
     # ── Multi-start geometric stability ───────────────────────────────────────

@@ -3,18 +3,58 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
 import sys
 from pathlib import Path
+from datetime import UTC, datetime
 
 _ROOT = Path(__file__).resolve().parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from runner.run_from_config import main as run_from_config_main
-from runner.usability import ConfigError, load_config, validate_config
+from runner.usability import ConfigError, load_config, rebuild_report_from_run_dir, validate_config
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _print_config_summary(cfg: dict) -> None:
+    mode = str(cfg.get("coordinate_mode", "internal"))
+    q = cfg.get("quantum", {}) or {}
+    backend = str(q.get("backend", "orca"))
+    name = str(cfg.get("name", cfg.get("molecule", "run")))
+    n_iso = len(cfg.get("isotopologues", []) or [])
+    elems = cfg.get("elements", []) or []
+    print("\nConfig Summary")
+    print("-" * 60)
+
+
+def _json_safe(v):
+    try:
+        import numpy as _np
+        if isinstance(v, _np.ndarray):
+            return v.tolist()
+        if isinstance(v, (_np.floating, _np.integer)):
+            return v.item()
+    except Exception:
+        pass
+    if isinstance(v, dict):
+        return {str(k): _json_safe(val) for k, val in v.items()}
+    if isinstance(v, (list, tuple)):
+        return [_json_safe(x) for x in v]
+    if isinstance(v, Path):
+        return str(v)
+    if isinstance(v, (str, int, float, bool)) or v is None:
+        return v
+    return str(v)
+    print(f"  Name             : {name}")
+    print(f"  Schema version   : {cfg.get('schema_version', 'n/a')}")
+    print(f"  Coordinate mode  : {mode}")
+    print(f"  Quantum backend  : {backend}")
+    print(f"  Elements         : {len(elems)} atoms")
+    print(f"  Isotopologues    : {n_iso}")
+    print(f"  Preset           : {cfg.get('preset', 'BALANCED')}")
+    print("-" * 60)
 
 def _load_torsion_spec_from_cfg_path(config_path: Path):
     """Load config and build TorsionHamiltonianSpec from it."""
@@ -230,6 +270,244 @@ def _cmd_lam_diagnose(args) -> int:
     return 0
 
 
+# ── uncertainty subcommand ───────────────────────────────────────────────────
+
+def _cmd_uncertainty(args) -> int:
+    """Run Bayesian/Bootstrap uncertainty analysis from config."""
+    from runner.run_from_config import build_optimizer_from_config
+    from backend.uncertainty_sampling import (
+        BootstrapRunner, AdaptiveMetropolisSampler, calculate_convergence_diagnostics
+    )
+    from backend.uncertainty_v2 import (
+        AdaptiveMetropolisV2,
+        BootstrapConfig,
+        BootstrapEngine,
+        MCMCConfig,
+        evaluate_posterior_state,
+        laplace_approximation,
+    )
+    from backend.uncertainty_v2.reporting import (
+        format_bootstrap_summary,
+        format_laplace_summary,
+        format_mcmc_summary,
+        format_posterior_state,
+    )
+    from backend.uncertainty_analysis import analyze_coordinate_distribution, print_distribution_summary, posterior_predictive_check, print_ppc_summary
+    from backend.uncertainty_plots import plot_coordinate_distributions, plot_mcmc_traces, plot_parameter_corner, plot_autocorrelations
+    import numpy as np
+
+    if args.samples < 1:
+        print("Error: --samples must be >= 1.", file=sys.stderr)
+        return 2
+    if args.workers < 1:
+        print("Error: --workers must be >= 1.", file=sys.stderr)
+        return 2
+    if args.mode in ["mcmc", "both"]:
+        if args.chains < 1:
+            print("Error: --chains must be >= 1.", file=sys.stderr)
+            return 2
+        if args.mcmc_steps < 2:
+            print("Error: --mcmc-steps must be >= 2.", file=sys.stderr)
+            return 2
+        if args.burn_in < 0:
+            print("Error: --burn-in must be >= 0.", file=sys.stderr)
+            return 2
+        if args.burn_in >= args.mcmc_steps:
+            print("Error: --burn-in must be smaller than --mcmc-steps.", file=sys.stderr)
+            return 2
+
+    cfg = load_config(args.config)
+    opt = build_optimizer_from_config(cfg)
+    summary_bundle = {
+        "generated_at": datetime.now(UTC).isoformat(),
+        "config_path": str(args.config),
+        "mode": args.mode,
+        "engine": args.uncertainty_engine,
+        "seed": args.seed,
+        "warnings": [],
+    }
+
+    print("\nConverging initial geometry to the global minimum...")
+    opt.run()
+
+    if args.uncertainty_engine == "v2":
+        posterior_state = evaluate_posterior_state(opt, opt.coords, use_proxy=True)
+        laplace = laplace_approximation(opt, regularization=args.laplace_regularization)
+        print("\n" + format_posterior_state(posterior_state))
+        print(format_laplace_summary(laplace))
+        summary_bundle["posterior_state"] = posterior_state.to_dict()
+        summary_bundle["laplace"] = laplace.to_dict()
+        if not args.no_laplace_persist:
+            out_dir = os.path.join(opt.workdir, "uncertainty_v2")
+            os.makedirs(out_dir, exist_ok=True)
+            with open(os.path.join(out_dir, "posterior_laplace_summary.json"), "w", encoding="utf-8") as fh:
+                json.dump(
+                    {
+                        "posterior_state": posterior_state.to_dict(),
+                        "laplace": laplace.to_dict(),
+                    },
+                    fh,
+                    indent=2,
+                )
+    
+    cloud = []
+    
+    if args.mode in ["bootstrap", "both"]:
+        if args.uncertainty_engine == "v2":
+            boot_cfg = BootstrapConfig(
+                n_samples=args.samples,
+                max_workers=args.workers,
+                seed=args.seed,
+                strategy=args.bootstrap_strategy,
+                output_dir=args.bootstrap_output_dir,
+                persist_samples=not args.no_bootstrap_persist,
+            )
+            engine = BootstrapEngine(opt, boot_cfg)
+            summary = engine.run(base_workdir=opt.workdir)
+            print("\n" + format_bootstrap_summary(summary))
+            summary_bundle["bootstrap"] = summary.to_dict()
+            successes = [r for r in summary.sample_results if r.success and r.coords is not None]
+        else:
+            runner = BootstrapRunner(opt, n_samples=args.samples, max_workers=args.workers)
+            boot_results = runner.run(base_workdir=opt.workdir)
+            summary_bundle["bootstrap"] = {
+                "total_samples": len(boot_results),
+                "successful_samples": int(sum(1 for r in boot_results if r.get("success"))),
+                "failed_samples": int(sum(1 for r in boot_results if not r.get("success"))),
+            }
+            successes = [res for res in boot_results if res["success"]]
+        
+        # Warning for high bootstrap failure rate
+        if len(successes) < args.samples:
+            print(f"\n[warning] Only {len(successes)}/{args.samples} bootstrap samples converged.")
+            summary_bundle["warnings"].append(
+                f"Only {len(successes)}/{args.samples} bootstrap samples converged."
+            )
+            if len(successes) < args.samples / 2:
+                print("          High failure rate suggests the geometry is unstable or poorly constrained.")
+                summary_bundle["warnings"].append("High bootstrap failure rate suggests unstable/weakly constrained geometry.")
+
+        for res in successes:
+            if args.uncertainty_engine == "v2":
+                cloud.append(np.asarray(res.coords, dtype=float))
+            elif res["success"]:
+                cloud.append(res["coords"])
+
+    if args.mode in ["mcmc", "both"]:
+        print(f"\n[mcmc] Running {args.chains} parallel chains...")
+        all_chains = []
+        if args.uncertainty_engine == "v2":
+            mcfg = MCMCConfig(
+                n_steps=args.mcmc_steps,
+                burn_in=args.burn_in,
+                thin=args.mcmc_thin,
+                n_chains=args.chains,
+                proposal_scale=args.mcmc_scale,
+                adapt_every=args.mcmc_adapt_every,
+                seed=args.seed,
+                checkpoint_every=args.mcmc_checkpoint_every,
+                persist_chain_samples=not args.no_mcmc_persist,
+                output_dir=args.mcmc_output_dir,
+            )
+            mcmc_summary = AdaptiveMetropolisV2(opt, mcfg).run(base_workdir=opt.workdir)
+            print("\n" + format_mcmc_summary(mcmc_summary))
+            summary_bundle["mcmc"] = mcmc_summary.to_dict()
+            for c in mcmc_summary.chains:
+                all_chains.append(c.samples)
+                for s in c.samples:
+                    cloud.append(s)
+            if mcmc_summary.convergence is not None:
+                from backend.internal_fit import InternalCoordinateSet
+
+                ic_set = InternalCoordinateSet(opt.coords, opt.elems)
+                ic_names = ic_set.active_names()
+                print("\n" + "=" * 60)
+                print("  MCMC CONVERGENCE DIAGNOSTICS (v2 split-Rhat/ESS)")
+                print("=" * 60)
+                print(f"{'Parameter':<30} {'R-hat':>10} {'ESS':>10}")
+                print("-" * 60)
+                for name, r, e in zip(ic_names, mcmc_summary.convergence.r_hat, mcmc_summary.convergence.ess):
+                    mark = "(!)" if r > 1.1 else "   "
+                    print(f"{mark}{name:<30} {r:10.3f} {e:10.1f}")
+                print("\n  (Target: R-hat < 1.1; ESS > 100)")
+                print("=" * 60)
+            else:
+                print("\n[mcmc] v2 convergence diagnostics unavailable (too few chains/samples).")
+                summary_bundle["warnings"].append("MCMC convergence diagnostics unavailable (too few chains/samples).")
+        else:
+            # Execute chains sequentially in CLI; process pool recommended for production
+            for c in range(args.chains):
+                print(f"  Chain {c+1}/{args.chains}:")
+                sampler = AdaptiveMetropolisSampler(opt)
+                mcmc_samples = sampler.run(n_steps=args.mcmc_steps, burn_in=args.burn_in)
+                all_chains.append(mcmc_samples)
+                for s in mcmc_samples:
+                    cloud.append(s)
+
+            # --- Convergence Validation ---
+            if args.chains > 1:
+                from backend.internal_fit import InternalCoordinateSet
+
+                ic_set = InternalCoordinateSet(opt.coords, opt.elems)
+                q_chains = np.array([[ic_set.active_values(xyz) for xyz in chain] for chain in all_chains])
+
+                r_hat, ess, diag_error = calculate_convergence_diagnostics(q_chains)
+                ic_names = ic_set.active_names()
+
+                print("\n" + "="*60)
+                print("  MCMC CONVERGENCE DIAGNOSTICS")
+                print("="*60)
+                if diag_error is not None:
+                    print(f"  Skipped: {diag_error}")
+                    summary_bundle["warnings"].append(f"MCMC diagnostics skipped: {diag_error}")
+                else:
+                    print(f"{'Parameter':<30} {'R-hat':>10} {'ESS':>10}")
+                    print("-" * 60)
+                    for name, r, e in zip(ic_names, r_hat, ess):
+                        mark = "(!)" if r > 1.1 else "   "
+                        print(f"{mark}{name:<30} {r:10.3f} {e:10.1f}")
+                    print("\n  (Target: R-hat < 1.1 for convergence; ESS > 100 per chain)")
+                print("="*60)
+
+    if not cloud:
+        print("Error: No uncertainty samples were generated.")
+        return 1
+
+    print("\nProcessing sample cloud...")
+    stats, corr, names = analyze_coordinate_distribution(np.array(cloud), opt.elems)
+    print_distribution_summary(stats)
+    summary_bundle["cloud"] = {
+        "n_samples": int(len(cloud)),
+        "n_parameters": int(np.asarray(cloud[0]).size) if cloud else 0,
+        "coordinate_stats": _json_safe(stats),
+        "parameter_names": _json_safe(names),
+    }
+    
+    # --- Posterior Predictive Check (PPC) ---
+    ppc_stats = posterior_predictive_check(np.array(cloud), opt.spectral)
+    print_ppc_summary(ppc_stats)
+    summary_bundle["posterior_predictive_check"] = _json_safe(ppc_stats)
+
+    # --- Generate Plots ---
+    plot_dir = os.path.join(opt.workdir, "plots", "uncertainty")
+    print(f"\nGenerating diagnostic plots in: {plot_dir}")
+    plot_coordinate_distributions(np.array(cloud), opt.elems, plot_dir)
+    plot_parameter_corner(np.array(cloud), opt.elems, plot_dir)
+    if args.mode in ["mcmc", "both"]:
+        plot_mcmc_traces(np.array(cloud)[-args.mcmc_steps:], opt.elems, plot_dir)
+        plot_autocorrelations(np.array(cloud)[-args.mcmc_steps:], opt.elems, plot_dir)
+    summary_bundle["plot_dir"] = plot_dir
+
+    out_dir = os.path.join(opt.workdir, "uncertainty_v2" if args.uncertainty_engine == "v2" else "uncertainty_legacy")
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, "uncertainty_run_summary.json")
+    with open(out_path, "w", encoding="utf-8") as fh:
+        json.dump(_json_safe(summary_bundle), fh, indent=2)
+    print(f"\n[uncertainty] Summary written: {out_path}")
+
+    return 0
+
+
 # ── main entry point ──────────────────────────────────────────────────────────
 
 def main(argv: list[str] | None = None) -> int:
@@ -273,6 +551,79 @@ def main(argv: list[str] | None = None) -> int:
     diag_p.add_argument("--convergence", action="store_true",
                         help="Show basis convergence table.")
 
+    # --- uncertainty ---
+    unc_p = sub.add_parser("uncertainty", help="Run Bayesian/Bootstrap uncertainty analysis.")
+    unc_p.add_argument("config", type=Path)
+    unc_p.add_argument("--mode", choices=["bootstrap", "mcmc", "both"], default="both")
+    unc_p.add_argument("--samples", type=int, default=20, help="Number of Bootstrap samples.")
+    unc_p.add_argument("--mcmc-steps", type=int, default=5000, help="Number of MCMC steps.")
+    unc_p.add_argument("--burn-in", type=int, default=1000, help="MCMC burn-in period.")
+    unc_p.add_argument("--chains", type=int, default=4, help="Number of MCMC chains.")
+    unc_p.add_argument("--workers", type=int, default=1, help="Parallel workers for Bootstrap.")
+    unc_p.add_argument(
+        "--uncertainty-engine",
+        choices=["legacy", "v2"],
+        default="legacy",
+        help="Uncertainty engine implementation. 'v2' enables greenfield Phase-1 bootstrap.",
+    )
+    unc_p.add_argument(
+        "--bootstrap-strategy",
+        choices=["isotopologue-gaussian"],
+        default="isotopologue-gaussian",
+        help="Bootstrap resampling strategy for v2 engine.",
+    )
+    unc_p.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="Base random seed for deterministic bootstrap in v2 engine.",
+    )
+    unc_p.add_argument(
+        "--bootstrap-output-dir",
+        default="bootstrap_v2",
+        help="Output directory name under workdir for v2 bootstrap artifacts.",
+    )
+    unc_p.add_argument(
+        "--no-bootstrap-persist",
+        action="store_true",
+        help="Disable bootstrap summary JSON persistence in v2 engine.",
+    )
+    unc_p.add_argument(
+        "--laplace-regularization",
+        type=float,
+        default=1e-8,
+        help="Diagonal regularization added to Laplace Hessian/JTJ in v2 engine.",
+    )
+    unc_p.add_argument(
+        "--no-laplace-persist",
+        action="store_true",
+        help="Disable posterior/laplace JSON persistence in v2 engine.",
+    )
+    unc_p.add_argument("--mcmc-thin", type=int, default=1, help="Thinning interval for v2 MCMC.")
+    unc_p.add_argument("--mcmc-scale", type=float, default=0.005, help="Proposal scale for v2 MCMC.")
+    unc_p.add_argument("--mcmc-adapt-every", type=int, default=100, help="Adapt interval for v2 MCMC.")
+    unc_p.add_argument(
+        "--mcmc-checkpoint-every",
+        type=int,
+        default=1000,
+        help="Checkpoint cadence (steps) for v2 MCMC.",
+    )
+    unc_p.add_argument(
+        "--mcmc-output-dir",
+        default="mcmc_v2",
+        help="Output directory name under workdir for v2 MCMC artifacts.",
+    )
+    unc_p.add_argument(
+        "--no-mcmc-persist",
+        action="store_true",
+        help="Disable chain sample persistence for v2 MCMC.",
+    )
+
+    # --- report ---
+    report_p = sub.add_parser("report", help="Rebuild report and plots from an existing run directory.")
+    report_p.add_argument("run_dir", type=Path)
+
+
     args = parser.parse_args(argv)
 
     if args.command == "validate":
@@ -282,13 +633,20 @@ def main(argv: list[str] | None = None) -> int:
         except ConfigError as exc:
             print(f"Config error: {exc}", file=sys.stderr)
             return 2
+        _print_config_summary(cfg)
         print(f"Config OK: {args.config}")
         return 0
 
     if args.command == "run":
-        sys.argv = [sys.argv[0], str(args.config)] + (["--no-run-dir"] if args.no_run_dir else [])
-        run_from_config_main()
-        return 0
+        try:
+            sys.argv = [sys.argv[0], str(args.config)] + (["--no-run-dir"] if args.no_run_dir else [])
+            run_from_config_main()
+            return 0
+        except SystemExit as exc:
+            code = int(exc.code) if isinstance(exc.code, int) else 1
+            if code != 0:
+                print("\nRun failed. Tip: use `quantize validate <config>` for detailed config checks.", file=sys.stderr)
+            return code
 
     if args.command == "lam-scan":
         return _cmd_lam_scan(args)
@@ -298,6 +656,20 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "lam-diagnose":
         return _cmd_lam_diagnose(args)
+
+    if args.command == "uncertainty":
+        return _cmd_uncertainty(args)
+
+    if args.command == "report":
+        try:
+            out = rebuild_report_from_run_dir(args.run_dir)
+        except ConfigError as exc:
+            print(f"Report error: {exc}", file=sys.stderr)
+            return 2
+        print(f"Report rebuilt: {out['report_md']}")
+        print(f"HTML report   : {out['report_html']}")
+        print(f"Plots updated : {len(out['plots'])}")
+        return 0
 
     parser.print_help()
     return 2

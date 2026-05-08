@@ -324,6 +324,7 @@ class ParsedRovibResult:
     alpha_abc: np.ndarray
     frequencies: Optional[np.ndarray] = None
     warnings: list[str] = field(default_factory=list)
+    quality_flags: list[str] = field(default_factory=list)
     source_files: list[str] = field(default_factory=list)
     parse_status: str = "unknown"
     units: str = "MHz"
