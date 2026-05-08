@@ -1,3 +1,6 @@
 """Compatibility shim. Use backend.torsion.torsion_intensities."""
 
-from backend.torsion.torsion_intensities import *
+from backend.torsion import torsion_intensities as _m
+
+globals().update({k: getattr(_m, k) for k in dir(_m) if not k.startswith('__')})
+__all__ = [k for k in dir(_m) if not k.startswith('__')]
