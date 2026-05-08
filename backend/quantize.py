@@ -329,7 +329,7 @@ class MolecularOptimizer:
         correction_elec=False,
         correction_sigma_elec_fraction=0.1,
         correction_bob_params=None,
-        coordinate_mode="cartesian",
+        coordinate_mode="internal",
         ic_damping=1e-6,
         ic_use_dihedrals=False,
         ic_micro_iter=20,
@@ -337,6 +337,10 @@ class MolecularOptimizer:
         ic_prior_sigma_bond=0.05,
         ic_prior_sigma_angle_deg=3.0,
         ic_prior_sigma_dihedral_deg=15.0,
+        ic_prior_mode="soft",
+        ic_user_priors=None,
+        ic_freeze_sigma_floor=1e-6,
+        ic_prior_adaptive=None,
     ):
         self.coords = np.asarray(coords, dtype=float).copy()
         self.elems = list(elems)
@@ -573,6 +577,15 @@ class MolecularOptimizer:
         self._ic_prior_sigma_bond = float(ic_prior_sigma_bond)
         self._ic_prior_sigma_angle_deg = float(ic_prior_sigma_angle_deg)
         self._ic_prior_sigma_dihedral_deg = float(ic_prior_sigma_dihedral_deg)
+        self._ic_prior_mode = str(ic_prior_mode or "soft").strip().lower()
+        self._ic_user_priors = list(ic_user_priors or [])
+        self._ic_freeze_sigma_floor = max(float(ic_freeze_sigma_floor), 1e-12)
+        self._ic_prior_adaptive = dict(ic_prior_adaptive or {})
+        _valid_prior_modes = {"off", "soft", "adaptive", "hard_freeze"}
+        if self._ic_prior_mode not in _valid_prior_modes:
+            raise ValueError(
+                f"ic_prior_mode must be one of {_valid_prior_modes}, got '{self._ic_prior_mode}'"
+            )
         self._ic_initial_coords = None   # captured once after first geometry is confirmed
         if self.coordinate_mode == "internal":
             print(f"Internal-coordinate mode enabled: bonds+{'dihedrals+' if self._ic_use_dihedrals else ''}angles, "
@@ -1337,6 +1350,7 @@ class MolecularOptimizer:
 
             J, residual_w = self.spectral.stacked(self.coords)
             _, residual_mhz = self.spectral.stacked_unweighted(self.coords)
+            _n_spectral_rows = int(J.shape[0])  # row count before any prior rows are appended
             prior_wrms_before = None
             if self.internal_prior is not None and self.coordinate_mode == "cartesian":
                 Jp, rp = self.internal_prior.stacked(self.coords)
@@ -1372,6 +1386,13 @@ class MolecularOptimizer:
                         sigma_angle_deg=self._ic_prior_sigma_angle_deg,
                         sigma_dihedral_deg=self._ic_prior_sigma_dihedral_deg,
                         prior_values=_ic_coord_set.active_values(self._ic_initial_coords),
+                        prior_mode=self._ic_prior_mode,
+                        prior_specs=self._ic_user_priors,
+                        elems=self.elems,
+                        freeze_sigma_floor=self._ic_freeze_sigma_floor,
+                        spectral_jacobian_q=J,
+                        adaptive_config=self._ic_prior_adaptive,
+                        sv_rel_threshold=self.optimizer.sv_threshold,
                     )
                     _wp = float(np.sqrt(self._ic_prior_weight))
                     J = np.vstack([J, _wp * _J_prior])
@@ -1486,6 +1507,7 @@ class MolecularOptimizer:
                     wrms=wrms,
                     freq_rms=freq_rms,
                     rank=rank,
+                    spectral_rows=_n_spectral_rows,
                     lambda_damp=self.optimizer.lambda_damp,
                     accepted=accepted,
                     energy=energy,
@@ -1724,6 +1746,7 @@ class MolecularOptimizer:
 
         from backend.uncertainty import uncertainty_table, print_uncertainty_table
         from backend.identifiability import identifiability_table, print_identifiability_table
+        from backend.prior_sensitivity import classify_prior_dominance, prior_sensitivity_analysis
 
         coord_set = InternalCoordinateSet(self.coords, self.elems, self._ic_use_dihedrals)
         B_active = coord_set.active_B_matrix(self.coords)
@@ -1738,6 +1761,13 @@ class MolecularOptimizer:
                 sigma_bond=self._ic_prior_sigma_bond,
                 sigma_angle_deg=self._ic_prior_sigma_angle_deg,
                 sigma_dihedral_deg=self._ic_prior_sigma_dihedral_deg,
+                prior_mode=self._ic_prior_mode,
+                prior_specs=self._ic_user_priors,
+                elems=self.elems,
+                freeze_sigma_floor=self._ic_freeze_sigma_floor,
+                spectral_jacobian_q=Jq,
+                adaptive_config=self._ic_prior_adaptive,
+                sv_rel_threshold=self.optimizer.sv_threshold,
             )
         else:
             sigma_prior = None
@@ -1746,10 +1776,44 @@ class MolecularOptimizer:
         self.report()
 
         # Print uncertainty table
+        _J_prior_tmp, _r_prior_tmp, sigma_prior_for_labels, _meta_tmp = build_internal_priors(
+            coord_set, self.coords,
+            sigma_bond=self._ic_prior_sigma_bond,
+            sigma_angle_deg=self._ic_prior_sigma_angle_deg,
+            sigma_dihedral_deg=self._ic_prior_sigma_dihedral_deg,
+            prior_mode=self._ic_prior_mode,
+            prior_specs=self._ic_user_priors,
+            elems=self.elems,
+            freeze_sigma_floor=self._ic_freeze_sigma_floor,
+            spectral_jacobian_q=Jq,
+            adaptive_config=self._ic_prior_adaptive,
+            sv_rel_threshold=self.optimizer.sv_threshold,
+            return_metadata=True,
+        )
+        dominance = classify_prior_dominance(Jq, sigma_prior_for_labels, coord_set.active_names())
+        sensitivity = prior_sensitivity_analysis(
+            coord_set,
+            self.coords,
+            Jq,
+            residual,
+            sigma_bond=self._ic_prior_sigma_bond,
+            sigma_angle_deg=self._ic_prior_sigma_angle_deg,
+            sigma_dihedral_deg=self._ic_prior_sigma_dihedral_deg,
+            prior_mode=self._ic_prior_mode,
+            prior_specs=self._ic_user_priors,
+            elems=self.elems,
+            freeze_sigma_floor=self._ic_freeze_sigma_floor,
+            spectral_jacobian_q=Jq,
+            adaptive_config=self._ic_prior_adaptive,
+            sv_rel_threshold=self.optimizer.sv_threshold,
+            lambda_reg=self._ic_damping,
+        )
         unc_rows = uncertainty_table(
             coord_set, self.coords, Jq,
             sigma_prior=sigma_prior,
             lambda_reg=self._ic_damping,
+            dominance_labels=dominance,
+            sensitivity_rows=sensitivity,
         )
         print("\n  Internal-coordinate uncertainties")
         print_uncertainty_table(unc_rows)
@@ -1761,3 +1825,56 @@ class MolecularOptimizer:
         print()
 
         return residual
+
+    def log_probability(self, trial_coords, use_proxy=True):
+        """
+        Compute the log-posterior probability P(geometry | Spectra, Theory).
+
+        Components:
+          1. Spectral Likelihood (Gaussian noise model on B0)
+          2. Theory Prior (QC energy surface)
+          3. Structural Priors (Internal coordinate constraints)
+        """
+        # 1. Spectral Likelihood
+        _, residual_w = self.spectral.stacked(trial_coords)
+        chi_sq_spectral = np.sum(residual_w**2)
+
+        # 2. Structural Priors
+        chi_sq_prior = 0.0
+        if self.internal_prior is not None and self.coordinate_mode == "cartesian":
+            _, rp = self.internal_prior.stacked(trial_coords)
+            chi_sq_prior = self.prior_weight * np.sum(rp**2)
+        elif self.coordinate_mode == "internal" and self._ic_prior_weight > 0.0:
+            # q-space priors are evaluated inside the sampler if using internal coords
+            pass 
+
+        energy_term = 0.0
+        if not self.spectral_only and self.quantum is not None:
+            if use_proxy:
+                dx = (trial_coords - self._orca_ref_coords).ravel()
+                g = self.quantum.gradient
+                H = self.quantum.hessian
+                energy_term = self.quantum.energy + np.dot(g, dx) + 0.5 * np.dot(dx, H @ dx)
+            else:
+                if self.quantum_backend == "psi4" and self._psi4_engine:
+                    energy_term, _ = self._psi4_engine.run_gradient(trial_coords)
+                else:
+                    energy_term = self.quantum.energy
+
+        log_p = -0.5 * (chi_sq_spectral + chi_sq_prior)
+        return log_p - (self.optimizer.alpha_quantum * energy_term)
+
+    def laplace_approximation(self):
+        """Analytical estimate of the posterior covariance at the optimum."""
+        J, _ = self.spectral.stacked(self.coords)
+        H_total = J.T @ J
+        if not self.spectral_only and self.quantum is not None:
+            H_total += self.optimizer.alpha_quantum * self.quantum.hessian
+            
+        reg = 1e-8 * np.eye(H_total.shape[0])
+        try:
+            cov = np.linalg.inv(H_total + reg)
+            std_err = np.sqrt(np.maximum(np.diag(cov), 0.0))
+            return cov, std_err
+        except np.linalg.LinAlgError:
+            return None, None

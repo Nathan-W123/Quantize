@@ -184,6 +184,7 @@ def validate_config(cfg: dict[str, Any]) -> None:
 
     _validate_rovibrational_corrections_block(cfg)
     _validate_torsion_block(cfg)
+    _validate_internal_priors_block(cfg, n_atoms=n_atoms)
 
 
 _VALID_ROVIB_MODES = {
@@ -191,6 +192,85 @@ _VALID_ROVIB_MODES = {
     "manual_alpha", "manual_delta", "none",
     "strict_user", "strict_backend",
 }
+
+
+def _validate_internal_priors_block(cfg: dict[str, Any], n_atoms: int) -> None:
+    ip = cfg.get("internal_priors")
+    if ip is None:
+        return
+    if not isinstance(ip, dict):
+        raise ConfigError("'internal_priors' must be a mapping/object.")
+
+    mode = str(ip.get("mode", "soft")).strip().lower()
+    valid_modes = {"off", "soft", "adaptive", "hard_freeze"}
+    if mode not in valid_modes:
+        raise ConfigError(f"'internal_priors.mode' must be one of {sorted(valid_modes)}.")
+
+    fsf = ip.get("freeze_sigma_floor")
+    if fsf is not None:
+        try:
+            fv = float(fsf)
+        except (TypeError, ValueError) as exc:
+            raise ConfigError("'internal_priors.freeze_sigma_floor' must be numeric.") from exc
+        if fv <= 0.0:
+            raise ConfigError("'internal_priors.freeze_sigma_floor' must be positive.")
+
+    ad = ip.get("adaptive")
+    if ad is not None:
+        if not isinstance(ad, dict):
+            raise ConfigError("'internal_priors.adaptive' must be a mapping/object.")
+        for key in ("identifiability_gamma", "min_sigma_scale", "max_sigma_scale"):
+            if key in ad and ad[key] is not None:
+                try:
+                    fv = float(ad[key])
+                except (TypeError, ValueError) as exc:
+                    raise ConfigError(f"'internal_priors.adaptive.{key}' must be numeric.") from exc
+                if fv < 0.0:
+                    raise ConfigError(f"'internal_priors.adaptive.{key}' must be >= 0.")
+        if "min_sigma_scale" in ad and "max_sigma_scale" in ad:
+            if float(ad["max_sigma_scale"]) < float(ad["min_sigma_scale"]):
+                raise ConfigError(
+                    "'internal_priors.adaptive.max_sigma_scale' must be >= min_sigma_scale."
+                )
+
+    priors = ip.get("user_priors", [])
+    if priors is None:
+        return
+    if not isinstance(priors, list):
+        raise ConfigError("'internal_priors.user_priors' must be a list.")
+    for i, p in enumerate(priors):
+        path = f"internal_priors.user_priors[{i}]"
+        if not isinstance(p, dict):
+            raise ConfigError(f"'{path}' must be a mapping/object.")
+        kind = str(p.get("type", p.get("kind", ""))).strip().lower()
+        if kind not in {"bond", "angle", "dihedral"}:
+            raise ConfigError(f"'{path}.type' must be bond, angle, or dihedral.")
+        atoms = p.get("atoms")
+        if not isinstance(atoms, list):
+            raise ConfigError(f"'{path}.atoms' must be a list of atom indices.")
+        need = 2 if kind == "bond" else 3 if kind == "angle" else 4
+        if len(atoms) != need:
+            raise ConfigError(f"'{path}.atoms' must contain {need} indices for type '{kind}'.")
+        for a in atoms:
+            if not isinstance(a, int):
+                raise ConfigError(f"'{path}.atoms' indices must be integers.")
+            # Accept either 0-based or 1-based user indices.
+            if a < 0 or a > n_atoms:
+                raise ConfigError(f"'{path}.atoms' index {a} is out of range.")
+        for req_key in ("target", "sigma"):
+            if req_key not in p:
+                raise ConfigError(f"'{path}.{req_key}' is required.")
+            try:
+                fv = float(p[req_key])
+            except (TypeError, ValueError) as exc:
+                raise ConfigError(f"'{path}.{req_key}' must be numeric.") from exc
+            if req_key == "sigma" and fv <= 0.0:
+                raise ConfigError(f"'{path}.sigma' must be positive.")
+        units = p.get("units")
+        if units is not None and str(units).strip().lower() not in {
+            "angstrom", "a", "å", "radian", "rad", "degree", "degrees", "deg"
+        }:
+            raise ConfigError(f"'{path}.units' must be angstrom, radian, or degree variants.")
 
 
 def _validate_rovibrational_corrections_block(cfg: dict[str, Any]) -> None:
@@ -1052,6 +1132,8 @@ def write_markdown_report(path: Path, result: dict[str, Any], artifacts: dict[st
             lines.append("- `exports/internal_covariance.csv`")
         if artifacts.get("internal_identifiability_csv") is not None:
             lines.append("- `exports/internal_identifiability.csv`")
+        if artifacts.get("internal_prior_sensitivity_csv") is not None:
+            lines.append("- `exports/internal_prior_sensitivity.csv`")
         if artifacts.get("torsion_objective_csv") is not None:
             lines.append("- `exports/torsion_objective.csv`")
     lines.extend(["- `plots/residuals.png`", "- `plots/singular_values.png`", "- `plots/convergence.png`"])
@@ -1162,6 +1244,7 @@ def write_outputs(result: dict[str, Any]) -> dict[str, Path | list[Path]]:
         from backend.spectral import SpectralEngine
         from backend.uncertainty import uncertainty_table, compute_uncertainty
         from backend.identifiability import identifiability_table
+        from backend.prior_sensitivity import classify_prior_dominance, prior_sensitivity_analysis
 
         ic_cfg = cfg.get("internal_coordinates", {}) or {}
         use_dihedrals = bool(ic_cfg.get("use_dihedrals", False))
@@ -1169,12 +1252,13 @@ def write_outputs(result: dict[str, Any]) -> dict[str, Path | list[Path]]:
         sigma_bond = float(ic_cfg.get("prior_sigma_bond", 0.04))
         sigma_angle_deg = float(ic_cfg.get("prior_sigma_angle_deg", 2.0))
         sigma_dihedral_deg = float(ic_cfg.get("prior_sigma_dihedral_deg", 15.0))
+        ip_cfg = cfg.get("internal_priors", {}) or {}
 
         coord_set = InternalCoordinateSet(result["best"]["coords"], result["elems"], use_dihedrals=use_dihedrals)
         B_active = coord_set.active_B_matrix(result["best"]["coords"])
         if B_active.shape[0] > 0:
             Bplus = InternalCoordinateSet.damped_pseudoinverse(B_active, damping)
-            J_spectral, _ = SpectralEngine(iso_snapshot).stacked(result["best"]["coords"])
+            J_spectral, residual_w = SpectralEngine(iso_snapshot).stacked(result["best"]["coords"])
             Jq = spectral_jacobian_q(J_spectral, Bplus)
             _, _, sigma_prior = build_internal_priors(
                 coord_set,
@@ -1182,14 +1266,40 @@ def write_outputs(result: dict[str, Any]) -> dict[str, Path | list[Path]]:
                 sigma_bond=sigma_bond,
                 sigma_angle_deg=sigma_angle_deg,
                 sigma_dihedral_deg=sigma_dihedral_deg,
+                prior_mode=str(ip_cfg.get("mode", "soft")).strip().lower(),
+                prior_specs=list(ip_cfg.get("user_priors", []) or []),
+                elems=result["elems"],
+                freeze_sigma_floor=float(ip_cfg.get("freeze_sigma_floor", 1e-6)),
+                spectral_jacobian_q=Jq,
+                adaptive_config=dict(ip_cfg.get("adaptive", {}) or {}),
             )
 
+            dominance = classify_prior_dominance(Jq, sigma_prior, coord_set.active_names())
+            sensitivity_rows = prior_sensitivity_analysis(
+                coord_set,
+                result["best"]["coords"],
+                Jq,
+                residual_w,
+                sigma_bond=sigma_bond,
+                sigma_angle_deg=sigma_angle_deg,
+                sigma_dihedral_deg=sigma_dihedral_deg,
+                prior_mode=str(ip_cfg.get("mode", "soft")).strip().lower(),
+                prior_specs=list(ip_cfg.get("user_priors", []) or []),
+                elems=result["elems"],
+                freeze_sigma_floor=float(ip_cfg.get("freeze_sigma_floor", 1e-6)),
+                spectral_jacobian_q=Jq,
+                adaptive_config=dict(ip_cfg.get("adaptive", {}) or {}),
+                sv_rel_threshold=1e-3,
+                lambda_reg=damping,
+            )
             unc_rows = uncertainty_table(
                 coord_set,
                 result["best"]["coords"],
                 Jq,
                 sigma_prior=sigma_prior,
                 lambda_reg=damping,
+                dominance_labels=dominance,
+                sensitivity_rows=sensitivity_rows,
             )
             unc_csv = exports_dir / "internal_uncertainty.csv"
             with unc_csv.open("w", newline="", encoding="utf-8") as fh:
@@ -1204,12 +1314,35 @@ def write_outputs(result: dict[str, Any]) -> dict[str, Path | list[Path]]:
                         "ci_lo",
                         "ci_hi",
                         "ci_unit",
+                        "prior_dominance",
+                        "prior_sensitivity",
+                        "prior_delta",
+                        "prior_delta_unit",
                     ],
                 )
                 writer.writeheader()
                 for r in unc_rows:
                     writer.writerow(r)
             artifacts["internal_uncertainty_csv"] = unc_csv
+
+            sens_csv = exports_dir / "internal_prior_sensitivity.csv"
+            with sens_csv.open("w", newline="", encoding="utf-8") as fh:
+                writer = csv.DictWriter(
+                    fh,
+                    fieldnames=[
+                        "name",
+                        "delta",
+                        "unit",
+                        "sensitivity_label",
+                        "q_0p5x",
+                        "q_1p0x",
+                        "q_2p0x",
+                    ],
+                )
+                writer.writeheader()
+                for r in sensitivity_rows:
+                    writer.writerow(r)
+            artifacts["internal_prior_sensitivity_csv"] = sens_csv
 
             cov, _, _ = compute_uncertainty(
                 Jq,

@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import numpy as np
 from dataclasses import dataclass, field
-from typing import Optional, List
+from typing import Optional, List, Any
 
 from backend.quantum import (
     _detect_bonds,
@@ -32,6 +32,12 @@ from backend.quantum import (
     _bond_deriv,
     _angle_deriv,
     _dihedral_deriv,
+)
+from backend.internal_prior_library import resolve_default_prior
+from backend.prior_models import PriorRecord, normalize_user_prior_atoms
+from backend.prior_weighting import (
+    adaptive_sigma_from_identifiability,
+    identifiability_scores_from_jacobian,
 )
 
 
@@ -342,6 +348,15 @@ def build_internal_priors(
     sigma_angle_deg: float = 3.0,
     sigma_dihedral_deg: float = 15.0,
     prior_values: Optional[np.ndarray] = None,
+    prior_mode: str = "soft",
+    prior_specs: Optional[list[dict[str, Any]]] = None,
+    elems: Optional[list[str]] = None,
+    freeze_sigma_floor: float = 1e-6,
+    spectral_jacobian_q: Optional[np.ndarray] = None,
+    adaptive_config: Optional[dict[str, Any]] = None,
+    sv_rel_threshold: float = 1e-3,
+    sigma_scale: float = 1.0,
+    return_metadata: bool = False,
 ):
     """
     Build a native internal-coordinate prior block for the SVD system.
@@ -364,37 +379,174 @@ def build_internal_priors(
         Target q values in natural units (Å, rad).  If None, uses the initial
         geometry passed to coord_set (current coords).
 
+    Parameters (new)
+    ----------------
+    prior_mode : {"off", "soft", "adaptive", "hard_freeze"}
+        off: disables prior block (returns empty matrices).
+        soft/adaptive: Gaussian prior in q-space (adaptive uses provided sigmas for now).
+        hard_freeze: same formulation with tiny sigma floor for user-marked coordinates.
+    prior_specs : list[dict], optional
+        User-specified priors. Each item should include:
+        type/kind, atoms, target, sigma, optional units/source/confidence/notes, optional mode.
+    elems : list[str], optional
+        Element symbols for chemistry default prior matching.
+    freeze_sigma_floor : float
+        Small sigma used for hard-freeze coordinates.
+
     Returns
     -------
     J_prior : (n_active, n_active)  Diagonal prior Jacobian (diag(1/sigma)).
     r_prior : (n_active,)           Prior residuals (q0 − q_curr) / sigma.
     sigma   : (n_active,)           Prior widths in natural units.
+    meta    : list[dict], optional  Prior provenance metadata per coordinate (if return_metadata).
     """
+    mode = str(prior_mode or "soft").strip().lower()
+    if mode not in {"off", "soft", "adaptive", "hard_freeze"}:
+        raise ValueError(f"Unknown internal prior mode: {prior_mode!r}")
+
     active = coord_set.active_coords()
     n = len(active)
-    if n == 0:
-        return np.zeros((0, 0)), np.zeros(0), np.zeros(0)
+    if n == 0 or mode == "off":
+        out = (np.zeros((0, 0)), np.zeros(0), np.zeros(0))
+        return out + ([],) if return_metadata else out
 
     sigma_angle_rad = float(sigma_angle_deg) * np.pi / 180.0
     sigma_dihedral_rad = float(sigma_dihedral_deg) * np.pi / 180.0
 
-    sigma = np.array([
+    sigma_base = np.array([
         sigma_bond if ic.kind == "bond" else
         sigma_angle_rad if ic.kind == "angle" else
         sigma_dihedral_rad
         for ic in active
     ], dtype=float)
-    sigma = np.maximum(sigma, 1e-12)
+    sigma = np.maximum(sigma_base.copy(), 1e-12)
 
     if prior_values is None:
         q0 = coord_set.active_values(coords)
     else:
         q0 = np.asarray(prior_values, dtype=float)
+    if q0.size != n:
+        raise ValueError("prior_values length must match number of active internal coordinates.")
 
     q_curr = coord_set.active_values(coords)
+
+    # Build metadata/provenance table seeded from current defaults.
+    meta: list[dict[str, Any]] = []
+    for i, ic in enumerate(active):
+        meta.append({
+            "name": ic.name,
+            "kind": ic.kind,
+            "atoms": tuple(int(a) for a in ic.atoms),
+            "target_value": float(q0[i]),
+            "sigma": float(sigma[i]),
+            "units": "angstrom" if ic.kind == "bond" else "radian",
+            "source": "geometry_initial",
+            "confidence": None,
+            "notes": None,
+            "mode": mode,
+            "bond_order": None,
+            "atom_types": None,
+        })
+
+    # Apply chemistry defaults where available.
+    if elems is not None:
+        for i, ic in enumerate(active):
+            dflt = resolve_default_prior(ic, elems, q_curr[i])
+            if dflt is None:
+                continue
+            q0[i] = float(dflt.target_value)
+            sigma[i] = float(max(dflt.sigma, 1e-12))
+            meta[i].update({
+                "target_value": float(dflt.target_value),
+                "sigma": float(max(dflt.sigma, 1e-12)),
+                "units": dflt.units,
+                "source": dflt.source,
+                "confidence": dflt.confidence,
+                "notes": dflt.notes,
+                "bond_order": dflt.bond_order,
+                "atom_types": dflt.atom_types,
+            })
+
+    # Apply user-provided priors last (highest precedence).
+    by_key = {(ic.kind, tuple(ic.atoms)): i for i, ic in enumerate(active)}
+    for raw in (prior_specs or []):
+        kind = str(raw.get("type", raw.get("kind", ""))).strip().lower()
+        atoms_raw = raw.get("atoms", [])
+        if not kind or not isinstance(atoms_raw, (list, tuple)):
+            continue
+        atoms = normalize_user_prior_atoms(atoms_raw, len(coord_set.elems))
+        idx = by_key.get((kind, tuple(atoms)))
+        if idx is None:
+            continue
+        units = str(raw.get("units", "angstrom" if kind == "bond" else "radian")).strip().lower()
+        target = float(raw.get("target", raw.get("target_value", q0[idx])))
+        sig = float(raw.get("sigma", sigma[idx]))
+        row_mode = str(raw.get("mode", mode)).strip().lower()
+        if kind != "bond" and units in {"degree", "degrees", "deg"}:
+            target = float(np.deg2rad(target))
+            sig = float(np.deg2rad(sig))
+            units = "radian"
+        if kind == "bond" and units in {"angstrom", "a", "å"}:
+            units = "angstrom"
+        if row_mode == "hard_freeze":
+            sig = min(abs(sig), float(freeze_sigma_floor))
+        q0[idx] = float(target)
+        sigma[idx] = float(max(abs(sig), 1e-12))
+        meta[idx].update({
+            "target_value": float(target),
+            "sigma": float(max(abs(sig), 1e-12)),
+            "units": units,
+            "source": str(raw.get("source", "user_supplied")),
+            "confidence": raw.get("confidence"),
+            "notes": raw.get("notes"),
+            "mode": row_mode,
+        })
+
+    if mode == "hard_freeze":
+        sigma = np.minimum(sigma, float(freeze_sigma_floor))
+
+    # Adaptive weighting: weaken priors for data-visible coordinates.
+    if mode == "adaptive":
+        ad = adaptive_config or {}
+        gamma = float(ad.get("identifiability_gamma", 2.0))
+        min_scale = float(ad.get("min_sigma_scale", 0.5))
+        max_scale = float(ad.get("max_sigma_scale", 3.0))
+        if spectral_jacobian_q is not None:
+            scores, _, _ = identifiability_scores_from_jacobian(
+                spectral_jacobian_q,
+                sv_rel_threshold=sv_rel_threshold,
+            )
+            if scores.shape == sigma.shape:
+                sigma, scale = adaptive_sigma_from_identifiability(
+                    sigma,
+                    scores,
+                    gamma=gamma,
+                    min_sigma_scale=min_scale,
+                    max_sigma_scale=max_scale,
+                )
+                for i in range(n):
+                    meta[i]["identifiability_score"] = float(scores[i])
+                    meta[i]["sigma_scale"] = float(scale[i])
+                    meta[i]["adaptive_gamma"] = float(gamma)
+            else:
+                for i in range(n):
+                    meta[i]["identifiability_score"] = None
+                    meta[i]["sigma_scale"] = 1.0
+                    meta[i]["adaptive_note"] = "shape_mismatch"
+        else:
+            for i in range(n):
+                meta[i]["identifiability_score"] = None
+                meta[i]["sigma_scale"] = 1.0
+                meta[i]["adaptive_note"] = "missing_spectral_jacobian_q"
+    sigma = sigma * max(float(sigma_scale), 1e-6)
+    for i in range(n):
+        meta[i]["global_sigma_scale"] = float(max(float(sigma_scale), 1e-6))
+    sigma = np.maximum(sigma, 1e-12)
+
     diff = q0 - q_curr
     diff = _wrap_dihedral_diff(diff, active)   # wrap dihedrals to (−π, π]
 
     r_prior = diff / sigma
     J_prior = np.diag(1.0 / sigma)
-    return J_prior, r_prior, sigma
+    out = (J_prior, r_prior, sigma)
+    return out + (meta,) if return_metadata else out

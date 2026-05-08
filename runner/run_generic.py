@@ -29,6 +29,7 @@ from backend.internal_fit import InternalCoordinateSet, spectral_jacobian_q, bui
 from backend.spectral import SpectralEngine
 from backend.spectral_model import normalize_spectral_model
 from backend.uncertainty import uncertainty_table
+from backend.prior_sensitivity import classify_prior_dominance, prior_sensitivity_analysis
 from backend.torsion_hamiltonian import (
     TorsionEffectiveConstantFourier,
     TorsionFourierPotential,
@@ -346,6 +347,7 @@ def _print_internal_uncertainty_summary(best: dict, cfg: dict, elems: list[str])
     sigma_bond = float(ic_cfg.get("prior_sigma_bond", 0.04))
     sigma_angle_deg = float(ic_cfg.get("prior_sigma_angle_deg", 2.0))
     sigma_dihedral_deg = float(ic_cfg.get("prior_sigma_dihedral_deg", 15.0))
+    ip_cfg = cfg.get("internal_priors", {}) or {}
 
     coords = np.asarray(best["coords"], dtype=float)
     coord_set = InternalCoordinateSet(coords, elems, use_dihedrals=use_dihedrals)
@@ -354,7 +356,7 @@ def _print_internal_uncertainty_summary(best: dict, cfg: dict, elems: list[str])
         return
 
     Bplus = InternalCoordinateSet.damped_pseudoinverse(B_active, damping)
-    J_spectral, _ = SpectralEngine(iso_snapshot).stacked(coords)
+    J_spectral, residual_w = SpectralEngine(iso_snapshot).stacked(coords)
     Jq = spectral_jacobian_q(J_spectral, Bplus)
     _, _, sigma_prior = build_internal_priors(
         coord_set,
@@ -362,6 +364,12 @@ def _print_internal_uncertainty_summary(best: dict, cfg: dict, elems: list[str])
         sigma_bond=sigma_bond,
         sigma_angle_deg=sigma_angle_deg,
         sigma_dihedral_deg=sigma_dihedral_deg,
+        prior_mode=str(ip_cfg.get("mode", "soft")).strip().lower(),
+        prior_specs=list(ip_cfg.get("user_priors", []) or []),
+        elems=elems,
+        freeze_sigma_floor=float(ip_cfg.get("freeze_sigma_floor", 1e-6)),
+        spectral_jacobian_q=Jq,
+        adaptive_config=dict(ip_cfg.get("adaptive", {}) or {}),
     )
     rows = uncertainty_table(
         coord_set,
@@ -369,16 +377,37 @@ def _print_internal_uncertainty_summary(best: dict, cfg: dict, elems: list[str])
         Jq,
         sigma_prior=sigma_prior,
         lambda_reg=damping,
+        dominance_labels=classify_prior_dominance(Jq, sigma_prior, coord_set.active_names()),
+        sensitivity_rows=prior_sensitivity_analysis(
+            coord_set,
+            coords,
+            Jq,
+            residual_w,
+            sigma_bond=sigma_bond,
+            sigma_angle_deg=sigma_angle_deg,
+            sigma_dihedral_deg=sigma_dihedral_deg,
+            prior_mode=str(ip_cfg.get("mode", "soft")).strip().lower(),
+            prior_specs=list(ip_cfg.get("user_priors", []) or []),
+            elems=elems,
+            freeze_sigma_floor=float(ip_cfg.get("freeze_sigma_floor", 1e-6)),
+            spectral_jacobian_q=Jq,
+            adaptive_config=dict(ip_cfg.get("adaptive", {}) or {}),
+            sv_rel_threshold=1e-3,
+            lambda_reg=damping,
+        ),
     )
 
     print("\n  Internal-coordinate uncertainty summary")
-    print(f"  {'Coordinate':<30}  {'Value':>12}  {'StdErr':>12}  {'Variance':>12}  {'Unit':>6}")
-    print("  " + "-" * 84)
+    print(f"  {'Coordinate':<30}  {'Value':>12}  {'StdErr':>12}  {'Variance':>12}  {'Unit':>6}  {'Prior'}")
+    print("  " + "-" * 112)
     for r in rows:
         se = float(r["std_err"])
         var = se * se
+        prior_lbl = str(r.get("prior_dominance", "") or "")
+        sens_lbl = str(r.get("prior_sensitivity", "") or "")
+        combo = prior_lbl if not sens_lbl else f"{prior_lbl}/{sens_lbl}"
         print(
-            f"  {r['name']:<30}  {float(r['value']):>12.6f}  {se:>12.6f}  {var:>12.6f}  {r['value_unit']:>6}"
+            f"  {r['name']:<30}  {float(r['value']):>12.6f}  {se:>12.6f}  {var:>12.6f}  {r['value_unit']:>6}  {combo}"
         )
 
 
@@ -1822,6 +1851,11 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
     ic_prior_sigma_bond = float(internal_cfg.get("prior_sigma_bond", 0.04))
     ic_prior_sigma_angle_deg = float(internal_cfg.get("prior_sigma_angle_deg", 2.0))
     ic_prior_sigma_dihedral_deg = float(internal_cfg.get("prior_sigma_dihedral_deg", 15.0))
+    ip_cfg = cfg.get("internal_priors", {}) or {}
+    ic_prior_mode = str(ip_cfg.get("mode", "soft")).strip().lower()
+    ic_user_priors = list(ip_cfg.get("user_priors", []) or [])
+    ic_freeze_sigma_floor = float(ip_cfg.get("freeze_sigma_floor", 1e-6))
+    ic_prior_adaptive = dict(ip_cfg.get("adaptive", {}) or {})
 
     # ── Multi-start seed geometries ───────────────────────────────────────────
     rng = np.random.default_rng(rng_seed)
@@ -1904,6 +1938,10 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
         ic_prior_sigma_bond=ic_prior_sigma_bond,
         ic_prior_sigma_angle_deg=ic_prior_sigma_angle_deg,
         ic_prior_sigma_dihedral_deg=ic_prior_sigma_dihedral_deg,
+        ic_prior_mode=ic_prior_mode,
+        ic_user_priors=ic_user_priors,
+        ic_freeze_sigma_floor=ic_freeze_sigma_floor,
+        ic_prior_adaptive=ic_prior_adaptive,
         symmetry=symmetry_spec,
         project_rigid_modes=True,
         debug_rank_diagnostics=False,
@@ -2022,8 +2060,8 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
     score = underconstrained_success_score(results, best, isotopologues)
     print(f"  Success score (0-100): {score['score']:.1f}")
     print(
-        f"  Constrained rank     : {score['constrained_rank']}/{score['internal_dof']} "
-        f"({100.0 * score['rank_fraction']:.1f}%)"
+        f"  Spectral obs / DOF   : {score['constrained_rank']}/{score['internal_dof']} "
+        f"({100.0 * score['rank_fraction']:.1f}% constrained)"
     )
     if score["score"] >= 80.0:
         verdict = "strong geometry recovery"

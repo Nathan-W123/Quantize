@@ -6,6 +6,10 @@
 
 # ── Job identifier ─────────────────────────────────────────────────────────────
 name: water                         # used in output and optional XYZ filename
+# Optional spectral objective model:
+#   rigid             -> fit selected A/B/C components directly (default)
+#   internal_rotor_bc -> fit only B,C (useful proxy for internal rotors like methanol)
+# spectral_model: rigid
 
 # ── Atom list ─────────────────────────────────────────────────────────────────
 # List element symbols in the atom order you will use throughout this file.
@@ -126,6 +130,51 @@ internal_coordinates:
   prior_sigma_bond: 0.04
   prior_sigma_angle_deg: 2.0
   prior_sigma_dihedral_deg: 15.0
+
+# Internal prior model controls (applies in internal coordinate mode).
+internal_priors:
+  mode: soft            # off | soft | adaptive | hard_freeze
+  freeze_sigma_floor: 1.0e-6
+  adaptive:
+    identifiability_gamma: 2.0
+    min_sigma_scale: 0.5
+    max_sigma_scale: 3.0
+  user_priors: []
+  # - name: r_CO
+  #   type: bond
+  #   atoms: [1, 2]     # 1-based or 0-based accepted
+  #   target: 1.210
+  #   sigma: 0.005
+  #   units: angstrom
+  #   source: literature
+  # - name: angle_HCH
+  #   type: angle
+  #   atoms: [3, 1, 4]
+  #   target: 116.0
+  #   sigma: 0.5
+  #   units: degrees
+  #   source: literature
+
+# ── Optional torsion Hamiltonian block (Phase 2/3/4) ─────────────────────────
+# Enable this for molecules with genuine internal rotation/torsional motion.
+torsion_hamiltonian:
+  enabled: false
+  F: 5.0
+  rho: 0.1
+  n_basis: 7
+  n_levels: 8
+  J_values: [0, 1]
+  K_values: [0]
+  units: cm-1
+  potential:
+    v0: 0.0
+    vcos: {3: 20.0}
+    vsin: {}
+  # Optional Phase-3 objective targets:
+  # use_in_selection: true
+  # selection_weight: 0.01
+  # targets:
+  #   - {J: 0, K: 0, level_index: 0, energy_cm-1: 12.34}
 
 # Output management. When run through `python -m cli run ...` or
 # `python runner/run_from_config.py ...`, Quantize creates a timestamped run

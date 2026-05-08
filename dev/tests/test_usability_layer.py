@@ -90,6 +90,38 @@ def test_validate_config_torsion_scan_quantum_requires_hr_model():
         validate_config(cfg)
 
 
+def test_validate_config_internal_priors_adaptive_bounds():
+    cfg = minimal_water_config()
+    cfg["internal_priors"] = {
+        "mode": "adaptive",
+        "adaptive": {
+            "identifiability_gamma": 2.0,
+            "min_sigma_scale": 2.0,
+            "max_sigma_scale": 1.0,
+        },
+    }
+    with pytest.raises(ConfigError, match="max_sigma_scale"):
+        validate_config(cfg)
+
+
+def test_validate_config_internal_priors_user_prior_shape():
+    cfg = minimal_water_config()
+    cfg["internal_priors"] = {
+        "mode": "soft",
+        "user_priors": [
+            {
+                "type": "bond",
+                "atoms": [1, 2],
+                "target": 1.21,
+                "sigma": 0.01,
+                "units": "angstrom",
+                "source": "literature",
+            }
+        ],
+    }
+    validate_config(cfg)
+
+
 def test_prepare_run_directory_copies_input(tmp_path):
     cfg = minimal_water_config()
     cfg["output"] = {"root": str(tmp_path / "runs")}
@@ -204,6 +236,7 @@ def test_write_outputs_internal_mode_exports_internal_tables(tmp_path):
     assert artifacts["internal_uncertainty_csv"].is_file()
     assert artifacts["internal_covariance_csv"].is_file()
     assert artifacts["internal_identifiability_csv"].is_file()
+    assert artifacts["internal_prior_sensitivity_csv"].is_file()
 
 
 def test_write_outputs_exports_torsion_objective_csv(tmp_path):

@@ -80,6 +80,8 @@ def uncertainty_table(
     weights: Optional[np.ndarray] = None,
     sigma_prior: Optional[np.ndarray] = None,
     lambda_reg: float = 1e-6,
+    dominance_labels: Optional[dict[str, str]] = None,
+    sensitivity_rows: Optional[list[dict]] = None,
 ) -> list[dict]:
     """
     Build a human-readable uncertainty table for all active internal coordinates.
@@ -105,6 +107,7 @@ def uncertainty_table(
     active = coord_set.active_coords()
 
     rows = []
+    sens_map = {str(r.get("name")): r for r in (sensitivity_rows or [])}
     for i, (ic, q, se, ci) in enumerate(zip(active, q_vals, std_err, ci_95)):
         if ic.kind == "bond":
             val = q
@@ -116,7 +119,7 @@ def uncertainty_table(
             ci = np.degrees(ci)
             val_u = "deg"
             se_u = "deg"
-        rows.append({
+        row = {
             "name": ic.name,
             "value": float(val),
             "value_unit": val_u,
@@ -125,7 +128,14 @@ def uncertainty_table(
             "ci_lo": float(val + ci[0]),
             "ci_hi": float(val + ci[1]),
             "ci_unit": val_u,
-        })
+            "prior_dominance": (dominance_labels or {}).get(ic.name, ""),
+            "prior_sensitivity": sens_map.get(ic.name, {}).get("sensitivity_label", ""),
+            "prior_delta": float(sens_map.get(ic.name, {}).get("delta", np.nan))
+            if ic.name in sens_map
+            else np.nan,
+            "prior_delta_unit": sens_map.get(ic.name, {}).get("unit", ""),
+        }
+        rows.append(row)
     return rows
 
 
@@ -136,6 +146,9 @@ def print_uncertainty_table(rows: list[dict]) -> None:
     print("-" * len(header))
     for r in rows:
         ci_str = f"[{r['ci_lo']:+.5f}, {r['ci_hi']:+.5f}]"
-        print(
-            f"{r['name']:<28}  {r['value']:>10.6f}  {r['std_err']:>8.6f}  {ci_str:>20}  {r['value_unit']}"
-        )
+        dom = r.get("prior_dominance", "")
+        sens = r.get("prior_sensitivity", "")
+        extra = f"  {dom}"
+        if sens:
+            extra += f" | {sens}"
+        print(f"{r['name']:<28}  {r['value']:>10.6f}  {r['std_err']:>8.6f}  {ci_str:>20}  {r['value_unit']}{extra}")
