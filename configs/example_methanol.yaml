@@ -21,6 +21,15 @@ internal_coordinates:
   prior_sigma_angle_deg: 4.0
   prior_sigma_dihedral_deg: 20.0
 
+internal_priors:
+  mode: adaptive
+  freeze_sigma_floor: 1.0e-6
+  adaptive:
+    identifiability_gamma: 2.0
+    min_sigma_scale: 0.5
+    max_sigma_scale: 3.0
+  user_priors: []
+
 elements: [C, O, H, H, H, H]
 
 # PubChem methanol geometry (MMFF) as seed.
