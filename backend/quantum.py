@@ -260,6 +260,7 @@ def parse_orca_rovib(path):
     alpha = np.full(3, np.nan, dtype=float)
     frequencies: list[float] = []
     warnings: list[str] = []
+    quality_flags: list[str] = []
     label_to_idx = {"A": 0, "B": 1, "C": 2}
 
     pat_labeled = re.compile(
@@ -298,10 +299,16 @@ def parse_orca_rovib(path):
                 # Detect VPT2 warnings / resonance markers.
                 if "warning" in low and ("vpt2" in low or "resonance" in low or "fermi" in low):
                     warnings.append(line.strip())
+                    if "resonance_detected" not in quality_flags:
+                        quality_flags.append("resonance_detected")
                 elif "fermi" in low and "resonance" in low:
                     warnings.append(line.strip())
+                    if "resonance_detected" not in quality_flags:
+                        quality_flags.append("resonance_detected")
                 elif "darling-dennison" in low or "coriolis resonance" in low:
                     warnings.append(line.strip())
+                    if "resonance_detected" not in quality_flags:
+                        quality_flags.append("resonance_detected")
 
                 # Detect frequency tables (harmonic or fundamental).
                 if "vibrational frequencies" in low or "fundamental frequencies" in low:
@@ -354,14 +361,17 @@ def parse_orca_rovib(path):
                 f"detected {imag.size} imaginary frequency mode(s) (min "
                 f"{float(np.min(imag)):.2f} cm^-1)"
             )
+            quality_flags.append("imaginary_frequencies")
         low_modes = freq_arr[(freq_arr > 0.0) & (freq_arr < 50.0)]
         if low_modes.size:
             warnings.append(
                 f"detected {low_modes.size} low-frequency mode(s) below 50 cm^-1"
             )
+            quality_flags.append("low_frequency_modes")
 
     if not saw_vpt2_marker:
         warnings.append("no VPT2/second-order marker found in output")
+        quality_flags.append("no_vpt2_marker")
 
     finite_count = int(np.sum(np.isfinite(alpha)))
     if finite_count == 0:
@@ -375,6 +385,7 @@ def parse_orca_rovib(path):
         alpha_abc=alpha,
         frequencies=freq_arr,
         warnings=warnings,
+        quality_flags=quality_flags,
         source_files=[str(path)],
         parse_status=parse_status,
         units="MHz",

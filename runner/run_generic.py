@@ -62,6 +62,7 @@ from runner.usability import write_outputs
 
 _COMPONENT_MAP = {"A": 0, "B": 1, "C": 2}
 _MHZ_PER_CM1 = 29979.2458
+_CM1_PER_KCAL_MOL = 349.755
 
 
 def _torsion_transition_objective_from_levels(
@@ -299,6 +300,41 @@ def _build_isotopologue(iso: dict, spectral_model: str = "rigid") -> dict:
     if "rovib_source" in iso:
         out["rovib_source"] = str(iso["rovib_source"])
     return out
+
+
+def _build_conformer_mixture_from_config(cfg: dict, base_coords: np.ndarray) -> tuple[bool, list[dict] | None, str, float]:
+    cm = cfg.get("conformer_mixture")
+    if not isinstance(cm, dict) or not bool(cm.get("enabled", False)):
+        return False, None, "fixed", 298.15
+    conformers = cm.get("conformers") or []
+    if not isinstance(conformers, list) or len(conformers) == 0:
+        # Enabled but no explicit conformers: keep base behavior as single conformer.
+        return True, None, str(cm.get("weight_mode", "fixed")).strip().lower(), float(cm.get("temperature_k", 298.15))
+
+    defs: list[dict] = []
+    for i, c in enumerate(conformers):
+        if not isinstance(c, dict):
+            continue
+        name = str(c.get("name", f"conf_{i+1}"))
+        entry: dict[str, Any] = {"name": name}
+        if c.get("coords_angstrom") is not None:
+            entry["coords"] = np.asarray(c["coords_angstrom"], dtype=float)
+        elif c.get("offset_angstrom") is not None:
+            entry["offset"] = np.asarray(c["offset_angstrom"], dtype=float)
+        if c.get("weight") is not None:
+            entry["weight"] = float(c.get("weight"))
+        # Internal ConformerMixture uses generic "energy" values in softmax.
+        if c.get("relative_energy_cm1") is not None:
+            entry["energy"] = float(c.get("relative_energy_cm1"))
+        elif c.get("relative_energy_kcal_mol") is not None:
+            entry["energy"] = float(c.get("relative_energy_kcal_mol")) * _CM1_PER_KCAL_MOL
+        elif c.get("energy") is not None:
+            entry["energy"] = float(c.get("energy"))
+        defs.append(entry)
+
+    mode = str(cm.get("weight_mode", "fixed")).strip().lower()
+    t_k = float(cm.get("temperature_k", 298.15))
+    return True, defs, mode, t_k
 
 
 def _compute_metrics(
@@ -1949,6 +1985,12 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
         base_workdir=base_workdir,
         quantum_descent_tol=float(preset.get("quantum_descent_tol", 1e-5)),
     )
+    cm_enabled, cm_defs, cm_mode, cm_temp_k = _build_conformer_mixture_from_config(cfg, np.asarray(coords, dtype=float))
+    if cm_enabled:
+        optimizer_kwargs["use_conformer_mixture"] = True
+        optimizer_kwargs["conformer_defs"] = cm_defs
+        optimizer_kwargs["conformer_weight_mode"] = cm_mode
+        optimizer_kwargs["conformer_temperature_k"] = cm_temp_k
 
     print(f"[{name}] elements     : {elems}")
     print(f"[{name}] isotopologues: {[iso['name'] for iso in isotopologues]}")
@@ -2089,6 +2131,16 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
             "backend": backend,
             "method": orca_method,
             "basis": orca_basis,
+        },
+        "conformer_mixture": {
+            "enabled": bool(optimizer_kwargs.get("use_conformer_mixture", False)),
+            "weight_mode": optimizer_kwargs.get("conformer_weight_mode", "fixed"),
+            "temperature_k": optimizer_kwargs.get("conformer_temperature_k", 298.15),
+            "definitions_count": (
+                len(optimizer_kwargs.get("conformer_defs", []) or [])
+                if optimizer_kwargs.get("conformer_defs", None) is not None
+                else 0
+            ),
         },
     }
 

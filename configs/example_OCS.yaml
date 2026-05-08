@@ -11,6 +11,11 @@
 # ── Job name ───────────────────────────────────────────────────────────────────
 name: OCS
 
+# Optimization coordinate mode:
+#   internal  -> bond/angle (and optional dihedral) parameterization
+#   cartesian -> direct xyz parameterization
+coordinate_mode: cartesian
+
 # ── Atoms ─────────────────────────────────────────────────────────────────────
 # Order: O (index 0), C (index 1), S (index 2)
 elements: [O, C, S]
@@ -59,3 +64,26 @@ quantum:
 preset:    BALANCED
 rng_seed:  23
 write_xyz: false
+
+# ── Optional torsion Hamiltonian block (Phase 2/3/4) ─────────────────────────
+# NOTE: OCS is linear and not a torsional molecule, so keep this disabled here.
+# Use this block for molecules with true internal rotation/torsional motion.
+torsion_hamiltonian:
+  enabled: false
+  F: 5.0
+  rho: 0.1
+  n_basis: 7
+  n_levels: 8
+  J_values: [0, 1]
+  K_values: [0]
+  units: cm-1
+  potential:
+    v0: 0.0
+    vcos: {3: 20.0}
+    vsin: {}
+  # Optional Phase-3 objective targets:
+  # use_in_selection: true
+  # selection_weight: 0.01
+  # targets:
+  #   - {J: 0, K: 0, level_index: 0, energy_cm-1: 12.34}
+  #   - {J: 0, K: 0, level_index: 1, energy_cm-1: 25.67}

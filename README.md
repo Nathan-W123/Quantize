@@ -124,11 +124,57 @@ From the project root, the config-first interface is:
 python -m cli validate configs/example_water_spectral_only.yaml
 python -m cli run configs/example_water_spectral_only.yaml
 python -m cli run configs/example_water_legacy.json
+python -m cli report runs/<timestamped_run_dir>
 ```
 
 `run` creates a timestamped directory under `runs/` by default, copies the input
 config, and writes `report.md`, `exports/residuals.csv`,
 `exports/final_geometry.csv`, and diagnostic plots under `plots/`.
+`report` rebuilds `report.md`, `report.html`, and plots from an existing run.
+
+Ready-to-run config examples:
+
+- `configs/example_water_spectral_only.yaml`
+- `configs/example_OCS.yaml`
+- `configs/example_CO2.yaml`
+- `configs/example_SO2.yaml`
+- `configs/example_formaldehyde.yaml`
+- `configs/example_methanol.yaml`
+- `configs/example_methanol_lam.yaml`
+- `configs/example_acetaldehyde_lam.yaml`
+- `configs/example_partial_isotopologue.yaml`
+
+### Lightweight GUI
+
+You can use a simple Streamlit dashboard to validate configs, launch runs,
+and inspect run reports/plots:
+
+```bash
+streamlit run streamlit_app.py
+```
+
+### Bayesian / Bootstrap Uncertainty (v2)
+
+Run uncertainty with the greenfield v2 engine:
+
+```bash
+python -m cli uncertainty configs/example_water_spectral_only.yaml \
+  --uncertainty-engine v2 \
+  --mode both \
+  --samples 20 \
+  --mcmc-steps 5000 \
+  --burn-in 1000 \
+  --chains 4 \
+  --seed 42
+```
+
+Outputs are written under the run workdir, including:
+
+- `uncertainty_v2/posterior_laplace_summary.json`
+- `bootstrap_v2/bootstrap_summary.json` (unless `--no-bootstrap-persist`)
+- `mcmc_v2/mcmc_summary.json` (unless disabled)
+- `uncertainty_v2/uncertainty_run_summary.json` (consolidated run bundle)
+- `plots/uncertainty/*.png` diagnostic plots
 
 The lower-level runner remains available for compatibility:
 

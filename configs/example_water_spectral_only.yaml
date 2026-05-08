@@ -1,4 +1,9 @@
 name: water_spectral_only
+
+# Optimization coordinate mode:
+#   internal  -> bond/angle (and optional dihedral) parameterization
+#   cartesian -> direct xyz parameterization
+coordinate_mode: internal
 elements: [O, H, H]
 
 geometry:
@@ -34,3 +39,19 @@ write_xyz: true
 output:
   root: runs
   artifacts: true
+
+# Optional torsion Hamiltonian block (Phase 2/3/4).
+# Water is not a torsional rotor, so this is disabled by default.
+torsion_hamiltonian:
+  enabled: false
+  F: 5.0
+  rho: 0.1
+  n_basis: 7
+  n_levels: 8
+  J_values: [0, 1]
+  K_values: [0]
+  units: cm-1
+  potential:
+    v0: 0.0
+    vcos: {3: 20.0}
+    vsin: {}
