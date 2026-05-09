@@ -1,0 +1,82 @@
+# Acetaldehyde (CH3CHO) — rigid spectral model, underconstrained demo
+# For the full torsional LAM pipeline see example_acetaldehyde_lam.yaml
+#
+# Literature source: Kleiner et al., J. Mol. Spectrosc. 175, 1-13 (1996)
+#   Effective rotational constants (internal rotor model, vt=0 A-state):
+#     A = 52842.4 MHz   B = 10240.6 MHz   C = 8648.0 MHz
+#   Torsion: F = 5.1724 cm^-1, rho = 0.0609, V3 = 163.4 cm^-1
+#
+# Known reference geometry (for validation):
+#   r(C=O)  ~ 1.210 A    r(C-C)  ~ 1.516 A
+#   r(C-H)  ~ 1.114 A    ang(CCO) ~ 123.9 deg
+
+name: acetaldehyde
+coordinate_mode: cartesian
+
+# Atom order follows SMILES CC=O:
+#   0: C (methyl)   1: C (carbonyl)   2: O
+#   3-5: H (methyl)   6: H (aldehyde)
+elements: [C, C, O, H, H, H, H]
+
+geometry:
+  smiles: CC=O
+
+symmetry: null
+
+isotopologues:
+  - name: 12CH3-12CHO
+    masses: [12.00000000000, 12.00000000000, 15.99491461957,
+             1.00782503207, 1.00782503207, 1.00782503207, 1.00782503207]
+    components: [A, B, C]
+    obs_b0_mhz: [52842.4, 10240.6, 8648.0]
+    alpha_mhz: [0.0, 0.0, 0.0]
+    sigma_mhz: [5.0, 0.1, 0.1]
+
+quantum:
+  backend: orca
+  method: wB97X-D4
+  basis: def2-TZVPP
+  executable: null
+
+preset: BALANCED
+rng_seed: 37
+write_xyz: false
+
+internal_coordinates:
+  use_dihedrals: true
+  damping: 1.0e-6
+  microiterations: 20
+  prior_weight: 0.5
+  prior_sigma_bond: 0.12
+  prior_sigma_angle_deg: 5.0
+  prior_sigma_dihedral_deg: 20.0
+
+internal_priors:
+  mode: soft
+  freeze_sigma_floor: 1.0e-6
+  adaptive:
+    identifiability_gamma: 2.0
+    min_sigma_scale: 0.5
+    max_sigma_scale: 3.0
+  user_priors: []
+
+# Torsion parameters from Kleiner et al. 1996 — disabled for this rigid demo.
+# V3 = 163.4 cm^-1 -> v0 = V3/2 = 81.7, vcos3 = -V3/2 = -81.7
+# Enable (and set spectral_model: internal_rotor_bc) for the full LAM pipeline.
+torsion_hamiltonian:
+  enabled: false
+  F: 5.1724
+  rho: 0.0609
+  n_basis: 12
+  n_levels: 8
+  J_values: [0, 1, 2]
+  K_values: [0, 1]
+  units: cm-1
+  potential:
+    v0: 81.7
+    vcos: {3: -81.7}
+    vsin: {}
+
+output:
+  root: runs
+  artifacts: true

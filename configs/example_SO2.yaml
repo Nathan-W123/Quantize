@@ -2,7 +2,7 @@
 # Run with: python run_from_config.py configs/example_SO2.yaml
 
 name: SO2
-coordinate_mode: internal
+coordinate_mode: cartesian
 
 elements: [S, O, O]
 
@@ -27,7 +27,10 @@ isotopologues:
     sigma_mhz: [0.6, 0.06, 0.06]
 
 quantum:
-  backend: none
+  backend: orca
+  method: wB97X-D4
+  basis: def2-TZVPP
+  executable: null
 
 preset: BALANCED
 rng_seed: 13
