@@ -79,7 +79,7 @@ torsion_hamiltonian:
   units: cm-1
   potential:
     v0: 0.0
-    vcos: {3: 20.0}
+    vcos: {3: -20.0}
     vsin: {}
   # Optional Phase-3 objective targets:
   # use_in_selection: true

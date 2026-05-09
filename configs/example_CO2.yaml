@@ -2,7 +2,7 @@
 # Run with: python run_from_config.py configs/example_CO2.yaml
 
 name: CO2
-coordinate_mode: internal
+coordinate_mode: cartesian
 
 # Linear O=C=O
 # Order: O (0), C (1), O (2)
@@ -17,26 +17,43 @@ isotopologues:
   - name: 16O-12C-16O
     masses: [15.99491461956, 12.00000000000, 15.99491461956]
     components: [B]
-    obs_b0_mhz: [39057.9]
-    alpha_mhz: [120.0]
-    sigma_mhz: [0.002]
+    obs_b0_mhz: [11698.472]
+    alpha_mhz: [94.42]
+    sigma_mhz: [0.01]
 
   - name: 16O-13C-16O
     masses: [15.99491461956, 13.00335483507, 15.99491461956]
     components: [B]
-    obs_b0_mhz: [37295.0]
-    alpha_mhz: [115.0]
-    sigma_mhz: [0.003]
+    obs_b0_mhz: [11698.471]
+    alpha_mhz: [94.40]
+    sigma_mhz: [0.01]
+
+  - name: 18O-12C-18O
+    masses: [17.99915961286, 12.00000000000, 17.99915961286]
+    components: [B]
+    obs_b0_mhz: [10398.052]
+    alpha_mhz: [79.80]
+    sigma_mhz: [0.02]
+
+  - name: 16O-12C-18O
+    masses: [15.99491461956, 12.00000000000, 17.99915961286]
+    components: [B]
+    obs_b0_mhz: [11048.254]
+    alpha_mhz: [87.10]
+    sigma_mhz: [0.02]
 
 quantum:
-  backend: none
+  backend: orca
+  method: wB97X-D4
+  basis: def2-TZVPP
+  executable: null
 
 preset: BALANCED
 rng_seed: 11
 write_xyz: false
 
 internal_coordinates:
-  use_dihedrals: false
+  use_dihedrals: true
   damping: 1.0e-6
   microiterations: 20
   prior_weight: 1.0

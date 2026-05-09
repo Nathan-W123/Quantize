@@ -2,7 +2,7 @@
 # Run with: python run_from_config.py configs/example_formaldehyde.yaml
 
 name: formaldehyde
-coordinate_mode: internal
+coordinate_mode: cartesian
 
 elements: [C, O, H, H]
 
@@ -15,19 +15,16 @@ isotopologues:
   - name: H2-12C-16O
     masses: [12.00000000000, 15.99491461956, 1.00782503207, 1.00782503207]
     components: [A, B, C]
-    obs_b0_mhz: [281970.0, 38834.0, 34105.0]
-    alpha_mhz: [18000.0, 1200.0, 1100.0]
-    sigma_mhz: [2.0, 0.2, 0.2]
-
-  - name: H2-13C-16O
-    masses: [13.00335483507, 15.99491461956, 1.00782503207, 1.00782503207]
-    components: [A, B, C]
-    obs_b0_mhz: [273030.0, 37117.0, 32686.0]
-    alpha_mhz: [17500.0, 1150.0, 1050.0]
-    sigma_mhz: [2.0, 0.2, 0.2]
+    obs_b0_mhz: [281970.5, 38833.987, 34002.496]
+    alpha_mhz: [0.0, 0.0, 0.0]
+    sigma_mhz: [2.0, 0.05, 0.05]
 
 quantum:
-  backend: none
+  backend: orca
+  method: wB97X-D4
+  basis: def2-TZVPP
+  executable: null
+
 
 preset: BALANCED
 rng_seed: 17
@@ -37,9 +34,9 @@ internal_coordinates:
   use_dihedrals: false
   damping: 1.0e-6
   microiterations: 20
-  prior_weight: 1.0
-  prior_sigma_bond: 0.04
-  prior_sigma_angle_deg: 2.0
+  prior_weight: 0.5
+  prior_sigma_bond: 0.12
+  prior_sigma_angle_deg: 5.0
   prior_sigma_dihedral_deg: 15.0
 
 internal_priors:

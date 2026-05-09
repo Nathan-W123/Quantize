@@ -1,0 +1,124 @@
+# Propyne (CH3-C≡C-H, methylacetylene) — symmetric top, underconstrained demo
+#
+# C3v symmetric top: only B is observed from microwave spectroscopy of the
+# main isotopologue (A is inaccessible without a-type transitions).
+# This makes propyne extremely underconstrained (1 constraint, ~5 structural DOF),
+# so the quantum prior dominates — a clean demo of the energy vs spectral structure gap.
+#
+# The sp ≡C-H bond shows a notable r0 vs re difference because of the large
+# zero-point bending amplitude in C-H stretching for sp-hybridised carbons.
+#
+# Structural parameters (reference geometry for validation):
+#   r(C1-C2)   = 1.459 A   (methyl C to triple-bond C, single bond)
+#   r(C2≡C3)   = 1.206 A   (triple bond)
+#   r(C3-H)    = 1.057 A   (terminal sp C-H, re)
+#   r(C1-H)    = 1.109 A   (methyl C-H, re)
+#   ang(H-C1-C2) = 110.7 deg
+#
+# Torsion: V3 ~ 5.2 cm^-1 — nearly free internal rotor (methyl attached to sp carbon)
+#
+# B0 source: Dubrulle et al., J. Mol. Spectrosc. 88, 118 (1981)
+
+name: propyne
+coordinate_mode: cartesian
+
+# Atom order from SMILES CC#C:
+#   0: C (methyl)   1: C (middle, triple bond)   2: C (terminal, triple bond)
+#   3-5: H (methyl)   6: H (terminal sp C-H)
+elements: [C, C, C, H, H, H, H]
+
+geometry:
+  smiles: CC#C
+
+symmetry: null
+
+isotopologues:
+  - name: 12CH3-12C-12CH
+    masses: [12.00000000000, 12.00000000000, 12.00000000000,
+             1.00782503207, 1.00782503207, 1.00782503207, 1.00782503207]
+    components: [B]
+    obs_b0_mhz: [8545.877]
+    alpha_mhz: [0.0]
+    sigma_mhz: [0.005]
+
+  # --- 13C isotopologues (verify B0 from CDMS before enabling) ---
+  # COM sits ~1.30 A from the methyl carbon (C0), so:
+  #   C0 (methyl)  : z ~ -1.30 A  -> large shift ~-245 MHz -> B0 ~ 8301 MHz
+  #   C1 (middle)  : z ~ +0.16 A  -> tiny  shift ~  -4 MHz -> B0 ~ 8542 MHz
+  #   C2 (terminal): z ~ +1.37 A  -> large shift ~-271 MHz -> B0 ~ 8275 MHz
+  # Approximate values below — cross-check against CDMS catalog
+  # (https://cdms.astro.uni-koeln.de, tag CH3CCH) before using.
+  #
+  # - name: 13CH3-12C-12CH
+  #   masses: [13.00335483507, 12.00000000000, 12.00000000000,
+  #            1.00782503207, 1.00782503207, 1.00782503207, 1.00782503207]
+  #   components: [B]
+  #   obs_b0_mhz: [8301.0]   # approx; verify
+  #   alpha_mhz: [0.0]
+  #   sigma_mhz: [0.01]
+  #
+  # - name: 12CH3-13C-12CH
+  #   masses: [12.00000000000, 13.00335483507, 12.00000000000,
+  #            1.00782503207, 1.00782503207, 1.00782503207, 1.00782503207]
+  #   components: [B]
+  #   obs_b0_mhz: [8542.0]   # approx; verify (C1 near COM, tiny shift)
+  #   alpha_mhz: [0.0]
+  #   sigma_mhz: [0.01]
+  #
+  # - name: 12CH3-12C-13CH
+  #   masses: [12.00000000000, 12.00000000000, 13.00335483507,
+  #            1.00782503207, 1.00782503207, 1.00782503207, 1.00782503207]
+  #   components: [B]
+  #   obs_b0_mhz: [8275.0]   # approx; verify
+  #   alpha_mhz: [0.0]
+  #   sigma_mhz: [0.01]
+
+quantum:
+  backend: orca
+  method: wB97X-D4
+  basis: def2-TZVPP
+  executable: null
+
+preset: BALANCED
+rng_seed: 53
+write_xyz: false
+
+internal_coordinates:
+  use_dihedrals: true
+  damping: 1.0e-6
+  microiterations: 20
+  prior_weight: 0.5
+  prior_sigma_bond: 0.12
+  prior_sigma_angle_deg: 5.0
+  prior_sigma_dihedral_deg: 20.0
+
+internal_priors:
+  mode: soft
+  freeze_sigma_floor: 1.0e-6
+  adaptive:
+    identifiability_gamma: 2.0
+    min_sigma_scale: 0.5
+    max_sigma_scale: 3.0
+  user_priors: []
+
+# Torsion: nearly free rotor (V3 ~ 5.2 cm^-1, F ~ 5.45 cm^-1).
+# Disabled here — at this barrier height the torsional splitting is enormous
+# and the static rigid-rotor model is already a reasonable approximation
+# for the ground-state effective B0.
+torsion_hamiltonian:
+  enabled: false
+  F: 5.45
+  rho: 0.05
+  n_basis: 12
+  n_levels: 8
+  J_values: [0, 1, 2]
+  K_values: [0]
+  units: cm-1
+  potential:
+    v0: 2.6
+    vcos: {3: -2.6}
+    vsin: {}
+
+output:
+  root: runs
+  artifacts: true
