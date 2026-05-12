@@ -12,6 +12,30 @@ _ROOT = Path(__file__).resolve().parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
+from dev.benchmarks.conformer_suite import (
+    attach_comparison as attach_conformer_comparison,
+    compare_to_baseline as compare_conformer_to_baseline,
+    default_baseline_path as conformer_default_baseline_path,
+    default_history_dir as conformer_default_history_dir,
+    default_output_path as conformer_default_output_path,
+    load_baseline as load_conformer_baseline,
+    render_text_summary as render_conformer_summary,
+    run_conformer_benchmark_suite,
+    write_history_snapshot as write_conformer_history_snapshot,
+    write_result as write_conformer_result,
+)
+from dev.benchmarks.lam_suite import (
+    attach_comparison as attach_lam_comparison,
+    compare_to_baseline as compare_lam_to_baseline,
+    default_baseline_path as lam_default_baseline_path,
+    default_history_dir as lam_default_history_dir,
+    default_output_path as lam_default_output_path,
+    load_baseline as load_lam_baseline,
+    render_text_summary as render_lam_summary,
+    run_lam_benchmark_suite,
+    write_history_snapshot as write_lam_history_snapshot,
+    write_result as write_lam_result,
+)
 from runner.run_from_config import main as run_from_config_main
 from runner.usability import ConfigError, load_config, rebuild_report_from_run_dir, validate_config
 
@@ -504,7 +528,63 @@ def _cmd_uncertainty(args) -> int:
     with open(out_path, "w", encoding="utf-8") as fh:
         json.dump(_json_safe(summary_bundle), fh, indent=2)
     print(f"\n[uncertainty] Summary written: {out_path}")
+    return 0
 
+
+def _cmd_benchmark(args) -> int:
+    """Run a named benchmark suite, compare it to a baseline, and write artifacts."""
+    suites = {
+        "lam": {
+            "run": run_lam_benchmark_suite,
+            "load_baseline": load_lam_baseline,
+            "compare": compare_lam_to_baseline,
+            "attach": attach_lam_comparison,
+            "write_result": write_lam_result,
+            "write_history": write_lam_history_snapshot,
+            "render": render_lam_summary,
+        },
+        "conformer": {
+            "run": run_conformer_benchmark_suite,
+            "load_baseline": load_conformer_baseline,
+            "compare": compare_conformer_to_baseline,
+            "attach": attach_conformer_comparison,
+            "write_result": write_conformer_result,
+            "write_history": write_conformer_history_snapshot,
+            "render": render_conformer_summary,
+        },
+    }
+    suite = suites.get(args.suite)
+    if suite is None:
+        print(f"Unknown benchmark suite: {args.suite}", file=sys.stderr)
+        return 2
+
+    result = suite["run"]()
+    comparison = None
+
+    baseline_path = Path(args.baseline) if args.baseline else None
+    if baseline_path:
+        if not baseline_path.exists():
+            print(f"Baseline not found: {baseline_path}", file=sys.stderr)
+            return 2
+        baseline = suite["load_baseline"](baseline_path)
+        baseline["baseline_path"] = str(baseline_path)
+        comparison = suite["compare"](result, baseline)
+        result = suite["attach"](result, comparison)
+
+    output_path = Path(args.output)
+    suite["write_result"](output_path, result)
+
+    history_snapshot = None
+    if args.history_dir:
+        history_snapshot = suite["write_history"](args.history_dir, result)
+
+    print(suite["render"](result))
+    print(f"\nWrote benchmark result: {output_path}")
+    if history_snapshot is not None:
+        print(f"Wrote history snapshot: {history_snapshot}")
+
+    if args.enforce_thresholds and comparison and not comparison.get("passed", False):
+        return 1
     return 0
 
 
@@ -623,8 +703,32 @@ def main(argv: list[str] | None = None) -> int:
     report_p = sub.add_parser("report", help="Rebuild report and plots from an existing run directory.")
     report_p.add_argument("run_dir", type=Path)
 
+    # --- benchmark ---
+    bench_p = sub.add_parser("benchmark", help="Run benchmark suites and compare against baselines.")
+    bench_p.add_argument("suite", choices=["lam", "conformer"], help="Benchmark suite name.")
+    bench_p.add_argument("--baseline", default=None,
+                         help="Checked-in baseline JSON used for drift thresholds.")
+    bench_p.add_argument("--output", default=None,
+                         help="Path for the latest benchmark result JSON.")
+    bench_p.add_argument("--history-dir", default=None,
+                         help="Directory for timestamped benchmark history snapshots.")
+    bench_p.add_argument("--enforce-thresholds", action="store_true",
+                         help="Exit non-zero when the baseline comparison fails.")
 
     args = parser.parse_args(argv)
+    if args.command == "benchmark":
+        if args.baseline is None:
+            args.baseline = str(
+                lam_default_baseline_path() if args.suite == "lam" else conformer_default_baseline_path()
+            )
+        if args.output is None:
+            args.output = str(
+                lam_default_output_path() if args.suite == "lam" else conformer_default_output_path()
+            )
+        if args.history_dir is None:
+            args.history_dir = str(
+                lam_default_history_dir() if args.suite == "lam" else conformer_default_history_dir()
+            )
 
     if args.command == "validate":
         try:
@@ -670,6 +774,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"HTML report   : {out['report_html']}")
         print(f"Plots updated : {len(out['plots'])}")
         return 0
+
+    if args.command == "benchmark":
+        return _cmd_benchmark(args)
 
     parser.print_help()
     return 2

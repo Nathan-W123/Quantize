@@ -263,8 +263,10 @@ class SpectralEngine:
         torsion_aware_weighting=False,
         torsion_a_weight=1.0,
         conformer_defs=None,
+        conformer_reference_coords=None,
         conformer_weight_mode="fixed",
         conformer_temperature_k=298.15,
+        conformer_energy_unit="kcal/mol",
         analytic_jacobian=True,
         jacobian_degeneracy_tol=1e-4,
     ):
@@ -329,11 +331,17 @@ class SpectralEngine:
         self.torsion_a_weight = float(torsion_a_weight)
         self.conformer_mixture = None
         if conformer_defs is not None:
+            reference_coords = (
+                np.asarray(conformer_reference_coords, dtype=float)
+                if conformer_reference_coords is not None
+                else np.zeros((len(self.isotopologues[0]["masses"]), 3), dtype=float)
+            )
             self.conformer_mixture = ConformerMixture(
-                reference_coords=np.zeros((len(self.isotopologues[0]["masses"]), 3), dtype=float),
+                reference_coords=reference_coords,
                 conformer_defs=conformer_defs,
                 weight_mode=conformer_weight_mode,
                 temperature_k=conformer_temperature_k,
+                energy_unit=conformer_energy_unit,
             )
         self.analytic_jacobian = bool(analytic_jacobian)
         self.jacobian_degeneracy_tol = max(float(jacobian_degeneracy_tol), 1e-15)

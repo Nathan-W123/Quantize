@@ -4,6 +4,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 import numpy as np
 
 from backend.quantize import MolecularOptimizer
+from backend.registry import get_backend, list_backends
 
 
 def _spectral_isotopologue_snapshot(opt):
@@ -52,6 +53,8 @@ def _run_one_start(payload):
         "history": opt.history,
         "workdir": start_dir,
         "spectral_isotopologues_snapshot": _spectral_isotopologue_snapshot(opt),
+        "conformer_diagnostics": opt.spectral.conformer_diagnostics(),
+        "conformer_summary": opt.conformer_summary,
     }
 
 
@@ -71,10 +74,17 @@ def run_multistart(starts, elems, isotopologues, optimizer_kwargs, max_workers=1
         "yes",
         "y",
     )
-    if qb == "orca" and not spectral_only and max_workers > 1 and not allow_parallel_orca:
+    # Ask the backend class whether it supports parallel workers (e.g. ORCA does not).
+    try:
+        backend_cls = get_backend(qb) if qb else None
+    except ValueError:
+        backend_cls = None
+    backend_supports_parallel = backend_cls.supports_parallel if backend_cls is not None else True
+    if not backend_supports_parallel and not spectral_only and max_workers > 1 and not allow_parallel_orca:
         print(
-            "[multistart] quantum_backend=orca: using max_workers=1 (parallel ORCA often fails "
-            "with single-seat licenses). Export QUANTIZE_ALLOW_PARALLEL_ORCA=1 to allow "
+            f"[multistart] quantum_backend={qb!r}: using max_workers=1 (backend does not support "
+            "parallel workers — parallel jobs often fail with single-seat licenses). "
+            "Export QUANTIZE_ALLOW_PARALLEL_ORCA=1 to allow "
             f"parallel workers (requested {max_workers})."
         )
         max_workers = 1

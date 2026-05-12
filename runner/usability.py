@@ -357,6 +357,116 @@ def _validate_rovibrational_corrections_block(cfg: dict[str, Any]) -> None:
 _VALID_TORSION_SYMMETRY_MODES = {"c3", "3fold", "threefold", "none", "off", "null", ""}
 _VALID_SCAN_ANGLE_UNITS = {"degrees", "deg", "degree", "radians", "rad", "radian"}
 _VALID_SCAN_ENERGY_UNITS = {"cm-1", "cm_1", "hartree", "ha", "kcal/mol", "kcal", "kj/mol", "kj"}
+_VALID_CONFORMER_WEIGHT_MODES = {"fixed", "uniform", "boltzmann"}
+_VALID_CONFORMER_ENERGY_UNITS = {"kcal/mol", "kcal", "cm-1", "cm1", "cm_1", "hartree", "ha", "dimensionless", "arb", "arbitrary"}
+
+
+def _validate_conformer_block(cfg: dict[str, Any], *, n_atoms: int) -> None:
+    block = cfg.get("conformers")
+    if block is None:
+        return
+    if not isinstance(block, dict):
+        raise ConfigError("'conformers' must be a mapping/object.")
+
+    enabled = block.get("enabled")
+    if enabled is not None and not isinstance(enabled, bool):
+        raise ConfigError("'conformers.enabled' must be true or false.")
+
+    weight_mode = block.get("weight_mode")
+    if weight_mode is not None and str(weight_mode).strip().lower() not in _VALID_CONFORMER_WEIGHT_MODES:
+        raise ConfigError(f"'conformers.weight_mode' must be one of {sorted(_VALID_CONFORMER_WEIGHT_MODES)}.")
+
+    temperature_k = block.get("temperature_k")
+    if temperature_k is not None:
+        try:
+            tv = float(temperature_k)
+        except (TypeError, ValueError) as exc:
+            raise ConfigError("'conformers.temperature_k' must be numeric.") from exc
+        if tv <= 0.0:
+            raise ConfigError("'conformers.temperature_k' must be positive.")
+
+    energy_unit = block.get("energy_unit")
+    if energy_unit is not None and str(energy_unit).strip().lower() not in _VALID_CONFORMER_ENERGY_UNITS:
+        raise ConfigError(
+            f"'conformers.energy_unit' must be one of {sorted(_VALID_CONFORMER_ENERGY_UNITS)}."
+        )
+
+    entries = block.get("conformers", block.get("entries"))
+    if entries is not None:
+        if not isinstance(entries, list):
+            raise ConfigError("'conformers.conformers' must be a list.")
+        for i, entry in enumerate(entries):
+            if not isinstance(entry, dict):
+                raise ConfigError(f"'conformers.conformers[{i}]' must be a mapping/object.")
+            coords = entry.get("coords_angstrom", entry.get("coords"))
+            offset = entry.get("offset_angstrom", entry.get("offset"))
+            if coords is not None and offset is not None:
+                raise ConfigError(
+                    f"'conformers.conformers[{i}]' must provide either coords_angstrom or offset_angstrom, not both."
+                )
+            if coords is not None:
+                rows = _as_list(coords, f"conformers.conformers[{i}].coords_angstrom")
+                if len(rows) != n_atoms:
+                    raise ConfigError(
+                        f"'conformers.conformers[{i}].coords_angstrom' must have {n_atoms} coordinate rows."
+                    )
+                for row_i, row in enumerate(rows):
+                    _check_numeric_list(row, f"conformers.conformers[{i}].coords_angstrom[{row_i}]", 3)
+            if offset is not None:
+                rows = _as_list(offset, f"conformers.conformers[{i}].offset_angstrom")
+                if len(rows) != n_atoms:
+                    raise ConfigError(
+                        f"'conformers.conformers[{i}].offset_angstrom' must have {n_atoms} coordinate rows."
+                    )
+                for row_i, row in enumerate(rows):
+                    _check_numeric_list(row, f"conformers.conformers[{i}].offset_angstrom[{row_i}]", 3)
+            for num_key in ("weight", "energy"):
+                if entry.get(num_key) is not None:
+                    try:
+                        float(entry[num_key])
+                    except (TypeError, ValueError) as exc:
+                        raise ConfigError(f"'conformers.conformers[{i}].{num_key}' must be numeric.") from exc
+            unit = entry.get("energy_unit")
+            if unit is not None and str(unit).strip().lower() not in _VALID_CONFORMER_ENERGY_UNITS:
+                raise ConfigError(
+                    f"'conformers.conformers[{i}].energy_unit' must be one of {sorted(_VALID_CONFORMER_ENERGY_UNITS)}."
+                )
+
+    generation = block.get("generation")
+    if generation is not None:
+        if not isinstance(generation, dict):
+            raise ConfigError("'conformers.generation' must be a mapping/object.")
+        for bool_key in ("enabled", "optimize", "include_input_geometry"):
+            if bool_key in generation and not isinstance(generation[bool_key], bool):
+                raise ConfigError(f"'conformers.generation.{bool_key}' must be true or false.")
+        for int_key in ("max_rotatable_bonds", "max_conformers", "max_combination_count", "optimization_steps"):
+            if generation.get(int_key) is not None:
+                try:
+                    iv = int(generation[int_key])
+                except (TypeError, ValueError) as exc:
+                    raise ConfigError(f"'conformers.generation.{int_key}' must be an integer.") from exc
+                if iv < 1:
+                    raise ConfigError(f"'conformers.generation.{int_key}' must be >= 1.")
+        for float_key in ("prune_rmsd_ang", "prune_constants_mhz", "energy_window_kcal_mol"):
+            if generation.get(float_key) is not None:
+                try:
+                    fv = float(generation[float_key])
+                except (TypeError, ValueError) as exc:
+                    raise ConfigError(f"'conformers.generation.{float_key}' must be numeric.") from exc
+                if fv < 0.0:
+                    raise ConfigError(f"'conformers.generation.{float_key}' must be >= 0.")
+        if generation.get("angle_grid_deg") is not None:
+            _check_numeric_list(generation["angle_grid_deg"], "conformers.generation.angle_grid_deg")
+        if generation.get("rotatable_bonds") is not None:
+            bonds = _as_list(generation["rotatable_bonds"], "conformers.generation.rotatable_bonds")
+            for i, pair in enumerate(bonds):
+                if not isinstance(pair, list) or len(pair) != 2:
+                    raise ConfigError(f"'conformers.generation.rotatable_bonds[{i}]' must be a two-item list.")
+                for atom_i in pair:
+                    if not isinstance(atom_i, int) or atom_i < 0 or atom_i >= n_atoms:
+                        raise ConfigError(
+                            f"'conformers.generation.rotatable_bonds[{i}]' contains invalid atom index {atom_i!r}."
+                        )
 
 
 def _validate_conformer_mixture_block(cfg: dict[str, Any], n_atoms: int) -> None:
@@ -1138,7 +1248,11 @@ def singular_values(coords: np.ndarray, spectral_isotopologues: list[dict[str, A
 
 
 def write_markdown_report(path: Path, result: dict[str, Any], artifacts: dict[str, Any] | None = None) -> None:
-    from runner.reporting import generate_lam_report_section, generate_rovib_report_section
+    from runner.reporting import (
+        generate_conformer_report_section,
+        generate_lam_report_section,
+        generate_rovib_report_section,
+    )
 
     best = result["best"]
     score = result.get("score", {})
@@ -1161,6 +1275,10 @@ def write_markdown_report(path: Path, result: dict[str, Any], artifacts: dict[st
     iso_snapshot = best.get("spectral_isotopologues_snapshot", [])
     if iso_snapshot:
         lines.extend(["", generate_rovib_report_section(iso_snapshot)])
+
+    conformer_summary = result.get("conformer_summary") or best.get("conformer_summary") or {}
+    if conformer_summary:
+        lines.extend(["", generate_conformer_report_section(conformer_summary)])
 
     torsion_summary = result.get("torsion_summary") or {}
     if torsion_summary:
@@ -1222,6 +1340,8 @@ def write_markdown_report(path: Path, result: dict[str, Any], artifacts: dict[st
             lines.append("- `exports/semi_experimental_targets.csv`")
         if artifacts.get("rovib_warnings_json") is not None:
             lines.append("- `exports/rovib_warnings.json`")
+        if artifacts.get("conformer_summary_json") is not None:
+            lines.append("- `exports/conformer_summary.json`")
         if artifacts.get("internal_uncertainty_csv") is not None:
             lines.append("- `exports/internal_uncertainty.csv`")
         if artifacts.get("internal_covariance_csv") is not None:
@@ -1420,6 +1540,7 @@ def write_plots(run_dir: Path, result: dict[str, Any]) -> list[Path]:
 def write_outputs(result: dict[str, Any]) -> dict[str, Path | list[Path]]:
     """Write CSV, Markdown, and plot artifacts for a completed generic run."""
     from runner.reporting import (
+        export_conformer_summary_json,
         export_rovib_corrections_csv,
         export_rovib_warnings_json,
         export_semi_experimental_targets_csv,
@@ -1501,6 +1622,11 @@ def write_outputs(result: dict[str, Any]) -> dict[str, Path | list[Path]]:
         artifacts["rovib_corrections_csv"] = rovib_csv
         artifacts["semi_experimental_targets_csv"] = semi_csv
         artifacts["rovib_warnings_json"] = warn_json
+
+    conformer_summary = result.get("conformer_summary") or result.get("best", {}).get("conformer_summary")
+    if conformer_summary:
+        conformer_json = export_conformer_summary_json(conformer_summary, exports_dir / "conformer_summary.json")
+        artifacts["conformer_summary_json"] = conformer_json
 
     # Internal-coordinate uncertainty / identifiability exports.
     cfg = result.get("cfg", {}) or {}

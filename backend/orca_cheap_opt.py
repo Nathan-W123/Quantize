@@ -18,7 +18,7 @@ from typing import Sequence
 
 import numpy as np
 
-from backend.quantize import _find_orca
+from backend.orca_backend import _find_orca
 
 # Default balances speed vs reasonable organics-first behavior; override with QUANTIZE_CHEAP_OPT_KEYWORD.
 _DEFAULT_OPT_KEYWORD = "HF-3c Opt TightSCF"

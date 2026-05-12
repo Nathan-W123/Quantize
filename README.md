@@ -199,6 +199,96 @@ python -m runs.run_OCS
 
 Drivers typically build isotopologue inputs, generate a starting geometry, run multistart optimization, and print a summary. Defaults and presets can be adjusted in `run_molecule.py`, `run_settings.py`, or each `runs/run_*.py` file.
 
+## Conformers
+
+Quantize can now build and score conformer ensembles during a run instead of relying only on user-supplied fixed mixtures. The `conformers` block supports:
+
+- explicit conformers with full coordinates or offsets from the input geometry
+- automatic conformer generation from detected rotatable bonds
+- lightweight geometry optimization for generated candidates
+- RMSD / rotational-constant pruning before ensemble weighting
+- `fixed`, `uniform`, or Boltzmann weighting modes
+
+Example:
+
+```yaml
+conformers:
+  enabled: true
+  weight_mode: boltzmann
+  temperature_k: 298.15
+  generation:
+    enabled: true
+    angle_grid_deg: [60, 180, 300]
+    max_rotatable_bonds: 2
+    max_conformers: 12
+    optimize: true
+    optimization_steps: 150
+    prune_rmsd_ang: 0.08
+    prune_constants_mhz: 1.0
+```
+
+You can also mix in explicit entries:
+
+```yaml
+conformers:
+  enabled: true
+  weight_mode: fixed
+  entries:
+    - name: anti
+      weight: 0.7
+      offset_angstrom:
+        - [0.0000, 0.0000, 0.0000]
+        - [0.0000, 0.0000, 0.0000]
+        - [0.0000, 0.0000, 0.0000]
+        - [0.0000, 0.0000, 0.0000]
+    - name: gauche
+      weight: 0.3
+      offset_angstrom:
+        - [0.0000, 0.0000, 0.0000]
+        - [0.0000, 0.0000, 0.0000]
+        - [0.0000, 0.0000, 0.0000]
+        - [0.1200, -0.2800, 0.3100]
+```
+
+The selected run exports `exports/conformer_summary.json` and includes a conformer section in `report.md` with generation diagnostics, energies, and final weights. Presets that enable conformer mixtures will automatically use the assembled ensemble when the block is present.
+
+## Benchmarks
+
+The benchmark CLI now covers both torsion/LAM and conformer-sensitive validation suites with checked-in regression baselines:
+
+```bash
+python cli.py benchmark lam --enforce-thresholds
+python cli.py benchmark conformer --enforce-thresholds
+```
+
+The LAM suite runs a broader validation bundle covering:
+
+- methanol and acetaldehyde reference molecules
+- physical-limit checks such as the free-rotor and high-barrier limits
+- expected failure modes such as low `V/F`, large `rho`, large centrifugal distortion, and invalid basis/sign configurations
+
+The conformer suite tracks:
+
+- automatic conformer generation and pruning behavior on a rotatable-chain reference
+- Boltzmann weighting drift for energy-sensitive ensembles
+- spectral averaging behavior for weighted conformer mixtures
+
+Artifacts are written to:
+
+- `results/benchmarks/lam-latest.json` for the latest machine-readable result
+- `results/benchmarks/conformer-latest.json` for the latest conformer benchmark result
+- `results/benchmarks/history/` for timestamped snapshots that make drift easy to inspect over time
+
+The checked-in threshold baselines live at `dev/benchmarks/baselines/lam.json` and `dev/benchmarks/baselines/conformer.json`. Update them deliberately when a change is intended to move the benchmark reference values.
+
+For local verification of the benchmark plumbing itself, run:
+
+```bash
+python -m pytest dev/tests/test_benchmark_suite.py dev/tests/test_conformer_benchmark_suite.py -q
+```
+
+GitHub Actions runs both suites in `.github/workflows/benchmarks.yml`, enforces the baseline thresholds, and uploads the JSON artifacts from each CI run so benchmark drift can be tracked across time.
+
 ### ORCA and `run_settings.py`
 
 Drivers read `run_settings.py`, which defaults to `quantum_backend="orca"` and `orca_exe=None`. The optimizer then searches for ORCA in this order: **`orca` on your PATH**, a **full path** if you set one, then an **`orca` or `orca.exe` file in the current working directory** (so you can drop or symlink the binary into the project folder). You can also set the path before running:

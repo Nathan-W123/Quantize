@@ -1,0 +1,52 @@
+{
+  "suite": "conformer",
+  "version": 1,
+  "cases": [
+    {
+      "id": "auto_generation_reference",
+      "metrics": {
+        "n_conformers": {
+          "value": 3,
+          "max_abs_delta": 0.0
+        },
+        "generated_count": {
+          "value": 3,
+          "max_abs_delta": 0.0
+        },
+        "rotatable_bond_count": {
+          "value": 1,
+          "max_abs_delta": 0.0
+        }
+      }
+    },
+    {
+      "id": "boltzmann_weight_reference",
+      "metrics": {
+        "weight_sum": {
+          "value": 1.0,
+          "max_abs_delta": 1e-12
+        },
+        "low_minus_high_weight": {
+          "value": 0.8333435045390121,
+          "max_abs_delta": 1e-09
+        },
+        "low_dominates": {
+          "value": true
+        }
+      }
+    },
+    {
+      "id": "spectral_mixture_reference",
+      "metrics": {
+        "mixture_max_abs_error_mhz": {
+          "value": 0.0,
+          "max_abs_delta": 1e-08
+        },
+        "diagnostic_conformer_count": {
+          "value": 2,
+          "max_abs_delta": 0.0
+        }
+      }
+    }
+  ]
+}
