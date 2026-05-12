@@ -157,6 +157,21 @@ def test_validate_config_conformer_mixture_shape():
     validate_config(cfg)
 
 
+def test_validate_config_rejects_bad_conformer_coords():
+    cfg = minimal_water_config()
+    cfg["conformers"] = {
+        "enabled": True,
+        "conformers": [
+            {
+                "name": "bad",
+                "coords_angstrom": [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]],
+            }
+        ],
+    }
+    with pytest.raises(ConfigError, match="coords_angstrom"):
+        validate_config(cfg)
+
+
 def test_prepare_run_directory_copies_input(tmp_path):
     cfg = minimal_water_config()
     cfg["output"] = {"root": str(tmp_path / "runs")}
@@ -195,6 +210,19 @@ def test_write_outputs_creates_report_csvs_and_plots(tmp_path):
                 {"iteration": 1, "freq_rms": 5.0, "step_norm": 1e-2},
                 {"iteration": 2, "freq_rms": 1.23, "step_norm": 1e-4},
             ],
+            "conformer_summary": {
+                "enabled": True,
+                "weight_mode": "boltzmann",
+                "temperature_k": 298.15,
+                "n_conformers": 2,
+                "explicit_count": 1,
+                "generated_count": 1,
+                "conformers": [
+                    {"name": "conf_a", "source": "explicit", "energy": 0.0, "energy_unit": "kcal/mol", "weight": 0.7},
+                    {"name": "conf_b", "source": "generated", "energy": 0.5, "energy_unit": "kcal/mol", "weight": 0.3},
+                ],
+                "generation": {"rotatable_bonds": [], "generated_candidates": 2, "kept_candidates": 1, "pruned_candidates": 1},
+            },
             "spectral_isotopologues_snapshot": [
                 {
                     "name": "H2-16O",
@@ -216,6 +244,7 @@ def test_write_outputs_creates_report_csvs_and_plots(tmp_path):
     assert artifacts["report_payload_json"].is_file()
     assert artifacts["geometry_csv"].is_file()
     assert artifacts["residuals_csv"].is_file()
+    assert artifacts["conformer_summary_json"].is_file()
     with artifacts["residuals_csv"].open(newline="", encoding="utf-8") as fh:
         rows = list(csv.DictReader(fh))
     assert [row["component"] for row in rows] == ["A", "B", "C"]

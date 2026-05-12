@@ -23,14 +23,11 @@ Units
 """
 
 import os
-import shutil
-import subprocess
 import numpy as np
 
 from backend.spectral import SpectralEngine, sanitize_isotopologues
 from backend.internal_prior import InternalPriorEngine
 from backend.rovib_corrections import (
-    resolve_alpha_components,
     resolve_corrections,
     apply_corrections_to_isotopologues,
     validate_correction_quality,
@@ -40,13 +37,13 @@ from backend.correction_models import parse_correction_table, RovibCorrection, P
 from backend.autoconfig import AutoConfigEngine
 from backend.quantum import (
     QuantumEngine,
-    parse_engrad,
-    parse_orca_rovib,
     parse_orca_rovib_alpha,
     _detect_bonds,
     _detect_angles,
     wilson_B,
 )
+from backend.base_backend import QuantumState
+from backend.registry import get_backend
 from backend.SVD import SubspaceOptimizer
 from backend.internal_fit import (
     InternalCoordinateSet,
@@ -143,30 +140,9 @@ def build_correction_from_iso(iso, method=None, basis=None, backend=None):
     return corr
 
 
-def _find_orca(executable):
-    """
-    Resolve the ORCA executable to an absolute path.
-    Accepts a full path, a bare name ('orca'), or None (auto-detect).
-    Search order: PATH (:func:`shutil.which`), explicit path if it exists as a file,
-    then ``./orca`` or ``./orca.exe`` in the **current working directory**.
-    Raises RuntimeError if not found.
-    """
-    if executable is None:
-        executable = "orca"
-    found = shutil.which(executable)
-    if found:
-        return found
-    if os.path.isfile(executable):
-        return os.path.abspath(executable)
-    for name in ("orca", "orca.exe"):
-        local = os.path.join(os.getcwd(), name)
-        if os.path.isfile(local):
-            return os.path.abspath(local)
-    raise RuntimeError(
-        f"ORCA executable '{executable}' not found on PATH, filesystem, or current directory.\n"
-        "Install ORCA, add it to PATH, place an ``orca`` binary in the working directory, or "
-        "set orca_executable to the full path, e.g. r'C:\\orca\\orca.exe'."
-    )
+# Backward-compatible re-export so callers that imported _find_orca from this
+# module (e.g. orca_cheap_opt.py before it was updated) continue to work.
+from backend.orca_backend import _find_orca  # noqa: F401
 
 
 class MolecularOptimizer:
@@ -289,6 +265,8 @@ class MolecularOptimizer:
         conformer_defs=None,
         conformer_weight_mode="fixed",
         conformer_temperature_k=298.15,
+        conformer_energy_unit="kcal/mol",
+        conformer_summary=None,
         spectral_delta=1e-3,
         spectral_analytic_jacobian=True,
         spectral_jacobian_degeneracy_tol=1e-4,
@@ -344,6 +322,7 @@ class MolecularOptimizer:
     ):
         self.coords = np.asarray(coords, dtype=float).copy()
         self.elems = list(elems)
+        self.conformer_summary = conformer_summary
         if method_preset is not None:
             preset_method, preset_basis = self._method_preset(method_preset)
             orca_method = preset_method
@@ -450,8 +429,10 @@ class MolecularOptimizer:
             torsion_aware_weighting=torsion_aware_weighting,
             torsion_a_weight=torsion_a_weight,
             conformer_defs=(conformer_defs if use_conformer_mixture else None),
+            conformer_reference_coords=self.coords,
             conformer_weight_mode=conformer_weight_mode,
             conformer_temperature_k=conformer_temperature_k,
+            conformer_energy_unit=conformer_energy_unit,
             analytic_jacobian=bool(spectral_analytic_jacobian),
             jacobian_degeneracy_tol=float(spectral_jacobian_degeneracy_tol),
         )
@@ -597,29 +578,30 @@ class MolecularOptimizer:
             if m.size == len(self.elems):
                 self._rigid_ref_masses = m.copy()
         self.quantum = None
-        self._psi4_engine = None
+        self._backend = None
         self._orca_ref_coords = None
         self._orca_call_count = 0
         self.history = []
         self._guardrail_bonds = _detect_bonds(self.coords, self.elems) if self.enable_geometry_guardrails else []
 
         if self.spectral_only:
-            self._orca_exe = None
             print("Spectral-only mode: ORCA disabled. Null-space step will be zero.")
         else:
+            backend_cls = get_backend(self.quantum_backend)
             if self.quantum_backend == "orca":
-                # Resolve executable — deferred error if not found and load_orca used instead
-                try:
-                    self._orca_exe = _find_orca(orca_executable)
-                    print(f"ORCA found: {self._orca_exe}")
-                except RuntimeError as e:
-                    self._orca_exe = None
-                    print(f"Note: {e}\nCall load_orca() to use pre-computed files.")
+                self._backend = backend_cls(
+                    elems=self.elems,
+                    workdir=self.workdir,
+                    method=self.orca_method,
+                    basis=self.orca_basis,
+                    charge=self.charge,
+                    multiplicity=self.multiplicity,
+                    executable=orca_executable,
+                    rovib_source_mode=self.rovib_source_mode,
+                )
             elif self.quantum_backend == "psi4":
-                self._orca_exe = None
                 try:
-                    from backend.Psi4 import Psi4Engine  # pylint: disable=import-outside-toplevel
-                    self._psi4_engine = Psi4Engine(
+                    self._backend = backend_cls(
                         elems=self.elems,
                         method=self.psi4_method,
                         basis=self.psi4_basis,
@@ -631,12 +613,11 @@ class MolecularOptimizer:
                     )
                     print("Psi4 backend initialized.")
                 except Exception as e:
-                    self._psi4_engine = None
+                    self._backend = None
                     print(f"Note: Could not initialize Psi4 backend: {e}")
             else:
-                raise ValueError(
-                    f"Unknown quantum_backend '{quantum_backend}'. Use 'orca' or 'psi4'."
-                )
+                # Generic path for future backends — they declare their own kwargs
+                self._backend = backend_cls(elems=self.elems)
 
     @staticmethod
     def _covalent_radius(elem):
@@ -702,344 +683,23 @@ class MolecularOptimizer:
             raise ValueError(f"Unknown method_preset '{name}'.")
         return presets[key]
 
-    # ── File paths ────────────────────────────────────────────────────────────
-
-    def _inp_path(self):
-        return os.path.join(self.workdir, "quantize_orca.inp")
-
-    def _engrad_path(self):
-        return os.path.join(self.workdir, "quantize_orca.engrad")
-
-    def _hess_path(self):
-        return os.path.join(self.workdir, "quantize_orca.hess")
-
-    def _out_path(self):
-        return os.path.join(self.workdir, "quantize_orca.out")
-
-    def _rovib_out_path(self):
-        return os.path.join(self.workdir, "quantize_orca_rovib.out")
-
-    def _err_path(self):
-        return os.path.join(self.workdir, "quantize_orca.err")
-
-    # ── ORCA input generation ─────────────────────────────────────────────────
-
-    def _write_orca_input(self, job="hessian"):
-        if job == "hessian":
-            # Use Freq (not NumFreq) so ORCA 6 dispatches to orca_numfreq.exe.
-            # NumFreq explicitly calls orca_autoci which was removed in ORCA 6.
-            keyword = "Freq EnGrad"
-        elif job == "gradient":
-            keyword = "EnGrad"
-        elif job == "rovib":
-            # Use VPT2 workflow for rovibrational constants; AnFreq in ORCA 6
-            # often prints only harmonic thermochemistry for some setups.
-            keyword = "VPT2"
-        else:
-            raise ValueError(f"Unknown ORCA job type: {job}")
-        method_line = f"{self.orca_method} {self.orca_basis}".strip()
-        lines = [f"! {method_line} TightSCF {keyword}"]
-        if job == "hessian":
-            lines += ["%freq", "  Temp 298.15", "end"]
-        elif job == "rovib":
-            lines += [
-                "%vpt2",
-                "  VPT2 On",
-                "  PrintLevel 2",
-                "  MinimiseOrcaPrint True",
-                "end",
-                "%method",
-                "  Z_Tol 1e-12",
-                "end",
-            ]
-        # Force single-process; avoids MPI dependency for helper executables.
-        lines += ["%pal", "  nprocs 1", "end"]
-        lines += [f"* xyz {self.charge} {self.multiplicity}"]
-        for elem, (x, y, z) in zip(self.elems, self.coords):
-            lines.append(f"  {elem:2s}  {x:16.10f}  {y:16.10f}  {z:16.10f}")
-        lines.append("*\n")
-        os.makedirs(self.workdir, exist_ok=True)
-        with open(self._inp_path(), "w") as f:
-            f.write("\n".join(lines))
-
-    # ── ORCA execution ────────────────────────────────────────────────────────
-
-    def _exec_orca(self):
-        if self._orca_exe is None:
-            raise RuntimeError(
-                "ORCA executable not found.  Provide orca_executable= or call load_orca()."
-            )
-        # Ensure ORCA's own directory is on PATH so helper programs
-        # (orca_autoci, orca_mp2, etc.) are found when called as subprocesses.
-        env = os.environ.copy()
-        orca_dir = os.path.dirname(os.path.abspath(self._orca_exe))
-        if orca_dir not in env.get("PATH", ""):
-            env["PATH"] = orca_dir + os.pathsep + env.get("PATH", "")
-        # Pass only the input *filename* (not an absolute path). ORCA's helper
-        # executables often break on spaces in paths (e.g. ".../YC Hack/...") when
-        # the full path is passed; cwd is already the job directory.
-        workdir = os.path.abspath(self.workdir)
-        inp_rel = os.path.basename(self._inp_path())
-        result = subprocess.run(
-            [self._orca_exe, inp_rel],
-            capture_output=True,
-            text=True,
-            cwd=workdir,
-            env=env,
-        )
-        os.makedirs(self.workdir, exist_ok=True)
-        with open(self._out_path(), "w", encoding="utf-8", errors="ignore") as f:
-            f.write(result.stdout or "")
-        with open(self._err_path(), "w", encoding="utf-8", errors="ignore") as f:
-            f.write(result.stderr or "")
-        if result.returncode != 0:
-            raise RuntimeError(
-                f"ORCA terminated with a non-zero exit code.\n"
-                f"--- ORCA stderr (last 3000 chars) ---\n{result.stderr[-3000:]}"
-            )
-
-    def _require_orca_artefacts(self, need=("engrad", "hess")):
-        """
-        ORCA sometimes exits 0 without writing expected files (license limits, helper crash).
-        Fail fast with directory listing and tail of quantize_orca.out for debugging.
-        """
-        labels_paths = []
-        if "engrad" in need:
-            labels_paths.append(("engrad", self._engrad_path()))
-        if "hess" in need:
-            labels_paths.append(("hess", self._hess_path()))
-        missing = [(lab, p) for lab, p in labels_paths if not os.path.isfile(p)]
-        if not missing:
-            return
-        out_tail = ""
-        outp = self._out_path()
-        try:
-            if os.path.isfile(outp):
-                with open(outp, encoding="utf-8", errors="ignore") as f:
-                    out_tail = f.read()[-6000:]
-        except OSError:
-            out_tail = "(could not read quantize_orca.out)"
-        try:
-            names = sorted(os.listdir(self.workdir))
-            listing = "\n".join(names) if names else "(empty)"
-        except OSError as e:
-            listing = f"(could not list: {e})"
-        miss_str = "\n".join(f"  missing {lab}: {p}" for lab, p in missing)
-        raise RuntimeError(
-            "ORCA ran but expected output files were not found.\n"
-            f"{miss_str}\n"
-            f"workdir: {self.workdir}\n"
-            "Files present:\n"
-            f"{listing}\n\n"
-            "Common causes: (1) spaces in the full path to the job directory break some ORCA "
-            "helpers — clone the repo to a path without spaces, or use this codebase version "
-            "that invokes ORCA with a relative input name; (2) academic license allows only "
-            "one ORCA job — use max_workers=1; (3) see quantize_orca.out below.\n"
-            f"--- tail of quantize_orca.out ---\n{out_tail}"
-        )
-
     def _run_hessian(self):
-        """Full Freq job: refreshes both gradient and Hessian."""
-        if self.quantum_backend == "psi4":
-            if self._psi4_engine is None:
-                raise RuntimeError("Psi4 backend not initialized.")
-            print("  [Psi4] Running Hessian calculation (gradient + Hessian)...")
-            self.quantum = self._psi4_engine.run_hessian(self.coords)
-            self._orca_ref_coords = self.coords.copy()
-            print(f"  [Psi4] Done.  Energy = {self.quantum.energy:.10f} Hartree")
-            return
-        print("  [ORCA] Running frequency calculation (gradient + Hessian)...")
-        self._write_orca_input(job="hessian")
-        self._exec_orca()
-        self._require_orca_artefacts(need=("engrad", "hess"))
-        self.quantum = QuantumEngine(self._engrad_path(), self._hess_path(), self.elems)
+        """Full Freq job: refreshes both gradient and Hessian via the active backend."""
+        if self._backend is None:
+            raise RuntimeError("No quantum backend initialized.")
+        result = self._backend.run_hessian(self.coords)
+        self.quantum = QuantumState(result.energy, result.gradient_bohr, result.hessian_bohr)
         self._orca_ref_coords = self.coords.copy()
-        print(f"  [ORCA] Done.  Energy = {self.quantum.energy:.10f} Hartree")
 
     def _run_gradient(self):
-        """Cheap EnGrad job: refreshes gradient only, keeps existing Hessian."""
-        if self.quantum_backend == "psi4":
-            if self._psi4_engine is None:
-                raise RuntimeError("Psi4 backend not initialized.")
-            print("  [Psi4] Running gradient update...")
-            energy, grad = self._psi4_engine.run_gradient(self.coords)
-            self.quantum.energy = energy
-            self.quantum._gradient_bohr = grad
-            self._orca_ref_coords = self.coords.copy()
-            print(f"  [Psi4] Done.  Energy = {energy:.10f} Hartree")
-            return
-        print("  [ORCA] Running gradient update (EnGrad)...")
-        self._write_orca_input(job="gradient")
-        self._exec_orca()
-        self._require_orca_artefacts(need=("engrad",))
-        energy, grad = parse_engrad(self._engrad_path())
-        self.quantum.energy = energy
-        self.quantum._gradient_bohr = grad
+        """Cheap gradient-only job: refreshes gradient, keeps existing Hessian."""
+        if self._backend is None:
+            raise RuntimeError("No quantum backend initialized.")
+        result = self._backend.run_gradient(self.coords)
+        self.quantum.energy = result.energy
+        self.quantum._gradient_bohr = result.gradient_bohr
         self._orca_ref_coords = self.coords.copy()
-        print(f"  [ORCA] Done.  Energy = {energy:.10f} Hartree")
 
-    # ── Isotopologue-specific VPT2 helpers ────────────────────────────────────
-
-    def _iso_rovib_inp_path(self, label):
-        safe = "".join(ch if ch.isalnum() or ch in ("-", "_", ".") else "_" for ch in str(label))
-        return os.path.join(self.workdir, f"quantize_orca_rovib_{safe}.inp")
-
-    def _iso_rovib_out_path(self, label):
-        safe = "".join(ch if ch.isalnum() or ch in ("-", "_", ".") else "_" for ch in str(label))
-        return os.path.join(self.workdir, f"quantize_orca_rovib_{safe}.out")
-
-    def _write_orca_rovib_input_for_iso(self, iso_masses, label):
-        """Write a VPT2 input that overrides per-atom masses for isotope substitution."""
-        method_line = f"{self.orca_method} {self.orca_basis}".strip()
-        lines = [f"! {method_line} TightSCF VPT2"]
-        lines += [
-            "%vpt2",
-            "  VPT2 On",
-            "  PrintLevel 2",
-            "  MinimiseOrcaPrint True",
-            "end",
-            "%method",
-            "  Z_Tol 1e-12",
-            "end",
-            "%pal",
-            "  nprocs 1",
-            "end",
-        ]
-        masses = np.asarray(iso_masses, dtype=float).ravel()
-        lines.append(f"* xyz {self.charge} {self.multiplicity}")
-        for elem, (x, y, z) in zip(self.elems, self.coords):
-            lines.append(f"  {elem:2s}  {x:16.10f}  {y:16.10f}  {z:16.10f}")
-        lines.append("*")
-        # Apply explicit isotope masses through %coords M block. Use the
-        # current geometry too so the block is self-contained for some ORCA
-        # versions that re-read coords from %coords.
-        lines.append("%coords")
-        lines.append(f"  CTyp xyz")
-        lines.append(f"  Charge {self.charge}")
-        lines.append(f"  Mult {self.multiplicity}")
-        lines.append("  Coords")
-        for (elem, (x, y, z)), m in zip(zip(self.elems, self.coords), masses):
-            lines.append(
-                f"    {elem:2s}  {x:16.10f}  {y:16.10f}  {z:16.10f}  M = {float(m):.8f}"
-            )
-        lines.append("  end")
-        lines.append("end\n")
-        os.makedirs(self.workdir, exist_ok=True)
-        with open(self._iso_rovib_inp_path(label), "w") as f:
-            f.write("\n".join(lines))
-
-    def _exec_orca_named(self, inp_path, out_path):
-        """Run ORCA on a specific input and capture its output to ``out_path``."""
-        if self._orca_exe is None:
-            raise RuntimeError(
-                "ORCA executable not found.  Provide orca_executable= or call load_orca()."
-            )
-        env = os.environ.copy()
-        orca_dir = os.path.dirname(os.path.abspath(self._orca_exe))
-        if orca_dir not in env.get("PATH", ""):
-            env["PATH"] = orca_dir + os.pathsep + env.get("PATH", "")
-        workdir = os.path.abspath(self.workdir)
-        inp_rel = os.path.basename(inp_path)
-        result = subprocess.run(
-            [self._orca_exe, inp_rel],
-            capture_output=True,
-            text=True,
-            cwd=workdir,
-            env=env,
-        )
-        os.makedirs(self.workdir, exist_ok=True)
-        with open(out_path, "w", encoding="utf-8", errors="ignore") as f:
-            f.write(result.stdout or "")
-        if result.returncode != 0:
-            raise RuntimeError(
-                f"ORCA terminated with non-zero exit code while running rovib job '{inp_rel}'.\n"
-                f"--- ORCA stderr (last 3000 chars) ---\n{(result.stderr or '')[-3000:]}"
-            )
-
-    def _run_rovib_isotopologue_specific(self):
-        """Run one ORCA VPT2 job per isotopologue, with mass overrides."""
-        cache_dir = self.workdir
-        mode_norm = str(self.rovib_source_mode or "").strip().lower()
-        strict_mode = mode_norm.startswith("strict_")
-        for iso in self.spectral.isotopologues:
-            label = str(iso.get("name", "iso"))
-            masses = np.asarray(iso["masses"], dtype=float)
-            cache_key = make_rovib_cache_key(
-                self.coords,
-                masses,
-                self.orca_method,
-                self.orca_basis,
-                "orca",
-                self.rovib_source_mode,
-            )
-            cached = load_cached_correction(cache_dir, cache_key, label)
-            parsed_alpha = None
-            warnings_list: list[str] = []
-            run_status = "unknown"
-            if cached is not None:
-                parsed_alpha = cached.alpha_vector()
-                warnings_list = list(cached.warnings or [])
-                run_status = str(cached.status or "ok")
-                print(f"  [ORCA] Cache hit for isotopologue '{label}'.")
-            else:
-                print(f"  [ORCA] Running VPT2 for isotopologue '{label}' (mass-overridden)...")
-                self._write_orca_rovib_input_for_iso(masses, label)
-                inp = self._iso_rovib_inp_path(label)
-                outp = self._iso_rovib_out_path(label)
-                try:
-                    self._exec_orca_named(inp, outp)
-                    parsed = parse_orca_rovib(outp)
-                    parsed_alpha = parsed.alpha_abc
-                    warnings_list = list(parsed.warnings)
-                    run_status = str(parsed.parse_status or "unknown")
-                    if parsed.parse_status == "parse_failed":
-                        print(
-                            f"  [ORCA] Warning: VPT2 parse failed for '{label}'; "
-                            "falling back to existing alpha."
-                        )
-                except Exception as exc:  # noqa: BLE001
-                    warnings_list.append(f"VPT2 run failed: {exc}")
-                    run_status = "vpt2_failed"
-                    print(f"  [ORCA] Warning: VPT2 run failed for '{label}': {exc}")
-
-            idx = np.asarray(iso["component_indices"], dtype=int)
-            user_tbl = iso.get("rovib_table", None)
-            try:
-                resolved, correction = resolve_alpha_components(
-                    existing_alpha_by_component=iso.get(
-                        "alpha_constants", np.zeros(len(idx), dtype=float)
-                    ),
-                    component_indices=idx,
-                    parsed_alpha_abc=parsed_alpha,
-                    user_alpha_abc=user_tbl,
-                    mode=self.rovib_source_mode,
-                    isotopologue_name=label,
-                    method=self.orca_method,
-                    basis=self.orca_basis,
-                    backend="orca",
-                )
-            except ValueError as e:
-                if strict_mode:
-                    raise RuntimeError(
-                        f"Strict rovib mode failed for isotopologue '{label}': {e}"
-                    ) from e
-                print(f"  [ORCA] Strict mode rejected isotopologue '{label}': {e}")
-                continue
-
-            correction.warnings = list(correction.warnings) + warnings_list
-            if run_status not in ("", "unknown", None):
-                correction.status = run_status
-            if correction.status == "ok" and correction.warnings:
-                correction.status = "partial"
-            correction.geometry_hash = cache_key
-            iso["alpha_constants"] = resolved
-            iso["rovib_correction"] = correction
-            self._refresh_iso_delta_total(iso, correction)
-            if cached is None and parsed_alpha is not None and np.isfinite(parsed_alpha).any():
-                try:
-                    save_cached_correction(cache_dir, cache_key, label, correction)
-                except OSError:
-                    pass
 
     def _refresh_iso_delta_total(self, iso, correction: RovibCorrection):
         """Compute delta_total_constants from a correction and store on iso."""
@@ -1065,99 +725,23 @@ class MolecularOptimizer:
             iso["sigma_correction_constants"] = sigma_corr
 
     def _run_rovib(self):
-        """
-        Optional ORCA anharmonic run to extract alpha(A/B/C) and populate
-        isotopologue alpha_constants by selected rotational components.
-        """
-        if self.quantum_backend != "orca":
+        """Delegate VPT2 rovibrational corrections to the active backend."""
+        if self._backend is None:
             return
-        if self.rovib_source_mode == "orca_vpt2_isotopologue_specific":
-            self._run_rovib_isotopologue_specific()
+        result = self._backend.run_rovib(
+            self.coords, isotopologues=self.spectral.isotopologues
+        )
+        if result is None:
             return
-
-        print("  [ORCA] Running rovibrational correction calculation (VPT2)...")
-        self._write_orca_input(job="rovib")
-        self._exec_orca()
-        # Preserve the rovib output for debugging; later jobs overwrite quantize_orca.out.
-        try:
-            shutil.copyfile(self._out_path(), self._rovib_out_path())
-        except OSError:
-            pass
-        parsed = parse_orca_rovib(self._out_path())
-        alpha_abc = parsed.alpha_abc
-        warnings_list = list(parsed.warnings)
-        if parsed.parse_status == "parse_failed":
-            vpt2_path = os.path.join(self.workdir, "quantize_orca.vpt2")
-            if os.path.isfile(vpt2_path):
-                parsed_fallback = parse_orca_rovib(vpt2_path)
-                alpha_abc = parsed_fallback.alpha_abc
-                warnings_list += list(parsed_fallback.warnings)
-        if not np.isfinite(alpha_abc).any():
-            print(
-                "  [ORCA] Warning: could not parse alpha constants from rovibrational output; "
-                "keeping existing alpha_constants.\n"
-                f"  [ORCA] Check files: {self._rovib_out_path()} and "
-                f"{os.path.join(self.workdir, 'quantize_orca.vpt2')}"
-            )
-            return
-
-        # Identify the parent isotopologue (assume index 0) so we can warn when
-        # a parent-only correction is broadcast onto isotopically-substituted ones.
-        if self.spectral.isotopologues:
-            parent_masses = np.asarray(
-                self.spectral.isotopologues[0]["masses"], dtype=float
-            )
-        else:
-            parent_masses = None
-
-        mode_norm = str(self.rovib_source_mode or "").strip().lower()
-        strict_mode = mode_norm.startswith("strict_")
-        for iso_idx, iso in enumerate(self.spectral.isotopologues):
-            label = str(iso.get("name", f"iso_{iso_idx + 1}"))
-            idx = np.asarray(iso["component_indices"], dtype=int)
-            user_tbl = iso.get("rovib_table", None)
-            try:
-                resolved, correction = resolve_alpha_components(
-                    existing_alpha_by_component=iso.get("alpha_constants", np.zeros(len(idx), dtype=float)),
-                    component_indices=idx,
-                    parsed_alpha_abc=alpha_abc,
-                    user_alpha_abc=user_tbl,
-                    mode=self.rovib_source_mode,
-                    isotopologue_name=label,
-                    method=self.orca_method,
-                    basis=self.orca_basis,
-                    backend="orca",
-                )
-            except ValueError as e:
-                if strict_mode:
-                    raise RuntimeError(
-                        f"Strict rovib mode failed for isotopologue '{label}': {e}"
-                    ) from e
-                print(f"  [ORCA] Strict mode rejected isotopologue '{label}': {e}")
+        iso_by_name = {str(iso.get("name", "iso")): iso for iso in self.spectral.isotopologues}
+        for corr_dict in result.isotopologue_corrections:
+            label = corr_dict["name"]
+            iso = iso_by_name.get(label)
+            if iso is None:
                 continue
-            iso_warnings = list(warnings_list)
-            iso_masses = np.asarray(iso["masses"], dtype=float)
-            if (
-                parent_masses is not None
-                and iso_idx > 0
-                and (
-                    iso_masses.shape != parent_masses.shape
-                    or not np.allclose(iso_masses, parent_masses)
-                )
-                and self.rovib_source_mode in ("hybrid_auto", "orca_only")
-            ):
-                iso_warnings.append(
-                    "parent-only VPT2 correction applied to non-parent isotopologue"
-                )
-            correction.warnings = list(correction.warnings) + iso_warnings
-            if parsed.parse_status:
-                correction.status = str(parsed.parse_status)
-            if correction.status == "ok" and correction.warnings:
-                correction.status = "partial"
-            iso["alpha_constants"] = resolved
-            iso["rovib_correction"] = correction
-            self._refresh_iso_delta_total(iso, correction)
-        print(f"  [ORCA] Updated isotopologue alpha_constants using mode={self.rovib_source_mode}.")
+            iso["alpha_constants"] = corr_dict["alpha_constants"]
+            iso["rovib_correction"] = corr_dict["rovib_correction"]
+            self._refresh_iso_delta_total(iso, corr_dict["rovib_correction"])
 
     def _update_orca(self):
         """Decide whether to do a full Hessian recalculation or gradient-only update."""
@@ -1176,7 +760,8 @@ class MolecularOptimizer:
         Load pre-computed ORCA output files instead of running ORCA.
         Call this before run() when you have existing .engrad / .hess files.
         """
-        self.quantum = QuantumEngine(engrad_path, hess_path, self.elems)
+        eng = QuantumEngine(engrad_path, hess_path, self.elems)
+        self.quantum = QuantumState(eng.energy, eng._gradient_bohr.copy(), eng._hessian_bohr.copy())
         self._orca_ref_coords = self.coords.copy()
         print(f"Loaded ORCA files.  Energy = {self.quantum.energy:.10f} Hartree")
 

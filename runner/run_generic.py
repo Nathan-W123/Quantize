@@ -23,6 +23,7 @@ _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
+from backend.conformer_generation import build_conformer_ensemble
 from backend.geometryguess import guess_geometry_molecular_input
 from backend.multistart import run_multistart, select_best_result, underconstrained_success_score
 from backend.internal_fit import InternalCoordinateSet, spectral_jacobian_q, build_internal_priors
@@ -1901,6 +1902,13 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
         jitter = rng.normal(0.0, 0.03, size=(n_atoms, 3))
         jitter[0] = 0.0  # keep first (usually heavy) atom anchored
         starts.append(coords + jitter)
+    conformer_workflow = build_conformer_ensemble(
+        coords,
+        elems,
+        bonds,
+        cfg.get("conformers") if isinstance(cfg.get("conformers"), dict) else None,
+    )
+    use_conformer_mixture = bool(preset["use_conformer_mixture"]) and bool(conformer_workflow["enabled"])
 
     # ── Optimizer kwargs ──────────────────────────────────────────────────────
     optimizer_kwargs = dict(
@@ -1949,10 +1957,12 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
         prior_use_dihedrals=False,
         prior_sigma_bond=0.04,
         prior_sigma_angle_deg=2.0,
-        use_conformer_mixture=bool(preset["use_conformer_mixture"]),
-        conformer_defs=None,
-        conformer_weight_mode="fixed",
-        conformer_temperature_k=298.15,
+        use_conformer_mixture=use_conformer_mixture,
+        conformer_defs=conformer_workflow["conformer_defs"],
+        conformer_weight_mode=str(conformer_workflow["weight_mode"]),
+        conformer_temperature_k=float(conformer_workflow["temperature_k"]),
+        conformer_energy_unit=str(conformer_workflow["energy_unit"]),
+        conformer_summary=conformer_workflow["summary"],
         dynamic_quantum_weight=True,
         quantum_weight_beta=2.0,
         quantum_weight_min=0.25,
@@ -1999,6 +2009,13 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
     print(f"[{name}] coord mode   : {coordinate_mode}")
     print(f"[{name}] preset       : {preset_name}")
     print(f"[{name}] n_starts     : {preset['n_starts']}  max_workers: {preset['max_workers']}")
+    if conformer_workflow["summary"]["requested_enabled"]:
+        print(
+            f"[{name}] conformers   : {conformer_workflow['summary']['n_conformers']} "
+            f"(explicit={conformer_workflow['summary']['explicit_count']}, "
+            f"generated={conformer_workflow['summary']['generated_count']}, "
+            f"mode={conformer_workflow['summary']['weight_mode']})"
+        )
     if symmetry_spec:
         print(f"[{name}] symmetry     : {symmetry_spec}")
 
@@ -2041,6 +2058,21 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
     else:
         best = select_best_result(results, spectral_gate_abs=0.05, spectral_gate_rel=2.0)
     best_metrics = best["metrics_labeled"]
+    best_conformer_summary = dict(conformer_workflow["summary"])
+    conf_diag = best.get("conformer_diagnostics") or {}
+    if best_conformer_summary and conf_diag:
+        best_conformer_summary["final_weights"] = list(conf_diag.get("weights") or [])
+        best_conformer_summary["final_energies_kcal_mol"] = list(conf_diag.get("energies_kcal_mol") or [])
+        conf_rows = list(best_conformer_summary.get("conformers") or [])
+        for i, row in enumerate(conf_rows):
+            if i < len(conf_diag.get("weights") or []):
+                row["weight"] = float(conf_diag["weights"][i])
+            if i < len(conf_diag.get("energies") or []):
+                row["energy"] = float(conf_diag["energies"][i])
+            if i < len(conf_diag.get("energy_units") or []):
+                row["energy_unit"] = str(conf_diag["energy_units"][i])
+        best_conformer_summary["conformers"] = conf_rows
+    best["conformer_summary"] = best_conformer_summary
 
     # ── Optional XYZ output ───────────────────────────────────────────────────
     if write_xyz:
@@ -2142,6 +2174,7 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
                 else 0
             ),
         },
+        "conformer_summary": best_conformer_summary,
     }
 
     torsion_artifacts = _run_torsion_phase2_exports(

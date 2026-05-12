@@ -408,6 +408,57 @@ def generate_lam_report_section(torsion_summary: dict) -> str:
     return "\n".join(lines)
 
 
+def generate_conformer_report_section(conformer_summary: dict) -> str:
+    """Return a Markdown summary of the conformer workflow and final ensemble."""
+    if not isinstance(conformer_summary, dict) or not conformer_summary:
+        return "## Conformers\n\n_no conformer data available_\n"
+
+    lines = ["## Conformers", ""]
+    lines.append(f"- Enabled: `{bool(conformer_summary.get('enabled', False))}`")
+    lines.append(f"- Weight mode: `{conformer_summary.get('weight_mode', 'n/a')}`")
+    lines.append(f"- Temperature (K): `{_fmt(conformer_summary.get('temperature_k'), '.2f')}`")
+    lines.append(f"- Explicit conformers: `{int(conformer_summary.get('explicit_count', 0))}`")
+    lines.append(f"- Generated conformers: `{int(conformer_summary.get('generated_count', 0))}`")
+    lines.append(f"- Final ensemble size: `{int(conformer_summary.get('n_conformers', 0))}`")
+    lines.append("")
+
+    generation = conformer_summary.get("generation") or {}
+    if generation:
+        lines.append("### Generation")
+        lines.append("")
+        lines.append(f"- Rotatable bonds used: `{len(generation.get('rotatable_bonds', []))}`")
+        lines.append(f"- Candidates generated: `{int(generation.get('generated_candidates', 0))}`")
+        lines.append(f"- Candidates kept: `{int(generation.get('kept_candidates', 0))}`")
+        lines.append(f"- Candidates pruned: `{int(generation.get('pruned_candidates', 0))}`")
+        if generation.get("angle_grid_deg"):
+            lines.append(f"- Angle grid (deg): `{generation.get('angle_grid_deg')}`")
+        lines.append("")
+
+    conformers = conformer_summary.get("conformers") or []
+    if conformers:
+        lines.append("| Name | Source | Energy | Weight |")
+        lines.append("|---|---|---:|---:|")
+        for row in conformers:
+            energy = _fmt(row.get("energy"), ".4f")
+            unit = str(row.get("energy_unit", "")).strip()
+            if unit:
+                energy = f"{energy} {unit}"
+            lines.append(
+                f"| {row.get('name', 'conf')} | {row.get('source', 'n/a')} | {energy} | {_fmt(row.get('weight'), '.4f')} |"
+            )
+        lines.append("")
+
+    warnings = conformer_summary.get("warnings") or []
+    if warnings:
+        lines.append("### Warnings")
+        lines.append("")
+        for w in warnings:
+            lines.append(f"- {w}")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
 def export_rovib_warnings_json(isotopologues: Iterable[dict], path) -> Path:
     """Write a JSON dump of warnings + provenance per isotopologue."""
     p = Path(path)
@@ -438,4 +489,13 @@ def export_rovib_warnings_json(isotopologues: Iterable[dict], path) -> Path:
         blob["isotopologues"].append(item)
     with open(p, "w", encoding="utf-8") as fh:
         json.dump(blob, fh, indent=2, sort_keys=True)
+    return p
+
+
+def export_conformer_summary_json(conformer_summary: dict, path) -> Path:
+    """Write conformer-generation and ensemble diagnostics to JSON."""
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with open(p, "w", encoding="utf-8") as fh:
+        json.dump(conformer_summary or {}, fh, indent=2, sort_keys=True)
     return p

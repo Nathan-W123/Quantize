@@ -1,0 +1,171 @@
+{
+  "suite": "lam",
+  "version": 1,
+  "cases": [
+    {
+      "id": "free_rotor_reference",
+      "metrics": {
+        "ground_state_abs_error_cm1": {
+          "value": 0.0,
+          "max_abs_delta": 1e-08
+        },
+        "first_pair_abs_error_cm1": {
+          "value": 0.0,
+          "max_abs_delta": 1e-08
+        },
+        "second_pair_abs_error_cm1": {
+          "value": 0.0,
+          "max_abs_delta": 1e-08
+        },
+        "spectrum_sorted": {
+          "value": true
+        }
+      }
+    },
+    {
+      "id": "high_barrier_reference",
+      "metrics": {
+        "spacing_rel_error": {
+          "value": 0.03900307756630468,
+          "max_abs_delta": 0.01
+        },
+        "ground_state_below_barrier": {
+          "value": true
+        },
+        "splitting_decreases_with_barrier": {
+          "value": true
+        }
+      }
+    },
+    {
+      "id": "methanol_reference",
+      "metrics": {
+        "vt0_splitting_cm1": {
+          "value": 9.120733151704101,
+          "max_abs_delta": 0.05
+        },
+        "vt1_minus_vt0_a_cm1": {
+          "value": 295.2055664403677,
+          "max_abs_delta": 0.5
+        },
+        "min_symmetry_purity": {
+          "value": 0.7649507687291498,
+          "max_abs_delta": 0.05
+        },
+        "basis_convergence_delta_cm1": {
+          "value": 1.6485674336763623e-07,
+          "max_abs_delta": 0.005
+        },
+        "full_j1_sorted": {
+          "value": true
+        },
+        "full_j1_all_finite": {
+          "value": true
+        }
+      }
+    },
+    {
+      "id": "acetaldehyde_reference",
+      "metrics": {
+        "vt0_splitting_cm1": {
+          "value": 0.27594005560774093,
+          "max_abs_delta": 0.01
+        },
+        "basis_convergence_delta_cm1": {
+          "value": 1.4095973526195849e-05,
+          "max_abs_delta": 0.005
+        },
+        "vt0_a_below_barrier": {
+          "value": true
+        },
+        "ordering_valid": {
+          "value": true
+        }
+      }
+    },
+    {
+      "id": "reliability_methanol_high",
+      "metrics": {
+        "score": {
+          "value": "high"
+        },
+        "flag_count": {
+          "value": 0,
+          "max_abs_delta": 0.0
+        },
+        "finite_error_bound": {
+          "value": true
+        }
+      }
+    },
+    {
+      "id": "reliability_acetaldehyde_moderate",
+      "metrics": {
+        "score": {
+          "value": "moderate"
+        },
+        "has_asymmetry_flag": {
+          "value": true
+        },
+        "finite_error_bound": {
+          "value": true
+        }
+      }
+    },
+    {
+      "id": "failure_mode_low_v_over_f",
+      "metrics": {
+        "score": {
+          "value": "low"
+        },
+        "has_v_over_f_flag": {
+          "value": true
+        }
+      }
+    },
+    {
+      "id": "failure_mode_large_rho",
+      "metrics": {
+        "score": {
+          "value": "moderate"
+        },
+        "has_rho_flag": {
+          "value": true
+        }
+      }
+    },
+    {
+      "id": "failure_mode_large_cd",
+      "metrics": {
+        "score": {
+          "value": "unreliable"
+        },
+        "error_bound_is_infinite": {
+          "value": true
+        }
+      }
+    },
+    {
+      "id": "validation_underresolved_basis",
+      "metrics": {
+        "raised": {
+          "value": true
+        },
+        "message_mentions_highest_harmonic": {
+          "value": true
+        }
+      }
+    },
+    {
+      "id": "validation_positive_vcos_sign",
+      "metrics": {
+        "raised": {
+          "value": true
+        },
+        "message_mentions_sign_convention": {
+          "value": true
+        }
+      }
+    }
+  ]
+}
