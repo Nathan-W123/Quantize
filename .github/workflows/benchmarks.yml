@@ -7,6 +7,10 @@ on:
       - main
       - master
 
+env:
+  PYTHONPATH: .github
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   benchmark-regressions:
     runs-on: ubuntu-latest
