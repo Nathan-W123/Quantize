@@ -1,4 +1,4 @@
-aimport numpy as np
+import numpy as np
 from multiprocessing import freeze_support
 from backend.geometryguess import guess_bent_triatomic
 from backend.multistart import run_multistart, select_best_result, underconstrained_success_score

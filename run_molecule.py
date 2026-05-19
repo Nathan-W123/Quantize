@@ -40,17 +40,7 @@ except ModuleNotFoundError:
         )
     raise SystemExit(1) from None
 
-RUNNER_MODULES = {
-    "so2": "molecule_runners.run_SO2",
-    "ocs": "molecule_runners.run_OCS",
-    "co2": "molecule_runners.run_CO2",
-    "water": "molecule_runners.run_water",
-    "methanol": "molecule_runners.run_methanol_vt0_staggered",
-    "methanol_vt0_staggered": "molecule_runners.run_methanol_vt0_staggered",
-    "benzene": "molecule_runners.run_benzene",
-    "formaldehyde": "molecule_runners.run_formaldehyde",
-    "naphthalene": "molecule_runners.run_naphthalene",
-}
+from runner.molecule_registry import RUNNER_MODULES  # noqa: E402
 
 # Edit these defaults, then run this script directly.
 MOLECULE = "ocs"  # so2 | ocs | co2 | water | methanol
