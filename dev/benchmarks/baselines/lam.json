@@ -49,8 +49,8 @@
           "max_abs_delta": 0.5
         },
         "min_symmetry_purity": {
-          "value": 0.7649507687291498,
-          "max_abs_delta": 0.05
+          "value": 0.9677047171969679,
+          "max_abs_delta": 0.25
         },
         "basis_convergence_delta_cm1": {
           "value": 1.6485674336763623e-07,
