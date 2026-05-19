@@ -751,6 +751,62 @@ class MolecularOptimizer:
             iso["alpha_constants"] = corr_dict["alpha_constants"]
             iso["rovib_correction"] = corr_dict["rovib_correction"]
             self._refresh_iso_delta_total(iso, corr_dict["rovib_correction"])
+        # Cross-check: compare VPT2 alpha with harmonic Hessian alpha (diagnostic only).
+        if self.quantum is not None and getattr(self.quantum, "_hessian_bohr", None) is not None:
+            self._reconcile_vpt2_vs_harmonic(result.isotopologue_corrections)
+
+    def _reconcile_vpt2_vs_harmonic(self, isotopologue_corrections):
+        """Compare VPT2 alpha (from ORCA) with harmonic alpha computed from the Hessian.
+
+        Prints a per-isotopologue, per-component table.  Flags components where
+        |Δα| > 2 × harmonic_sigma — which suggests the harmonic uncertainty estimate
+        may be too tight or a resonance is affecting the VPT2 result.
+        """
+        from backend.harmonic_alpha import compute_harmonic_alpha  # pylint: disable=import-outside-toplevel
+
+        print("  [vpt2-check] VPT2 vs harmonic-Hessian alpha cross-check:")
+        _labels = ["A", "B", "C"]
+        for corr_dict in isotopologue_corrections:
+            label = str(corr_dict["name"])
+            iso_raw = next(
+                (i for i in self._raw_isotopologues if str(i.get("name", "iso")) == label),
+                None,
+            )
+            if iso_raw is None:
+                continue
+            masses = list(iso_raw.get("masses", []))
+            if not masses:
+                continue
+            try:
+                h_alpha, _, h_sigma, _ = compute_harmonic_alpha(
+                    self.quantum._hessian_bohr,
+                    self.coords,
+                    masses,
+                    sigma_fraction=self._harmonic_sigma_fraction,
+                )
+            except Exception as exc:
+                print(f"  [vpt2-check]   {label}: harmonic computation failed ({exc})")
+                continue
+            corr = corr_dict.get("rovib_correction")
+            if corr is None:
+                continue
+            vpt2_map = {
+                "A": getattr(corr, "alpha_A", None),
+                "B": getattr(corr, "alpha_B", None),
+                "C": getattr(corr, "alpha_C", None),
+            }
+            parts = []
+            for lbl in _labels:
+                v_vpt2 = vpt2_map.get(lbl)
+                if v_vpt2 is None:
+                    continue
+                v_harm = h_alpha.get(lbl, 0.0)
+                sig = h_sigma.get(lbl, 1.0)
+                diff = abs(float(v_vpt2) - float(v_harm))
+                flag = "  [>2σ]" if diff > 2.0 * sig else ""
+                parts.append(f"{lbl}: VPT2={float(v_vpt2):+.1f} harm={v_harm:+.1f} Δ={diff:.1f} MHz{flag}")
+            if parts:
+                print(f"  [vpt2-check]   {label}: {';  '.join(parts)}")
 
     def _apply_harmonic_alpha_corrections(self):
         """Recompute harmonic alpha from the current Hessian and update spectral targets.
@@ -765,12 +821,19 @@ class MolecularOptimizer:
             return
         hess_bohr = self.quantum._hessian_bohr
         print("\n  [harmonic-alpha] Computing harmonic alpha from Hessian...")
-        ctbl_raw = build_correction_table_from_hessian(
+        ctbl_raw, _res_info = build_correction_table_from_hessian(
             hess_bohr,
             self.coords,
             self._raw_isotopologues,
             sigma_fraction=self._harmonic_sigma_fraction,
         )
+        _near_degen = _res_info.get("total_near_degen_skips", 0)
+        if _near_degen > 0:
+            print(
+                f"  [harmonic-alpha] WARNING: {_near_degen} near-degenerate Coriolis pair(s) "
+                "skipped (|ω_s²−ω_r²| < 0.01 cm⁻²). Alpha values may be less reliable for "
+                "these modes (Fermi/Coriolis resonance region)."
+            )
         if not ctbl_raw:
             print("  [harmonic-alpha] Warning: no alpha values computed; skipping update.")
             return
@@ -1001,6 +1064,21 @@ class MolecularOptimizer:
                 comps = [labels[c] if 0 <= int(c) < 3 else f"R{int(c)}" for c in idx]
                 print(f"[rank-debug]   iso {i}: {comps}")
 
+        # #5: Per-component observability — how many isotopologues constrain each constant
+        _comp_labels = ["A", "B", "C"]
+        _obs_count = {"A": 0, "B": 0, "C": 0}
+        for _iso in self.spectral.isotopologues:
+            for _cidx in _iso.get("component_indices", []):
+                _c = int(_cidx)
+                if 0 <= _c < 3:
+                    _obs_count[_comp_labels[_c]] += 1
+        _n_iso = len(self.spectral.isotopologues)
+        print(f"\n[observability] {_n_iso} isotopologue(s); rotational constant constraints:")
+        for _k in _comp_labels:
+            _n = _obs_count[_k]
+            _status = "constrained" if _n >= 1 else "UNCONSTRAINED"
+            print(f"  {_k}: {_n} isotopologue(s)  [{_status}]")
+
         converged = False
         prev_energy = None
         prev_freq_rms = None
@@ -1050,10 +1128,23 @@ class MolecularOptimizer:
                 _ic_g, _ic_H = quantum_terms_q(g, H, _ic_Bplus) # (n_active,), (n_active, n_active)
                 # AutoConfig was initialised with 3N (Cartesian DOF); correct to n_q
                 # on the first iteration so rank_frac reflects internal DOF, not Cartesian.
-                if it == 0 and self.autoconfig is not None:
-                    n_active = len(_ic_coord_set.active_coords())
-                    if n_active > 0:
-                        self.autoconfig.n_params = n_active
+                if it == 0:
+                    b_diag = _ic_coord_set.b_rank_diagnostics(self.coords)
+                    kappa_b_str = f"{b_diag['kappa_B']:.2e}" if b_diag['kappa_B'] is not None else "n/a"
+                    print(
+                        f"[B-matrix] n_coords={b_diag['n_coords']}  rank={b_diag['rank']}"
+                        f"  of {b_diag['n_dof']} DOF  κ(B)={kappa_b_str}"
+                    )
+                    if b_diag["kappa_B"] is not None and b_diag["kappa_B"] > 1e4:
+                        print(
+                            f"  [warn] B-matrix ill-conditioned κ(B)={b_diag['kappa_B']:.2e}; "
+                            "some internal coordinates may be linearly dependent — "
+                            "consider increasing ic_damping."
+                        )
+                    if self.autoconfig is not None:
+                        n_active = len(_ic_coord_set.active_coords())
+                        if n_active > 0:
+                            self.autoconfig.n_params = n_active
 
                 # Phase 6: native q-space internal priors
                 if self._ic_prior_weight > 0.0:

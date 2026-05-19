@@ -177,6 +177,7 @@ def compute_harmonic_alpha(
             {k: 0.0 for k in labels},
             {k: float(B_e_mhz[i]) for i, k in enumerate(labels)},
             {k: 0.0 for k in labels},
+            {"near_degen_skips": 0},
         )
 
     omega_mhz = omega_cm * _CM_TO_MHZ
@@ -223,6 +224,7 @@ def compute_harmonic_alpha(
     # where ε = 3−K−J  (the third axis not K, not J)
     # All B_e and ω in cm⁻¹; then convert result to MHz.
     alpha_cor_cm = np.zeros((3, n_vib))
+    near_degen_skips = 0  # count (r,s) pairs skipped due to |ω_s²−ω_r²| < threshold
 
     for r in range(n_vib):
         wr2 = omega_cm[r] ** 2
@@ -238,6 +240,7 @@ def compute_harmonic_alpha(
                     ws2 = omega_cm[s] ** 2
                     denom = ws2 - wr2
                     if abs(denom) < 0.01:  # near-degenerate modes → skip
+                        near_degen_skips += 1
                         continue
                     cor += B_e_cm[J] * zeta[eps, r, s] ** 2 * omega_cm[s] / denom
             alpha_cor_cm[K, r] = -4.0 * B_e_cm[K] * cor
@@ -255,6 +258,7 @@ def compute_harmonic_alpha(
         {k: float(alpha_sum[i]) for i, k in enumerate(labels)},
         {k: float(B_e_mhz[i])  for i, k in enumerate(labels)},
         sigma_vals,
+        {"near_degen_skips": near_degen_skips},
     )
 
 
@@ -265,25 +269,30 @@ def build_correction_table_from_hessian(
     min_freq_cm: float = 50.0,
     fd_delta: float = 0.05,
     sigma_fraction: float = 0.02,
-) -> dict:
+) -> tuple[dict, dict]:
     """
     Build a correction_table dict (compatible with parse_correction_table)
     from the harmonic alpha computed from the Hessian.
 
-    Returns a dict keyed by isotopologue name → component → spec.
+    Returns
+    -------
+    table           : dict keyed by isotopologue name → component → spec
+    resonance_info  : {"total_near_degen_skips": int} aggregated across isotopologues
     """
     table: dict = {}
+    total_near_degen_skips = 0
     for iso in isotopologues:
         name   = str(iso.get("name", "iso"))
         masses = list(iso.get("masses", []))
         if not masses:
             continue
-        alpha_sum, _, sigma = compute_harmonic_alpha(
+        alpha_sum, _, sigma, res_info = compute_harmonic_alpha(
             hess_bohr, coords_ang, masses,
             min_freq_cm=min_freq_cm,
             fd_delta=fd_delta,
             sigma_fraction=sigma_fraction,
         )
+        total_near_degen_skips += res_info.get("near_degen_skips", 0)
         table[name] = {
             comp: {
                 "alpha_sum_mhz": alpha_sum[comp],
@@ -294,4 +303,4 @@ def build_correction_table_from_hessian(
             }
             for comp in ("A", "B", "C")
         }
-    return table
+    return table, {"total_near_degen_skips": total_near_degen_skips}
