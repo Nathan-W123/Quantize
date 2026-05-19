@@ -207,6 +207,32 @@ class InternalCoordinateSet:
         n = BBt.shape[0]
         return B.T @ np.linalg.solve(BBt + damping * np.eye(n), np.eye(n))
 
+    def b_rank_diagnostics(self, coords) -> dict:
+        """
+        SVD-based condition number and rank of the active Wilson B-matrix.
+
+        Returns
+        -------
+        dict with keys:
+          n_coords  : number of active internal coordinates
+          n_dof     : number of Cartesian DOF (3N)
+          rank      : numerical rank (singular values > 1e-10 × σ_max)
+          kappa_B   : condition number σ_max/σ_min_nonzero, or None if rank < 2
+        """
+        B = self.active_B_matrix(coords)
+        if B.size == 0 or B.shape[0] == 0:
+            return {"n_coords": 0, "n_dof": int(3 * len(self.elems)), "rank": 0, "kappa_B": None}
+        sv = np.linalg.svd(B, compute_uv=False)
+        sv_pos = sv[sv > 1e-10 * max(float(sv[0]), 1e-30)]
+        rank = int(len(sv_pos))
+        kappa = float(sv[0] / sv_pos[-1]) if rank > 1 else 1.0
+        return {
+            "n_coords": int(B.shape[0]),
+            "n_dof": int(B.shape[1]),
+            "rank": rank,
+            "kappa_B": kappa,
+        }
+
 
 # ── Phase 2: back-transformation ─────────────────────────────────────────────
 
