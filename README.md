@@ -7,7 +7,9 @@ This project estimates molecular structure (bond lengths and angles) from isotop
 ## Core idea
 
 - Use observed rotational constants (`A`, `B`, `C`) from one or more isotopologues.
-- Map ground-state constants toward equilibrium targets using \(B_e \approx B_0 + \tfrac{1}{2}\alpha\) (per component).
+- Map ground-state constants toward equilibrium targets:
+  - **`harmonic_from_hessian: true` (recommended):** \(B_e \approx B_0 + \delta_\text{cent} + \delta_\text{Cor} + \delta_\text{elec}\) — centrifugal, Coriolis, and electronic corrections computed self-consistently from the ORCA Hessian (Watson 1968). Refreshed on every Hessian update.
+  - **Legacy / static alpha:** \(B_e \approx B_0 + \tfrac{1}{2}\alpha\) using user-supplied `alpha_mhz` values (no Coriolis term; less accurate for asymmetric tops).
 - Stack spectral Jacobians across isotopologues, apply **SVD** to split **range space** (spectroscopy-sensitive directions) from **null space** (directions invisible to the stacked Jacobian).
 - Use electronic-energy **gradient and Hessian** (Psi4 or ORCA) for a damped-Newton step in the null space so the structure is stabilized where data are silent.
 
