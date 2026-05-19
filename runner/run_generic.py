@@ -87,11 +87,16 @@ def _torsion_transition_objective_from_levels(
 
     rows: list[dict[str, Any]] = []
     warnings: list[str] = []
+    _n_input = len(transition_rows)
+    _n_skip_missing = 0
+    _n_skip_no_freq = 0
+    _n_skip_symmetry = 0
     for t in transition_rows:
         lo_key = (int(t["J_lo"]), int(t["K_lo"]), int(t["level_lo"]))
         hi_key = (int(t["J_hi"]), int(t["K_hi"]), int(t["level_hi"]))
         if lo_key not in pred_map or hi_key not in pred_map:
             warnings.append(f"Missing predicted level for transition keys lo={lo_key}, hi={hi_key}")
+            _n_skip_missing += 1
             continue
 
         # Resolve observed frequency: freq_cm-1 takes priority; freq_mhz as fallback.
@@ -102,6 +107,7 @@ def _torsion_transition_objective_from_levels(
                 warnings.append(
                     f"Transition lo={lo_key} hi={hi_key} has neither freq_cm-1 nor freq_mhz; skipped."
                 )
+                _n_skip_no_freq += 1
                 continue
             obs_raw = float(obs_mhz) / _MHZ_PER_CM1
         obs = float(obs_raw)
@@ -115,6 +121,7 @@ def _torsion_transition_objective_from_levels(
                     f"Symmetry mismatch at lo_key={lo_key}: "
                     f"predicted '{pred_sym_map[lo_key]}' != spec '{sym_lo_spec}'; transition skipped."
                 )
+                _n_skip_symmetry += 1
                 continue
         if sym_hi_spec is not None and hi_key in pred_sym_map:
             if str(pred_sym_map[hi_key]).upper() != str(sym_hi_spec).upper():
@@ -122,6 +129,7 @@ def _torsion_transition_objective_from_levels(
                     f"Symmetry mismatch at hi_key={hi_key}: "
                     f"predicted '{pred_sym_map[hi_key]}' != spec '{sym_hi_spec}'; transition skipped."
                 )
+                _n_skip_symmetry += 1
                 continue
 
         pred = float(pred_map[hi_key] - pred_map[lo_key])
@@ -145,15 +153,24 @@ def _torsion_transition_objective_from_levels(
             row["sigma_cm-1"] = float(sigma_raw)
         rows.append(row)
 
+    _skip_counts = {
+        "n_input": _n_input,
+        "n_matched": len(rows),
+        "n_skipped_total": _n_skip_missing + _n_skip_no_freq + _n_skip_symmetry,
+        "n_missing_level": _n_skip_missing,
+        "n_no_freq": _n_skip_no_freq,
+        "n_symmetry": _n_skip_symmetry,
+    }
     if not rows:
         return {
             "rows": [],
             "rms_cm-1": float("inf"),
             "warnings": warnings + ["No matched torsion target transitions."],
+            "skip_counts": _skip_counts,
         }
     res = np.asarray([r["residual_cm-1"] for r in rows], dtype=float)
     rms = float(np.sqrt(np.mean(res ** 2)))
-    return {"rows": rows, "rms_cm-1": rms, "warnings": warnings}
+    return {"rows": rows, "rms_cm-1": rms, "warnings": warnings, "skip_counts": _skip_counts}
 
 
 def _reorder_to_match(
@@ -263,7 +280,7 @@ def _build_isotopologue(iso: dict, spectral_model: str = "rigid") -> dict:
 
     obs = [float(v) for v in iso["obs_b0_mhz"]]
     sig = [float(v) for v in iso["sigma_mhz"]]
-    alp = [float(v) for v in iso["alpha_mhz"]]
+    alp = [float(v) for v in iso["alpha_mhz"]] if "alpha_mhz" in iso else [0.0] * len(indices)
     if not (len(obs) == len(sig) == len(alp) == len(indices)):
         raise ValueError(
             f"Isotopologue '{iso.get('name', 'iso')}' has mismatched component/value lengths."
@@ -369,14 +386,17 @@ def _compute_metrics(
     return metrics
 
 
-def _print_internal_uncertainty_summary(best: dict, cfg: dict, elems: list[str]) -> None:
-    """Print internal-coordinate uncertainty and variance table to CLI."""
+def _print_internal_uncertainty_summary(best: dict, cfg: dict, elems: list[str]) -> str | None:
+    """Print internal-coordinate uncertainty and variance table to CLI.
+
+    Returns the path to the written covariance .npy file, or None if not in internal mode.
+    """
     coord_mode = str(cfg.get("coordinate_mode", "internal")).strip().lower()
     if coord_mode != "internal":
-        return
+        return None
     iso_snapshot = best.get("spectral_isotopologues_snapshot", [])
     if not iso_snapshot:
-        return
+        return None
 
     ic_cfg = cfg.get("internal_coordinates", {}) or {}
     use_dihedrals = bool(ic_cfg.get("use_dihedrals", False))
@@ -395,6 +415,8 @@ def _print_internal_uncertainty_summary(best: dict, cfg: dict, elems: list[str])
     Bplus = InternalCoordinateSet.damped_pseudoinverse(B_active, damping)
     J_spectral, residual_w = SpectralEngine(iso_snapshot).stacked(coords)
     Jq = spectral_jacobian_q(J_spectral, Bplus)
+    if B_active.shape[1] == 0:
+        return None
     _, _, sigma_prior = build_internal_priors(
         coord_set,
         coords,
@@ -414,6 +436,7 @@ def _print_internal_uncertainty_summary(best: dict, cfg: dict, elems: list[str])
         Jq,
         sigma_prior=sigma_prior,
         lambda_reg=damping,
+        residual_w=residual_w,
         dominance_labels=classify_prior_dominance(Jq, sigma_prior, coord_set.active_names()),
         sensitivity_rows=prior_sensitivity_analysis(
             coord_set,
@@ -446,6 +469,24 @@ def _print_internal_uncertainty_summary(best: dict, cfg: dict, elems: list[str])
         print(
             f"  {r['name']:<30}  {float(r['value']):>12.6f}  {se:>12.6f}  {var:>12.6f}  {r['value_unit']:>6}  {combo}"
         )
+
+    # ── Covariance matrix export ──────────────────────────────────────────────
+    from backend.uncertainty.core import compute_uncertainty
+    _cov, _, _, _ = compute_uncertainty(
+        Jq,
+        sigma_prior=sigma_prior,
+        lambda_reg=damping,
+        residual_w=residual_w,
+    )
+    _workdir = best.get("workdir", ".")
+    _cov_path = str(Path(_workdir) / "uncertainty_covariance.npy")
+    try:
+        np.save(_cov_path, _cov)
+        print(f"\n  [Uncertainty] Covariance matrix ({_cov.shape[0]}×{_cov.shape[1]}) → {_cov_path}")
+    except OSError as _exc:
+        print(f"\n  [Uncertainty] Could not write covariance matrix: {_exc}")
+        _cov_path = None
+    return _cov_path
 
 
 def _fit_scan_potential(
@@ -1868,11 +1909,31 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
         or cfg.get("correction_sigma_elec_fraction")
         or 0.1
     )
-    correction_bob_params = (
+    _user_bob_params = (
         _rc_block.get("bob_params")
         or cfg.get("correction_bob_params")
         or None
     )
+    # Fall back to built-in literature estimates when user supplies nothing.
+    # Explicit user values always take priority element-by-element.
+    _use_builtin_bob = bool(_rc_block.get("use_builtin_bob", True))
+    if _use_builtin_bob:
+        from backend.correction_models import get_builtin_bob_params
+        correction_bob_params = get_builtin_bob_params(elems, _user_bob_params)
+    else:
+        correction_bob_params = _user_bob_params
+    use_orca_rovib = bool(
+        _rc_block.get("use_orca_rovib")
+        or cfg.get("use_orca_rovib")
+        or False
+    )
+    rovib_recalc_every = int(
+        _rc_block.get("rovib_recalc_every")
+        or cfg.get("rovib_recalc_every")
+        or 1
+    )
+    harmonic_from_hessian = bool(_rc_block.get("harmonic_from_hessian", False))
+    harmonic_sigma_fraction = float(_rc_block.get("harmonic_sigma_fraction", 0.02))
 
     # ── Preset and run control ────────────────────────────────────────────────
     preset_name, preset = _resolve_preset(cfg.get("preset"))
@@ -1967,8 +2028,8 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
         quantum_weight_beta=2.0,
         quantum_weight_min=0.25,
         quantum_weight_max=5.0,
-        use_orca_rovib=False,
-        rovib_recalc_every=1,
+        use_orca_rovib=use_orca_rovib,
+        rovib_recalc_every=rovib_recalc_every,
         rovib_source_mode="hybrid_auto",
         correction_table=correction_table,
         correction_mode=correction_mode,
@@ -1976,6 +2037,8 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
         correction_elec=correction_elec,
         correction_sigma_elec_fraction=correction_sigma_elec_fraction,
         correction_bob_params=correction_bob_params,
+        harmonic_from_hessian=harmonic_from_hessian,
+        harmonic_sigma_fraction=harmonic_sigma_fraction,
         coordinate_mode=coordinate_mode,
         ic_use_dihedrals=ic_use_dihedrals,
         ic_damping=ic_damping,
@@ -2047,6 +2110,7 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
             if torsion_transitions:
                 t_obj = _torsion_transition_objective_from_levels(t_rows, torsion_transitions)
                 r["torsion_objective_kind"] = "transitions"
+                r["torsion_skip_counts"] = t_obj.get("skip_counts", {})
             else:
                 t_obj = torsion_objective_from_levels(t_rows, torsion_targets)
                 r["torsion_objective_kind"] = "levels"
@@ -2145,7 +2209,43 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
         verdict = "geometry regularized by quantum prior; low spectral confidence"
     print(f"  Verdict              : {verdict}")
     print("=" * w)
-    _print_internal_uncertainty_summary(best, cfg, elems)
+
+    # ── Acceptance rate ───────────────────────────────────────────────────────
+    n_acc = best.get("n_accepted", 0)
+    n_tot = best.get("n_iterations", 0)
+    if n_tot > 0:
+        ar = best.get("accept_rate", 0.0)
+        print(f"  Accept rate          : {n_acc}/{n_tot} = {100.0 * ar:.1f}%")
+        if ar < 0.20:
+            print("  [Warning] Low acceptance (<20%) — consider reducing trust_radius or raising lambda_damp.")
+        elif ar > 0.95:
+            print("  [Warning] Very high acceptance (>95%) — optimizer may be underconstrained.")
+
+    # ── SVD diagnostics ───────────────────────────────────────────────────────
+    svd = best.get("svd_summary", {})
+    if svd:
+        print(f"  SVD rank             : {svd.get('final_rank', 'n/a')}")
+        cond = svd.get("condition_number")
+        if cond is not None and np.isfinite(cond):
+            print(f"  Condition number     : {cond:.3e}")
+        sv_gap = svd.get("sv_gap")
+        if sv_gap is not None:
+            print(f"  SV gap (kept/next)   : {sv_gap:.3e}")
+            if sv_gap < 10.0:
+                print("  [Warning] Small SV gap — rank boundary may be unstable; consider adjusting sv_threshold.")
+    print("=" * w)
+
+    # ── Torsion skip-count summary ────────────────────────────────────────────
+    sc = best.get("torsion_skip_counts", {})
+    if sc and sc.get("n_skipped_total", 0) > 0:
+        print(
+            f"\n  [Torsion] {sc['n_skipped_total']} of {sc.get('n_input', '?')} transition(s) excluded: "
+            f"{sc.get('n_missing_level', 0)} missing predicted level, "
+            f"{sc.get('n_no_freq', 0)} missing freq, "
+            f"{sc.get('n_symmetry', 0)} symmetry mismatch."
+        )
+
+    _cov_path = _print_internal_uncertainty_summary(best, cfg, elems)
 
     result_bundle = {
         "name": name,
@@ -2175,6 +2275,12 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
             ),
         },
         "conformer_summary": best_conformer_summary,
+        "accept_rate": best.get("accept_rate"),
+        "n_accepted": best.get("n_accepted"),
+        "n_iterations": best.get("n_iterations"),
+        "svd_summary": best.get("svd_summary", {}),
+        "torsion_skip_counts": best.get("torsion_skip_counts", {}),
+        "covariance_npy": _cov_path,
     }
 
     torsion_artifacts = _run_torsion_phase2_exports(

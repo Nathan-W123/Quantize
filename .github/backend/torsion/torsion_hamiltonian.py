@@ -258,6 +258,24 @@ def build_ram_lite_hamiltonian(spec: TorsionHamiltonianSpec, J: int = 0, K: int 
         warnings.append("rho magnitude > 1 is unusual; verify reduced-axis parameters.")
     if spec.n_basis < 3:
         warnings.append("Very small n_basis may be insufficient for converged torsion levels.")
+
+    # ⟨m|cos(nα)|m'⟩ ≠ 0 only when |m − m'| = n, so a V_n harmonic couples
+    # basis states n apart.  Full representation without boundary truncation
+    # requires n_basis ≥ 2·max_order, so the outermost occupied state still
+    # has max_order additional basis states beyond it on each side.
+    _amp_tol = 1e-12
+    _max_pot_order = max(
+        max((k for k, a in spec.potential.vcos.items() if k > 0 and abs(float(a)) > _amp_tol), default=0),
+        max((k for k, a in spec.potential.vsin.items() if k > 0 and abs(float(a)) > _amp_tol), default=0),
+    )
+    if _max_pot_order > spec.n_basis // 2:
+        warnings.append(
+            f"Potential has Fourier order {_max_pot_order} but n_basis={spec.n_basis} "
+            f"(half-range); off-diagonal matrix elements near the basis boundary will "
+            f"be truncated, which can produce unphysical tunnelling splittings. "
+            f"Recommend n_basis >= {2 * _max_pot_order}."
+        )
+
     if float(spec.F) <= 0.0:
         warnings.append("Non-positive scalar F is unusual; verify torsional kinetic constant.")
     if (abs(float(spec.F4)) > 0.0) or (abs(float(spec.F6)) > 0.0) or (abs(float(spec.c_mk)) > 0.0) or (abs(float(spec.c_k2)) > 0.0):

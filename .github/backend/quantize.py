@@ -307,6 +307,8 @@ class MolecularOptimizer:
         correction_elec=False,
         correction_sigma_elec_fraction=0.1,
         correction_bob_params=None,
+        harmonic_from_hessian=False,
+        harmonic_sigma_fraction=0.02,
         coordinate_mode="internal",
         ic_damping=1e-6,
         ic_use_dihedrals=False,
@@ -329,6 +331,12 @@ class MolecularOptimizer:
             orca_basis = preset_basis
 
         # ── Rovibrational corrections (M1-M4) ────────────────────────────────
+        self._harmonic_from_hessian = bool(harmonic_from_hessian)
+        self._harmonic_sigma_fraction = max(float(harmonic_sigma_fraction), 1e-6)
+        self._correction_elec = bool(correction_elec)
+        self._correction_sigma_elec_fraction = float(correction_sigma_elec_fraction)
+        self._correction_bob_params = correction_bob_params or None
+        self._raw_isotopologues = list(isotopologues)   # preserved for harmonic updates
         self._corrected_targets = None
         _ctbl = parse_correction_table(correction_table)
         _apply_corrections = bool(_ctbl) or correction_mode != "hybrid_auto"
@@ -743,6 +751,71 @@ class MolecularOptimizer:
             iso["rovib_correction"] = corr_dict["rovib_correction"]
             self._refresh_iso_delta_total(iso, corr_dict["rovib_correction"])
 
+    def _apply_harmonic_alpha_corrections(self):
+        """Recompute harmonic alpha from the current Hessian and update spectral targets.
+
+        Called once after the first Hessian computation when harmonic_from_hessian=True.
+        Re-applies rovibrational + electronic corrections to the raw (uncorrected)
+        isotopologue data using the current harmonic alpha values.
+        """
+        from backend.harmonic_alpha import build_correction_table_from_hessian  # pylint: disable=import-outside-toplevel
+
+        if self.quantum is None:
+            return
+        hess_bohr = self.quantum._hessian_bohr
+        print("\n  [harmonic-alpha] Computing harmonic alpha from Hessian...")
+        ctbl_raw = build_correction_table_from_hessian(
+            hess_bohr,
+            self.coords,
+            self._raw_isotopologues,
+            sigma_fraction=self._harmonic_sigma_fraction,
+        )
+        if not ctbl_raw:
+            print("  [harmonic-alpha] Warning: no alpha values computed; skipping update.")
+            return
+
+        # Print a brief summary
+        for iso_name, comps in ctbl_raw.items():
+            parts = []
+            for comp_lbl in ("A", "B", "C"):
+                if comp_lbl in comps:
+                    v = comps[comp_lbl]["alpha_sum_mhz"]
+                    s = comps[comp_lbl]["sigma_mhz"]
+                    parts.append(f"{comp_lbl}={v:+.1f}±{s:.1f}")
+            print(f"  [harmonic-alpha]   {iso_name}: Σα = {', '.join(parts)} MHz")
+
+        from backend.correction_models import parse_correction_table  # pylint: disable=import-outside-toplevel
+        ctbl = parse_correction_table(ctbl_raw)
+        corrected_targets = resolve_corrections(
+            self._raw_isotopologues,
+            correction_table=ctbl,
+            mode="user_only",
+            sigma_vib_fraction=0.0,
+            elems=list(self.elems),
+            correction_elec=self._correction_elec,
+            sigma_elec_fraction=self._correction_sigma_elec_fraction,
+            correction_bob_params=self._correction_bob_params,
+        )
+        _qc_warnings = validate_correction_quality(corrected_targets)
+        print("\n  Rovibrational corrections (harmonic from Hessian):")
+        print(correction_summary(corrected_targets))
+        for w in _qc_warnings:
+            print(f"  [correction-warning] {w}")
+        self._corrected_targets = corrected_targets
+        corrected_isos = apply_corrections_to_isotopologues(
+            self._raw_isotopologues, corrected_targets
+        )
+        # Update the SpectralEngine isotopologue data in-place
+        iso_by_name = {str(iso.get("name", "iso")): iso for iso in self.spectral.isotopologues}
+        for new_iso in corrected_isos:
+            name = str(new_iso.get("name", "iso"))
+            old_iso = iso_by_name.get(name)
+            if old_iso is None:
+                continue
+            old_iso["obs_constants"]   = new_iso["obs_constants"]
+            old_iso["alpha_constants"] = new_iso["alpha_constants"]
+            old_iso["sigma_constants"] = new_iso["sigma_constants"]
+
     def _update_orca(self):
         """Decide whether to do a full Hessian recalculation or gradient-only update."""
         self._orca_call_count += 1
@@ -750,6 +823,8 @@ class MolecularOptimizer:
             self._run_hessian()
             if self.use_orca_rovib and self._orca_call_count % self.rovib_recalc_every == 1:
                 self._run_rovib()
+            if self._harmonic_from_hessian and self._orca_call_count == 1:
+                self._apply_harmonic_alpha_corrections()
         else:
             self._run_gradient()
 
@@ -960,6 +1035,12 @@ class MolecularOptimizer:
                 _ic_Bplus = InternalCoordinateSet.damped_pseudoinverse(_ic_B_active, self._ic_damping)
                 J = spectral_jacobian_q(J, _ic_Bplus)           # (m, n_active)
                 _ic_g, _ic_H = quantum_terms_q(g, H, _ic_Bplus) # (n_active,), (n_active, n_active)
+                # AutoConfig was initialised with 3N (Cartesian DOF); correct to n_q
+                # on the first iteration so rank_frac reflects internal DOF, not Cartesian.
+                if it == 0 and self.autoconfig is not None:
+                    n_active = len(_ic_coord_set.active_coords())
+                    if n_active > 0:
+                        self.autoconfig.n_params = n_active
 
                 # Phase 6: native q-space internal priors
                 if self._ic_prior_weight > 0.0:
@@ -999,6 +1080,15 @@ class MolecularOptimizer:
                     self.coords, _q_target, _ic_coord_set,
                     max_micro=self._ic_micro_iter, damping=self._ic_damping,
                 )
+                # Project the back-transformed Cartesian geometry into the symmetric
+                # subspace so spectral residuals are evaluated on a geometry that
+                # respects symmetry constraints (mirrors Cartesian-mode behaviour).
+                if self.symmetry is not None:
+                    trial_coords = self.symmetry.symmetrize(trial_coords)
+                    # Recompute the effective q-space step so model_delta uses the
+                    # actual geometry change (symmetrization may have shortened dp).
+                    _q_trial = _ic_coord_set.active_values(trial_coords)
+                    dp = _q_trial - _q_curr
                 dx = (trial_coords - _orig_coords).ravel()      # Cartesian displacement for diagnostics
             else:
                 if self.symmetry is not None:
@@ -1397,6 +1487,7 @@ class MolecularOptimizer:
             coord_set, self.coords, Jq,
             sigma_prior=sigma_prior,
             lambda_reg=self._ic_damping,
+            residual_w=residual,
             dominance_labels=dominance,
             sensitivity_rows=sensitivity,
         )

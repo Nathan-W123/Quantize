@@ -79,12 +79,6 @@ isotopologues:
     alpha_mhz: [0.0, 0.0, 0.0]
     sigma_mhz: [10.0, 0.2, 0.2]
 
-  - name: CD3OH
-    masses: [12.0, 15.99491461957, 2.01410177785, 2.01410177785, 2.01410177785, 1.00782503207]
-    components: [A, B, C]
-    obs_b0_mhz: [70819.0, 19856.0, 19266.0]
-    alpha_mhz: [0.0, 0.0, 0.0]
-    sigma_mhz: [5.0, 0.05, 0.05]
 
 quantum:
   backend: orca

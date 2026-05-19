@@ -6,29 +6,11 @@ from typing import Any
 
 import numpy as np
 
-from backend.geometryguess import _relax_geometry
+from backend.geometryguess import _COV_RADII, _relax_geometry, _unit
 from backend.quantum import _detect_bonds, _detect_dihedrals
 from backend.spectral import _rotational_constants
 
-_KCAL_PER_MOL_PER_K = 0.00198720425864083
-_HARTREE_TO_KCAL_PER_MOL = 627.509474
-_CM1_TO_KCAL_PER_MOL = 0.002859144
 _DEFAULT_ANGLE_GRID_DEG = (60.0, 180.0, 300.0)
-
-_COV_RADII = {
-    "H": 0.31,
-    "C": 0.76,
-    "N": 0.71,
-    "O": 0.66,
-    "F": 0.57,
-    "P": 1.07,
-    "S": 1.05,
-    "Cl": 1.02,
-    "Br": 1.20,
-    "I": 1.39,
-    "Si": 1.11,
-    "B": 0.84,
-}
 
 
 @dataclass(frozen=True)
@@ -37,13 +19,6 @@ class RotatableBond:
     atom_j: int
     dihedral_atoms: tuple[int, int, int, int]
     rotating_atoms: tuple[int, ...]
-
-
-def _unit(vec: np.ndarray) -> np.ndarray:
-    nrm = float(np.linalg.norm(vec))
-    if nrm < 1e-12:
-        return np.array([1.0, 0.0, 0.0], dtype=float)
-    return vec / nrm
 
 
 def _rotation_matrix(axis: np.ndarray, angle_rad: float) -> np.ndarray:

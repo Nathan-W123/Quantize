@@ -148,6 +148,12 @@ def validate_config(cfg: dict[str, Any]) -> None:
                         )
             if "bond_lengths" in geometry and geometry["bond_lengths"] is not None:
                 _check_numeric_list(geometry["bond_lengths"], "geometry.bond_lengths", len(bonds), positive=True)
+                for _bi, _bv in enumerate([float(v) for v in geometry["bond_lengths"]]):
+                    if _bv < 0.3 or _bv > 5.0:
+                        raise ConfigError(
+                            f"'geometry.bond_lengths[{_bi}]' = {_bv:.3f} Å is outside the physical "
+                            "range [0.3, 5.0] Å. Check your initial geometry (values in Angstrom)."
+                        )
         elif method == "pubchem":
             if not str(geometry.get("identifier", "")).strip():
                 raise ConfigError("'geometry.identifier' is required when geometry.method is pubchem.")
@@ -161,6 +167,8 @@ def validate_config(cfg: dict[str, Any]) -> None:
     isotopologues = _as_list(cfg.get("isotopologues"), "isotopologues")
     if not isotopologues:
         raise ConfigError("'isotopologues' must contain at least one entry.")
+    _rc_block = cfg.get("rovibrational_corrections") or {}
+    _harmonic_from_hessian = bool(_rc_block.get("harmonic_from_hessian", False))
     seen_iso_names: set[str] = set()
     for iso_i, iso in enumerate(isotopologues):
         if not isinstance(iso, dict):
@@ -188,13 +196,23 @@ def validate_config(cfg: dict[str, Any]) -> None:
         n_comp = len(comps)
         if "obs_b0_mhz" not in iso:
             raise ConfigError(f"'{prefix}.obs_b0_mhz' is required (one value per listed component).")
-        if "alpha_mhz" not in iso:
+        if "alpha_mhz" not in iso and not _harmonic_from_hessian:
             raise ConfigError(f"'{prefix}.alpha_mhz' is required (one value per listed component).")
         if "sigma_mhz" not in iso:
             raise ConfigError(f"'{prefix}.sigma_mhz' is required (one value per listed component).")
-        _check_numeric_list(iso.get("obs_b0_mhz"), f"{prefix}.obs_b0_mhz", n_comp)
-        _check_numeric_list(iso.get("alpha_mhz"), f"{prefix}.alpha_mhz", n_comp)
+        _check_numeric_list(iso.get("obs_b0_mhz"), f"{prefix}.obs_b0_mhz", n_comp, positive=True)
+        if "alpha_mhz" in iso:
+            _check_numeric_list(iso.get("alpha_mhz"), f"{prefix}.alpha_mhz", n_comp)
         _check_numeric_list(iso.get("sigma_mhz"), f"{prefix}.sigma_mhz", n_comp, positive=True)
+        # Rotational constant ordering: A >= B >= C when all three are supplied.
+        if norm_comps == ["A", "B", "C"]:
+            _obs = [float(v) for v in iso["obs_b0_mhz"]]
+            if not (_obs[0] >= _obs[1] >= _obs[2]):
+                raise ConfigError(
+                    f"'{prefix}.obs_b0_mhz' must satisfy A >= B >= C for an asymmetric top "
+                    f"(got A={_obs[0]:.4f}, B={_obs[1]:.4f}, C={_obs[2]:.4f} MHz). "
+                    "Check units (values must be in MHz) and component order."
+                )
 
     if "spectral_model" in cfg and cfg.get("spectral_model") is not None:
         try:
@@ -315,7 +333,7 @@ def _validate_rovibrational_corrections_block(cfg: dict[str, Any]) -> None:
         )
 
     correction_table = rc.get("correction_table")
-    if correction_table is not None:
+    if correction_table is not None and not isinstance(correction_table, dict):
         p = Path(str(correction_table)).expanduser()
         if not p.is_file():
             raise ConfigError(
@@ -1708,6 +1726,7 @@ def write_outputs(result: dict[str, Any]) -> dict[str, Path | list[Path]]:
                         "ci_lo",
                         "ci_hi",
                         "ci_unit",
+                        "chi2_scale",
                         "prior_dominance",
                         "prior_sensitivity",
                         "prior_delta",
@@ -1831,7 +1850,7 @@ def write_outputs(result: dict[str, Any]) -> dict[str, Path | list[Path]]:
                     writer.writerow(r)
             artifacts["internal_prior_sensitivity_csv"] = sens_csv
 
-            cov, _, _ = compute_uncertainty(
+            cov, _, _, _ = compute_uncertainty(
                 Jq,
                 sigma_prior=sigma_prior,
                 lambda_reg=damping,
