@@ -13,7 +13,7 @@ def _default_orca_executable():
     return os.environ.get("QUANTIZE_ORCA_EXE") or os.environ.get("ORCA_EXE") or None
 
 
-# Default ORCA SCF/DFT method and basis for each molecule driver (runs/run_*.py).
+# Default ORCA SCF/DFT method and basis for each molecule driver (molecule_runners/).
 # Change these to retarget expensive quantum-chemistry steps. Optional global overrides
 # in BASE_SETTINGS (`orca_method`, `orca_basis`) replace the corresponding entry here for
 # every molecule when set to a non-None string.

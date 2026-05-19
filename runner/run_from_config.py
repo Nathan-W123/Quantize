@@ -38,20 +38,8 @@ except ModuleNotFoundError:
     print("NumPy is required. Install dependencies: pip install -r requirements.txt", file=sys.stderr)
     raise SystemExit(1) from None
 
+from runner.molecule_registry import RUNNER_MODULES
 from runner.usability import ConfigError, load_config, prepare_run_directory, validate_config
-
-# Same molecule keys as ``run_molecule.py`` (maps CLI name → runner module).
-RUNNER_MODULES: dict[str, str] = {
-    "so2": "molecule_runners.run_SO2",
-    "ocs": "molecule_runners.run_OCS",
-    "co2": "molecule_runners.run_CO2",
-    "water": "molecule_runners.run_water",
-    "methanol": "molecule_runners.run_methanol_vt0_staggered",
-    "methanol_vt0_staggered": "molecule_runners.run_methanol_vt0_staggered",
-    "benzene": "molecule_runners.run_benzene",
-    "formaldehyde": "molecule_runners.run_formaldehyde",
-    "naphthalene": "molecule_runners.run_naphthalene",
-}
 
 _QUANTIZE_ORCA_ENV = ("QUANTIZE_ORCA_METHOD", "QUANTIZE_ORCA_BASIS")
 _ORCA_EXE_KEY = "ORCA_EXE"
