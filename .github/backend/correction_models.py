@@ -22,6 +22,161 @@ import numpy as np
 # CODATA 2018 electron mass in unified atomic mass units
 M_ELECTRON_AMU: float = 5.48579909070e-4
 
+# ── Built-in BOB u-parameter estimates ───────────────────────────────────────
+#
+# Dimensionless Watson u-constants for Born-Oppenheimer Breakdown corrections.
+# These are ORDER-OF-MAGNITUDE ESTIMATES based on:
+#   Watson, J.K.G. J. Mol. Spectrosc. 80 (1980) 411-421
+#   Gordy & Cook "Microwave Molecular Spectra" 3rd ed., §11.3
+#   Puzzarini et al. Int. Rev. Phys. Chem. 29 (2010) 273-367
+#
+# u-values are highly molecule- and bond-type-dependent; these defaults carry
+# 100% relative uncertainty (sigma_u = u) so they regularise without dominating.
+# Provide molecule-specific values via bob_params in the YAML for higher accuracy.
+#
+# Format: element → component → {"u": float, "sigma_u": float}
+# Components A, B, C.  A is omitted for heavy atoms (negligible for oblate tops).
+_BOB_BUILTIN: dict = {
+    # Hydrogen — large BOB due to low mass; varies 0.01-0.03 in hydrides
+    "H": {
+        "A": {"u": 0.015, "sigma_u": 0.015},
+        "B": {"u": 0.015, "sigma_u": 0.015},
+        "C": {"u": 0.015, "sigma_u": 0.015},
+    },
+    # Deuterium — same adiabatic physics as H, smaller due to heavier mass
+    "D": {
+        "A": {"u": 0.008, "sigma_u": 0.008},
+        "B": {"u": 0.008, "sigma_u": 0.008},
+        "C": {"u": 0.008, "sigma_u": 0.008},
+    },
+    # Carbon — well-studied; typical range 0.002-0.005
+    "C": {
+        "B": {"u": 0.003, "sigma_u": 0.003},
+        "C": {"u": 0.003, "sigma_u": 0.003},
+    },
+    # Nitrogen — similar to carbon
+    "N": {
+        "B": {"u": 0.003, "sigma_u": 0.003},
+        "C": {"u": 0.003, "sigma_u": 0.003},
+    },
+    # Oxygen — typical range 0.001-0.004
+    "O": {
+        "B": {"u": 0.002, "sigma_u": 0.002},
+        "C": {"u": 0.002, "sigma_u": 0.002},
+    },
+    # Fluorine — electronegative; range 0.003-0.007
+    "F": {
+        "B": {"u": 0.004, "sigma_u": 0.004},
+        "C": {"u": 0.004, "sigma_u": 0.004},
+    },
+    # Sulfur — small correction; range 0.001-0.003
+    "S": {
+        "B": {"u": 0.001, "sigma_u": 0.002},
+        "C": {"u": 0.001, "sigma_u": 0.002},
+    },
+    # Chlorine — similar to sulfur
+    "Cl": {
+        "B": {"u": 0.001, "sigma_u": 0.002},
+        "C": {"u": 0.001, "sigma_u": 0.002},
+    },
+    # Silicon — sp3 hybridised; limited data, conservative estimate
+    "Si": {
+        "B": {"u": 0.002, "sigma_u": 0.003},
+        "C": {"u": 0.002, "sigma_u": 0.003},
+    },
+    # Phosphorus — similar to silicon
+    "P": {
+        "B": {"u": 0.002, "sigma_u": 0.003},
+        "C": {"u": 0.002, "sigma_u": 0.003},
+    },
+    # Bromine — heavier halogen; BOB smaller than Cl; range ~0.001-0.002
+    # Ref: Puzzarini et al. Int. Rev. Phys. Chem. 29 (2010) 273-367, Table 3
+    "Br": {
+        "B": {"u": 0.0012, "sigma_u": 0.002},
+        "C": {"u": 0.0012, "sigma_u": 0.002},
+    },
+    # Iodine — heaviest common halogen; BOB corrections very small; range ~0.0003-0.001
+    # Ref: Watson, J.K.G. J. Mol. Spectrosc. 80 (1980) 411-421
+    "I": {
+        "B": {"u": 0.0006, "sigma_u": 0.001},
+        "C": {"u": 0.0006, "sigma_u": 0.001},
+    },
+    # Selenium — similar to sulfur but slightly smaller per-atom contribution
+    # Ref: Gordy & Cook "Microwave Molecular Spectra" 3rd ed., §11.3
+    "Se": {
+        "B": {"u": 0.0008, "sigma_u": 0.002},
+        "C": {"u": 0.0008, "sigma_u": 0.002},
+    },
+    # Tritium (T = 3H) — same adiabatic physics as H/D, smaller still
+    "T": {
+        "A": {"u": 0.005, "sigma_u": 0.005},
+        "B": {"u": 0.005, "sigma_u": 0.005},
+        "C": {"u": 0.005, "sigma_u": 0.005},
+    },
+    # Lithium — alkali metal; BOB can be significant for LiX molecules; range ~0.003-0.008
+    "Li": {
+        "B": {"u": 0.005, "sigma_u": 0.005},
+        "C": {"u": 0.005, "sigma_u": 0.005},
+    },
+    # Sodium — heavier alkali; BOB smaller than Li; range ~0.001-0.003
+    "Na": {
+        "B": {"u": 0.002, "sigma_u": 0.003},
+        "C": {"u": 0.002, "sigma_u": 0.003},
+    },
+}
+
+
+def get_builtin_bob_params(
+    elems: list,
+    user_params: Optional[dict] = None,
+    warn: bool = True,
+) -> dict:
+    """
+    Return a BOB parameter dict for the given element list.
+
+    Built-in estimates (see _BOB_BUILTIN) are used for elements not covered by
+    user_params.  user_params entries take priority element-by-element.
+
+    Parameters
+    ----------
+    elems      : list of str  Element symbols (duplicates are de-duplicated).
+    user_params : dict or None  Per-element BOB params supplied by the user.
+                                Merged with built-ins; user values win on conflicts.
+    warn       : bool  If True (default), print a warning listing which elements
+                       fell back to built-in estimates so users know to supply
+                       molecule-specific values for higher accuracy.
+
+    Returns
+    -------
+    dict  Per-element BOB parameter dict suitable for bob_delta_b().
+    """
+    result: dict = {}
+    builtin_used: list = []
+    seen = set()
+    for elem in elems:
+        e = str(elem).strip()
+        if e in seen:
+            continue
+        seen.add(e)
+        if user_params and e in user_params:
+            result[e] = user_params[e]
+        elif e in _BOB_BUILTIN:
+            result[e] = _BOB_BUILTIN[e]
+            builtin_used.append(e)
+    # merge any user_params entries for elements not in elems (pass-through)
+    if user_params:
+        for e, v in user_params.items():
+            if e not in result:
+                result[e] = v
+    if warn and builtin_used:
+        print(
+            f"  [BOB] Using built-in literature u-parameter estimates for: "
+            f"{', '.join(sorted(set(builtin_used)))}.\n"
+            "  [BOB] These carry 100% sigma_u and are order-of-magnitude only.\n"
+            "  [BOB] Supply molecule-specific bob_params in the YAML for sub-mÅ accuracy."
+        )
+    return result
+
 
 # ── Correction table loader ───────────────────────────────────────────────────
 

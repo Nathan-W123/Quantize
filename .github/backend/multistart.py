@@ -44,6 +44,43 @@ def _run_one_start(payload):
     last = opt.history[-1] if opt.history else {}
     _e = last.get("energy", np.inf)
     _fr = last.get("freq_rms", np.inf)
+
+    # ── Acceptance-rate diagnostics ───────────────────────────────────────────
+    n_iters = len(opt.history)
+    n_accepted = sum(1 for h in opt.history if h.get("accepted", False))
+    accept_rate = float(n_accepted) / max(1, n_iters)
+
+    # ── SVD diagnostics (final iteration that has singular-value data) ────────
+    svd_summary: dict = {}
+    last_svs = None
+    final_rank = None
+    for h in reversed(opt.history):
+        if h.get("internal_singular_values") is not None:
+            last_svs = h["internal_singular_values"]
+            final_rank = h.get("internal_rank") or h.get("rank")
+            break
+    if last_svs is None:
+        for h in reversed(opt.history):
+            if h.get("rank") is not None:
+                final_rank = h["rank"]
+                break
+    if last_svs is not None and final_rank is not None:
+        sv = np.asarray(last_svs, dtype=float)
+        sv_pos = sv[sv > 0]
+        cond = float(sv_pos[0] / sv_pos[-1]) if sv_pos.size > 1 else float("inf")
+        sv_gap = (
+            float(sv[final_rank - 1] / sv[final_rank])
+            if (final_rank > 0 and final_rank < len(sv) and sv[final_rank] > 0)
+            else None
+        )
+        svd_summary = {
+            "final_rank": int(final_rank),
+            "condition_number": cond,
+            "sv_max": float(sv[0]),
+            "sv_min_kept": float(sv[final_rank - 1]) if final_rank > 0 else None,
+            "sv_gap": sv_gap,
+        }
+
     return {
         "idx": idx,
         "coords": final_coords,
@@ -55,6 +92,10 @@ def _run_one_start(payload):
         "spectral_isotopologues_snapshot": _spectral_isotopologue_snapshot(opt),
         "conformer_diagnostics": opt.spectral.conformer_diagnostics(),
         "conformer_summary": opt.conformer_summary,
+        "n_iterations": n_iters,
+        "n_accepted": n_accepted,
+        "accept_rate": accept_rate,
+        "svd_summary": svd_summary,
     }
 
 

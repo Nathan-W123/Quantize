@@ -39,6 +39,13 @@ class SubspaceOptimizer:
     lambda_damp : float
         Levenberg–Marquardt regularisation added to the null-space Hessian.
         Prevents blow-up when the Hessian has near-zero eigenvalues.  Default 1e-4.
+    null_hessian_floor : float
+        Eigenvalue floor applied to the projected null-space Hessian before
+        the Newton solve.  Clips curvature that is numerically zero at the
+        scale of the problem, preventing floating-point noise from producing a
+        spuriously large null-space step.  Units match the Hessian eigenvalue
+        units (energy / coordinate²); adjust if the optimizer is run at a very
+        different scale (e.g. cm⁻¹/Å² vs. MHz/Å²).  Default 1e-8.
     """
 
     def __init__(
@@ -55,6 +62,7 @@ class SubspaceOptimizer:
         quantum_weight_min=0.25,
         quantum_weight_max=5.0,
         use_internal_preconditioner=False,
+        null_hessian_floor=1e-8,
     ):
         self.sv_threshold = sv_threshold
         self.sv_min_abs = max(0.0, float(sv_min_abs))
@@ -63,6 +71,7 @@ class SubspaceOptimizer:
             float(null_trust_radius) if null_trust_radius is not None else 0.5 * float(trust_radius)
         )
         self.lambda_damp = lambda_damp
+        self.null_hessian_floor = float(null_hessian_floor)
         self.objective_mode = objective_mode
         self.alpha_quantum = float(alpha_quantum)
         self.dynamic_quantum_weight = bool(dynamic_quantum_weight)
@@ -140,8 +149,7 @@ class SubspaceOptimizer:
         H_null = V_null.T @ hessian @ V_null             # (3N−rank, 3N−rank)
         # Stabilize indefinite/near-singular null-space curvature.
         evals, evecs = np.linalg.eigh(H_null)
-        floor = 1e-8
-        evals = np.maximum(evals, floor)
+        evals = np.maximum(evals, self.null_hessian_floor)
         H_null_spd = evecs @ np.diag(evals) @ evecs.T
         H_reg  = H_null_spd + self.lambda_damp * np.eye(H_null.shape[0])
         dq     = np.linalg.solve(H_reg, -g_null)

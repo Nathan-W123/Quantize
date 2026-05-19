@@ -361,6 +361,13 @@ class OrcaBackend(QuantumBackend):
         parsed = parse_orca_rovib(self._out_path())
         alpha_abc = parsed.alpha_abc
         warnings_list = list(parsed.warnings)
+        if "resonance_detected" in (parsed.quality_flags or []):
+            print(
+                "  [ORCA] WARNING: Fermi/Darling-Dennison resonance detected in VPT2 output.\n"
+                "  [ORCA]   Standard VPT2 alpha constants may be unreliable for this molecule.\n"
+                "  [ORCA]   Consider: (1) GVPT2 if your ORCA version supports it, "
+                "(2) supplying alpha_mhz manually, or (3) setting use_orca_rovib: false."
+            )
         if parsed.parse_status == "parse_failed":
             vpt2_path = os.path.join(self.workdir, "quantize_orca.vpt2")
             if os.path.isfile(vpt2_path):
@@ -464,6 +471,13 @@ class OrcaBackend(QuantumBackend):
                     parsed_alpha = parsed.alpha_abc
                     warnings_list = list(parsed.warnings)
                     run_status = str(parsed.parse_status or "unknown")
+                    if "resonance_detected" in (parsed.quality_flags or []):
+                        print(
+                            f"  [ORCA] WARNING: Fermi/Darling-Dennison resonance detected "
+                            f"in VPT2 output for '{label}'.\n"
+                            "  [ORCA]   Alpha constants may be unreliable — "
+                            "consider supplying alpha_mhz manually."
+                        )
                     if parsed.parse_status == "parse_failed":
                         print(
                             f"  [ORCA] Warning: VPT2 parse failed for '{label}'; "

@@ -9,6 +9,14 @@ class AutoConfigEngine:
     diagnostics (rank, conditioning, residual distribution, acceptance trend).
     """
 
+    # Stage-classification thresholds — dimensionless ratios, scale-invariant
+    # by construction.  These encode optimizer policy and should not vary per
+    # molecule; the per-molecule dials are the base_* constructor arguments.
+    _EXPLORE_REJECT_STREAK = 3     # consecutive rejections → far from basin, widen search
+    _EXPLORE_SIGMA_RATIO   = 25.0  # residual / σ > 25 → solution likely in wrong basin
+    _FIT_RANK_FRAC         = 0.7   # effective rank / n_params < 0.7 → underdetermined
+    _FIT_SIGMA_RATIO       = 8.0   # residual / σ > 8 → still actively fitting, not refining
+
     def __init__(
         self,
         n_params,
@@ -45,9 +53,9 @@ class AutoConfigEngine:
         return float(np.median(np.abs(values)))
 
     def _classify_stage(self, rank_frac, sigma_ratio, reject_streak):
-        if reject_streak >= 3 or sigma_ratio > 25.0:
+        if reject_streak >= self._EXPLORE_REJECT_STREAK or sigma_ratio > self._EXPLORE_SIGMA_RATIO:
             return "explore"
-        if rank_frac < 0.7 or sigma_ratio > 8.0:
+        if rank_frac < self._FIT_RANK_FRAC or sigma_ratio > self._FIT_SIGMA_RATIO:
             return "fit"
         return "refine"
 
