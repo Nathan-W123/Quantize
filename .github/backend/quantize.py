@@ -333,6 +333,7 @@ class MolecularOptimizer:
         # ── Rovibrational corrections (M1-M4) ────────────────────────────────
         self._harmonic_from_hessian = bool(harmonic_from_hessian)
         self._harmonic_sigma_fraction = max(float(harmonic_sigma_fraction), 1e-6)
+        self._prev_harmonic_alpha_sum: dict = {}   # {(iso_name, comp): float} for drift tracking
         self._correction_elec = bool(correction_elec)
         self._correction_sigma_elec_fraction = float(correction_sigma_elec_fraction)
         self._correction_bob_params = correction_bob_params or None
@@ -774,15 +775,27 @@ class MolecularOptimizer:
             print("  [harmonic-alpha] Warning: no alpha values computed; skipping update.")
             return
 
-        # Print a brief summary
+        # Print summary and track drift from previous computation
+        max_delta = 0.0
         for iso_name, comps in ctbl_raw.items():
             parts = []
             for comp_lbl in ("A", "B", "C"):
-                if comp_lbl in comps:
-                    v = comps[comp_lbl]["alpha_sum_mhz"]
-                    s = comps[comp_lbl]["sigma_mhz"]
+                if comp_lbl not in comps:
+                    continue
+                v = comps[comp_lbl]["alpha_sum_mhz"]
+                s = comps[comp_lbl]["sigma_mhz"]
+                key = (iso_name, comp_lbl)
+                prev = self._prev_harmonic_alpha_sum.get(key)
+                if prev is not None:
+                    delta = abs(v - prev)
+                    max_delta = max(max_delta, delta)
+                    parts.append(f"{comp_lbl}={v:+.1f}±{s:.1f} (Δ={delta:+.2f})")
+                else:
                     parts.append(f"{comp_lbl}={v:+.1f}±{s:.1f}")
+                self._prev_harmonic_alpha_sum[key] = v
             print(f"  [harmonic-alpha]   {iso_name}: Σα = {', '.join(parts)} MHz")
+        if max_delta > 0.0:
+            print(f"  [harmonic-alpha] Max alpha drift since last Hessian: {max_delta:.2f} MHz")
 
         from backend.correction_models import parse_correction_table  # pylint: disable=import-outside-toplevel
         ctbl = parse_correction_table(ctbl_raw)
@@ -823,7 +836,7 @@ class MolecularOptimizer:
             self._run_hessian()
             if self.use_orca_rovib and self._orca_call_count % self.rovib_recalc_every == 1:
                 self._run_rovib()
-            if self._harmonic_from_hessian and self._orca_call_count == 1:
+            if self._harmonic_from_hessian and self._orca_call_count % self.hess_recalc_every == 1:
                 self._apply_harmonic_alpha_corrections()
         else:
             self._run_gradient()
@@ -1161,6 +1174,10 @@ class MolecularOptimizer:
             wrms = wrms_after if accepted else wrms_before
             freq_rms = mhz_rms_after if accepted else mhz_rms_before
             sv_kept   = float(sv[rank - 1]) if rank > 0 else 0.0
+            kappa_J   = float(sv[0] / sv[rank - 1]) if rank > 1 and sv[rank - 1] > 0 else None
+            if kappa_J is not None and kappa_J > 1e6:
+                print(f"  [warn] κ(J)={kappa_J:.2e} — Jacobian ill-conditioned; "
+                      "consider adding isotopologues or checking input consistency.")
             if self.debug_rank_diagnostics:
                 cutoff = float(self.optimizer.sv_threshold * sv[0]) if len(sv) and sv[0] > 0 else 0.0
                 shown = np.asarray(sv[: self.debug_sv_count], dtype=float)
@@ -1182,6 +1199,7 @@ class MolecularOptimizer:
                     wrms=wrms,
                     freq_rms=freq_rms,
                     rank=rank,
+                    kappa_J=kappa_J,
                     spectral_rows=_n_spectral_rows,
                     lambda_damp=self.optimizer.lambda_damp,
                     accepted=accepted,
@@ -1237,12 +1255,14 @@ class MolecularOptimizer:
                 status = "rej"
             dE_str = f"{delta_energy:>12.3e}" if delta_energy is not None else f"{'n/a':>12}"
             gnull_str = f"{g_null_norm:>10.3e}" if g_null_norm is not None else f"{'n/a':>10}"
+            kappa_str = f"{kappa_J:.2e}" if kappa_J is not None else "n/a"
             stage_suffix = ""
             if autoconfig_controls is not None:
                 stage_suffix = f" [{autoconfig_controls['stage']}]"
             print(
                 f"{it+1:>5}  {step_norm:>12.4e}  {wrms:>12.4f}  {freq_rms:>12.4f}  "
-                f"{rank:>6d}  {sv_kept:>12.4e}  {dx_range_norm:>10.3e}  {dx_null_norm:>10.3e}  "
+                f"{rank:>6d}  {sv_kept:>12.4e}  κ(J)={kappa_str}  "
+                f"{dx_range_norm:>10.3e}  {dx_null_norm:>10.3e}  "
                 f"{gnull_str}  {alpha_q_eff:>8.3f}  {dE_str}  "
                 f"lambda={self.optimizer.lambda_damp:.2e} {status}{stage_suffix}"
             )

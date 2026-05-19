@@ -86,6 +86,73 @@ def _check_numeric_list(value: Any, path: str, n: int | None = None, positive: b
             raise ConfigError(f"'{path}[{i}]' must be positive; got {item!r}.")
 
 
+def _warn_isotopologue_consistency(cfg: dict[str, Any]) -> None:
+    """Print warnings for physically implausible isotopologue pairs.
+
+    Two checks:
+    1. Heavier isotopologue must not have larger rotational constants.
+    2. |ΔB/B| must not wildly exceed |ΔM/M| — catches unit errors (GHz vs MHz)
+       or transposed component entries.
+    """
+    isos = _as_list(cfg.get("isotopologues"), "isotopologues") or []
+    if len(isos) < 2:
+        return
+
+    def _comp_map(iso):
+        comps = [str(c).strip().upper() for c in (iso.get("components") or ["A", "B", "C"])]
+        obs   = list(iso.get("obs_b0_mhz") or [])
+        return {c: float(v) for c, v in zip(comps, obs) if v is not None}
+
+    for i in range(len(isos)):
+        for j in range(i + 1, len(isos)):
+            iso1, iso2 = isos[i], isos[j]
+            m1 = iso1.get("masses") or []
+            m2 = iso2.get("masses") or []
+            if not m1 or not m2:
+                continue
+            M1 = sum(float(x) for x in m1)
+            M2 = sum(float(x) for x in m2)
+            if M1 <= 0 or M2 <= 0:
+                continue
+            n1 = str(iso1.get("name", f"iso[{i}]"))
+            n2 = str(iso2.get("name", f"iso[{j}]"))
+            bmap1 = _comp_map(iso1)
+            bmap2 = _comp_map(iso2)
+            shared = sorted(set(bmap1) & set(bmap2))
+            if not shared:
+                continue
+
+            # Check 1: heavier isotopologue must have smaller B
+            if M2 > M1 * 1.0001:
+                for comp in shared:
+                    B1, B2 = bmap1[comp], bmap2[comp]
+                    if B2 > B1 * 1.001:
+                        print(
+                            f"[input-warn] '{n2}' is heavier than '{n1}' "
+                            f"(M={M2:.3f} > {M1:.3f} amu) but {comp} is larger "
+                            f"({B2:.1f} > {B1:.1f} MHz). "
+                            "Check for transposed entries or wrong units (expect MHz)."
+                        )
+
+            # Check 2: |ΔB/B| / |ΔM/M| must not exceed 20
+            dM_frac = abs(M2 - M1) / max(M1, M2)
+            if dM_frac < 1e-6:
+                continue
+            for comp in shared:
+                B1, B2 = bmap1[comp], bmap2[comp]
+                if B1 <= 0:
+                    continue
+                dB_frac = abs(B2 - B1) / B1
+                ratio = dB_frac / dM_frac
+                if ratio > 20:
+                    print(
+                        f"[input-warn] {comp}-constant change between '{n1}' and '{n2}' "
+                        f"is {dB_frac*100:.1f}% but mass change is only {dM_frac*100:.1f}% "
+                        f"(ratio {ratio:.1f}×). "
+                        "Check units (MHz expected) and component order."
+                    )
+
+
 def validate_config(cfg: dict[str, Any]) -> None:
     """Validate supported legacy and generalized config shapes with clear errors."""
     if not isinstance(cfg, dict):
@@ -213,6 +280,8 @@ def validate_config(cfg: dict[str, Any]) -> None:
                     f"(got A={_obs[0]:.4f}, B={_obs[1]:.4f}, C={_obs[2]:.4f} MHz). "
                     "Check units (values must be in MHz) and component order."
                 )
+
+    _warn_isotopologue_consistency(cfg)
 
     if "spectral_model" in cfg and cfg.get("spectral_model") is not None:
         try:
