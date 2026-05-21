@@ -30,6 +30,7 @@ Full notation, derivations, and formulas used in code live in **[MATH.typ](MATH.
 | [`.github/backend/bayes_tune.py`](.github/backend/bayes_tune.py) | Optional Bayesian hyperparameter search (`scikit-optimize`) |
 | [`.github/backend/symmetry.py`](.github/backend/symmetry.py) | Optional point-group projection of steps and coordinates |
 | [`.github/backend/autoconfig.py`](.github/backend/autoconfig.py) | Adaptive trust region / damping / weight policy from diagnostics |
+| [`.github/backend/autoconfig_bases.py`](.github/backend/autoconfig_bases.py) | Problem-shape heuristics for optimizer base hyperparameters at job start |
 
 ## Torsion / Large-Amplitude Motion (LAM) pipeline
 
@@ -92,10 +93,12 @@ See [`configs/example_methanol_lam.yaml`](configs/example_methanol_lam.yaml) for
 
 ## Repository layout
 
-- **`.github/backend/`** — core library (spectral, quantum, optimizer, priors, symmetry). Import as `backend.*` with `PYTHONPATH=.github`.
-- **`molecule_runners/`** — per-molecule driver scripts (e.g. `run_water.py`, `run_OCS.py`, `run_SO2.py`, `run_CO2.py`).
-- **`runner/`** — shared runner infrastructure: `run_from_config.py`, `run_generic.py`, `molecule_registry.py`, `usability.py`, `run_settings.py`.
-- **`run_molecule.py`** — CLI that dispatches to a named driver in `molecule_runners/`.
+- **`.github/backend/`** — core library (spectral, quantum, optimizer, priors, symmetry). Import as `backend.*` with `PYTHONPATH=.github`, or run entry scripts (`cli.py`, `runner/run_from_config.py`) which call `paths.ensure_repo_paths`.
+- **`paths.py`** — adds `.github` and the repo root to `sys.path`; defines `output/` layout (`output/runs`, `output/results`, `output/trials`).
+- **`output/`** — gitignored local artifacts: managed run reports (`output/runs/`), benchmark JSON (`output/results/benchmarks/`), QM scratch (`output/trials/`).
+- **`runner/`** — config-driven orchestration: `run_from_config.py`, `run_generic.py`, `usability.py`, `run_settings.py`.
+- **`scripts/`** — optional utilities (e.g. `scripts/bayes_tune.py` for hyperparameter search).
+- **`configs/`** — YAML inputs for `cli run` / `runner/run_from_config.py`.
 - **`configs/`** — YAML config files for the generic runner.
 - **`requirements.txt`** — Python dependencies.
 - **`MATH.typ`** / **`MATH.md`** — mathematical reference (compile Typst to **`MATH.pdf`** for readable typeset math).
@@ -106,7 +109,7 @@ See [`configs/example_methanol_lam.yaml`](configs/example_methanol_lam.yaml) for
 - **NumPy**, **SciPy** (see `requirements.txt`)
 - **Psi4** — if using `quantum_backend="psi4"` (often via Conda).
 - **ORCA** — optional, if using `quantum_backend="orca"`.
-- **`scikit-optimize`** — optional, for `backend/bayes_tune.py` (`pip install scikit-optimize`).
+- **`scikit-optimize`** — optional, for `.github/backend/bayes_tune.py` (`pip install scikit-optimize`).
 
 Example environment (Unix-like):
 
@@ -125,11 +128,11 @@ From the project root, the config-first interface is:
 ```bash
 python -m cli validate configs/example_water_spectral_only.yaml
 python -m cli run configs/example_water_spectral_only.yaml
-python -m cli run configs/example_water_legacy.json
-python -m cli report runs/<timestamped-run-dir>
+python -m cli run configs/example_CO2.yaml
+python -m cli report output/runs/<timestamped-run-dir>
 ```
 
-`run` creates a timestamped directory under `runs/` by default (output only — not a source directory), copies the input
+`run` creates a timestamped directory under `output/runs/` by default (output only — not a source directory), copies the input
 config, and writes `report.md`, `exports/residuals.csv`,
 `exports/final_geometry.csv`, and diagnostic plots under `plots/`.
 `report` rebuilds `report.md`, `report.html`, and plots from an existing run.
@@ -185,21 +188,7 @@ python runner/run_from_config.py configs/template.yaml
 python runner/run_from_config.py configs/example_water_spectral_only.yaml --no-run-dir
 ```
 
-You can also use the molecule dispatchers:
-
-```bash
-python run_molecule.py water
-python run_molecule.py ocs --preset BALANCED
-```
-
-or call a driver module directly:
-
-```bash
-python -m molecule_runners.run_water
-python -m molecule_runners.run_OCS
-```
-
-Drivers typically build isotopologue inputs, generate a starting geometry, run multistart optimization, and print a summary. Defaults and presets can be adjusted in `run_molecule.py`, `runner/run_settings.py`, or each `molecule_runners/run_*.py` file.
+Presets (`FAST_DEBUG`, `BALANCED`, `STRICT`) and quantum settings are set in each YAML under `preset:` and `quantum:`.
 
 ## Conformers
 
@@ -277,9 +266,9 @@ The conformer suite tracks:
 
 Artifacts are written to:
 
-- `results/benchmarks/lam-latest.json` for the latest machine-readable result
-- `results/benchmarks/conformer-latest.json` for the latest conformer benchmark result
-- `results/benchmarks/history/` for timestamped snapshots that make drift easy to inspect over time
+- `output/results/benchmarks/lam-latest.json` for the latest machine-readable result
+- `output/results/benchmarks/conformer-latest.json` for the latest conformer benchmark result
+- `output/results/benchmarks/history/` for timestamped snapshots that make drift easy to inspect over time
 
 The checked-in threshold baselines live at `dev/benchmarks/baselines/lam.json` and `dev/benchmarks/baselines/conformer.json`. Update them deliberately when a change is intended to move the benchmark reference values.
 
@@ -291,16 +280,39 @@ python -m pytest dev/tests/test_benchmark_suite.py dev/tests/test_conformer_benc
 
 GitHub Actions runs both suites in `.github/workflows/benchmarks.yml`, enforces the baseline thresholds, and uploads the JSON artifacts from each CI run so benchmark drift can be tracked across time.
 
-### ORCA and `run_settings.py`
+### Optimizer autoconfig (runtime)
 
-Drivers read `run_settings.py`, which defaults to `quantum_backend="orca"` and `orca_exe=None`. The optimizer then searches for ORCA in this order: **`orca` on your PATH**, a **full path** if you set one, then an **`orca` or `orca.exe` file in the current working directory** (so you can drop or symlink the binary into the project folder). You can also set the path before running:
+Hybrid runs enable **AutoConfig** by default: trust region, LM damping, spectral weights, and (when enabled) `sv_threshold` / `alpha_quantum` adapt from Jacobian rank, conditioning, and residuals each iteration. At startup, **heuristic bases** rescale those knobs from atom count and spectral row count (no molecule-name registry).
+
+Optional YAML blocks:
+
+```yaml
+autoconfig:
+  enabled: true              # default
+  heuristic_bases: true      # rescale bases from problem shape
+  tune_sv_threshold: true
+  tune_alpha_quantum: true
+  smoothing: 0.4
+  update_every: 1
+
+optimizer:                   # pin values before heuristic rescaling
+  trust_radius: 0.005
+  sv_threshold: 1.0e-5
+  alpha_quantum: 0.3
+```
+
+Set `autoconfig.heuristic_bases: false` and use `optimizer:` when you want fixed hyperparameters. For one-off tuning per species, see `scripts/bayes_tune.py` (offline Bayesian optimization).
+
+### ORCA and quantum settings
+
+YAML configs set the backend under `quantum.backend` (`orca`, `psi4`, or `none` for spectral-only). The optimizer searches for ORCA in this order: **`orca` on your PATH**, a **full path** if you set one, then an **`orca` or `orca.exe` file in the current working directory**. You can also set the path before running:
 
 ```bash
 export ORCA_EXE="/full/path/to/orca"
-python3 run_molecule.py water
+python -m cli run configs/example_OCS.yaml
 ```
 
-On Windows, you can instead set `orca_exe` in `BASE_SETTINGS` to your `orca.exe` path. If you do not have ORCA, either install it, point `ORCA_EXE` at it, or switch a runner to **Psi4** (`quantum_backend="psi4"` in `run_settings.py` and a Conda environment with `psi4` installed), or use spectral-only mode where the script supports it (`USE_QUANTUM_PRIOR = False` in e.g. `molecule_runners/run_water.py`).
+If you do not have ORCA, point `ORCA_EXE` at it, set `quantum.executable` in YAML, use **Psi4** (`quantum.backend: psi4`), or **spectral-only** (`quantum.backend: none`).
 
 **Parallel multistart + ORCA:** many licenses allow only one ORCA job at a time. `run_multistart` therefore defaults to **`max_workers=1`** when `quantum_backend="orca"`. If your license allows multiple processes, set **`QUANTIZE_ALLOW_PARALLEL_ORCA=1`** before running to use the preset worker count.
 

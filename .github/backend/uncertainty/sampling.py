@@ -13,7 +13,7 @@ class BootstrapRunner:
         self.max_workers = max_workers
         self.results = []
 
-    def run(self, base_workdir="runs"):
+    def run(self, base_workdir="output/runs"):
         print(f"\n[bootstrap] Launching {self.n_samples} re-optimizations...")
         tasks = []
         for i in range(self.n_samples):

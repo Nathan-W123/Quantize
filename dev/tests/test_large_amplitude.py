@@ -1,9 +1,9 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import numpy as np
 import pytest
 
-from backend.large_amplitude import (
+from backend.torsion.large_amplitude import (
     LargeAmplitudeGridPoint,
     LargeAmplitudeModel,
     normalize_weights,

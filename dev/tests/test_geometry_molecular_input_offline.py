@@ -1,6 +1,6 @@
-"""Cheap ORCA-relaxed seeds (skipped when ORCA is missing).
+﻿"""Cheap ORCA-relaxed seeds (skipped when ORCA is missing).
 
-The alias parity cell below stays graph-only — it does **not** call ORCA.
+The alias parity cell below stays graph-only â€” it does **not** call ORCA.
 """
 
 from __future__ import annotations
@@ -27,8 +27,8 @@ def test_initial_guess_ocs_after_cheap_opt(ocs_cheap_relaxed_guess):
 
 
 def test_alias_matches_direct_import():
-    """Coarse molecular_input only (bond graph)—no QM step."""
-    from backend.geometryguess import guess_geometry_molecular_input
+    """Coarse molecular_input only (bond graph)â€”no QM step."""
+    from backend.conformers.geometryguess import guess_geometry_molecular_input
 
     a = initial_guess(None, elems=["N", "H"], bonds=[(0, 1)], center=False)
     b = guess_geometry_molecular_input(None, elems=["N", "H"], bonds=[(0, 1)], center=False)
@@ -38,7 +38,7 @@ def test_alias_matches_direct_import():
 
 @pytest.mark.orca
 def test_rotational_constants_finite_water(water_cheap_relaxed_guess):
-    from backend.spectral import _rotational_constants
+    from backend.spectral.spectral import _rotational_constants
 
     coords, elems = water_cheap_relaxed_guess
     masses = np.array([15.99491, 1.007825, 1.007825])

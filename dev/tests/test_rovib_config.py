@@ -1,4 +1,4 @@
-"""Tests for backend.rovib_tables.load_rovib_correction_table."""
+﻿"""Tests for backend.rovib_tables.load_rovib_correction_table."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import textwrap
 
 import pytest
 
-from backend.rovib_tables import load_rovib_correction_table
+from backend.spectral.rovib_tables import load_rovib_correction_table
 
 
 def _write(tmp_path, name, body):

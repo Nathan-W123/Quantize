@@ -1,8 +1,8 @@
-import numpy as np
+﻿import numpy as np
 from scipy.stats import skew, kurtosis, gaussian_kde
 from scipy.signal import find_peaks
-from backend.spectral import SpectralEngine
-from backend.internal_fit import InternalCoordinateSet
+from backend.spectral.spectral import SpectralEngine
+from backend.internal.internal_fit import InternalCoordinateSet
 
 def detect_modality(data):
     """
@@ -51,7 +51,7 @@ def analyze_coordinate_distribution(cloud_xyz, elems, use_dihedrals=False):
             data = np.degrees(data)
             unit = "deg"
         else:
-            unit = "Å"
+            unit = "Ã…"
             
         results.append({
             "name": name,

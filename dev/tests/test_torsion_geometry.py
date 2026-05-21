@@ -1,19 +1,19 @@
-"""Tests for backend/torsion_geometry.py (Phase 7: geometry coupling)."""
+﻿"""Tests for backend/torsion_geometry.py (Phase 7: geometry coupling)."""
 
 from __future__ import annotations
 
 import numpy as np
 import pytest
 
-from backend.torsion_geometry import (
+from backend.torsion.torsion_geometry import (
     compute_F_rho_from_geometry,
     torsion_geometry_jacobian,
     update_spec_F_rho,
 )
-from backend.torsion_hamiltonian import TorsionFourierPotential, TorsionHamiltonianSpec
+from backend.torsion.torsion_hamiltonian import TorsionFourierPotential, TorsionHamiltonianSpec
 
 
-# ── Fixtures ──────────────────────────────────────────────────────────────────
+# â”€â”€ Fixtures â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def _methanol_like_geometry():
     """Simplified methanol-like geometry: C-C axis with 3 H atoms in top.
@@ -23,7 +23,7 @@ def _methanol_like_geometry():
     # Rotation axis: C1 (axis frame end) to C2 (axis top end), along x.
     # O is bonded to C1 but sits above the axis (non-zero y offset).
     coords = np.array([
-        [1.430,  1.200, 0.000],   # 0: O (frame, off-axis — perpendicular distance 1.2 Ang)
+        [1.430,  1.200, 0.000],   # 0: O (frame, off-axis â€” perpendicular distance 1.2 Ang)
         [1.430,  0.000, 0.000],   # 1: C1 (axis, frame end)
         [2.890,  0.000, 0.000],   # 2: C2 (axis, top end)
         [3.310,  1.027, 0.000],   # 3: H1 (top)
@@ -42,7 +42,7 @@ def _make_spec():
                                   potential=pot, n_basis=8, units="cm-1")
 
 
-# ── compute_F_rho_from_geometry ───────────────────────────────────────────────
+# â”€â”€ compute_F_rho_from_geometry â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestComputeFRhoFromGeometry:
     def test_returns_positive_F(self):
@@ -56,7 +56,7 @@ class TestComputeFRhoFromGeometry:
         assert 0.0 < rho < 1.0
 
     def test_larger_top_gives_smaller_F(self):
-        """Heavier/larger top → larger I_alpha → smaller F."""
+        """Heavier/larger top â†’ larger I_alpha â†’ smaller F."""
         coords, masses, top, axis = _methanol_like_geometry()
         F_light, _ = compute_F_rho_from_geometry(coords, masses, top, axis)
         heavy_masses = masses.copy()
@@ -120,7 +120,7 @@ class TestComputeFRhoFromGeometry:
         assert abs(F - expected) < 1e-6
 
 
-# ── update_spec_F_rho ─────────────────────────────────────────────────────────
+# â”€â”€ update_spec_F_rho â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestUpdateSpecFRho:
     def test_returns_new_spec_with_updated_F_rho(self):
@@ -149,7 +149,7 @@ class TestUpdateSpecFRho:
         assert new_spec.potential.vcos == spec.potential.vcos
 
 
-# ── torsion_geometry_jacobian ─────────────────────────────────────────────────
+# â”€â”€ torsion_geometry_jacobian â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestTorsionGeometryJacobian:
     def _requests(self, n=3):
@@ -175,7 +175,7 @@ class TestTorsionGeometryJacobian:
         spec = _make_spec()
         reqs = self._requests(2)
         J = torsion_geometry_jacobian(spec, coords, masses, top, axis, reqs)
-        # Top atom columns (atoms 3,4,5 → columns 9-17) should be non-zero
+        # Top atom columns (atoms 3,4,5 â†’ columns 9-17) should be non-zero
         top_cols = np.concatenate([np.arange(3*t, 3*t+3) for t in top])
         assert np.any(np.abs(J[:, top_cols]) > 1e-10)
 

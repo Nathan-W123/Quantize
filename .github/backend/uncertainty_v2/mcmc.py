@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 import os
@@ -6,7 +6,7 @@ from dataclasses import asdict
 
 import numpy as np
 
-from backend.internal_fit import InternalCoordinateSet
+from backend.internal.internal_fit import InternalCoordinateSet
 from backend.quantize import MolecularOptimizer
 
 from .models import ChainRunResult, ConvergenceSummary, MCMCConfig, MCMCRunSummary

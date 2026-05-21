@@ -1,9 +1,9 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import numpy as np
 
-from backend.internal_fit import InternalCoordinateSet, build_internal_priors
-from backend.prior_sensitivity import classify_prior_dominance, prior_sensitivity_analysis
+from backend.internal.internal_fit import InternalCoordinateSet, build_internal_priors
+from backend.priors.prior_sensitivity import classify_prior_dominance, prior_sensitivity_analysis
 
 
 def _tiny_molecule():

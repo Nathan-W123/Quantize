@@ -35,13 +35,15 @@ multistart_runs/
 energy_minimize_runs/
 bayes_tune_ocs_orca/
 
-# Local results/output
-results/
-runs/
+# Local generated output (runs, benchmarks, QM scratch)
+output/*
+!output/.gitkeep
+!output/**/.gitkeep
 
-# Trial run artifacts (keep the directory stub, ignore contents)
-trials/*
-!trials/.gitkeep
+# Legacy output locations (pre-output/ consolidation)
+runs/
+results/
+trials/
 
 # ORCA scratch files (often written with workdir=. or under multistart_runs/)
 quantize_orca.inp

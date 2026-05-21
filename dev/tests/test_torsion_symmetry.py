@@ -1,11 +1,11 @@
-"""Tests for backend/torsion_symmetry.py (Phase 9: symmetry and tunneling)."""
+﻿"""Tests for backend/torsion_symmetry.py (Phase 9: symmetry and tunneling)."""
 
 from __future__ import annotations
 
 import numpy as np
 import pytest
 
-from backend.torsion_symmetry import (
+from backend.torsion.torsion_symmetry import (
     c3_symmetry_block_energies,
     predict_tunneling_splitting,
     symmetry_purity_table,
@@ -13,7 +13,7 @@ from backend.torsion_symmetry import (
     tunneling_splitting_to_csv_rows,
     wang_transformation_c3,
 )
-from backend.torsion_hamiltonian import TorsionFourierPotential, TorsionHamiltonianSpec
+from backend.torsion.torsion_hamiltonian import TorsionFourierPotential, TorsionHamiltonianSpec
 
 
 def _make_c3_spec(F=27.6, rho=0.0, V3=-186.8, n_basis=10):
@@ -23,11 +23,11 @@ def _make_c3_spec(F=27.6, rho=0.0, V3=-186.8, n_basis=10):
                                   potential=pot, n_basis=n_basis, units="cm-1")
 
 
-# ── wang_transformation_c3 ────────────────────────────────────────────────────
+# â”€â”€ wang_transformation_c3 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestWangTransformationC3:
     def test_unitary(self):
-        from backend.torsion_hamiltonian import basis_m_values
+        from backend.torsion.torsion_hamiltonian import basis_m_values
         m = basis_m_values(5)
         W = wang_transformation_c3(m)
         assert W.shape == (m.size, m.size)
@@ -35,7 +35,7 @@ class TestWangTransformationC3:
         np.testing.assert_allclose(W @ W.conj().T, np.eye(m.size), atol=1e-12)
 
     def test_groups_by_residue(self):
-        from backend.torsion_hamiltonian import basis_m_values
+        from backend.torsion.torsion_hamiltonian import basis_m_values
         m = basis_m_values(4)  # m = -4..4
         W = wang_transformation_c3(m)
         # Rows mapped to old indices should group A (mod3=0), E1 (mod3=1), E2 (mod3=2)
@@ -48,7 +48,7 @@ class TestWangTransformationC3:
 
     def test_block_diagonalizes_c3_hamiltonian(self):
         """Applying Wang transform to a pure-C3 Hamiltonian gives block-diagonal result."""
-        from backend.torsion_hamiltonian import basis_m_values, build_ram_lite_hamiltonian
+        from backend.torsion.torsion_hamiltonian import basis_m_values, build_ram_lite_hamiltonian
         spec = _make_c3_spec(rho=0.0)
         H, m_vals, _ = build_ram_lite_hamiltonian(spec, J=0, K=0)
         W = wang_transformation_c3(m_vals)
@@ -66,7 +66,7 @@ class TestWangTransformationC3:
         )
 
 
-# ── c3_symmetry_block_energies ────────────────────────────────────────────────
+# â”€â”€ c3_symmetry_block_energies â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestC3SymmetryBlockEnergies:
     def test_returns_required_keys(self):
@@ -91,7 +91,7 @@ class TestC3SymmetryBlockEnergies:
             assert len(e) <= 3
 
     def test_e1_e2_degenerate_for_symmetric_potential(self):
-        """Pure C3 potential → E1 and E2 ground state energies should match."""
+        """Pure C3 potential â†’ E1 and E2 ground state energies should match."""
         spec = _make_c3_spec(rho=0.0)
         out = c3_symmetry_block_energies(spec, J=0, K=0, n_levels_per_block=3)
         E1 = out["E1"]["energies_cm-1"]
@@ -109,7 +109,7 @@ class TestC3SymmetryBlockEnergies:
             assert E_A[0] <= E_E[0]
 
 
-# ── predict_tunneling_splitting ───────────────────────────────────────────────
+# â”€â”€ predict_tunneling_splitting â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestPredictTunnelingSplitting:
     def test_returns_list_of_dicts(self):
@@ -148,7 +148,7 @@ class TestPredictTunnelingSplitting:
         assert split > 1e-6
 
 
-# ── symmetry_selection_rules ──────────────────────────────────────────────────
+# â”€â”€ symmetry_selection_rules â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestSymmetrySelectionRules:
     def test_A_A_allowed(self):
@@ -180,7 +180,7 @@ class TestSymmetrySelectionRules:
         assert result["allowed"] is False
 
 
-# ── symmetry_purity_table ─────────────────────────────────────────────────────
+# â”€â”€ symmetry_purity_table â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestSymmetryPurityTable:
     def test_length_matches_n_levels(self):
@@ -202,14 +202,14 @@ class TestSymmetryPurityTable:
             assert 0.0 <= row["purity"] <= 1.0 + 1e-10
 
     def test_high_barrier_gives_high_purity(self):
-        """Very high barrier → eigenstates nearly pure A or E."""
+        """Very high barrier â†’ eigenstates nearly pure A or E."""
         spec = _make_c3_spec(V3=-1000.0)
         rows = symmetry_purity_table(spec, J=0, K=0, n_levels=3)
         for row in rows:
             assert row["purity"] > 0.9
 
 
-# ── tunneling_splitting_to_csv_rows ──────────────────────────────────────────
+# â”€â”€ tunneling_splitting_to_csv_rows â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestTunnelingSplittingToCsvRows:
     def test_formats_floats_as_strings(self):

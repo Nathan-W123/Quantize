@@ -1,36 +1,24 @@
 #!/usr/bin/env python3
 """
-Run a hybrid quantize job from a YAML config file.
+Run a hybrid quantize job from a YAML or JSON config file.
 
-Two input styles are supported:
-
-  New-style — fully generalized (any molecule):
-    Supply ``elements``, ``geometry``, and ``isotopologues`` directly in the YAML.
-    See configs/template.yaml for a fully-documented example.
-
-  Legacy style — named molecule shortcut:
-    Supply a ``molecule`` key (water, so2, co2, …) to dispatch to a pre-built
-    runner in molecule_runners/.  Accepts optional ``preset``, ``orca_method``, ``orca_basis``.
+Supply ``elements``, ``geometry``, and ``isotopologues`` in the config.
+See ``configs/example_CO2.yaml`` or ``configs/template.yaml`` for examples.
 
 Usage
 -----
-  python runner/run_from_config.py configs/template.yaml          # new-style
-  python runner/run_from_config.py configs/example_water.yaml     # legacy
-
-Environment overrides (legacy style, highest priority in ``get_run_settings``):
-  QUANTIZE_ORCA_METHOD, QUANTIZE_ORCA_BASIS (aliases: ORCA_METHOD, ORCA_BASIS)
+  python runner/run_from_config.py configs/example_CO2.yaml
+  python -m cli run configs/example_CO2.yaml
 """
 
 from __future__ import annotations
 
-import importlib
-import os
 import sys
 from pathlib import Path
 
-_ROOT = Path(__file__).resolve().parent.parent
-if str(_ROOT) not in sys.path:
-    sys.path.insert(0, str(_ROOT))
+from paths import ensure_repo_paths
+
+_ROOT = ensure_repo_paths(Path(__file__).resolve().parent.parent)
 
 try:
     import numpy  # noqa: F401
@@ -38,101 +26,14 @@ except ModuleNotFoundError:
     print("NumPy is required. Install dependencies: pip install -r requirements.txt", file=sys.stderr)
     raise SystemExit(1) from None
 
-from runner.molecule_registry import RUNNER_MODULES
 from runner.usability import ConfigError, load_config, prepare_run_directory, validate_config
-
-_QUANTIZE_ORCA_ENV = ("QUANTIZE_ORCA_METHOD", "QUANTIZE_ORCA_BASIS")
-_ORCA_EXE_KEY = "ORCA_EXE"
-
-
-def _apply_env_overrides(cfg: dict) -> dict[str, str | None]:
-    """Apply YAML env overrides; return previous values to restore."""
-    saved: dict[str, str | None] = {}
-    for k in _QUANTIZE_ORCA_ENV:
-        saved[k] = os.environ.get(k)
-    for k in _QUANTIZE_ORCA_ENV:
-        os.environ.pop(k, None)
-
-    method = cfg.get("orca_method")
-    basis = cfg.get("orca_basis")
-    if method is not None and str(method).strip():
-        os.environ["QUANTIZE_ORCA_METHOD"] = str(method).strip()
-    if basis is not None and str(basis).strip():
-        os.environ["QUANTIZE_ORCA_BASIS"] = str(basis).strip()
-
-    exe = cfg.get("orca_exe")
-    if exe is not None and str(exe).strip():
-        saved[_ORCA_EXE_KEY] = os.environ.get(_ORCA_EXE_KEY)
-        os.environ[_ORCA_EXE_KEY] = str(exe).strip()
-
-    return saved
-
-
-def _restore_env(saved: dict[str, str | None]) -> None:
-    for k in _QUANTIZE_ORCA_ENV:
-        os.environ.pop(k, None)
-    for k in _QUANTIZE_ORCA_ENV:
-        v = saved.get(k)
-        if v is not None:
-            os.environ[k] = v
-    if _ORCA_EXE_KEY in saved:
-        v = saved[_ORCA_EXE_KEY]
-        if v is None:
-            os.environ.pop(_ORCA_EXE_KEY, None)
-        else:
-            os.environ[_ORCA_EXE_KEY] = v
-
-
-def _run_generic(cfg: dict) -> dict | None:
-    """Dispatch to the generic runner for new-style YAML (has 'elements' key)."""
-    from runner.run_generic import main as generic_main
-    return generic_main(cfg)
-
-
-def _run_legacy(cfg: dict) -> None:
-    """Dispatch to a named molecule runner for legacy YAML (has 'molecule' key)."""
-    molecule = str(cfg.get("molecule", "")).strip().lower()
-    if not molecule:
-        raise SystemExit("YAML must set either 'elements' (new-style) or 'molecule' (legacy).")
-    if molecule not in RUNNER_MODULES:
-        valid = ", ".join(sorted(RUNNER_MODULES.keys()))
-        raise SystemExit(f"Unknown molecule '{molecule}'. Valid: {valid}")
-
-    preset = cfg.get("preset")
-    if preset is not None:
-        preset = str(preset).strip().upper()
-        if preset not in ("FAST_DEBUG", "BALANCED", "STRICT"):
-            raise SystemExit(f"Unknown preset '{preset}'. Use FAST_DEBUG, BALANCED, or STRICT.")
-
-    saved_env = _apply_env_overrides(cfg)
-    try:
-        mod_name = RUNNER_MODULES[molecule]
-        mod = importlib.import_module(mod_name)
-        if hasattr(mod, "PRESET_OVERRIDE"):
-            mod.PRESET_OVERRIDE = preset
-        print(f"[run_from_config] molecule={molecule} module={mod_name} preset={preset}")
-        if os.environ.get("QUANTIZE_ORCA_METHOD"):
-            print(f"[run_from_config] QUANTIZE_ORCA_METHOD={os.environ['QUANTIZE_ORCA_METHOD']}")
-        if os.environ.get("QUANTIZE_ORCA_BASIS"):
-            print(f"[run_from_config] QUANTIZE_ORCA_BASIS={os.environ['QUANTIZE_ORCA_BASIS']}")
-        if os.environ.get(_ORCA_EXE_KEY):
-            print(f"[run_from_config] {_ORCA_EXE_KEY}={os.environ[_ORCA_EXE_KEY]}")
-        if not hasattr(mod, "main"):
-            raise SystemExit(f"Runner {mod_name} has no main().")
-        mod.main()
-    finally:
-        _restore_env(saved_env)
 
 
 def main() -> None:
     import argparse
 
     parser = argparse.ArgumentParser(
-        description=(
-            "Run quantize from a YAML or JSON config. "
-            "New-style: supply 'elements' + 'isotopologues' (see configs/template.yaml). "
-            "Legacy: supply 'molecule' key to use a pre-built runner."
-        )
+        description="Run quantize from a YAML or JSON config (requires 'elements' + 'isotopologues').",
     )
     parser.add_argument(
         "config",
@@ -155,10 +56,9 @@ def main() -> None:
     except ConfigError as exc:
         raise SystemExit(f"Config error: {exc}") from None
 
-    if "elements" in cfg:
-        _run_generic(cfg)
-    else:
-        _run_legacy(cfg)
+    from runner.run_generic import main as generic_main
+
+    generic_main(cfg)
 
 
 if __name__ == "__main__":

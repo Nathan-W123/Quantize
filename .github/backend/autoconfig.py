@@ -1,5 +1,7 @@
 import numpy as np
 
+from backend.autoconfig_bases import ALPHA_MAX, ALPHA_MIN, SV_MAX, SV_MIN
+
 
 class AutoConfigEngine:
     """
@@ -17,6 +19,9 @@ class AutoConfigEngine:
     _FIT_RANK_FRAC         = 0.7   # effective rank / n_params < 0.7 → underdetermined
     _FIT_SIGMA_RATIO       = 8.0   # residual / σ > 8 → still actively fitting, not refining
 
+    _SV_GAP_UNSTABLE = 10.0
+    _SV_GAP_STABLE = 100.0
+
     def __init__(
         self,
         n_params,
@@ -27,6 +32,10 @@ class AutoConfigEngine:
         base_sigma_floor_mhz,
         base_max_spectral_weight,
         base_torsion_a_weight,
+        base_sv_threshold=1e-3,
+        base_alpha_quantum=1.0,
+        tune_sv_threshold=True,
+        tune_alpha_quantum=True,
         smoothing=0.4,
     ):
         self.n_params = max(1, int(n_params))
@@ -39,6 +48,10 @@ class AutoConfigEngine:
             None if base_max_spectral_weight is None else max(float(base_max_spectral_weight), 1e-6)
         )
         self.base_torsion_a_weight = float(base_torsion_a_weight)
+        self.base_sv_threshold = max(float(base_sv_threshold), SV_MIN)
+        self.base_alpha_quantum = float(np.clip(float(base_alpha_quantum), ALPHA_MIN, ALPHA_MAX))
+        self.tune_sv_threshold = bool(tune_sv_threshold)
+        self.tune_alpha_quantum = bool(tune_alpha_quantum)
         self.smoothing = float(np.clip(smoothing, 0.0, 0.95))
         self.state = None
 
@@ -51,6 +64,16 @@ class AutoConfigEngine:
         if values.size == 0:
             return 0.0
         return float(np.median(np.abs(values)))
+
+    @staticmethod
+    def _sv_gap_at_rank(singular_values, rank):
+        s = np.asarray(singular_values, dtype=float)
+        if rank <= 0 or rank >= s.size:
+            return None
+        denom = float(s[rank])
+        if denom <= 0.0:
+            return None
+        return float(s[rank - 1] / denom)
 
     def _classify_stage(self, rank_frac, sigma_ratio, reject_streak):
         if reject_streak >= self._EXPLORE_REJECT_STREAK or sigma_ratio > self._EXPLORE_SIGMA_RATIO:
@@ -69,6 +92,7 @@ class AutoConfigEngine:
                 "max_weight": 0.4,
                 "prior": 1.5,
                 "spectral_relax": 0.03,
+                "alpha": 0.85,
             }
         if stage == "fit":
             return {
@@ -79,6 +103,7 @@ class AutoConfigEngine:
                 "max_weight": 0.7,
                 "prior": 1.25,
                 "spectral_relax": 0.015,
+                "alpha": 0.95,
             }
         return {
             "trust": 0.55,
@@ -88,7 +113,32 @@ class AutoConfigEngine:
             "max_weight": 1.0,
             "prior": 1.0,
             "spectral_relax": 0.0,
+            "alpha": 1.0,
         }
+
+    def _target_sv_threshold(self, sv_gap, cond_factor):
+        base = self.base_sv_threshold
+        if not self.tune_sv_threshold:
+            return base
+        factor = 1.0
+        if sv_gap is not None:
+            if sv_gap < self._SV_GAP_UNSTABLE:
+                factor *= 1.15
+            elif sv_gap > self._SV_GAP_STABLE:
+                factor *= 0.92
+        if cond_factor > 0.5:
+            factor *= 1.0 + 0.1 * min(cond_factor, 1.5)
+        target = base * factor
+        return float(np.clip(target, max(SV_MIN, 0.5 * base), min(SV_MAX, 2.0 * base)))
+
+    def _target_alpha_quantum(self, rank_frac, stage_scale_alpha):
+        base = self.base_alpha_quantum
+        if not self.tune_alpha_quantum:
+            return base
+        # Large null space (low rank_frac) → weaker quantum base; stage scales explore/fit/refine.
+        null_frac = max(0.0, 1.0 - float(rank_frac))
+        target = base * stage_scale_alpha * (0.55 + 0.45 * rank_frac) * (1.0 - 0.25 * null_frac)
+        return float(np.clip(target, max(ALPHA_MIN, 0.5 * base), min(ALPHA_MAX, 2.0 * base)))
 
     def suggest(
         self,
@@ -118,6 +168,7 @@ class AutoConfigEngine:
         outlier_frac = float(np.mean(abs_r > (med + 3.0 * robust_scale))) if abs_r.size else 0.0
         stage = self._classify_stage(rank_frac, sigma_ratio, reject_streak)
         scales = self._stage_scales(stage)
+        sv_gap = self._sv_gap_at_rank(s, int(rank))
 
         torsion_a = np.asarray(torsion_a_residuals, dtype=float)
         torsion_bc = np.asarray(torsion_bc_residuals, dtype=float)
@@ -153,6 +204,8 @@ class AutoConfigEngine:
             target_prior = float(np.clip(target_prior, 0.25 * self.base_prior_weight, 4.0 * self.base_prior_weight))
         target_torsion_a = float(np.clip(self.base_torsion_a_weight * torsion_factor, 0.05, 1.0))
         target_relax = float(np.clip(scales["spectral_relax"] * (1.0 + outlier_frac), 0.0, 0.05))
+        target_sv = self._target_sv_threshold(sv_gap, cond_factor)
+        target_alpha = self._target_alpha_quantum(rank_frac, scales["alpha"])
 
         if self.state is None:
             self.state = {
@@ -164,6 +217,9 @@ class AutoConfigEngine:
                 "prior_weight": target_prior,
                 "torsion_a_weight": target_torsion_a,
                 "spectral_accept_relax": target_relax,
+                "sv_threshold": target_sv,
+                "alpha_quantum": target_alpha,
+                "sv_gap": sv_gap,
                 "stage": stage,
                 "rank_fraction": rank_frac,
                 "sigma_ratio": sigma_ratio,
@@ -185,9 +241,37 @@ class AutoConfigEngine:
         self.state["prior_weight"] = self._blend(self.state["prior_weight"], target_prior, w)
         self.state["torsion_a_weight"] = self._blend(self.state["torsion_a_weight"], target_torsion_a, w)
         self.state["spectral_accept_relax"] = self._blend(self.state["spectral_accept_relax"], target_relax, w)
+        self.state["sv_threshold"] = self._blend(self.state["sv_threshold"], target_sv, w)
+        self.state["alpha_quantum"] = self._blend(self.state["alpha_quantum"], target_alpha, w)
+        self.state["sv_gap"] = sv_gap
         self.state["stage"] = stage
         self.state["rank_fraction"] = rank_frac
         self.state["sigma_ratio"] = sigma_ratio
         self.state["condition_est"] = cond
         self.state["outlier_fraction"] = outlier_frac
         return dict(self.state)
+
+    def reseed_bases(
+        self,
+        *,
+        n_params=None,
+        base_trust_radius=None,
+        base_null_trust_radius=None,
+        base_lambda_damp=None,
+        base_sv_threshold=None,
+        base_alpha_quantum=None,
+    ):
+        """Update base_* after internal-coordinate DOF count is known (iteration 0)."""
+        if n_params is not None:
+            self.n_params = max(1, int(n_params))
+        if base_trust_radius is not None:
+            self.base_trust_radius = float(base_trust_radius)
+        if base_null_trust_radius is not None:
+            self.base_null_trust_radius = float(base_null_trust_radius)
+        if base_lambda_damp is not None:
+            self.base_lambda_damp = max(float(base_lambda_damp), 1e-8)
+        if base_sv_threshold is not None:
+            self.base_sv_threshold = max(float(base_sv_threshold), SV_MIN)
+        if base_alpha_quantum is not None:
+            self.base_alpha_quantum = float(np.clip(float(base_alpha_quantum), ALPHA_MIN, ALPHA_MAX))
+        self.state = None

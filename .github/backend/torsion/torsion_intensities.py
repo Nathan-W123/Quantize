@@ -1,31 +1,31 @@
-"""
+﻿"""
 Line intensities and nuclear-spin statistical weights for the RAM torsion model.
 
 Implements:
-  - torsion_cos_alpha_matrix: <m'|cos(α)|m> in the |m> Fourier basis
-  - torsion_dipole_matrix_elements: |<ψ_hi|cos(α)|ψ_lo>|² for eigenvector pairs
-  - honl_london_factor: symmetric-top Hönl-London line strength factors
+  - torsion_cos_alpha_matrix: <m'|cos(Î±)|m> in the |m> Fourier basis
+  - torsion_dipole_matrix_elements: |<Ïˆ_hi|cos(Î±)|Ïˆ_lo>|Â² for eigenvector pairs
+  - honl_london_factor: symmetric-top HÃ¶nl-London line strength factors
   - compute_torsion_line_list: complete line list with selection rules and weights
 
 Physics notes
 -------------
 The torsional part of the transition dipole moment is approximated as proportional
-to cos(α), where α is the internal rotation angle.  This is a first-order Fourier
+to cos(Î±), where Î± is the internal rotation angle.  This is a first-order Fourier
 expansion of the angle-dependent dipole component.
 
-  <m'|cos(α)|m> = (δ_{m',m+1} + δ_{m',m-1}) / 2
+  <m'|cos(Î±)|m> = (Î´_{m',m+1} + Î´_{m',m-1}) / 2
 
 The total line strength is factored as:
-  S_total = S_torsion × S_HL × g_nsw
+  S_total = S_torsion Ã— S_HL Ã— g_nsw
 
 where:
-  S_torsion = |<ψ_hi|cos(α)|ψ_lo>|²   (torsional Franck-Condon-like factor)
-  S_HL      = Hönl-London factor        (symmetric-top approximation)
+  S_torsion = |<Ïˆ_hi|cos(Î±)|Ïˆ_lo>|Â²   (torsional Franck-Condon-like factor)
+  S_HL      = HÃ¶nl-London factor        (symmetric-top approximation)
   g_nsw     = nuclear-spin statistical weight
 
-Hönl-London factors use the symmetric-top expressions (Gordy & Cook 1984, Ch. 3)
+HÃ¶nl-London factors use the symmetric-top expressions (Gordy & Cook 1984, Ch. 3)
 as an approximation valid for near-symmetric-top molecules.  The 'a'-type
-selection rules (ΔK=0) are the default for torsion-rotation transitions where the
+selection rules (Î”K=0) are the default for torsion-rotation transitions where the
 torsional axis is approximately collinear with a principal axis.
 """
 
@@ -35,22 +35,22 @@ from typing import Optional, Sequence
 
 import numpy as np
 
-from backend.torsion_hamiltonian import (
+from backend.torsion.torsion_hamiltonian import (
     TorsionHamiltonianSpec,
     solve_ram_lite_levels,
 )
-from backend.torsion_symmetry import nuclear_spin_weight, symmetry_selection_rules
+from backend.torsion.torsion_symmetry import nuclear_spin_weight, symmetry_selection_rules
 
 _MHZ_PER_CM1 = 29979.2458
 
 
-# ── cos(α) matrix in |m> basis ──────────────────────────────────────────────
+# â”€â”€ cos(Î±) matrix in |m> basis â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def torsion_cos_alpha_matrix(m_values: np.ndarray) -> np.ndarray:
     """
-    Construct <m'|cos(α)|m> in the Fourier |m> basis.
+    Construct <m'|cos(Î±)|m> in the Fourier |m> basis.
 
-    cos(α)|m> = (|m+1> + |m-1>) / 2  →  real tridiagonal with 0.5 on ±1 diagonals.
+    cos(Î±)|m> = (|m+1> + |m-1>) / 2  â†’  real tridiagonal with 0.5 on Â±1 diagonals.
 
     Parameters
     ----------
@@ -72,7 +72,7 @@ def torsion_cos_alpha_matrix(m_values: np.ndarray) -> np.ndarray:
     return C
 
 
-# ── Torsional matrix elements ────────────────────────────────────────────────
+# â”€â”€ Torsional matrix elements â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def torsion_dipole_matrix_elements(
     eigvecs_lo: np.ndarray,
@@ -80,24 +80,24 @@ def torsion_dipole_matrix_elements(
     m_values: np.ndarray,
 ) -> np.ndarray:
     """
-    Compute |<ψ_hi|cos(α)|ψ_lo>|² for all (hi, lo) eigenstate pairs.
+    Compute |<Ïˆ_hi|cos(Î±)|Ïˆ_lo>|Â² for all (hi, lo) eigenstate pairs.
 
     Parameters
     ----------
-    eigvecs_lo : (N_basis, n_lo) array — eigenvectors of the lower block
-    eigvecs_hi : (N_basis, n_hi) array — eigenvectors of the upper block
-    m_values : (N_basis,) integer array — basis m quantum numbers
+    eigvecs_lo : (N_basis, n_lo) array â€” eigenvectors of the lower block
+    eigvecs_hi : (N_basis, n_hi) array â€” eigenvectors of the upper block
+    m_values : (N_basis,) integer array â€” basis m quantum numbers
 
     Returns
     -------
-    (n_hi, n_lo) float array of |<hi|cos(α)|lo>|²
+    (n_hi, n_lo) float array of |<hi|cos(Î±)|lo>|Â²
     """
     C = torsion_cos_alpha_matrix(m_values)
     U_lo = np.asarray(eigvecs_lo)
     U_hi = np.asarray(eigvecs_hi)
-    # Apply cos(α) to each lower eigenstate: (N, n_lo)
+    # Apply cos(Î±) to each lower eigenstate: (N, n_lo)
     C_lo = C @ U_lo if np.isrealobj(U_lo) else C @ U_lo.real
-    # Project onto upper eigenstates: <hi|C|lo> = U_hi† · C_lo, shape (n_hi, n_lo)
+    # Project onto upper eigenstates: <hi|C|lo> = U_hiâ€  Â· C_lo, shape (n_hi, n_lo)
     if np.isrealobj(U_hi):
         ME = U_hi.T @ C_lo
     else:
@@ -105,7 +105,7 @@ def torsion_dipole_matrix_elements(
     return np.abs(ME) ** 2
 
 
-# ── Hönl-London factors ─────────────────────────────────────────────────────
+# â”€â”€ HÃ¶nl-London factors â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def honl_london_factor(
     J_lo: int,
@@ -115,21 +115,21 @@ def honl_london_factor(
     transition_type: str = "a",
 ) -> float:
     """
-    Hönl-London factor for a symmetric-top transition.
+    HÃ¶nl-London factor for a symmetric-top transition.
 
     Supported types:
-      'a' : parallel (ΔK = 0)       — torsional axis ≈ a-axis
-      'b' : perpendicular (|ΔK| = 1) — b-type selection rules
-      'c' : perpendicular (|ΔK| = 1) — c-type (same HL formula as b-type)
+      'a' : parallel (Î”K = 0)       â€” torsional axis â‰ˆ a-axis
+      'b' : perpendicular (|Î”K| = 1) â€” b-type selection rules
+      'c' : perpendicular (|Î”K| = 1) â€” c-type (same HL formula as b-type)
 
-    Branch is determined by ΔJ = J_hi - J_lo:
-      +1 → R-branch,  0 → Q-branch,  −1 → P-branch.
+    Branch is determined by Î”J = J_hi - J_lo:
+      +1 â†’ R-branch,  0 â†’ Q-branch,  âˆ’1 â†’ P-branch.
 
     Formulas from Gordy & Cook (1984) Microwave Molecular Spectra, Ch. 3.
 
     Returns
     -------
-    float ≥ 0.  Returns 0 if the selection rule for this type is violated.
+    float â‰¥ 0.  Returns 0 if the selection rule for this type is violated.
     """
     Jl, Kl, Jh, Kh = int(J_lo), int(K_lo), int(J_hi), int(K_hi)
     dJ = Jh - Jl
@@ -161,7 +161,7 @@ def honl_london_factor(
         s = dK  # +1 or -1
         if dJ == +1:
             J = Jl
-            # (J + 1 + s*K + 1)(J + 1 + s*K + 2) → (J ± K + 2)(J ± K + 1)
+            # (J + 1 + s*K + 1)(J + 1 + s*K + 2) â†’ (J Â± K + 2)(J Â± K + 1)
             a = J + s * K + 2
             b = J + s * K + 1
             return float(a * b) / (4.0 * float(J + 1)) if J + 1 > 0 else 0.0
@@ -184,7 +184,7 @@ def honl_london_factor(
     return 0.0
 
 
-# ── Line list ────────────────────────────────────────────────────────────────
+# â”€â”€ Line list â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def compute_torsion_line_list(
     spec: TorsionHamiltonianSpec,
@@ -205,9 +205,9 @@ def compute_torsion_line_list(
 
     Iterates over all combinations of lower (J_lo, K_lo, vt_lo) and upper
     (J_hi, K_hi, vt_hi) quantum numbers, applying:
-      - ΔJ ∈ {−1, 0, +1}
-      - ΔK consistent with transition_type
-      - Symmetry selection rules (A↔A, E↔E; A↔E forbidden for C3)
+      - Î”J âˆˆ {âˆ’1, 0, +1}
+      - Î”K consistent with transition_type
+      - Symmetry selection rules (Aâ†”A, Eâ†”E; Aâ†”E forbidden for C3)
       - Positive frequency (E_hi > E_lo)
 
     Parameters
@@ -217,12 +217,12 @@ def compute_torsion_line_list(
     K_values : K quantum numbers to compute
     n_levels : torsional levels per (J, K) block
     symmetry_mode : 'c3' enables C3 symmetry labeling; None disables
-    rotor_fold : 3 for CH3 (C3), 2 for CH2 (C2) — governs nuclear spin weights
-    transition_type : 'a' (ΔK=0), 'b' or 'c' (|ΔK|=1)
+    rotor_fold : 3 for CH3 (C3), 2 for CH2 (C2) â€” governs nuclear spin weights
+    transition_type : 'a' (Î”K=0), 'b' or 'c' (|Î”K|=1)
     max_freq_mhz : discard lines above this frequency [MHz]
     min_line_strength : discard lines with line_strength below this threshold
-    include_pure_torsional : include ΔJ=0, ΔK=0, Δvt≠0 (far-IR torsional band)
-    include_rotational : include ΔJ=±1 (microwave/mm-wave rotational spectrum)
+    include_pure_torsional : include Î”J=0, Î”K=0, Î”vtâ‰ 0 (far-IR torsional band)
+    include_rotational : include Î”J=Â±1 (microwave/mm-wave rotational spectrum)
 
     Returns
     -------
@@ -230,11 +230,11 @@ def compute_torsion_line_list(
       freq_cm-1, freq_mhz       : transition frequency
       J_lo, K_lo, vt_lo, symmetry_lo : lower-state quantum numbers
       J_hi, K_hi, vt_hi, symmetry_hi : upper-state quantum numbers
-      line_strength              : |<ψ_hi|cos(α)|ψ_lo>|²
-      honl_london                : Hönl-London factor
+      line_strength              : |<Ïˆ_hi|cos(Î±)|Ïˆ_lo>|Â²
+      honl_london                : HÃ¶nl-London factor
       nuclear_spin_weight        : integer nuclear-spin weight (lower state)
-      relative_intensity         : nsw × line_strength × honl_london (or 0 if forbidden)
-      allowed                    : bool — symmetry selection rule result
+      relative_intensity         : nsw Ã— line_strength Ã— honl_london (or 0 if forbidden)
+      allowed                    : bool â€” symmetry selection rule result
     """
     sym_mode = str(symmetry_mode).strip().lower() if symmetry_mode else None
     label = sym_mode == "c3"
@@ -271,7 +271,7 @@ def compute_torsion_line_list(
             if not include_rotational and abs(dJ) == 1:
                 continue
 
-            # Enforce transition_type ΔK rule
+            # Enforce transition_type Î”K rule
             if t == "a" and dK != 0:
                 continue
             if t in ("b", "c") and abs(dK) != 1:

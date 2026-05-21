@@ -1,4 +1,4 @@
-"""
+﻿"""
 Quantum engine: Wilson B-matrix and ORCA gradient/Hessian parser.
 
 Primitive coordinate derivative code adapted from geomeTRIC
@@ -11,11 +11,11 @@ import re
 from collections import defaultdict
 from scipy import constants
 
-# ── Unit conversions ──────────────────────────────────────────────────────────
-BOHR_TO_ANG = constants.physical_constants["Bohr radius"][0] * 1e10   # ≈ 0.529177
-ANG_TO_BOHR = 1.0 / BOHR_TO_ANG                                       # ≈ 1.889726
+# â”€â”€ Unit conversions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+BOHR_TO_ANG = constants.physical_constants["Bohr radius"][0] * 1e10   # â‰ˆ 0.529177
+ANG_TO_BOHR = 1.0 / BOHR_TO_ANG                                       # â‰ˆ 1.889726
 
-# ── Element data (geomeTRIC / Cordero et al. Dalton Trans. 2008) ─────────────
+# â”€â”€ Element data (geomeTRIC / Cordero et al. Dalton Trans. 2008) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 _ELEMENTS = [
     "None", "H", "He",
     "Li", "Be", "B", "C", "N", "O", "F", "Ne",
@@ -29,7 +29,7 @@ _ELEMENTS = [
     "Au", "Hg", "Tl", "Pb", "Bi", "Po", "At", "Rn",
 ]
 
-_COV_RADII = [  # Å, index matches atomic number − 1
+_COV_RADII = [  # Ã…, index matches atomic number âˆ’ 1
     0.31, 0.28,
     1.28, 0.96, 0.84, 0.76, 0.71, 0.66, 0.57, 0.58,
     0.00, 1.41, 1.21, 1.11, 1.07, 1.05, 1.02, 1.06,
@@ -48,7 +48,7 @@ def _cov_radius(elem):
     return _COV_RADII[_ELEMENTS.index(elem) - 1]
 
 
-# ── Primitive derivatives (adapted from geomeTRIC internal.py) ────────────────
+# â”€â”€ Primitive derivatives (adapted from geomeTRIC internal.py) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def _cross(a, b):
     return np.array([
@@ -59,7 +59,7 @@ def _cross(a, b):
 
 
 def _bond_deriv(xyz, m, n):
-    """∂r_{mn}/∂x — shape (N, 3)."""
+    """âˆ‚r_{mn}/âˆ‚x â€” shape (N, 3)."""
     d = np.zeros_like(xyz)
     u = (xyz[m] - xyz[n]) / np.linalg.norm(xyz[m] - xyz[n])
     d[m] = u
@@ -68,7 +68,7 @@ def _bond_deriv(xyz, m, n):
 
 
 def _angle_deriv(xyz, m, o, n):
-    """∂θ_{mon}/∂x, vertex at o — shape (N, 3)."""
+    """âˆ‚Î¸_{mon}/âˆ‚x, vertex at o â€” shape (N, 3)."""
     d = np.zeros_like(xyz)
     u_p = xyz[m] - xyz[o]; u_n = np.linalg.norm(u_p); u = u_p / u_n
     v_p = xyz[n] - xyz[o]; v_n = np.linalg.norm(v_p); v = v_p / v_n
@@ -87,7 +87,7 @@ def _angle_deriv(xyz, m, o, n):
 
 
 def _dihedral_deriv(xyz, m, o, p, n):
-    """∂φ_{mopn}/∂x — shape (N, 3)."""
+    """âˆ‚Ï†_{mopn}/âˆ‚x â€” shape (N, 3)."""
     d = np.zeros_like(xyz)
     u_p = xyz[m] - xyz[o]; u_n = np.linalg.norm(u_p); u = u_p / u_n
     w_p = xyz[p] - xyz[o]; w_n = np.linalg.norm(w_p); w = w_p / w_n
@@ -105,7 +105,7 @@ def _dihedral_deriv(xyz, m, o, p, n):
     return d
 
 
-# ── Connectivity ──────────────────────────────────────────────────────────────
+# â”€â”€ Connectivity â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def _detect_bonds(coords, elems, fac=1.2):
     """Bonds from covalent-radii criterion: dist < fac*(R_i + R_j)."""
@@ -153,16 +153,16 @@ def _detect_dihedrals(bonds):
     return dihedrals
 
 
-# ── Wilson B-matrix ───────────────────────────────────────────────────────────
+# â”€â”€ Wilson B-matrix â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def wilson_B(coords, elems):
     """
-    Wilson B-matrix (n_internals × 3N).
+    Wilson B-matrix (n_internals Ã— 3N).
 
-    Rows: bonds [Å], valence angles [rad], proper dihedrals [rad].
+    Rows: bonds [Ã…], valence angles [rad], proper dihedrals [rad].
     coords : (N, 3) array in Angstroms.
     elems  : list of element symbols.
-    Returns (B, labels) — B shape (n_int, 3N), labels list of str.
+    Returns (B, labels) â€” B shape (n_int, 3N), labels list of str.
     """
     coords = np.asarray(coords, dtype=float)
     bonds = _detect_bonds(coords, elems)
@@ -183,7 +183,7 @@ def wilson_B(coords, elems):
     return np.array(rows), labels
 
 
-# ── ORCA file parsers ─────────────────────────────────────────────────────────
+# â”€â”€ ORCA file parsers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def parse_engrad(path):
     """
@@ -209,7 +209,7 @@ def parse_hess(path):
 
     Returns
     -------
-    hessian : ndarray   Shape (3N, 3N), in Hartree/Bohr².
+    hessian : ndarray   Shape (3N, 3N), in Hartree/BohrÂ².
     """
     with open(path) as f:
         content = f.read()
@@ -255,7 +255,7 @@ def parse_orca_rovib(path):
         modes, low-frequency modes (< 50 cm^-1), and a marker if the run did
         not appear to invoke VPT2.
     """
-    from backend.correction_models import ParsedRovibResult  # local import to avoid cycles
+    from backend.spectral.correction_models import ParsedRovibResult  # local import to avoid cycles
 
     alpha = np.full(3, np.nan, dtype=float)
     frequencies: list[float] = []
@@ -397,7 +397,7 @@ def parse_orca_rovib_alpha(path):
     return parse_orca_rovib(path).alpha_abc
 
 
-# ── QuantumEngine ─────────────────────────────────────────────────────────────
+# â”€â”€ QuantumEngine â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class QuantumEngine:
     """
@@ -417,12 +417,12 @@ class QuantumEngine:
 
     @property
     def gradient(self):
-        """Gradient in Hartree/Å, shape (3N,)."""
+        """Gradient in Hartree/Ã…, shape (3N,)."""
         return self._gradient_bohr * ANG_TO_BOHR
 
     @property
     def hessian(self):
-        """Hessian in Hartree/Å², shape (3N, 3N)."""
+        """Hessian in Hartree/Ã…Â², shape (3N, 3N)."""
         return self._hessian_bohr * ANG_TO_BOHR ** 2
 
     def wilson_B(self, coords):
@@ -430,6 +430,6 @@ class QuantumEngine:
         Wilson B-matrix at the given geometry.
 
         coords : (N, 3) array in Angstroms.
-        Returns (B [n_int × 3N], labels [list of str]).
+        Returns (B [n_int Ã— 3N], labels [list of str]).
         """
         return wilson_B(np.asarray(coords, dtype=float), self.elems)

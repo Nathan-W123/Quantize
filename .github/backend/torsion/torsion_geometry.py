@@ -1,4 +1,4 @@
-"""
+﻿"""
 Geometric computation of RAM-lite torsion parameters F and rho.
 
 Provides functions to derive the internal-rotation kinetic constant F
@@ -24,8 +24,8 @@ from typing import Sequence
 
 import numpy as np
 
-from backend.torsion_hamiltonian import TorsionHamiltonianSpec
-from backend.torsion_uncertainty import torsion_level_observables
+from backend.torsion.torsion_hamiltonian import TorsionHamiltonianSpec
+from backend.torsion.torsion_uncertainty import torsion_level_observables
 
 # F [cm^-1] = _F_CM1_PER_AMU_A2 / I_alpha [amu Ang^2]
 _F_CM1_PER_AMU_A2: float = 16.857629206
@@ -151,7 +151,7 @@ def torsion_geometry_jacobian(
 
     Returns
     -------
-    J_out : (n_levels, 3*N) float array — columns ordered [x0,y0,z0, x1,y1,z1, ...]
+    J_out : (n_levels, 3*N) float array â€” columns ordered [x0,y0,z0, x1,y1,z1, ...]
     """
     coords = np.asarray(coords_ang, dtype=float)
     masses = np.asarray(masses_amu, dtype=float)

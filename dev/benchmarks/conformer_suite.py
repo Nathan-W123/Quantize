@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 import os
@@ -10,14 +10,16 @@ from typing import Any
 
 import numpy as np
 
-from backend.conformer_generation import build_conformer_ensemble
-from backend.conformer_mixture import ConformerMixture
-from backend.spectral import SpectralEngine
+from backend.conformers.conformer_generation import build_conformer_ensemble
+from backend.conformers.conformer_mixture import ConformerMixture
+from backend.spectral.spectral import SpectralEngine
+
+from paths import OUTPUT_BENCHMARK_HISTORY_DIR, OUTPUT_BENCHMARKS_DIR
 
 _ROOT = Path(__file__).resolve().parents[2]
 _DEFAULT_BASELINE_PATH = _ROOT / "dev" / "benchmarks" / "baselines" / "conformer.json"
-_DEFAULT_OUTPUT_PATH = _ROOT / "results" / "benchmarks" / "conformer-latest.json"
-_DEFAULT_HISTORY_DIR = _ROOT / "results" / "benchmarks" / "history"
+_DEFAULT_OUTPUT_PATH = _ROOT / OUTPUT_BENCHMARKS_DIR / "conformer-latest.json"
+_DEFAULT_HISTORY_DIR = _ROOT / OUTPUT_BENCHMARK_HISTORY_DIR
 
 
 def default_baseline_path() -> Path:

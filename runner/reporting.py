@@ -1,4 +1,4 @@
-"""
+﻿"""
 Report generation and CSV/JSON exports for rovibrational corrections.
 
 These functions consume the same isotopologue dictionaries used by
@@ -17,7 +17,7 @@ from typing import Iterable
 
 import numpy as np
 
-from backend.correction_models import COMPONENTS, RovibCorrection
+from backend.spectral.correction_models import COMPONENTS, RovibCorrection
 
 
 def _fmt(v, fmt=".4f"):
@@ -313,12 +313,12 @@ def generate_lam_report_section(torsion_summary: dict) -> str:
     if any(v is not None for v in (F, rho, A, B, C)):
         lines.append("### Torsion Hamiltonian Parameters")
         lines.append("")
-        lines.append("| Parameter | Value (cm⁻¹) |")
+        lines.append("| Parameter | Value (cmâ»Â¹) |")
         lines.append("|---|---|")
         if F is not None:
             lines.append(f"| F (internal-rotation constant) | {_fmt(F, '.5f')} |")
         if rho is not None:
-            lines.append(f"| ρ (coupling parameter) | {_fmt(rho, '.7f')} |")
+            lines.append(f"| Ï (coupling parameter) | {_fmt(rho, '.7f')} |")
         if A is not None:
             lines.append(f"| A | {_fmt(A, '.5f')} |")
         if B is not None:
@@ -331,7 +331,7 @@ def generate_lam_report_section(torsion_summary: dict) -> str:
     if fitted:
         lines.append("### Fitted Potential Parameters")
         lines.append("")
-        lines.append("| Parameter | Value (cm⁻¹) |")
+        lines.append("| Parameter | Value (cmâ»Â¹) |")
         lines.append("|---|---|")
         for name, val in sorted(fitted.items()):
             lines.append(f"| {name} | {_fmt(val, '+.6f')} |")
@@ -355,7 +355,7 @@ def generate_lam_report_section(torsion_summary: dict) -> str:
         labels = ["A", "B", "C"]
         has_table = b_rig and b_rov and b_eff
         if has_table:
-            lines.append("| Comp | B_rigid (cm⁻¹) | B_rovib (cm⁻¹) | B_eff (cm⁻¹) |")
+            lines.append("| Comp | B_rigid (cmâ»Â¹) | B_rovib (cmâ»Â¹) | B_eff (cmâ»Â¹) |")
             lines.append("|---|---|---|---|")
             for i, label in enumerate(labels):
                 br = _fmt(b_rig[i] if i < len(b_rig) else None, ".6f")
@@ -368,20 +368,20 @@ def generate_lam_report_section(torsion_summary: dict) -> str:
         rms = lam.get("torsion_rms_cm-1")
         if unc is not None or rms is not None:
             if rms is not None:
-                lines.append(f"Torsion RMS residual: {_fmt(rms, '.4f')} cm⁻¹")
+                lines.append(f"Torsion RMS residual: {_fmt(rms, '.4f')} cmâ»Â¹")
             if unc is not None:
-                lines.append(f"LAM uncertainty estimate: {_fmt(unc, '.4f')} cm⁻¹")
+                lines.append(f"LAM uncertainty estimate: {_fmt(unc, '.4f')} cmâ»Â¹")
             lines.append("")
 
     # --- Geometry coupling ---
     gc = torsion_summary.get("geometry_coupling") or {}
     if gc:
-        lines.append("### Geometry Coupling (F/ρ from Cartesian coordinates)")
+        lines.append("### Geometry Coupling (F/Ï from Cartesian coordinates)")
         lines.append("")
         lines.append("| Quantity | Geometry-derived | Spec value |")
         lines.append("|---|---|---|")
-        lines.append(f"| F (cm⁻¹) | {_fmt(gc.get('F_geom'), '.5f')} | {_fmt(gc.get('F_spec'), '.5f')} |")
-        lines.append(f"| ρ | {_fmt(gc.get('rho_geom'), '.7f')} | {_fmt(gc.get('rho_spec'), '.7f')} |")
+        lines.append(f"| F (cmâ»Â¹) | {_fmt(gc.get('F_geom'), '.5f')} | {_fmt(gc.get('F_spec'), '.5f')} |")
+        lines.append(f"| Ï | {_fmt(gc.get('rho_geom'), '.7f')} | {_fmt(gc.get('rho_spec'), '.7f')} |")
         lines.append("")
 
     # --- Tunneling splitting summary ---

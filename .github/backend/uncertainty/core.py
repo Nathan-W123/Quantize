@@ -1,4 +1,4 @@
-"""
+﻿"""
 Uncertainty quantification for internal-coordinate structure refinement.
 
 Computes parameter covariance and confidence intervals from the internal-coordinate
@@ -6,7 +6,7 @@ Jacobian and the prior regularisation.
 
 Main entry point:
     compute_uncertainty(Jq, weights, sigma_prior, lambda_reg)
-    → covariance matrix, standard errors, 95% confidence intervals
+    â†’ covariance matrix, standard errors, 95% confidence intervals
 """
 
 from __future__ import annotations
@@ -27,12 +27,12 @@ def compute_uncertainty(
     Parameter covariance and confidence intervals for internal coordinates.
 
     Implements:
-        Cq = (Jq^T W Jq + λ Σ_prior^{-1})^{-1}
+        Cq = (Jq^T W Jq + Î» Î£_prior^{-1})^{-1}
 
     When residual_w is supplied and chi2_inflate=True the covariance is
-    inflated by the reduced chi² (s² = χ²/dof) whenever s² > 1, so that
-    confidence intervals reflect actual fit quality rather than nominal σ.
-    This prevents overoptimistic CIs when residuals exceed their stated σ.
+    inflated by the reduced chiÂ² (sÂ² = Ï‡Â²/dof) whenever sÂ² > 1, so that
+    confidence intervals reflect actual fit quality rather than nominal Ïƒ.
+    This prevents overoptimistic CIs when residuals exceed their stated Ïƒ.
 
     Parameters
     ----------
@@ -41,20 +41,20 @@ def compute_uncertainty(
     weights    : (m,) or None
                             Per-observation weights.  If None, uniform weight 1.
     sigma_prior : (n_q,) or None
-                            Prior standard deviations in natural units (Å, rad).
+                            Prior standard deviations in natural units (Ã…, rad).
                             If None, no prior regularisation is applied beyond lambda_reg.
     lambda_reg : float      Additional Tikhonov regularisation added to the diagonal.
                             Prevents blow-up for unidentifiable parameters.
     residual_w : (m,) or None
-                            Pre-weighted residuals (observed − calculated, each divided
-                            by its observational sigma).  Required for chi²-inflation.
-                            If None, no chi²-inflation is applied.
+                            Pre-weighted residuals (observed âˆ’ calculated, each divided
+                            by its observational sigma).  Required for chiÂ²-inflation.
+                            If None, no chiÂ²-inflation is applied.
     chi2_inflate : bool     If True (default) and residual_w is not None, inflate the
-                            covariance by s² = χ²/dof when s² > 1.
+                            covariance by sÂ² = Ï‡Â²/dof when sÂ² > 1.
 
     Returns
     -------
-    cov        : (n_q, n_q)   Posterior covariance matrix (chi²-inflated if applicable).
+    cov        : (n_q, n_q)   Posterior covariance matrix (chiÂ²-inflated if applicable).
     std_err    : (n_q,)       Standard errors = sqrt(diag(cov)).
     ci_95      : (n_q, 2)     95% confidence intervals [q - 1.96*se, q + 1.96*se].
                               The caller must add these to the q values to get intervals.
@@ -81,8 +81,8 @@ def compute_uncertainty(
     except np.linalg.LinAlgError:
         cov = np.linalg.pinv(A)
 
-    # Chi²-scaled uncertainty inflation.
-    # s² = χ²_weighted / dof; inflate when residuals exceed nominal σ.
+    # ChiÂ²-scaled uncertainty inflation.
+    # sÂ² = Ï‡Â²_weighted / dof; inflate when residuals exceed nominal Ïƒ.
     chi2_scale = 1.0
     if chi2_inflate and residual_w is not None:
         rw = np.asarray(residual_w, dtype=float)
@@ -122,16 +122,16 @@ def uncertainty_table(
     sigma_prior : (n_q,) or None
     lambda_reg : float
     residual_w : (m,) or None
-                 Pre-weighted residuals; enables chi²-inflation when supplied.
+                 Pre-weighted residuals; enables chiÂ²-inflation when supplied.
     chi2_inflate : bool  Passed to compute_uncertainty.
 
     Returns
     -------
     rows : list of dict with keys:
         name, value, value_unit, std_err, std_err_unit, ci_lo, ci_hi, ci_unit,
-        chi2_scale (float — inflation factor, 1.0 when no inflation applied)
+        chi2_scale (float â€” inflation factor, 1.0 when no inflation applied)
     """
-    from backend.internal_fit import InternalCoordinateSet  # avoid circular at module level
+    from backend.internal.internal_fit import InternalCoordinateSet  # avoid circular at module level
 
     cov, std_err, ci_95, chi2_scale = compute_uncertainty(
         Jq, weights, sigma_prior, lambda_reg,
@@ -145,8 +145,8 @@ def uncertainty_table(
     for i, (ic, q, se, ci) in enumerate(zip(active, q_vals, std_err, ci_95)):
         if ic.kind == "bond":
             val = q
-            val_u = "Å"
-            se_u = "Å"
+            val_u = "Ã…"
+            se_u = "Ã…"
         else:
             val = np.degrees(q)
             se = np.degrees(se)
@@ -173,15 +173,15 @@ def uncertainty_table(
         rows.append(row)
     if chi2_scale > 1.0:
         print(
-            f"  [Uncertainty] Chi²-inflation applied: s²={chi2_scale:.3f} "
-            f"(residuals exceed stated σ; CIs inflated by ×{chi2_scale**0.5:.3f})"
+            f"  [Uncertainty] ChiÂ²-inflation applied: sÂ²={chi2_scale:.3f} "
+            f"(residuals exceed stated Ïƒ; CIs inflated by Ã—{chi2_scale**0.5:.3f})"
         )
     return rows
 
 
 def print_uncertainty_table(rows: list[dict]) -> None:
     """Pretty-print the uncertainty table returned by uncertainty_table()."""
-    header = f"{'Coordinate':<28}  {'Value':>10}  {'±1σ':>8}  {'95% CI':>20}  {'Unit'}"
+    header = f"{'Coordinate':<28}  {'Value':>10}  {'Â±1Ïƒ':>8}  {'95% CI':>20}  {'Unit'}"
     print("\n" + header)
     print("-" * len(header))
     for r in rows:

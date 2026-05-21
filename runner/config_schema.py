@@ -3,6 +3,8 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
+from paths import OUTPUT_RUNS_DIR
+
 
 CONFIG_SCHEMA_VERSION = "1.0"
 
@@ -21,7 +23,7 @@ def normalize_config(cfg: dict[str, Any]) -> dict[str, Any]:
     c.setdefault("write_xyz", False)
 
     output = c.setdefault("output", {}) or {}
-    output.setdefault("root", "runs")
+    output.setdefault("root", str(OUTPUT_RUNS_DIR))
     output.setdefault("artifacts", True)
     c["output"] = output
 

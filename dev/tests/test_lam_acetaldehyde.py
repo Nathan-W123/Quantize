@@ -1,20 +1,20 @@
-"""
+﻿"""
 Phase 4: Acetaldehyde benchmark and RAM-lite reliability scoring.
 
 Validates the torsion pipeline against acetaldehyde (CH3CHO) literature parameters:
-  Kleiner et al., J. Mol. Spectrosc. 175, 1–13 (1996)
+  Kleiner et al., J. Mol. Spectrosc. 175, 1â€“13 (1996)
     F    = 5.1724 cm^-1    internal rotation constant
     rho  = 0.0609           coupling parameter
     V3   = 163.4 cm^-1     3-fold barrier height
 
 Fourier convention (this codebase):
-  V(α) = v0 + vcos_3 * cos(3α)
+  V(Î±) = v0 + vcos_3 * cos(3Î±)
   v0    = V3/2  = 81.7 cm^-1
   vcos3 = -V3/2 = -81.7 cm^-1
 
 RAM-lite vt=0 A/E tunneling splitting for these parameters: ~0.276 cm^-1 (E above A).
 
-This is the exact solution to the 1D torsional Hamiltonian H = F*m^2 + V(α), verified
+This is the exact solution to the 1D torsional Hamiltonian H = F*m^2 + V(Î±), verified
 by three independent methods (Fourier matrix, DVR grid, Floquet/Mathieu analysis).
 It agrees with the Mathieu equation result for q = V3/(9*F) = 3.51.
 
@@ -29,16 +29,16 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from backend.torsion_hamiltonian import (
+from backend.torsion.torsion_hamiltonian import (
     TorsionFourierPotential,
     TorsionHamiltonianSpec,
     solve_ram_lite_levels,
 )
-from backend.torsion_reliability import TorsionReliabilityScore, assess_ram_lite_reliability
-from backend.torsion_symmetry import c3_symmetry_block_energies, predict_tunneling_splitting
+from backend.torsion.torsion_reliability import TorsionReliabilityScore, assess_ram_lite_reliability
+from backend.torsion.torsion_symmetry import c3_symmetry_block_energies, predict_tunneling_splitting
 
 
-# ── Acetaldehyde literature parameters (Kleiner et al. 1996) ─────────────────
+# â”€â”€ Acetaldehyde literature parameters (Kleiner et al. 1996) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 _F_CH3CHO   = 5.1724    # cm^-1  internal rotation constant
 _RHO_CH3CHO = 0.0609    # dimensionless coupling
@@ -64,7 +64,7 @@ def _acetaldehyde_spec(n_basis: int = 12) -> TorsionHamiltonianSpec:
     )
 
 
-# ── Benchmark: torsional levels ───────────────────────────────────────────────
+# â”€â”€ Benchmark: torsional levels â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestAcetaldehydeBenchmark:
     """Validate RAM-lite against acetaldehyde literature (Kleiner et al. 1996)."""
@@ -158,7 +158,7 @@ class TestAcetaldehydeBenchmark:
             assert E_A[1] > E_A[0], "vt=1 A should be above vt=0 A"
 
     def test_mhz_splitting_conversion(self):
-        """MHz splitting = cm^-1 splitting × 29979.2458 within 0.1 MHz."""
+        """MHz splitting = cm^-1 splitting Ã— 29979.2458 within 0.1 MHz."""
         _MHZ = 29979.2458
         spec = _acetaldehyde_spec(n_basis=12)
         rows = predict_tunneling_splitting(spec, J=0, K=0, n_levels=2)
@@ -169,7 +169,7 @@ class TestAcetaldehydeBenchmark:
             )
 
 
-# ── Reliability scoring ───────────────────────────────────────────────────────
+# â”€â”€ Reliability scoring â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestReliabilityScoring:
     """Unit tests for assess_ram_lite_reliability heuristics."""
@@ -185,7 +185,7 @@ class TestReliabilityScoring:
         )
 
     def test_high_score_for_methanol_params(self):
-        """Symmetric-top methanol parameters (B≈C) should score 'high'."""
+        """Symmetric-top methanol parameters (Bâ‰ˆC) should score 'high'."""
         spec = self._make_spec(F=27.65, rho=0.81, B=0.82, C=0.82, barrier=373.0)
         result = assess_ram_lite_reliability(spec)
         assert result.score == "high", f"Expected 'high', got '{result.score}'; flags={result.flags}"
@@ -193,10 +193,10 @@ class TestReliabilityScoring:
         assert np.isfinite(result.ram_lite_error_bound_cm1)
 
     def test_acetaldehyde_scores_moderate(self):
-        """Acetaldehyde parameters trigger asymmetry flag → 'moderate'."""
+        """Acetaldehyde parameters trigger asymmetry flag â†’ 'moderate'."""
         spec = _acetaldehyde_spec(n_basis=12)
         result = assess_ram_lite_reliability(spec)
-        # B=0.3413, C=0.2884 → B−C=0.0529 > 0.1×B=0.0341 → asymmetry flag
+        # B=0.3413, C=0.2884 â†’ Bâˆ’C=0.0529 > 0.1Ã—B=0.0341 â†’ asymmetry flag
         assert result.score == "moderate", (
             f"Expected 'moderate', got '{result.score}'; flags={result.flags}"
         )
@@ -204,7 +204,7 @@ class TestReliabilityScoring:
 
     def test_low_score_for_small_vf(self):
         """V/F < 2 triggers 'low' score."""
-        # barrier = 10, F = 27.65 → V/F ≈ 0.36 < 2
+        # barrier = 10, F = 27.65 â†’ V/F â‰ˆ 0.36 < 2
         pot = TorsionFourierPotential(v0=5.0, vcos={3: -5.0}, vsin={}, units="cm-1")
         spec = TorsionHamiltonianSpec(
             F=27.65, rho=0.1, A=0.0, B=0.0, C=0.0,
@@ -228,22 +228,22 @@ class TestReliabilityScoring:
         assert any("n_basis" in f for f in result.flags)
 
     def test_moderate_score_for_strong_asymmetry(self):
-        """B − C > 0.1 × B triggers 'moderate'."""
-        # B=1.0, C=0.5 → B−C=0.5 > 0.1*B=0.1
+        """B âˆ’ C > 0.1 Ã— B triggers 'moderate'."""
+        # B=1.0, C=0.5 â†’ Bâˆ’C=0.5 > 0.1*B=0.1
         spec = self._make_spec(F=5.0, rho=0.1, B=1.0, C=0.5, barrier=200.0, n_basis=12)
         result = assess_ram_lite_reliability(spec)
         assert result.score in ("moderate", "low", "unreliable")
         assert any("B" in f for f in result.flags)
 
     def test_moderate_score_for_large_rho(self):
-        """ρ > 0.95 triggers 'moderate'."""
+        """Ï > 0.95 triggers 'moderate'."""
         spec = self._make_spec(F=27.65, rho=0.98, B=0.82, C=0.82, barrier=373.0)
         result = assess_ram_lite_reliability(spec)
         assert result.score in ("moderate", "low", "unreliable")
-        assert any("ρ" in f or "rho" in f.lower() for f in result.flags)
+        assert any("Ï" in f or "rho" in f.lower() for f in result.flags)
 
     def test_unreliable_for_large_cd(self):
-        """CD constant >> 1% of B → 'unreliable'."""
+        """CD constant >> 1% of B â†’ 'unreliable'."""
         spec = self._make_spec(F=27.65, rho=0.81, B=0.82, C=0.82, barrier=373.0, DJ=0.1)
         result = assess_ram_lite_reliability(spec)
         assert result.score == "unreliable"
@@ -267,7 +267,7 @@ class TestReliabilityScoring:
 
     def test_cd_threshold_exactly_at_boundary(self):
         """DJ exactly at 1% of B_min should not trigger the flag."""
-        # B = 0.82 → 1% = 0.0082; use DJ = 0.008 (just below threshold)
+        # B = 0.82 â†’ 1% = 0.0082; use DJ = 0.008 (just below threshold)
         spec = self._make_spec(F=27.65, rho=0.81, B=0.82, C=0.82, barrier=373.0, DJ=0.008)
         result = assess_ram_lite_reliability(spec)
         assert result.score != "unreliable", (

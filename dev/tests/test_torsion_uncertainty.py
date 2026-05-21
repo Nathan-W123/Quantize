@@ -1,9 +1,9 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import numpy as np
 
-from backend.torsion_hamiltonian import TorsionFourierPotential, TorsionHamiltonianSpec
-from backend.torsion_uncertainty import (
+from backend.torsion.torsion_hamiltonian import TorsionFourierPotential, TorsionHamiltonianSpec
+from backend.torsion.torsion_uncertainty import (
     TorsionParameter,
     covariance_from_matched_level_residuals,
     covariance_from_normal_matrix,

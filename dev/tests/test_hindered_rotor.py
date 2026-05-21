@@ -1,9 +1,9 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import numpy as np
 import pytest
 
-from backend.hindered_rotor import (
+from backend.torsion.hindered_rotor import (
     HinderedRotorModel,
     basis_convergence_report,
     boltzmann_torsion_weights,

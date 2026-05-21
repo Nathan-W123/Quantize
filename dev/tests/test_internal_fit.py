@@ -1,13 +1,13 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import numpy as np
 
-from backend.internal_fit import (
+from backend.internal.internal_fit import (
     InternalCoordinateSet,
     apply_internal_step,
     spectral_jacobian_q,
 )
-from backend.spectral import SpectralEngine
+from backend.spectral.spectral import SpectralEngine
 
 
 def _water_coords():

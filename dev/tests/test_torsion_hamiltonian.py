@@ -1,10 +1,10 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import numpy as np
 
 import pytest
 
-from backend.torsion_hamiltonian import (
+from backend.torsion.torsion_hamiltonian import (
     TorsionEffectiveConstantFourier,
     TorsionFourierPotential,
     TorsionHamiltonianSpec,
@@ -288,7 +288,7 @@ def test_effective_Falpha_grid_eval_and_warning_for_nonpositive_region():
     assert any("non-positive" in w for w in warnings)
 
 
-# ── Phase 0 additional: basis_m_values convention ────────────────────────────
+# â”€â”€ Phase 0 additional: basis_m_values convention â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def test_basis_m_values_n0_single_element():
     m = basis_m_values(0)
@@ -324,7 +324,7 @@ def test_basis_m_values_matches_hindered_rotor_convention():
         assert int(m[-1]) == M
 
 
-# ── Phase 0 additional: rotational_baseline_cm1 ──────────────────────────────
+# â”€â”€ Phase 0 additional: rotational_baseline_cm1 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def test_rotational_baseline_j0_is_zero():
     assert rotational_baseline_cm1(0, 0, A=5.0, B=3.0) == pytest.approx(0.0)
@@ -346,7 +346,7 @@ def test_rotational_baseline_prolate_k1_above_k0():
     assert e1 > e0
 
 
-# ── Phase 0 additional: fourier_potential_matrix ──────────────────────────────
+# â”€â”€ Phase 0 additional: fourier_potential_matrix â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def test_fourier_potential_matrix_v0_only_diagonal():
     m = basis_m_values(3)
@@ -376,10 +376,10 @@ def test_fourier_potential_matrix_zero_potential():
     np.testing.assert_allclose(np.abs(V), 0.0, atol=1e-12)
 
 
-# ── Phase 0 additional: periodic_wavefunction_diagnostics ────────────────────
+# â”€â”€ Phase 0 additional: periodic_wavefunction_diagnostics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def test_periodic_wavefunction_m0_is_A_symmetry():
-    # |m=0> has residue 0 mod 3 → A symmetry
+    # |m=0> has residue 0 mod 3 â†’ A symmetry
     m = np.array([-3, -2, -1, 0, 1, 2, 3], dtype=int)
     c = np.zeros(7, dtype=complex)
     c[3] = 1.0  # m=0 index

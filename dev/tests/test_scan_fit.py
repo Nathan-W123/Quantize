@@ -1,4 +1,4 @@
-"""
+﻿"""
 Tests for backend.scan_fit.
 
 Covers:
@@ -20,7 +20,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from backend.scan_fit import (
+from backend.torsion.scan_fit import (
     energies_to_cm1,
     export_scan_fit_csv,
     fit_fourier_potential,
@@ -29,10 +29,10 @@ from backend.scan_fit import (
     scan_to_torsion_potential,
     validate_scan_coverage,
 )
-from backend.torsion_hamiltonian import TorsionFourierPotential
+from backend.torsion.torsion_hamiltonian import TorsionFourierPotential
 
 
-# ── energies_to_cm1 ───────────────────────────────────────────────────────────
+# â”€â”€ energies_to_cm1 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestEnergiesToCm1:
     def test_cm1_passthrough(self):
@@ -62,7 +62,7 @@ class TestEnergiesToCm1:
         np.testing.assert_allclose(e1, e2)
 
 
-# ── validate_scan_coverage ────────────────────────────────────────────────────
+# â”€â”€ validate_scan_coverage â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestValidateScanCoverage:
     def _full_c3_scan(self, n=12):
@@ -100,9 +100,9 @@ class TestValidateScanCoverage:
         assert any("gap" in w.lower() for w in result["warnings"])
 
     def test_duplicate_endpoint_warns(self):
-        # First and last point are one period apart → duplicate
+        # First and last point are one period apart â†’ duplicate
         period = 2 * np.pi / 3
-        phi = np.linspace(0, period, 10, endpoint=True)  # phi[0]=0, phi[-1]=period → duplicate
+        phi = np.linspace(0, period, 10, endpoint=True)  # phi[0]=0, phi[-1]=period â†’ duplicate
         result = validate_scan_coverage(phi, period_rad=period, endpoint_tol_rad=0.05)
         assert result["has_duplicate_endpoint"] is True
         assert any("duplicate" in w.lower() for w in result["warnings"])
@@ -128,7 +128,7 @@ class TestValidateScanCoverage:
         assert result["ok"] is False
 
 
-# ── fit_fourier_potential ─────────────────────────────────────────────────────
+# â”€â”€ fit_fourier_potential â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestFitFourierPotential:
     def _v3_scan(self, n=36, V3=373.5, noise=0.0, rng_seed=0):
@@ -196,7 +196,7 @@ class TestFitFourierPotential:
         assert result["n_params"] == 2  # v0 + vcos3
 
 
-# ── scan_to_torsion_potential ─────────────────────────────────────────────────
+# â”€â”€ scan_to_torsion_potential â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestScanToTorsionPotential:
     def _c3_scan(self, n=36, V3=373.5):
@@ -236,7 +236,7 @@ class TestScanToTorsionPotential:
         assert pot.vcos[3] == pytest.approx(-V3 / 2, rel=1e-6)
 
 
-# ── scan_fit_diagnostics ──────────────────────────────────────────────────────
+# â”€â”€ scan_fit_diagnostics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestScanFitDiagnostics:
     def test_perfect_fit_zero_residuals(self):
@@ -250,7 +250,7 @@ class TestScanFitDiagnostics:
 
     def test_constant_offset_gives_constant_residual(self):
         phi = np.linspace(0, 2 * np.pi, 18, endpoint=False)
-        e = np.ones(18) * 100.0  # flat; fit v0=50 → residual = 50 everywhere
+        e = np.ones(18) * 100.0  # flat; fit v0=50 â†’ residual = 50 everywhere
         diag = scan_fit_diagnostics(phi, e, v0=50.0, vcos={}, vsin={})
         np.testing.assert_allclose(diag["residuals_cm1"], 50.0, atol=1e-10)
         assert diag["rms_cm1"] == pytest.approx(50.0, abs=1e-10)
@@ -262,7 +262,7 @@ class TestScanFitDiagnostics:
         assert diag["n_points"] == 24
 
 
-# ── export_scan_fit_csv ───────────────────────────────────────────────────────
+# â”€â”€ export_scan_fit_csv â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestExportScanFitCsv:
     def test_csv_has_correct_columns(self):
@@ -300,7 +300,7 @@ class TestExportScanFitCsv:
             assert float(rows[1]["phi_deg"]) == pytest.approx(90.0, abs=0.01)
 
 
-# ── ingest_scan_csv ───────────────────────────────────────────────────────────
+# â”€â”€ ingest_scan_csv â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestIngestScanCsv:
     def _write_csv(self, path, phi_deg, energies_cm1):

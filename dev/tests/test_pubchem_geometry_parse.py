@@ -1,10 +1,10 @@
-"""SDF parsing tests (no HTTP)."""
+﻿"""SDF parsing tests (no HTTP)."""
 
 from __future__ import annotations
 
 import numpy as np
 
-from backend.pubchem_geometry import parse_sdf_v2000_first_mol
+from backend.conformers.pubchem_geometry import parse_sdf_v2000_first_mol
 
 _MINIMAL_SDF = """931
   test
