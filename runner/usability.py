@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import csv
 import json
@@ -10,7 +10,8 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from backend.spectral_model import normalize_spectral_model
+from backend.spectral.spectral_model import normalize_spectral_model
+from paths import OUTPUT_RUNS_DIR
 from runner.config_schema import CONFIG_SCHEMA_VERSION, normalize_config
 
 try:
@@ -91,7 +92,7 @@ def _warn_isotopologue_consistency(cfg: dict[str, Any]) -> None:
 
     Two checks:
     1. Heavier isotopologue must not have larger rotational constants.
-    2. |ΔB/B| must not wildly exceed |ΔM/M| — catches unit errors (GHz vs MHz)
+    2. |Î”B/B| must not wildly exceed |Î”M/M| â€” catches unit errors (GHz vs MHz)
        or transposed component entries.
     """
     isos = _as_list(cfg.get("isotopologues"), "isotopologues") or []
@@ -134,7 +135,7 @@ def _warn_isotopologue_consistency(cfg: dict[str, Any]) -> None:
                             "Check for transposed entries or wrong units (expect MHz)."
                         )
 
-            # Check 2: |ΔB/B| / |ΔM/M| must not exceed 20
+            # Check 2: |Î”B/B| / |Î”M/M| must not exceed 20
             dM_frac = abs(M2 - M1) / max(M1, M2)
             if dM_frac < 1e-6:
                 continue
@@ -148,13 +149,13 @@ def _warn_isotopologue_consistency(cfg: dict[str, Any]) -> None:
                     print(
                         f"[input-warn] {comp}-constant change between '{n1}' and '{n2}' "
                         f"is {dB_frac*100:.1f}% but mass change is only {dM_frac*100:.1f}% "
-                        f"(ratio {ratio:.1f}×). "
+                        f"(ratio {ratio:.1f}Ã—). "
                         "Check units (MHz expected) and component order."
                     )
 
 
 def validate_config(cfg: dict[str, Any]) -> None:
-    """Validate supported legacy and generalized config shapes with clear errors."""
+    """Validate YAML/JSON config shape with clear errors."""
     if not isinstance(cfg, dict):
         raise ConfigError("Config must be a mapping/object.")
     schema_v = str(cfg.get("schema_version", CONFIG_SCHEMA_VERSION)).strip()
@@ -163,12 +164,13 @@ def validate_config(cfg: dict[str, Any]) -> None:
             f"'schema_version' must be '{CONFIG_SCHEMA_VERSION}' for this build (got '{schema_v}')."
         )
 
-    has_elements = "elements" in cfg
-    has_molecule = "molecule" in cfg
-    if has_elements and has_molecule:
-        raise ConfigError("Set either 'elements' for a generalized run or 'molecule' for legacy mode, not both.")
-    if not has_elements and not has_molecule:
-        raise ConfigError("Config must set either 'elements' or 'molecule'.")
+    if "molecule" in cfg:
+        raise ConfigError(
+            "Legacy 'molecule' configs are removed. Use 'elements', 'geometry', and "
+            "'isotopologues' (see configs/example_CO2.yaml)."
+        )
+    if "elements" not in cfg:
+        raise ConfigError("Config must set 'elements' (list of element symbols).")
 
     preset = cfg.get("preset")
     if preset is not None and str(preset).strip().upper() not in VALID_PRESETS:
@@ -178,12 +180,6 @@ def validate_config(cfg: dict[str, Any]) -> None:
     for key in ("root", "run_dir"):
         if key in output and output[key] is not None and not str(output[key]).strip():
             raise ConfigError(f"'output.{key}' cannot be blank.")
-
-    if has_molecule:
-        molecule = str(cfg.get("molecule", "")).strip()
-        if not molecule:
-            raise ConfigError("'molecule' cannot be blank.")
-        return
 
     elements = _as_list(cfg.get("elements"), "elements")
     if not elements:
@@ -218,8 +214,8 @@ def validate_config(cfg: dict[str, Any]) -> None:
                 for _bi, _bv in enumerate([float(v) for v in geometry["bond_lengths"]]):
                     if _bv < 0.3 or _bv > 5.0:
                         raise ConfigError(
-                            f"'geometry.bond_lengths[{_bi}]' = {_bv:.3f} Å is outside the physical "
-                            "range [0.3, 5.0] Å. Check your initial geometry (values in Angstrom)."
+                            f"'geometry.bond_lengths[{_bi}]' = {_bv:.3f} Ã… is outside the physical "
+                            "range [0.3, 5.0] Ã…. Check your initial geometry (values in Angstrom)."
                         )
         elif method == "pubchem":
             if not str(geometry.get("identifier", "")).strip():
@@ -381,7 +377,7 @@ def _validate_internal_priors_block(cfg: dict[str, Any], n_atoms: int) -> None:
                 raise ConfigError(f"'{path}.sigma' must be positive.")
         units = p.get("units")
         if units is not None and str(units).strip().lower() not in {
-            "angstrom", "a", "å", "radian", "rad", "degree", "degrees", "deg"
+            "angstrom", "a", "Ã¥", "radian", "rad", "degree", "degrees", "deg"
         }:
             raise ConfigError(f"'{path}.units' must be angstrom, radian, or degree variants.")
 
@@ -437,7 +433,7 @@ def _validate_rovibrational_corrections_block(cfg: dict[str, Any]) -> None:
     bob = rc.get("bob_params")
     if bob is not None and not isinstance(bob, dict):
         raise ConfigError(
-            "'rovibrational_corrections.bob_params' must be a mapping of element → component → u-value."
+            "'rovibrational_corrections.bob_params' must be a mapping of element â†’ component â†’ u-value."
         )
 
 
@@ -1003,7 +999,7 @@ def _validate_torsion_block(cfg: dict[str, Any]) -> None:
                     ki, vi = int(k), float(v)
                 except (TypeError, ValueError):
                     continue
-                # Only check the fundamental 3-fold term — higher harmonics (V6, V9…)
+                # Only check the fundamental 3-fold term â€” higher harmonics (V6, V9â€¦)
                 # are overtone corrections whose sign is physically independent.
                 if ki == 3 and vi > 0:
                     raise ConfigError(
@@ -1250,7 +1246,7 @@ def prepare_run_directory(cfg: dict[str, Any], config_path: Path | None = None) 
     if explicit:
         run_dir = Path(str(explicit)).expanduser()
     else:
-        root = Path(str(output.get("root", "runs"))).expanduser()
+        root = Path(str(output.get("root", OUTPUT_RUNS_DIR))).expanduser()
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         run_dir = root / f"{stamp}_{safe_run_name(cfg.get('name') or cfg.get('molecule'))}"
         if run_dir.exists():
@@ -1294,7 +1290,7 @@ def write_final_geometry_csv(path: Path, elems: list[str], coords: np.ndarray) -
 
 
 def residual_rows(coords: np.ndarray, spectral_isotopologues: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    from backend.spectral import SpectralEngine
+    from backend.spectral.spectral import SpectralEngine
 
     engine = SpectralEngine(spectral_isotopologues)
     rows: list[dict[str, Any]] = []
@@ -1327,7 +1323,7 @@ def write_residuals_csv(path: Path, rows: list[dict[str, Any]]) -> None:
 
 
 def singular_values(coords: np.ndarray, spectral_isotopologues: list[dict[str, Any]]) -> np.ndarray:
-    from backend.spectral import SpectralEngine
+    from backend.spectral.spectral import SpectralEngine
 
     engine = SpectralEngine(spectral_isotopologues)
     J, _ = engine.stacked_unweighted(coords)
@@ -1719,11 +1715,11 @@ def write_outputs(result: dict[str, Any]) -> dict[str, Path | list[Path]]:
     cfg = result.get("cfg", {}) or {}
     coord_mode = str(cfg.get("coordinate_mode", "cartesian")).strip().lower()
     if coord_mode == "internal" and iso_snapshot:
-        from backend.internal_fit import InternalCoordinateSet, spectral_jacobian_q, build_internal_priors
-        from backend.spectral import SpectralEngine
+        from backend.internal.internal_fit import InternalCoordinateSet, spectral_jacobian_q, build_internal_priors
+        from backend.spectral.spectral import SpectralEngine
         from backend.uncertainty import uncertainty_table, compute_uncertainty
-        from backend.identifiability import identifiability_table
-        from backend.prior_sensitivity import classify_prior_dominance, prior_sensitivity_analysis
+        from backend.internal.identifiability import identifiability_table
+        from backend.priors.prior_sensitivity import classify_prior_dominance, prior_sensitivity_analysis
 
         ic_cfg = cfg.get("internal_coordinates", {}) or {}
         use_dihedrals = bool(ic_cfg.get("use_dihedrals", False))
@@ -1823,8 +1819,8 @@ def write_outputs(result: dict[str, Any]) -> dict[str, Path | list[Path]]:
                         target = np.degrees(float(target)) if target is not None else target
                         sig_v = np.degrees(float(sig_v)) if sig_v is not None else sig_v
                         units = "deg"
-                    elif kind == "bond" and units in {"angstrom", "a", "å"}:
-                        units = "Å"
+                    elif kind == "bond" and units in {"angstrom", "a", "Ã¥"}:
+                        units = "Ã…"
                     row = dict(r)
                     row.update(
                         {
@@ -1876,8 +1872,8 @@ def write_outputs(result: dict[str, Any]) -> dict[str, Path | list[Path]]:
                         target = np.degrees(float(target)) if target is not None else target
                         sig_v = np.degrees(float(sig_v)) if sig_v is not None else sig_v
                         units = "deg"
-                    elif kind == "bond" and units in {"angstrom", "a", "å"}:
-                        units = "Å"
+                    elif kind == "bond" and units in {"angstrom", "a", "Ã¥"}:
+                        units = "Ã…"
                     writer.writerow(
                         {
                             "name": m.get("name"),

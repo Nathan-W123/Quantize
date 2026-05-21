@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 import math
@@ -13,14 +13,14 @@ from typing import Any
 
 import numpy as np
 
-from backend.torsion_hamiltonian import (
+from backend.torsion.torsion_hamiltonian import (
     TorsionFourierPotential,
     TorsionHamiltonianSpec,
     solve_ram_lite_levels,
 )
-from backend.torsion_reliability import assess_ram_lite_reliability
-from backend.torsion_rot_hamiltonian import solve_full_torsion_rotation_levels
-from backend.torsion_symmetry import (
+from backend.torsion.torsion_reliability import assess_ram_lite_reliability
+from backend.torsion.torsion_rot_hamiltonian import solve_full_torsion_rotation_levels
+from backend.torsion.torsion_symmetry import (
     c3_symmetry_block_energies,
     predict_tunneling_splitting,
     symmetry_purity_table,
@@ -28,10 +28,12 @@ from backend.torsion_symmetry import (
 from runner.usability import ConfigError, _validate_torsion_block
 
 
+from paths import OUTPUT_BENCHMARK_HISTORY_DIR, OUTPUT_BENCHMARKS_DIR
+
 _ROOT = Path(__file__).resolve().parents[2]
 _DEFAULT_BASELINE_PATH = _ROOT / "dev" / "benchmarks" / "baselines" / "lam.json"
-_DEFAULT_OUTPUT_PATH = _ROOT / "results" / "benchmarks" / "lam-latest.json"
-_DEFAULT_HISTORY_DIR = _ROOT / "results" / "benchmarks" / "history"
+_DEFAULT_OUTPUT_PATH = _ROOT / OUTPUT_BENCHMARKS_DIR / "lam-latest.json"
+_DEFAULT_HISTORY_DIR = _ROOT / OUTPUT_BENCHMARK_HISTORY_DIR
 
 _MHZ_PER_CM1 = 29979.2458
 

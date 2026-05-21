@@ -1,5 +1,5 @@
-"""
-Generic molecule runner — consumes a fully-specified YAML input file.
+﻿"""
+Generic molecule runner â€” consumes a fully-specified YAML input file.
 
 Called by runner/run_from_config.py when the YAML contains an `elements` key.
 Can also be run directly:
@@ -19,19 +19,19 @@ from typing import Any
 
 import numpy as np
 
-_ROOT = Path(__file__).resolve().parent.parent
-if str(_ROOT) not in sys.path:
-    sys.path.insert(0, str(_ROOT))
+from paths import OUTPUT_TRIALS_DIR, ensure_repo_paths
 
-from backend.conformer_generation import build_conformer_ensemble
-from backend.geometryguess import guess_geometry_molecular_input
+_ROOT = ensure_repo_paths(Path(__file__).resolve().parent.parent)
+
+from backend.conformers.conformer_generation import build_conformer_ensemble
+from backend.conformers.geometryguess import guess_geometry_molecular_input
 from backend.multistart import run_multistart, select_best_result, underconstrained_success_score
-from backend.internal_fit import InternalCoordinateSet, spectral_jacobian_q, build_internal_priors
-from backend.spectral import SpectralEngine
-from backend.spectral_model import normalize_spectral_model
+from backend.internal.internal_fit import InternalCoordinateSet, spectral_jacobian_q, build_internal_priors
+from backend.spectral.spectral import SpectralEngine
+from backend.spectral.spectral_model import normalize_spectral_model
 from backend.uncertainty import uncertainty_table
-from backend.prior_sensitivity import classify_prior_dominance, prior_sensitivity_analysis
-from backend.torsion_hamiltonian import (
+from backend.priors.prior_sensitivity import classify_prior_dominance, prior_sensitivity_analysis
+from backend.torsion.torsion_hamiltonian import (
     TorsionEffectiveConstantFourier,
     TorsionFourierPotential,
     TorsionHamiltonianSpec,
@@ -39,19 +39,19 @@ from backend.torsion_hamiltonian import (
     solve_ram_lite_levels,
     torsion_objective_from_levels,
 )
-from backend.torsion_rot_hamiltonian import solve_full_torsion_rotation_levels
-from backend.torsion_uncertainty import (
+from backend.torsion.torsion_rot_hamiltonian import solve_full_torsion_rotation_levels
+from backend.torsion.torsion_uncertainty import (
     covariance_from_matched_level_residuals,
     default_torsion_parameters,
 )
-from backend.torsion_average import (
+from backend.torsion.torsion_average import (
     TorsionGridPoint,
     TorsionScan,
     average_torsion_scan_boltzmann,
     average_torsion_scan_quantum,
     average_torsion_scan_quantum_thermal,
 )
-from backend.hindered_rotor import HinderedRotorModel
+from backend.torsion.hindered_rotor import HinderedRotorModel
 from runner.reporting import (
     export_rovib_corrections_csv,
     export_rovib_warnings_json,
@@ -213,7 +213,7 @@ def _build_geometry(cfg: dict) -> tuple[np.ndarray, list[str], list[tuple[int, i
     smiles = str(geo.get("smiles", "")).strip()
 
     if smiles:
-        # SMILES encodes bond order → PubChem returns MMFF94-quality 3D geometry.
+        # SMILES encodes bond order â†’ PubChem returns MMFF94-quality 3D geometry.
         # Reorder atoms to match the user's elements list so masses stay consistent.
         coords_pub, elems_pub = guess_geometry_molecular_input(
             identifier=smiles, pubchem_prefer="smiles"
@@ -235,7 +235,7 @@ def _build_geometry(cfg: dict) -> tuple[np.ndarray, list[str], list[tuple[int, i
                 raise ValueError(
                     f"bond_lengths has {len(bond_lengths)} entries but bonds has {len(bonds)}."
                 )
-            from backend.geometryguess import _relax_geometry
+            from backend.conformers.geometryguess import _relax_geometry
             targets = {(min(i, j), max(i, j)): bl for (i, j), bl in zip(bonds, bond_lengths)}
             coords = _relax_geometry(coords, bonds, targets, n_steps=500)
             coords -= coords.mean(axis=0, keepdims=True)
@@ -255,7 +255,7 @@ def _build_geometry(cfg: dict) -> tuple[np.ndarray, list[str], list[tuple[int, i
         if coords.ndim != 2 or coords.shape != (len(elems), 3):
             raise ValueError(
                 f"coords_angstrom shape {coords.shape} does not match "
-                f"{len(elems)} atoms × 3 columns."
+                f"{len(elems)} atoms Ã— 3 columns."
             )
         from backend.quantum import _detect_bonds
         bonds = _detect_bonds(coords, elems)
@@ -360,7 +360,7 @@ def _compute_metrics(
     bonds: list[tuple[int, int]],
     elems: list[str],
 ) -> dict[str, float]:
-    """Bond distances (Å) and valence angles (deg) from the bond graph."""
+    """Bond distances (Ã…) and valence angles (deg) from the bond graph."""
     metrics: dict[str, float] = {}
 
     for i, j in bonds:
@@ -470,7 +470,7 @@ def _print_internal_uncertainty_summary(best: dict, cfg: dict, elems: list[str])
             f"  {r['name']:<30}  {float(r['value']):>12.6f}  {se:>12.6f}  {var:>12.6f}  {r['value_unit']:>6}  {combo}"
         )
 
-    # ── Covariance matrix export ──────────────────────────────────────────────
+    # â”€â”€ Covariance matrix export â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     from backend.uncertainty.core import compute_uncertainty
     _cov, _, _, _ = compute_uncertainty(
         Jq,
@@ -482,7 +482,7 @@ def _print_internal_uncertainty_summary(best: dict, cfg: dict, elems: list[str])
     _cov_path = str(Path(_workdir) / "uncertainty_covariance.npy")
     try:
         np.save(_cov_path, _cov)
-        print(f"\n  [Uncertainty] Covariance matrix ({_cov.shape[0]}×{_cov.shape[1]}) → {_cov_path}")
+        print(f"\n  [Uncertainty] Covariance matrix ({_cov.shape[0]}Ã—{_cov.shape[1]}) â†’ {_cov_path}")
     except OSError as _exc:
         print(f"\n  [Uncertainty] Could not write covariance matrix: {_exc}")
         _cov_path = None
@@ -497,10 +497,10 @@ def _fit_scan_potential(
     Fit a Fourier potential from scan grid_point energies if fit_potential is enabled.
 
     Returns (fitted_potential_dict | None, fit_diagnostics, warnings).
-    fitted_potential_dict has keys 'v0', 'vcos', 'vsin' — compatible with
+    fitted_potential_dict has keys 'v0', 'vcos', 'vsin' â€” compatible with
     the torsion_hamiltonian.potential block format so it can be merged into tcfg.
     """
-    from backend.scan_fit import (
+    from backend.torsion.scan_fit import (
         energies_to_cm1 as _e2cm1,
         ingest_scan_csv,
         scan_to_torsion_potential,
@@ -574,7 +574,7 @@ def _fit_scan_potential(
     # Phase-3 scan preprocessing (sort, deduplicate endpoint, extend by symmetry)
     pp_cfg = scan_cfg.get("preprocess") or {}
     if isinstance(pp_cfg, dict) and pp_cfg:
-        from backend.scan_preprocess import preprocess_scan as _preprocess_scan
+        from backend.torsion.scan_preprocess import preprocess_scan as _preprocess_scan
         sym_num_pp = int(fp_cfg.get("symmetry_number", 1)) if isinstance(fp_cfg, dict) else 1
         period_pp = 2.0 * np.pi / sym_num_pp if sym_num_pp > 1 else 2.0 * np.pi
         phi_arr, energies_cm1, pp_info = _preprocess_scan(
@@ -712,9 +712,9 @@ def _run_torsion_phase2_exports(
 
     spec, symmetry_mode, label_levels = _build_torsion_spec_from_config(tcfg, abc_cm1)
 
-    # RAM-lite reliability assessment — runs immediately after spec construction
+    # RAM-lite reliability assessment â€” runs immediately after spec construction
     try:
-        from backend.torsion_reliability import assess_ram_lite_reliability
+        from backend.torsion.torsion_reliability import assess_ram_lite_reliability
         _reliability = assess_ram_lite_reliability(spec)
         _reliability_dict: dict = {
             "score": _reliability.score,
@@ -770,7 +770,7 @@ def _run_torsion_phase2_exports(
     tunneling_rows: list[dict] = []
     if symmetry_mode == "c3":
         try:
-            from backend.torsion_symmetry import (
+            from backend.torsion.torsion_symmetry import (
                 predict_tunneling_splitting as _predict_splitting,
                 tunneling_splitting_to_csv_rows as _split_csv_rows,
             )
@@ -907,11 +907,11 @@ def _run_torsion_phase2_exports(
     fitted_transition_csv: Path | None = None
     fit_result: dict[str, Any] = {}
     if isinstance(fitting_cfg, dict) and bool(fitting_cfg.get("enabled", False)):
-        from backend.torsion_fitter import fit_torsion_to_levels as _fit_levels
-        from backend.torsion_fitter import fit_torsion_to_transitions as _fit_trans
-        from backend.torsion_fitter import fit_torsion_joint as _fit_joint
-        from backend.torsion_fitter import TorsionRotationalTarget as _TorsionRotTarget
-        from backend.torsion_fitter import select_fit_params as _select_params
+        from backend.torsion.torsion_fitter import fit_torsion_to_levels as _fit_levels
+        from backend.torsion.torsion_fitter import fit_torsion_to_transitions as _fit_trans
+        from backend.torsion.torsion_fitter import fit_torsion_joint as _fit_joint
+        from backend.torsion.torsion_fitter import TorsionRotationalTarget as _TorsionRotTarget
+        from backend.torsion.torsion_fitter import select_fit_params as _select_params
 
         def _run_one_fit(stage_cfg: dict[str, Any], current_spec: TorsionHamiltonianSpec) -> dict[str, Any]:
             raw_param_names = stage_cfg.get("params") or None
@@ -1115,7 +1115,7 @@ def _run_torsion_phase2_exports(
     # Phase-10 LAM correction report
     lam_report: dict[str, Any] = {}
     try:
-        from backend.torsion_lam_integration import (
+        from backend.torsion.torsion_lam_integration import (
             classify_constant_source as _classify_source,
             format_lam_report_for_summary as _fmt_lam,
             lam_correction_report as _lam_report,
@@ -1154,7 +1154,7 @@ def _run_torsion_phase2_exports(
             masses_list = isotopologues[0].get("masses") if isotopologues else None
             if coords is not None and masses_list is not None:
                 try:
-                    from backend.torsion_geometry import (
+                    from backend.torsion.torsion_geometry import (
                         compute_F_rho_from_geometry as _compute_F_rho,
                         torsion_geometry_jacobian as _tor_geom_jac,
                     )
@@ -1186,7 +1186,7 @@ def _run_torsion_phase2_exports(
     line_list_cfg = tcfg.get("line_list") or {}
     if isinstance(line_list_cfg, dict) and bool(line_list_cfg.get("enabled", False)):
         try:
-            from backend.torsion_intensities import (
+            from backend.torsion.torsion_intensities import (
                 compute_torsion_line_list,
                 format_line_list_for_csv,
             )
@@ -1439,7 +1439,7 @@ def _collect_level_rows(
 
     if _use_full_hamiltonian(spec):
         # Full coupled solver: one call per J, all K blocks simultaneously.
-        # K_values is ignored — the full Hamiltonian spans K = -J..+J.
+        # K_values is ignored â€” the full Hamiltonian spans K = -J..+J.
         # C3 symmetry labeling and block export are not available on this path.
         if symmetry_mode is not None:
             all_warnings.append(
@@ -1862,19 +1862,19 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
     name = str(cfg.get("name", "molecule")).strip()
     managed_run = "_run_dir" in cfg
     run_dir = Path(str(cfg.get("_run_dir") or ".")).resolve()
-    base_workdir = str(run_dir) if managed_run else "trials"
+    base_workdir = str(run_dir) if managed_run else str(OUTPUT_TRIALS_DIR)
 
-    # ── Geometry ──────────────────────────────────────────────────────────────
+    # â”€â”€ Geometry â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     coords, elems, bonds = _build_geometry(cfg)
 
-    # ── Isotopologues ─────────────────────────────────────────────────────────
+    # â”€â”€ Isotopologues â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     raw_isos = cfg.get("isotopologues")
     if not raw_isos:
         raise ValueError("At least one isotopologue is required under 'isotopologues:'.")
     spectral_model = normalize_spectral_model(str(cfg.get("spectral_model", "rigid")))
     isotopologues = [_build_isotopologue(iso, spectral_model=spectral_model) for iso in raw_isos]
 
-    # ── Quantum chemistry ─────────────────────────────────────────────────────
+    # â”€â”€ Quantum chemistry â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     qsec = cfg.get("quantum", {})
     backend = str(qsec.get("backend", "orca")).strip().lower()
     spectral_only = backend == "none"
@@ -1882,7 +1882,7 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
     orca_basis = str(qsec.get("basis", "def2-TZVPP")).strip()
     orca_exe = qsec.get("executable") or BASE_SETTINGS["orca_exe"]
 
-    # ── Rovibrational corrections (optional) ──────────────────────────────────
+    # â”€â”€ Rovibrational corrections (optional) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     # Canonical key: rovibrational_corrections: {mode, correction_table, ...}
     # Flat legacy keys (corrections, correction_mode, ...) are accepted as fallback.
     _rc_block = cfg.get("rovibrational_corrections") or {}
@@ -1918,7 +1918,7 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
     # Explicit user values always take priority element-by-element.
     _use_builtin_bob = bool(_rc_block.get("use_builtin_bob", True))
     if _use_builtin_bob:
-        from backend.correction_models import get_builtin_bob_params
+        from backend.spectral.correction_models import get_builtin_bob_params
         correction_bob_params = get_builtin_bob_params(elems, _user_bob_params)
     else:
         correction_bob_params = _user_bob_params
@@ -1934,8 +1934,12 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
     )
     harmonic_from_hessian = bool(_rc_block.get("harmonic_from_hessian", False))
     harmonic_sigma_fraction = float(_rc_block.get("harmonic_sigma_fraction", 0.02))
+    harmonic_cd_from_hessian = bool(_rc_block.get("harmonic_cd_from_hessian", False))
+    cd_sigma_fraction = float(_rc_block.get("cd_sigma_fraction", 0.05))
+    fit_cd_constants = bool(_rc_block.get("fit_cd_constants", False))
+    cd_weight = float(_rc_block.get("cd_weight", 0.0))
 
-    # ── Preset and run control ────────────────────────────────────────────────
+    # â”€â”€ Preset and run control â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     preset_name, preset = _resolve_preset(cfg.get("preset"))
     rng_seed = int(cfg.get("rng_seed", 42))
     write_xyz = bool(cfg.get("write_xyz", False))
@@ -1955,7 +1959,7 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
     ic_freeze_sigma_floor = float(ip_cfg.get("freeze_sigma_floor", 1e-6))
     ic_prior_adaptive = dict(ip_cfg.get("adaptive", {}) or {})
 
-    # ── Multi-start seed geometries ───────────────────────────────────────────
+    # â”€â”€ Multi-start seed geometries â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     rng = np.random.default_rng(rng_seed)
     starts = [coords.copy()]
     n_atoms = len(elems)
@@ -1971,7 +1975,10 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
     )
     use_conformer_mixture = bool(preset["use_conformer_mixture"]) and bool(conformer_workflow["enabled"])
 
-    # ── Optimizer kwargs ──────────────────────────────────────────────────────
+    ac_cfg = cfg.get("autoconfig") if isinstance(cfg.get("autoconfig"), dict) else {}
+    opt_cfg = cfg.get("optimizer") if isinstance(cfg.get("optimizer"), dict) else {}
+
+    # â”€â”€ Optimizer kwargs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     optimizer_kwargs = dict(
         quantum_backend=backend if not spectral_only else "orca",
         orca_executable=orca_exe,
@@ -2039,6 +2046,10 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
         correction_bob_params=correction_bob_params,
         harmonic_from_hessian=harmonic_from_hessian,
         harmonic_sigma_fraction=harmonic_sigma_fraction,
+        harmonic_cd_from_hessian=harmonic_cd_from_hessian,
+        cd_sigma_fraction=cd_sigma_fraction,
+        fit_cd_constants=fit_cd_constants,
+        cd_weight=cd_weight,
         coordinate_mode=coordinate_mode,
         ic_use_dihedrals=ic_use_dihedrals,
         ic_damping=ic_damping,
@@ -2057,7 +2068,40 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
         debug_sv_count=6,
         base_workdir=base_workdir,
         quantum_descent_tol=float(preset.get("quantum_descent_tol", 1e-5)),
+        use_autoconfig=bool(ac_cfg.get("enabled", True)),
+        use_autoconfig_heuristic_bases=bool(ac_cfg.get("heuristic_bases", True)),
+        autoconfig_tune_sv_threshold=bool(ac_cfg.get("tune_sv_threshold", True)),
+        autoconfig_tune_alpha_quantum=bool(ac_cfg.get("tune_alpha_quantum", True)),
+        autoconfig_smoothing=float(ac_cfg.get("smoothing", 0.4)),
+        autoconfig_update_every=int(ac_cfg.get("update_every", 1)),
     )
+    _optimizer_overrides = {
+        "trust_radius",
+        "null_trust_radius",
+        "lambda_damp",
+        "sv_threshold",
+        "sv_min_abs",
+        "alpha_quantum",
+        "spectral_delta",
+        "hess_recalc_every",
+        "hess_recalc_min",
+        "hess_recalc_max",
+        "adaptive_hess_schedule",
+        "objective_mode",
+        "orca_update_thresh",
+        "max_iter",
+        "conv_freq",
+        "conv_step_range",
+        "conv_step_null",
+        "conv_grad_null",
+        "dynamic_quantum_weight",
+        "quantum_weight_beta",
+        "quantum_weight_min",
+        "quantum_weight_max",
+    }
+    for key, value in opt_cfg.items():
+        if key in _optimizer_overrides:
+            optimizer_kwargs[key] = value
     cm_enabled, cm_defs, cm_mode, cm_temp_k = _build_conformer_mixture_from_config(cfg, np.asarray(coords, dtype=float))
     if cm_enabled:
         optimizer_kwargs["use_conformer_mixture"] = True
@@ -2082,7 +2126,7 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
     if symmetry_spec:
         print(f"[{name}] symmetry     : {symmetry_spec}")
 
-    # ── Run ───────────────────────────────────────────────────────────────────
+    # â”€â”€ Run â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     results = run_multistart(
         starts=starts,
         elems=elems,
@@ -2138,7 +2182,7 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
         best_conformer_summary["conformers"] = conf_rows
     best["conformer_summary"] = best_conformer_summary
 
-    # ── Optional XYZ output ───────────────────────────────────────────────────
+    # â”€â”€ Optional XYZ output â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if write_xyz:
         xyz_path = run_dir / f"{name}_optimized.xyz"
         with open(xyz_path, "w", encoding="utf-8") as fh:
@@ -2148,13 +2192,13 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
                 fh.write(f"{e:2s}  {x:16.10f}  {y:16.10f}  {z:16.10f}\n")
         print(f"[{name}] wrote {xyz_path}")
 
-    # ── Collect per-metric multi-start statistics ─────────────────────────────
+    # â”€â”€ Collect per-metric multi-start statistics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     all_metric_arrays: dict[str, list[float]] = defaultdict(list)
     for r in results:
         for k, v in r["metrics_labeled"].items():
             all_metric_arrays[k].append(v)
 
-    # ── Results summary ───────────────────────────────────────────────────────
+    # â”€â”€ Results summary â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     w = 64
     print("\n" + "=" * w)
     print(f"  Inferred geometry: {name}")
@@ -2173,7 +2217,7 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
     ang_items  = [(k, v) for k, v in best_metrics.items() if k.startswith("ang(")]
 
     if dist_items:
-        print(f"  {'Bond':<26}  {'Best [Å]':>10}  {'± std':>10}")
+        print(f"  {'Bond':<26}  {'Best [Ã…]':>10}  {'Â± std':>10}")
         print("  " + "-" * 50)
         for k, v in dist_items:
             vals = all_metric_arrays.get(k, [v])
@@ -2182,7 +2226,7 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
             print(f"  {k:<26}  {v:>10.6f}  {std_str:>10}")
 
     if ang_items:
-        print(f"\n  {'Angle':<30}  {'Best [°]':>8}  {'± std':>8}")
+        print(f"\n  {'Angle':<30}  {'Best [Â°]':>8}  {'Â± std':>8}")
         print("  " + "-" * 50)
         for k, v in ang_items:
             vals = all_metric_arrays.get(k, [v])
@@ -2204,24 +2248,24 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
     if score["score"] >= 80.0:
         verdict = "strong geometry recovery"
     elif score["score"] >= 60.0:
-        verdict = "useful recovery — add isotopologues for tighter constraint"
+        verdict = "useful recovery â€” add isotopologues for tighter constraint"
     else:
         verdict = "geometry regularized by quantum prior; low spectral confidence"
     print(f"  Verdict              : {verdict}")
     print("=" * w)
 
-    # ── Acceptance rate ───────────────────────────────────────────────────────
+    # â”€â”€ Acceptance rate â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     n_acc = best.get("n_accepted", 0)
     n_tot = best.get("n_iterations", 0)
     if n_tot > 0:
         ar = best.get("accept_rate", 0.0)
         print(f"  Accept rate          : {n_acc}/{n_tot} = {100.0 * ar:.1f}%")
         if ar < 0.20:
-            print("  [Warning] Low acceptance (<20%) — consider reducing trust_radius or raising lambda_damp.")
+            print("  [Warning] Low acceptance (<20%) â€” consider reducing trust_radius or raising lambda_damp.")
         elif ar > 0.95:
-            print("  [Warning] Very high acceptance (>95%) — optimizer may be underconstrained.")
+            print("  [Warning] Very high acceptance (>95%) â€” optimizer may be underconstrained.")
 
-    # ── SVD diagnostics ───────────────────────────────────────────────────────
+    # â”€â”€ SVD diagnostics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     svd = best.get("svd_summary", {})
     if svd:
         print(f"  SVD rank             : {svd.get('final_rank', 'n/a')}")
@@ -2232,10 +2276,10 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
         if sv_gap is not None:
             print(f"  SV gap (kept/next)   : {sv_gap:.3e}")
             if sv_gap < 10.0:
-                print("  [Warning] Small SV gap — rank boundary may be unstable; consider adjusting sv_threshold.")
+                print("  [Warning] Small SV gap â€” rank boundary may be unstable; consider adjusting sv_threshold.")
     print("=" * w)
 
-    # ── Torsion skip-count summary ────────────────────────────────────────────
+    # â”€â”€ Torsion skip-count summary â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     sc = best.get("torsion_skip_counts", {})
     if sc and sc.get("n_skipped_total", 0) > 0:
         print(

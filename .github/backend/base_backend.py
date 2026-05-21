@@ -8,7 +8,7 @@ Adding a new backend
 3. Decorate with ``@register_backend`` from ``backend.registry``.
 4. Implement ``run_hessian`` and ``run_gradient``; optionally override
    ``run_rovib`` and ``run_cheap_opt`` (both default to returning ``None``).
-5. Add one import line in ``backend/__init__.py`` to trigger registration.
+5. Add one import line in ``.github/backend/__init__.py`` to trigger registration.
 """
 
 from __future__ import annotations

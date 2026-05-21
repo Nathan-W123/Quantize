@@ -1,4 +1,4 @@
-"""
+﻿"""
 First-pass torsional averaging for effective rotational constants.
 
 This module computes effective motion-averaged A/B/C constants from a supplied
@@ -20,9 +20,9 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from backend.hindered_rotor import boltzmann_torsion_weights
-from backend.spectral import _rotational_constants
-from backend.torsion_hamiltonian import (
+from backend.torsion.hindered_rotor import boltzmann_torsion_weights
+from backend.spectral.spectral import _rotational_constants
+from backend.torsion.torsion_hamiltonian import (
     TorsionHamiltonianSpec,
     solve_ram_lite_levels,
     torsion_probability_density,
@@ -168,15 +168,15 @@ def propagate_averaging_uncertainty(
     Propagate grid-point uncertainties through weighted averaging.
 
     Two independent contributions:
-      sigma_statistical    = sqrt(Σ_g w_g² σ_g²)   — from grid-point measurement errors
-      sigma_representational = sqrt(Σ_g w_g (C_g - C_avg)²) — physical spread of constants
+      sigma_statistical    = sqrt(Î£_g w_gÂ² Ïƒ_gÂ²)   â€” from grid-point measurement errors
+      sigma_representational = sqrt(Î£_g w_g (C_g - C_avg)Â²) â€” physical spread of constants
 
     Both are combined in quadrature as sigma_total.  When sigma_grid is None only the
     representational term is computed (sigma_statistical = 0).
 
     Returns
     -------
-    dict with keys sigma_statistical, sigma_representational, sigma_total — each (3,) array.
+    dict with keys sigma_statistical, sigma_representational, sigma_total â€” each (3,) array.
     """
     C = np.asarray(constants_grid, dtype=float)
     w = np.asarray(weights, dtype=float).ravel()
@@ -337,7 +337,7 @@ def average_torsion_scan_quantum_thermal(
         raise ValueError("No torsional eigen-energies available.")
     n_states = min(max(1, int(max_states)), int(e_cm1.size))
     e_sel = e_cm1[:n_states]
-    # Boltzmann populations — energy offset cancels
+    # Boltzmann populations â€” energy offset cancels
     e_h = e_sel / 219474.6313705
     beta = 1.0 / (3.166811563e-6 * float(temperature_K))
     pop_raw = np.exp(-beta * (e_h - np.min(e_h)))
@@ -431,11 +431,11 @@ def conformer_torsion_average(
     Conformer Boltzmann weights use relative_energy_cm1 and kT = 0.695035 * T cm^-1.
 
     Final effective constants:
-        C_eff = Σ_c w_c × C_c
+        C_eff = Î£_c w_c Ã— C_c
 
     Uncertainty from two independent contributions (combined in quadrature):
-        sigma_torsion    = sqrt(Σ_c w_c² σ_c²)   — per-conformer torsion averaging error
-        sigma_scatter    = sqrt(Σ_c w_c (C_c − C_eff)²)  — physical spread across conformers
+        sigma_torsion    = sqrt(Î£_c w_cÂ² Ïƒ_cÂ²)   â€” per-conformer torsion averaging error
+        sigma_scatter    = sqrt(Î£_c w_c (C_c âˆ’ C_eff)Â²)  â€” physical spread across conformers
 
     Parameters
     ----------
@@ -448,12 +448,12 @@ def conformer_torsion_average(
     Returns
     -------
     dict with keys:
-      conformer_constants      (NC, 3) — per-conformer effective constants
-      conformer_weights        (NC,)   — normalized Boltzmann weights
-      conformer_energies_cm1   (NC,)   — shifted relative energies (min = 0)
-      averaged_constants       (3,)    — Boltzmann-averaged constants
-      sigma_averaged           (3,)    — total uncertainty
-      uncertainty_breakdown    dict    — sigma_torsion, sigma_conformer_scatter, sigma_total
+      conformer_constants      (NC, 3) â€” per-conformer effective constants
+      conformer_weights        (NC,)   â€” normalized Boltzmann weights
+      conformer_energies_cm1   (NC,)   â€” shifted relative energies (min = 0)
+      averaged_constants       (3,)    â€” Boltzmann-averaged constants
+      sigma_averaged           (3,)    â€” total uncertainty
+      uncertainty_breakdown    dict    â€” sigma_torsion, sigma_conformer_scatter, sigma_total
       temperature_K            float
       n_conformers             int
       warnings                 list[str]

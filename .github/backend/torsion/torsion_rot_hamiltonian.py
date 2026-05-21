@@ -1,4 +1,4 @@
-"""
+﻿"""
 Full torsion-rotation Hamiltonian extending RAM-lite.
 
 Implements a coupled torsion-rotation Hamiltonian in the direct-product
@@ -9,15 +9,15 @@ Hamiltonian (Watson A-reduction, prolate convention z = a-axis):
   H = H_rot + F*(m - rho*K)^2 + V(alpha) + H_asym + H_cd
 
   H_rot   = (B+C)/2 * J(J+1) + [A - (B+C)/2] * K^2
-  H_asym  : ΔK=±2,  (B-C)/4 * f(J,K)   where f = sqrt[J(J+1)-K(K+1)][J(J+1)-(K+1)(K+2)]
+  H_asym  : Î”K=Â±2,  (B-C)/4 * f(J,K)   where f = sqrt[J(J+1)-K(K+1)][J(J+1)-(K+1)(K+2)]
   H_cd    : Watson A-reduction quartic centrifugal distortion
               diagonal: -DJ*J(J+1)^2 - DJK*J(J+1)*K^2 - DK*K^4
-              ΔK=±2:   (-d1*J(J+1) - d2*(K^2+(K±2)^2)/4) * f(J,K)
+              Î”K=Â±2:   (-d1*J(J+1) - d2*(K^2+(KÂ±2)^2)/4) * f(J,K)
 
 Alpha-dependent constants (optional):
   When spec.A_alpha / B_alpha / C_alpha are provided as Fourier series,
-  the diagonal rotational block and the ΔK=±2 coupling become full
-  n_m×n_m Fourier matrices, yielding complete torsion-rotation K-mixing.
+  the diagonal rotational block and the Î”K=Â±2 coupling become full
+  n_mÃ—n_m Fourier matrices, yielding complete torsion-rotation K-mixing.
 
 RAM-lite (single-K block) remains available via ``solve_ram_lite_levels``
 in torsion_hamiltonian.py and is the recommended fast path for most tasks.
@@ -25,7 +25,7 @@ in torsion_hamiltonian.py and is the recommended fast path for most tasks.
 Notes
 -----
 - Full-matrix size: (2J+1) * (2*n_basis+1).  For J=5, n_basis=10 this is
-  11*21 = 231 x 231 — still fast with numpy.linalg.eigh.
+  11*21 = 231 x 231 â€” still fast with numpy.linalg.eigh.
 - Ka/Kc assignment is approximate (dominant-K heuristic), sufficient for
   labeling low-J levels.
 """
@@ -36,7 +36,7 @@ from typing import Optional
 
 import numpy as np
 
-from backend.torsion_hamiltonian import (
+from backend.torsion.torsion_hamiltonian import (
     TorsionHamiltonianSpec,
     _validate_units,
     basis_m_values,
@@ -78,23 +78,23 @@ def build_full_torsion_rotation_hamiltonian(
 
     Centrifugal distortion (Watson A-reduction):
       Diagonal:      -DJ*J(J+1)^2 - DJK*J(J+1)*K^2 - DK*K^4
-      Off-diag ΔK=2: [-d1*J(J+1) - d2*(K^2+(K+2)^2)/4] * f(J,K)
+      Off-diag Î”K=2: [-d1*J(J+1) - d2*(K^2+(K+2)^2)/4] * f(J,K)
 
     When spec.A_alpha / B_alpha / C_alpha are set (alpha-dependent constants),
-    the diagonal rotational blocks and the K±2 off-diagonal coupling become
-    full n_m×n_m Fourier matrices, enabling complete torsion-K mixing.
+    the diagonal rotational blocks and the KÂ±2 off-diagonal coupling become
+    full n_mÃ—n_m Fourier matrices, enabling complete torsion-K mixing.
 
     Parameters
     ----------
-    spec : TorsionHamiltonianSpec — A, B, C, F, rho, DJ/DJK/DK/d1/d2,
+    spec : TorsionHamiltonianSpec â€” A, B, C, F, rho, DJ/DJK/DK/d1/d2,
            potential, n_basis, and optional A_alpha/B_alpha/C_alpha
     J : rotational quantum number (>= 0)
 
     Returns
     -------
-    H : complex ndarray (dim, dim) — Hermitian Hamiltonian matrix
-    K_vals : int ndarray (2J+1,) — K quantum numbers in basis order
-    m_vals : int ndarray (2*n_basis+1,) — m quantum numbers
+    H : complex ndarray (dim, dim) â€” Hermitian Hamiltonian matrix
+    K_vals : int ndarray (2J+1,) â€” K quantum numbers in basis order
+    m_vals : int ndarray (2*n_basis+1,) â€” m quantum numbers
     warnings : list[str]
     """
     _validate_units(spec.units)
@@ -123,7 +123,7 @@ def build_full_torsion_rotation_hamiltonian(
     V_mat = fourier_potential_matrix(m_vals, spec.potential)  # (n_m, n_m)
 
     # Build Fourier matrices for alpha-dependent constants when provided.
-    # These replace scalar A/B/C with full n_m×n_m matrices in the Hamiltonian.
+    # These replace scalar A/B/C with full n_mÃ—n_m matrices in the Hamiltonian.
     use_alpha = (spec.A_alpha is not None or
                  spec.B_alpha is not None or
                  spec.C_alpha is not None)
@@ -134,8 +134,8 @@ def build_full_torsion_rotation_hamiltonian(
                  if spec.B_alpha is not None else B * np.eye(n_m, dtype=complex))
         C_mat = (effective_torsion_constant_matrix(m_vals, spec.C_alpha)
                  if spec.C_alpha is not None else C * np.eye(n_m, dtype=complex))
-        BpC_half = (B_mat + C_mat) * 0.5   # (B(α)+C(α))/2 matrix
-        BmC_qtr = (B_mat - C_mat) * 0.25   # (B(α)-C(α))/4 matrix
+        BpC_half = (B_mat + C_mat) * 0.5   # (B(Î±)+C(Î±))/2 matrix
+        BmC_qtr = (B_mat - C_mat) * 0.25   # (B(Î±)-C(Î±))/4 matrix
         warns.append(
             "Alpha-dependent rotational constants active: full K-torsion mixing in off-diagonal blocks."
         )
@@ -150,19 +150,19 @@ def build_full_torsion_rotation_hamiltonian(
         # Watson A-reduction CD diagonal correction (scalar, same for all m)
         E_cd = -DJ * jj * jj - DJK * jj * k * k - DK * k ** 4
 
-        # Kinetic F*(m - rho*K)^2 — diagonal in m
+        # Kinetic F*(m - rho*K)^2 â€” diagonal in m
         x = m_vals - rho * k
         kin_diag = np.diag((F * x ** 2 + E_cd).astype(complex))
 
         if use_alpha:
-            # Rotational energy as full n_m×n_m matrix
+            # Rotational energy as full n_mÃ—n_m matrix
             rot_mat = BpC_half * jj + (A_mat - BpC_half) * float(k * k)
             H[rs:re, rs:re] += rot_mat.astype(complex) + kin_diag + V_mat
         else:
             E_rot_k = (B + C) / 2.0 * jj + (A - (B + C) / 2.0) * k * k
             H[rs:re, rs:re] += np.diag(np.full(n_m, E_rot_k, dtype=complex)) + kin_diag + V_mat
 
-        # Off-diagonal K±2 coupling
+        # Off-diagonal KÂ±2 coupling
         ki2 = ki + 2
         if ki2 < n_K:
             k2 = int(K_vals[ki2])   # = k + 2
@@ -170,12 +170,12 @@ def build_full_torsion_rotation_hamiltonian(
             ce = cs + n_m
             asym_elem = _jk_asym_coupling(J_int, k)
             if abs(asym_elem) > 1e-15:
-                # CD corrections to K±2 (scalar regardless of alpha-dep mode)
+                # CD corrections to KÂ±2 (scalar regardless of alpha-dep mode)
                 d1_corr = -d1 * jj * asym_elem
                 d2_corr = -d2 * (k * k + k2 * k2) / 4.0 * asym_elem
 
                 if use_alpha:
-                    # Full matrix: (B(α)-C(α))/4 mixes torsion states
+                    # Full matrix: (B(Î±)-C(Î±))/4 mixes torsion states
                     cpl_block = (BmC_qtr * asym_elem
                                  + (d1_corr + d2_corr) * np.eye(n_m)).astype(complex)
                 else:
@@ -238,13 +238,13 @@ def solve_full_torsion_rotation_levels(
     -------
     dict with:
       J : int
-      energies_cm-1 : (n_levels,) float ndarray — sorted eigenvalues
-      Ka_labels : (n_levels,) int ndarray — dominant Ka (approximate)
-      Kc_labels : (n_levels,) int ndarray — dominant Kc (approximate)
+      energies_cm-1 : (n_levels,) float ndarray â€” sorted eigenvalues
+      Ka_labels : (n_levels,) int ndarray â€” dominant Ka (approximate)
+      Kc_labels : (n_levels,) int ndarray â€” dominant Kc (approximate)
       eigenvectors : (dim, n_levels) complex ndarray
-      K_vals : int ndarray — K quantum numbers in basis order
-      m_vals : int ndarray — m quantum numbers
-      dim : int — total Hamiltonian dimension
+      K_vals : int ndarray â€” K quantum numbers in basis order
+      m_vals : int ndarray â€” m quantum numbers
+      dim : int â€” total Hamiltonian dimension
       warnings : list[str]
     """
     H, K_vals, m_vals, warns = build_full_torsion_rotation_hamiltonian(spec, J)
@@ -289,7 +289,7 @@ def compare_ram_lite_vs_full(
       max_diff_cm-1          : max absolute difference over n_levels
       rms_diff_cm-1          : RMS difference
     """
-    from backend.torsion_hamiltonian import solve_ram_lite_levels
+    from backend.torsion.torsion_hamiltonian import solve_ram_lite_levels
 
     rl = solve_ram_lite_levels(spec, J=J, K=K, n_levels=n_levels)
     full = solve_full_torsion_rotation_levels(spec, J, n_levels=n_levels)

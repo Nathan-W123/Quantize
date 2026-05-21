@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import argparse
 import csv
@@ -8,9 +8,9 @@ import sys
 from pathlib import Path
 from datetime import UTC, datetime
 
-_ROOT = Path(__file__).resolve().parent
-if str(_ROOT) not in sys.path:
-    sys.path.insert(0, str(_ROOT))
+from paths import ensure_repo_paths
+
+_ROOT = ensure_repo_paths(Path(__file__).resolve().parent)
 
 from dev.benchmarks.conformer_suite import (
     attach_comparison as attach_conformer_comparison,
@@ -40,7 +40,7 @@ from runner.run_from_config import main as run_from_config_main
 from runner.usability import ConfigError, load_config, rebuild_report_from_run_dir, validate_config
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def _print_config_summary(cfg: dict) -> None:
     mode = str(cfg.get("coordinate_mode", "internal"))
@@ -82,7 +82,7 @@ def _json_safe(v):
 
 def _load_torsion_spec_from_cfg_path(config_path: Path):
     """Load config and build TorsionHamiltonianSpec from it."""
-    from backend.torsion_hamiltonian import (
+    from backend.torsion.torsion_hamiltonian import (
         TorsionFourierPotential, TorsionHamiltonianSpec, TorsionEffectiveConstantFourier,
     )
     cfg = load_config(config_path)
@@ -111,7 +111,7 @@ def _load_torsion_spec_from_cfg_path(config_path: Path):
     return spec, th
 
 
-# ── lam-scan subcommand ───────────────────────────────────────────────────────
+# â”€â”€ lam-scan subcommand â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def _cmd_lam_scan(args) -> int:
     """Fit Fourier potential from a CSV scan file and print coefficients."""
@@ -128,8 +128,8 @@ def _cmd_lam_scan(args) -> int:
     sym_number  = int(args.symmetry_number or 3)
 
     import numpy as np
-    from backend.scan_preprocess import preprocess_scan
-    from backend.scan_fit import fit_fourier_potential
+    from backend.torsion.scan_preprocess import preprocess_scan
+    from backend.torsion.scan_fit import fit_fourier_potential
 
     phi_vals, e_vals = [], []
     with csv_path.open(encoding="utf-8") as fh:
@@ -186,7 +186,7 @@ def _cmd_lam_scan(args) -> int:
     return 0
 
 
-# ── lam-fit subcommand ────────────────────────────────────────────────────────
+# â”€â”€ lam-fit subcommand â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def _cmd_lam_fit(args) -> int:
     """Fit RAM-lite parameters to observed levels or transitions from a config."""
@@ -196,7 +196,7 @@ def _cmd_lam_fit(args) -> int:
         print(f"Config error: {exc}", file=sys.stderr)
         return 2
 
-    from backend.torsion_fitter import (
+    from backend.torsion.torsion_fitter import (
         fit_torsion_to_levels,
         fit_torsion_to_transitions,
         select_fit_params,
@@ -229,13 +229,13 @@ def _cmd_lam_fit(args) -> int:
     for name, val_i, val_f in zip(
         result["param_names"], result["param_values_init"], result["param_values"]
     ):
-        print(f"  {name:<12} : {float(val_i):+.6f}  →  {float(val_f):+.6f} cm^-1")
+        print(f"  {name:<12} : {float(val_i):+.6f}  â†’  {float(val_f):+.6f} cm^-1")
     for w in result.get("warnings", []):
         print(f"  [warning] {w}")
     return 0
 
 
-# ── lam-diagnose subcommand ───────────────────────────────────────────────────
+# â”€â”€ lam-diagnose subcommand â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def _cmd_lam_diagnose(args) -> int:
     """Display LAM diagnostics: tunneling splitting, purity, basis convergence."""
@@ -245,7 +245,7 @@ def _cmd_lam_diagnose(args) -> int:
         print(f"Config error: {exc}", file=sys.stderr)
         return 2
 
-    from backend.torsion_symmetry import (
+    from backend.torsion.torsion_symmetry import (
         predict_tunneling_splitting,
         symmetry_purity_table,
     )
@@ -272,7 +272,7 @@ def _cmd_lam_diagnose(args) -> int:
             print(f"  vt={r['level_index']}  {r['symmetry_label']:<4}  "
                   f"E={r['energy_cm-1']:.4f} cm^-1  purity={r['purity']:.4f}")
     else:
-        from backend.torsion_hamiltonian import solve_ram_lite_levels
+        from backend.torsion.torsion_hamiltonian import solve_ram_lite_levels
         print("\nTorsion levels (J=0, K=0):")
         out = solve_ram_lite_levels(spec, J=0, K=0, n_levels=n_levels)
         for i, e in enumerate(out["energies_cm-1"]):
@@ -280,7 +280,7 @@ def _cmd_lam_diagnose(args) -> int:
 
     if args.convergence:
         print("\nBasis convergence (vt=0 A-species ground state):")
-        from backend.torsion_symmetry import c3_symmetry_block_energies
+        from backend.torsion.torsion_symmetry import c3_symmetry_block_energies
         from copy import deepcopy
         for nb in (5, 8, 10, 12, 15, 20):
             s = deepcopy(spec)
@@ -294,12 +294,12 @@ def _cmd_lam_diagnose(args) -> int:
     return 0
 
 
-# ── uncertainty subcommand ───────────────────────────────────────────────────
+# â”€â”€ uncertainty subcommand â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def _cmd_uncertainty(args) -> int:
     """Run Bayesian/Bootstrap uncertainty analysis from config."""
     from runner.run_from_config import build_optimizer_from_config
-    from backend.uncertainty_sampling import (
+    from backend.uncertainty.sampling import (
         BootstrapRunner, AdaptiveMetropolisSampler, calculate_convergence_diagnostics
     )
     from backend.uncertainty_v2 import (
@@ -316,8 +316,8 @@ def _cmd_uncertainty(args) -> int:
         format_mcmc_summary,
         format_posterior_state,
     )
-    from backend.uncertainty_analysis import analyze_coordinate_distribution, print_distribution_summary, posterior_predictive_check, print_ppc_summary
-    from backend.uncertainty_plots import plot_coordinate_distributions, plot_mcmc_traces, plot_parameter_corner, plot_autocorrelations
+    from backend.uncertainty.analysis import analyze_coordinate_distribution, print_distribution_summary, posterior_predictive_check, print_ppc_summary
+    from backend.uncertainty.plots import plot_coordinate_distributions, plot_mcmc_traces, plot_parameter_corner, plot_autocorrelations
     import numpy as np
 
     if args.samples < 1:
@@ -441,7 +441,7 @@ def _cmd_uncertainty(args) -> int:
                 for s in c.samples:
                     cloud.append(s)
             if mcmc_summary.convergence is not None:
-                from backend.internal_fit import InternalCoordinateSet
+                from backend.internal.internal_fit import InternalCoordinateSet
 
                 ic_set = InternalCoordinateSet(opt.coords, opt.elems)
                 ic_names = ic_set.active_names()
@@ -470,7 +470,7 @@ def _cmd_uncertainty(args) -> int:
 
             # --- Convergence Validation ---
             if args.chains > 1:
-                from backend.internal_fit import InternalCoordinateSet
+                from backend.internal.internal_fit import InternalCoordinateSet
 
                 ic_set = InternalCoordinateSet(opt.coords, opt.elems)
                 q_chains = np.array([[ic_set.active_values(xyz) for xyz in chain] for chain in all_chains])
@@ -588,7 +588,7 @@ def _cmd_benchmark(args) -> int:
     return 0
 
 
-# ── main entry point ──────────────────────────────────────────────────────────
+# â”€â”€ main entry point â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="quantize", description="Quantize command-line interface.")

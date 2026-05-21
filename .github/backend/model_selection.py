@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
@@ -7,8 +7,8 @@ from pathlib import Path
 
 import numpy as np
 
-from backend.torsion_reliability import assess_ram_lite_reliability
-from backend.torsion_hamiltonian import TorsionFourierPotential, TorsionHamiltonianSpec
+from backend.torsion.torsion_reliability import assess_ram_lite_reliability
+from backend.torsion.torsion_hamiltonian import TorsionFourierPotential, TorsionHamiltonianSpec
 
 
 @dataclass

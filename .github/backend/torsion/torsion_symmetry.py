@@ -1,4 +1,4 @@
-"""
+﻿"""
 Symmetry blocks and tunneling splitting for the RAM torsion-rotation Hamiltonian.
 
 Implements:
@@ -10,9 +10,9 @@ Implements:
 
 Cn symmetry labeling convention
 ---------------------------------
-C3 rotor: m mod 3 == 0 → A species
-          m mod 3 == 1 → E1 species
-          m mod 3 == 2 → E2 species
+C3 rotor: m mod 3 == 0 â†’ A species
+          m mod 3 == 1 â†’ E1 species
+          m mod 3 == 2 â†’ E2 species
 A and E have different nuclear spin statistics; A<->E transitions are forbidden.
 E1 and E2 are degenerate for symmetric potentials.
 """
@@ -23,7 +23,7 @@ from typing import Optional
 
 import numpy as np
 
-from backend.torsion_hamiltonian import (
+from backend.torsion.torsion_hamiltonian import (
     TorsionHamiltonianSpec,
     _validate_units,
     basis_m_values,
@@ -35,8 +35,8 @@ _C3_RESIDUE_LABEL: dict[int, str] = {0: "A", 1: "E1", 2: "E2"}
 _C3_LABEL_RESIDUE: dict[str, int] = {"A": 0, "E1": 1, "E2": 2, "E": 1}
 
 # Nuclear-spin statistical weights by rotor fold
-# C3 (CH3): spin-1/2 protons → A:E = 1:2
-# C2 (CH2): spin-1/2 protons → A:B = 1:3
+# C3 (CH3): spin-1/2 protons â†’ A:E = 1:2
+# C2 (CH2): spin-1/2 protons â†’ A:B = 1:3
 C3_NUCLEAR_SPIN_WEIGHTS: dict[str, int] = {"A": 1, "E": 2, "E1": 2, "E2": 2}
 C2_NUCLEAR_SPIN_WEIGHTS: dict[str, int] = {"A": 1, "B": 3}
 
@@ -79,7 +79,7 @@ def nuclear_spin_weight(symmetry_label: str, rotor_fold: int = 3) -> int:
     return int(w)
 
 
-# ── Wang transformation ───────────────────────────────────────────────────────
+# â”€â”€ Wang transformation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def wang_transformation_c3(m_values: np.ndarray) -> np.ndarray:
     """
@@ -92,11 +92,11 @@ def wang_transformation_c3(m_values: np.ndarray) -> np.ndarray:
 
     Parameters
     ----------
-    m_values : int ndarray — basis m quantum numbers
+    m_values : int ndarray â€” basis m quantum numbers
 
     Returns
     -------
-    W : (N, N) complex ndarray — unitary permutation matrix
+    W : (N, N) complex ndarray â€” unitary permutation matrix
     """
     m = np.asarray(m_values, dtype=int).ravel()
     N = m.size
@@ -110,7 +110,7 @@ def wang_transformation_c3(m_values: np.ndarray) -> np.ndarray:
     return W
 
 
-# ── Per-block energies ─────────────────────────────────────────────────────────
+# â”€â”€ Per-block energies â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def c3_symmetry_block_energies(
     spec: TorsionHamiltonianSpec,
@@ -122,9 +122,9 @@ def c3_symmetry_block_energies(
     """
     Diagonalize the RAM-lite Hamiltonian within each C3 symmetry block.
 
-    Restricts the |m> basis to m ≡ r (mod 3) for each residue r = 0, 1, 2,
+    Restricts the |m> basis to m â‰¡ r (mod 3) for each residue r = 0, 1, 2,
     giving exact block diagonalization for a C3-symmetric potential (V_n with
-    n ≡ 0 mod 3 only).
+    n â‰¡ 0 mod 3 only).
 
     Parameters
     ----------
@@ -161,7 +161,7 @@ def c3_symmetry_block_energies(
     return out
 
 
-# ── Tunneling splittings ──────────────────────────────────────────────────────
+# â”€â”€ Tunneling splittings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def predict_tunneling_splitting(
     spec: TorsionHamiltonianSpec,
@@ -216,7 +216,7 @@ def predict_tunneling_splitting(
     return rows
 
 
-# ── Symmetry selection rules ──────────────────────────────────────────────────
+# â”€â”€ Symmetry selection rules â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def symmetry_selection_rules(
     symmetry_lo: str,
@@ -250,20 +250,20 @@ def symmetry_selection_rules(
         hi_E = hi in {"E", "E1", "E2"}
 
         if lo_A and hi_A:
-            return {"allowed": True, "reason": "A↔A: same nuclear spin species (C3 rotor)."}
+            return {"allowed": True, "reason": "Aâ†”A: same nuclear spin species (C3 rotor)."}
         if lo_E and hi_E:
-            return {"allowed": True, "reason": "E↔E: same nuclear spin statistics (C3 rotor)."}
+            return {"allowed": True, "reason": "Eâ†”E: same nuclear spin statistics (C3 rotor)."}
         if (lo_A and hi_E) or (lo_E and hi_A):
             return {
                 "allowed": False,
-                "reason": "A↔E forbidden: different nuclear spin statistics for C3 rotor.",
+                "reason": "Aâ†”E forbidden: different nuclear spin statistics for C3 rotor.",
             }
         return {"allowed": None, "reason": f"Unknown symmetry labels: lo={symmetry_lo!r}, hi={symmetry_hi!r}"}
 
     return {"allowed": None, "reason": f"Selection rules not implemented for rotor_fold={rotor_fold}."}
 
 
-# ── Diagnostics ───────────────────────────────────────────────────────────────
+# â”€â”€ Diagnostics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def symmetry_purity_table(
     spec: TorsionHamiltonianSpec,

@@ -1,7 +1,7 @@
-import os
+﻿import os
 import numpy as np
 import matplotlib.pyplot as plt
-from backend.internal_fit import InternalCoordinateSet
+from backend.internal.internal_fit import InternalCoordinateSet
 
 def plot_coordinate_distributions(cloud_xyz, elems, output_dir, use_dihedrals=False):
     """Generates histogram plots for every active internal coordinate."""
@@ -16,7 +16,7 @@ def plot_coordinate_distributions(cloud_xyz, elems, output_dir, use_dihedrals=Fa
             data = np.degrees(data)
             unit = "deg"
         else:
-            unit = "Å"
+            unit = "Ã…"
             
         plt.figure(figsize=(6, 4))
         plt.hist(data, bins=30, color='skyblue', edgecolor='black', alpha=0.7)

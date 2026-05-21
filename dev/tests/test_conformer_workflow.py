@@ -1,10 +1,10 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import numpy as np
 
-from backend.conformer_generation import build_conformer_ensemble
-from backend.conformer_mixture import ConformerMixture
-from backend.spectral import SpectralEngine
+from backend.conformers.conformer_generation import build_conformer_ensemble
+from backend.conformers.conformer_mixture import ConformerMixture
+from backend.spectral.spectral import SpectralEngine
 
 
 def _chain_coords():

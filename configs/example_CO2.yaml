@@ -87,5 +87,5 @@ torsion_hamiltonian:
     vsin: {}
 
 output:
-  root: runs
+  root: output/runs
   artifacts: true

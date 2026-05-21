@@ -1,4 +1,4 @@
-"""
+﻿"""
 Phase 11: LAM Benchmarks and Validation.
 
 Validates the RAM-lite torsion-rotation implementation against:
@@ -8,7 +8,7 @@ Validates the RAM-lite torsion-rotation implementation against:
   4. Basis convergence: n_basis independence of converged levels
   5. A/E tunneling splitting sign convention and ordering
 
-Mark slow/expensive tests with @pytest.mark.slow — these are excluded from the
+Mark slow/expensive tests with @pytest.mark.slow â€” these are excluded from the
 default CI run; add -m slow to include them.
 """
 
@@ -17,20 +17,20 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from backend.torsion_hamiltonian import (
+from backend.torsion.torsion_hamiltonian import (
     TorsionFourierPotential,
     TorsionHamiltonianSpec,
     solve_ram_lite_levels,
 )
-from backend.torsion_symmetry import (
+from backend.torsion.torsion_symmetry import (
     c3_symmetry_block_energies,
     predict_tunneling_splitting,
     symmetry_purity_table,
 )
-from backend.torsion_rot_hamiltonian import solve_full_torsion_rotation_levels
+from backend.torsion.torsion_rot_hamiltonian import solve_full_torsion_rotation_levels
 
 
-# ── Methanol literature parameters (Xu et al. 2008) ─────────────────────────
+# â”€â”€ Methanol literature parameters (Xu et al. 2008) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 _F       = 27.64684641    # cm^-1  internal rotation constant
 _RHO     = 0.8102062230   # dimensionless coupling
@@ -63,10 +63,10 @@ def _high_barrier_spec(F=5.0, V3=2000.0, n_basis=15):
                                   potential=pot, n_basis=n_basis, units="cm-1")
 
 
-# ── 1. Free-rotor limit ───────────────────────────────────────────────────────
+# â”€â”€ 1. Free-rotor limit â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestFreeRotorLimit:
-    """For V = 0 and rho = 0: E_m = F*m^2, degenerate ±m pairs."""
+    """For V = 0 and rho = 0: E_m = F*m^2, degenerate Â±m pairs."""
 
     def test_ground_state_at_zero(self):
         spec = _free_rotor_spec(F=10.0)
@@ -78,7 +78,7 @@ class TestFreeRotorLimit:
         spec = _free_rotor_spec(F=F)
         out = solve_ram_lite_levels(spec, J=0, K=0, n_levels=3)
         e = out["energies_cm-1"]
-        # e[1] and e[2] should both equal F (±1 pair)
+        # e[1] and e[2] should both equal F (Â±1 pair)
         assert abs(e[1] - F) < 1e-8
         assert abs(e[2] - F) < 1e-8
 
@@ -109,13 +109,13 @@ class TestFreeRotorLimit:
         spec = TorsionHamiltonianSpec(F=F, rho=rho, A=0.0, B=0.0, C=0.0,
                                       potential=pot, n_basis=5, units="cm-1")
         out = solve_ram_lite_levels(spec, J=0, K=K, n_levels=1)
-        # Ground state ≈ F*(m_min - rho*K)^2 for smallest |m - rho*K|
-        # With rho=0.3, K=1: x = m - 0.3 for m in [-5..5]. Min at m=0: x=-0.3 → F*0.09=0.9
+        # Ground state â‰ˆ F*(m_min - rho*K)^2 for smallest |m - rho*K|
+        # With rho=0.3, K=1: x = m - 0.3 for m in [-5..5]. Min at m=0: x=-0.3 â†’ F*0.09=0.9
         e0 = out["energies_cm-1"][0]
         assert e0 < F  # less than F (would be F for m=1 without rho shift)
 
 
-# ── 2. High-barrier harmonic limit ────────────────────────────────────────────
+# â”€â”€ 2. High-barrier harmonic limit â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestHighBarrierLimit:
     """For V3 >> F, torsion levels approach harmonic oscillator with omega=3*sqrt(F*V3)."""
@@ -123,7 +123,7 @@ class TestHighBarrierLimit:
     def test_level_spacing_approaches_harmonic(self):
         F = 5.0
         V3 = 2000.0
-        # Harmonic omega for V = V3/2*(1-cos3α) ≈ 9V3/2 * α^2/2 near min
+        # Harmonic omega for V = V3/2*(1-cos3Î±) â‰ˆ 9V3/2 * Î±^2/2 near min
         # omega = 3*sqrt(V3*F) (in cm^-1 units where F is already in cm^-1)
         omega_harmonic = 3.0 * np.sqrt(V3 * F)
         spec = _high_barrier_spec(F=F, V3=V3, n_basis=20)
@@ -143,7 +143,7 @@ class TestHighBarrierLimit:
         assert E_A0 < barrier_top
 
     def test_tunneling_splitting_decreases_with_barrier(self):
-        """Larger V3 → smaller A/E tunneling splitting."""
+        """Larger V3 â†’ smaller A/E tunneling splitting."""
         spec_low  = _high_barrier_spec(F=5.0, V3=200.0, n_basis=15)
         spec_high = _high_barrier_spec(F=5.0, V3=800.0, n_basis=15)
         rows_low  = predict_tunneling_splitting(spec_low,  J=0, K=0, n_levels=1)
@@ -154,7 +154,7 @@ class TestHighBarrierLimit:
             assert split_low > split_high
 
 
-# ── 3. Methanol literature benchmark ─────────────────────────────────────────
+# â”€â”€ 3. Methanol literature benchmark â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestMethanolBenchmark:
     """
@@ -167,13 +167,13 @@ class TestMethanolBenchmark:
         spec = _methanol_spec()
         out = c3_symmetry_block_energies(spec, J=0, K=0, n_levels_per_block=1)
         E_A0 = float(out["A"]["energies_cm-1"][0])
-        # Potential minimum is at alpha=0: V(0) = v0 + Vcos3 = 186.12 - 186.78 ≈ -0.66 cm^-1
+        # Potential minimum is at alpha=0: V(0) = v0 + Vcos3 = 186.12 - 186.78 â‰ˆ -0.66 cm^-1
         # The zero-point level must be above this minimum
-        V_min = _V0 + _VCOS3 + _VCOS6  # ≈ -0.0 cm^-1
+        V_min = _V0 + _VCOS3 + _VCOS6  # â‰ˆ -0.0 cm^-1
         assert E_A0 > V_min
 
     def test_A_E_splitting_positive_sign(self):
-        """For methanol below barrier: E(E1) > E(A) → positive splitting."""
+        """For methanol below barrier: E(E1) > E(A) â†’ positive splitting."""
         spec = _methanol_spec()
         rows = predict_tunneling_splitting(spec, J=0, K=0, n_levels=1)
         assert len(rows) > 0
@@ -212,7 +212,7 @@ class TestMethanolBenchmark:
                 # A states are non-degenerate; purity must be 1.
                 assert row["purity"] > 0.999, f"A-state purity should be 1.0, got {row['purity']:.4f}"
             else:
-                # E1 and E2 are degenerate; eigensolver may mix them — purity in each
+                # E1 and E2 are degenerate; eigensolver may mix them â€” purity in each
                 # residue can be anywhere in [0.5, 1.0].  At minimum the dominant residue
                 # carries more than half the weight.
                 assert row["purity"] > 0.5, f"E-state purity below 0.5: {row['purity']:.4f}"
@@ -228,7 +228,7 @@ class TestMethanolBenchmark:
         assert np.all(np.diff(e) >= -1e-10)
 
 
-# ── 4. Basis convergence ──────────────────────────────────────────────────────
+# â”€â”€ 4. Basis convergence â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestBasisConvergence:
     """Level energies must converge as n_basis increases."""
@@ -287,7 +287,7 @@ class TestBasisConvergence:
             assert delta < 0.01, f"Not converged at n_basis=25: delta={delta:.5f} cm^-1"
 
 
-# ── 5. Physical self-consistency ──────────────────────────────────────────────
+# â”€â”€ 5. Physical self-consistency â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestPhysicalSelfConsistency:
     """Cross-module consistency checks."""
@@ -328,7 +328,7 @@ class TestPhysicalSelfConsistency:
 
     def test_fitter_recovers_methanol_V3(self):
         """Fitting to exact synthetic data should recover V3 within 2 cm^-1."""
-        from backend.torsion_fitter import fit_torsion_to_levels, select_fit_params
+        from backend.torsion.torsion_fitter import fit_torsion_to_levels, select_fit_params
 
         spec_true = _methanol_spec(n_basis=10)
         # Generate synthetic observed levels
@@ -348,7 +348,7 @@ class TestPhysicalSelfConsistency:
         assert abs(recovered - _VCOS3) < 2.0, f"Recovery failed: {recovered:.3f} vs {_VCOS3:.3f}"
 
 
-# ── 6. Centrifugal Distortion ─────────────────────────────────────────────────
+# â”€â”€ 6. Centrifugal Distortion â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestCentrifugalDistortion:
     """Watson A-reduction quartic CD terms in the full torsion-rotation Hamiltonian."""
@@ -397,13 +397,13 @@ class TestCentrifugalDistortion:
         plain = solve_full_torsion_rotation_levels(spec_plain, J, n_levels=15)
         with_cd = solve_full_torsion_rotation_levels(spec_cd, J, n_levels=15)
         diffs = with_cd["energies_cm-1"] - plain["energies_cm-1"]
-        # Mean shift should be close to -DJK*J(J+1)*<K^2> where <K^2> ≥ 0
+        # Mean shift should be close to -DJK*J(J+1)*<K^2> where <K^2> â‰¥ 0
         # At minimum, the spread of diffs should be > 0 for DJK != 0
         assert float(np.std(diffs)) > 1e-6, "DJK should create K-dependent spread in energies"
 
     def test_cd_fitter_recognises_DJ_DJK(self):
         """select_fit_params must accept DJ and DJK without raising."""
-        from backend.torsion_fitter import select_fit_params
+        from backend.torsion.torsion_fitter import select_fit_params
         spec = self._spec_with_cd()
         params = select_fit_params(spec, ["DJ", "DJK", "DK", "d1", "d2"])
         assert len(params) == 5
@@ -411,7 +411,7 @@ class TestCentrifugalDistortion:
         assert "DJ" in names and "DJK" in names
 
 
-# ── 7. Higher Fourier Potential Terms ────────────────────────────────────────
+# â”€â”€ 7. Higher Fourier Potential Terms â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestHigherFourierTerms:
     """V9, V12 and general high-order Fourier terms in the potential."""
@@ -470,13 +470,13 @@ class TestHigherFourierTerms:
         _validate_torsion_block(cfg)  # must not raise
 
 
-# ── 8. Alpha-dependent Constants and Full RAM K-mixing ───────────────────────
+# â”€â”€ 8. Alpha-dependent Constants and Full RAM K-mixing â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestAlphaDependentConstants:
-    """A(α)/B(α)/C(α) Fourier constants and full K-torsion mixing in off-diagonal blocks."""
+    """A(Î±)/B(Î±)/C(Î±) Fourier constants and full K-torsion mixing in off-diagonal blocks."""
 
     def _spec_alpha(self, B_fcos3=0.0):
-        from backend.torsion_hamiltonian import TorsionEffectiveConstantFourier
+        from backend.torsion.torsion_hamiltonian import TorsionEffectiveConstantFourier
         pot = TorsionFourierPotential(v0=_V0, vcos={3: _VCOS3, 6: _VCOS6}, units="cm-1")
         B_alpha = TorsionEffectiveConstantFourier(
             f0=0.8231, fcos={3: B_fcos3}, units="cm-1"
@@ -489,9 +489,9 @@ class TestAlphaDependentConstants:
 
     def test_constant_alpha_dep_matches_scalar(self):
         """A_alpha with only f0 (no harmonics) must give identical energies to scalar."""
-        from backend.torsion_hamiltonian import TorsionEffectiveConstantFourier
+        from backend.torsion.torsion_hamiltonian import TorsionEffectiveConstantFourier
         pot = TorsionFourierPotential(v0=_V0, vcos={3: _VCOS3}, units="cm-1")
-        # Constant A(α) = A scalar
+        # Constant A(Î±) = A scalar
         A_alpha = TorsionEffectiveConstantFourier(f0=4.2542, units="cm-1")
         B_alpha = TorsionEffectiveConstantFourier(f0=0.8231, units="cm-1")
         C_alpha = TorsionEffectiveConstantFourier(f0=0.7931, units="cm-1")
@@ -513,20 +513,20 @@ class TestAlphaDependentConstants:
             )
 
     def test_B_alpha_harmonic_shifts_energy(self):
-        """B(α) with a small V3-harmonic must shift energies compared to constant B."""
+        """B(Î±) with a small V3-harmonic must shift energies compared to constant B."""
         spec_const = self._spec_alpha(B_fcos3=0.0)
         spec_alpha = self._spec_alpha(B_fcos3=-0.005)  # small 3-fold variation in B
         for J in (1, 2):
             e_const = solve_full_torsion_rotation_levels(spec_const, J, n_levels=10)["energies_cm-1"]
             e_alpha = solve_full_torsion_rotation_levels(spec_alpha, J, n_levels=10)["energies_cm-1"]
             max_diff = float(np.max(np.abs(e_alpha - e_const)))
-            assert max_diff > 1e-5, f"B(α) harmonic must shift energies (J={J}, max_diff={max_diff:.2e})"
-            assert max_diff < 0.1, f"B(α) harmonic shift unexpectedly large (J={J}, max_diff={max_diff:.4f})"
+            assert max_diff > 1e-5, f"B(Î±) harmonic must shift energies (J={J}, max_diff={max_diff:.2e})"
+            assert max_diff < 0.1, f"B(Î±) harmonic shift unexpectedly large (J={J}, max_diff={max_diff:.4f})"
 
     def test_alpha_dep_K_mixing_is_hermitian(self):
         """Full Hamiltonian with alpha-dependent constants must remain Hermitian."""
-        from backend.torsion_hamiltonian import TorsionEffectiveConstantFourier
-        from backend.torsion_rot_hamiltonian import build_full_torsion_rotation_hamiltonian
+        from backend.torsion.torsion_hamiltonian import TorsionEffectiveConstantFourier
+        from backend.torsion.torsion_rot_hamiltonian import build_full_torsion_rotation_hamiltonian
         pot = TorsionFourierPotential(v0=_V0, vcos={3: _VCOS3, 6: _VCOS6}, units="cm-1")
         B_alpha = TorsionEffectiveConstantFourier(f0=0.8231, fcos={3: -0.005}, units="cm-1")
         C_alpha = TorsionEffectiveConstantFourier(f0=0.7931, fcos={3: -0.003}, units="cm-1")
@@ -538,10 +538,10 @@ class TestAlphaDependentConstants:
         for J in (0, 1, 2):
             H, *_ = build_full_torsion_rotation_hamiltonian(spec, J)
             max_anti = float(np.max(np.abs(H - H.conj().T)))
-            assert max_anti < 1e-10, f"Hamiltonian not Hermitian at J={J}: max|H-H†|={max_anti:.2e}"
+            assert max_anti < 1e-10, f"Hamiltonian not Hermitian at J={J}: max|H-Hâ€ |={max_anti:.2e}"
 
 
-# ── Pipeline routing ──────────────────────────────────────────────────────────
+# â”€â”€ Pipeline routing â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestCollectLevelRowsRouting:
     """_collect_level_rows routes to full Hamiltonian when CD or alpha-dep active."""
@@ -572,7 +572,7 @@ class TestCollectLevelRowsRouting:
 
     def test_full_path_when_alpha_dep_set(self):
         from runner.run_generic import _use_full_hamiltonian
-        from backend.torsion_hamiltonian import TorsionEffectiveConstantFourier
+        from backend.torsion.torsion_hamiltonian import TorsionEffectiveConstantFourier
         spec = self._base_spec()
         spec.B_alpha = TorsionEffectiveConstantFourier(f0=0.823, fcos={3: -0.003})
         assert _use_full_hamiltonian(spec)

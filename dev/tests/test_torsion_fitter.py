@@ -7,19 +7,19 @@ from copy import deepcopy
 import numpy as np
 import pytest
 
-from backend.torsion_fitter import (
+from backend.torsion.torsion_fitter import (
     TorsionRotationalTarget,
     fit_torsion_joint,
     fit_torsion_to_levels,
     fit_torsion_to_transitions,
     select_fit_params,
 )
-from backend.torsion_hamiltonian import (
+from backend.torsion.torsion_hamiltonian import (
     TorsionFourierPotential,
     TorsionHamiltonianSpec,
     solve_ram_lite_levels,
 )
-from backend.torsion_uncertainty import default_torsion_parameters
+from backend.torsion.torsion_uncertainty import default_torsion_parameters
 
 
 # â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -315,7 +315,7 @@ def test_phase2_with_fitting_enabled():
 
 def _make_joint_scan(abc_grid):
     """Build a minimal TorsionScan with pre-filled rotational constants."""
-    from backend.torsion_average import TorsionGridPoint, TorsionScan
+    from backend.torsion.torsion_average import TorsionGridPoint, TorsionScan
 
     gps = []
     for i, abc in enumerate(abc_grid):

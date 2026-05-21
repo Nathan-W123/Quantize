@@ -1,9 +1,9 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import numpy as np
 
-from backend.internal_fit import InternalCoordinateSet, build_internal_priors
-from backend.prior_weighting import (
+from backend.internal.internal_fit import InternalCoordinateSet, build_internal_priors
+from backend.priors.prior_weighting import (
     adaptive_sigma_from_identifiability,
     identifiability_scores_from_jacobian,
 )

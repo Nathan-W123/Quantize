@@ -1,4 +1,4 @@
-"""Offline parsers for cheap-opt xyz output (no ORCA binary needed)."""
+﻿"""Offline parsers for cheap-opt xyz output (no ORCA binary needed)."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from pathlib import Path
 
 import numpy as np
 
-from backend.orca_cheap_opt import parse_xyz_trajectory_last
+from backend.orca.orca_cheap_opt import parse_xyz_trajectory_last
 
 
 def test_parse_xyz_last_frame(tmp_path: Path):

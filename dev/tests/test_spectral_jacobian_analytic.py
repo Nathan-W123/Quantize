@@ -1,8 +1,8 @@
-"""Analytic vs finite-difference rotational-constant Jacobian (spectral.py)."""
+﻿"""Analytic vs finite-difference rotational-constant Jacobian (spectral.py)."""
 
 import numpy as np
 
-from backend.spectral import (
+from backend.spectral.spectral import (
     SpectralEngine,
     _jacobian_full,
     _jacobian_full_analytic,
@@ -10,7 +10,7 @@ from backend.spectral import (
 
 
 def test_analytic_matches_finite_difference_random_geometries():
-    """Asymmetric geometries avoid FD cancellation noise on near-zero ∂A/∂x entries."""
+    """Asymmetric geometries avoid FD cancellation noise on near-zero âˆ‚A/âˆ‚x entries."""
     rng = np.random.default_rng(2)
     delta = 1e-3
     for n in (3, 4, 6):

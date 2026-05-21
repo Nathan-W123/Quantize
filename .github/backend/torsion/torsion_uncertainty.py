@@ -1,4 +1,4 @@
-"""
+﻿"""
 Uncertainty utilities for torsion Hamiltonian parameters.
 
 This module is intentionally independent of external QC dependencies and operates
@@ -13,7 +13,7 @@ from typing import Callable, Optional
 
 import numpy as np
 
-from backend.torsion_hamiltonian import TorsionHamiltonianSpec, solve_ram_lite_levels
+from backend.torsion.torsion_hamiltonian import TorsionHamiltonianSpec, solve_ram_lite_levels
 
 
 @dataclass(frozen=True)

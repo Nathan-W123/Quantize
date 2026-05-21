@@ -1,17 +1,17 @@
-"""Tests for backend/torsion_rot_hamiltonian.py (Phase 8: full torsion-rotation Hamiltonian)."""
+﻿"""Tests for backend/torsion_rot_hamiltonian.py (Phase 8: full torsion-rotation Hamiltonian)."""
 
 from __future__ import annotations
 
 import numpy as np
 import pytest
 
-from backend.torsion_rot_hamiltonian import (
+from backend.torsion.torsion_rot_hamiltonian import (
     _jk_asym_coupling,
     build_full_torsion_rotation_hamiltonian,
     compare_ram_lite_vs_full,
     solve_full_torsion_rotation_levels,
 )
-from backend.torsion_hamiltonian import (
+from backend.torsion.torsion_hamiltonian import (
     TorsionFourierPotential,
     TorsionHamiltonianSpec,
     solve_ram_lite_levels,
@@ -31,11 +31,11 @@ def _symmetric_spec(F=5.0, rho=0.0, A=1.0, B=1.0, C=1.0, n_basis=5):
     return TorsionHamiltonianSpec(F=F, rho=rho, A=A, B=B, C=C, potential=pot, n_basis=n_basis)
 
 
-# ── _jk_asym_coupling ─────────────────────────────────────────────────────────
+# â”€â”€ _jk_asym_coupling â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestJKAsymCoupling:
     def test_zero_for_k_at_boundary(self):
-        # <J=1, K=2|...|J=1, K=0> → K+2=2 > J=1, should give 0
+        # <J=1, K=2|...|J=1, K=0> â†’ K+2=2 > J=1, should give 0
         assert _jk_asym_coupling(1, 0) == pytest.approx(0.0)
 
     def test_positive_for_valid_K(self):
@@ -51,12 +51,12 @@ class TestJKAsymCoupling:
 
     def test_negative_K_handled(self):
         # Coupling at K=-1: sqrt([J(J+1)-(-1)(0)] * [J(J+1)-0*1])
-        # For J=2, K=-2: t1 = 6-(-2)(-1)=6-2=4, t2=6-(-1)(0)=6>0 → sqrt(24)
+        # For J=2, K=-2: t1 = 6-(-2)(-1)=6-2=4, t2=6-(-1)(0)=6>0 â†’ sqrt(24)
         val = _jk_asym_coupling(2, -2)
         assert val >= 0.0
 
 
-# ── build_full_torsion_rotation_hamiltonian ───────────────────────────────────
+# â”€â”€ build_full_torsion_rotation_hamiltonian â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestBuildFullHamiltonian:
     def test_hermitian(self):
@@ -85,7 +85,7 @@ class TestBuildFullHamiltonian:
         np.testing.assert_allclose(e_full[:n], e_rl[:n], atol=1e-8)
 
     def test_symmetric_top_no_asym_coupling(self):
-        """B==C → asymmetric coupling factor = 0; off-diagonal K blocks should be zero."""
+        """B==C â†’ asymmetric coupling factor = 0; off-diagonal K blocks should be zero."""
         spec = _symmetric_spec(B=1.0, C=1.0)
         H, K_vals, m_vals, _ = build_full_torsion_rotation_hamiltonian(spec, J=2)
         n_m = m_vals.size
@@ -107,7 +107,7 @@ class TestBuildFullHamiltonian:
         assert np.allclose(e.imag, 0.0, atol=1e-10)
 
 
-# ── solve_full_torsion_rotation_levels ────────────────────────────────────────
+# â”€â”€ solve_full_torsion_rotation_levels â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestSolveFullTorsionRotation:
     def test_sorted_energies(self):
@@ -148,15 +148,15 @@ class TestSolveFullTorsionRotation:
         """Asymmetric top (B >> C) should give meaningfully different energies than symmetric case."""
         J = 2
         # Use a large B-C difference so the coupling effect is clearly observable
-        spec_asym = _make_spec(B=1.5, C=0.5)   # B-C = 1.0 → strong asymmetry
-        spec_sym  = _make_spec(B=1.0, C=1.0)   # B-C = 0 → no coupling
+        spec_asym = _make_spec(B=1.5, C=0.5)   # B-C = 1.0 â†’ strong asymmetry
+        spec_sym  = _make_spec(B=1.0, C=1.0)   # B-C = 0 â†’ no coupling
         e_asym = solve_full_torsion_rotation_levels(spec_asym, J, n_levels=10)["energies_cm-1"]
         e_sym  = solve_full_torsion_rotation_levels(spec_sym,  J, n_levels=10)["energies_cm-1"]
         # With B-C=1.0 vs 0, the spectra should differ by more than 0.1 cm^-1
         assert np.max(np.abs(e_asym - e_sym)) > 0.1
 
 
-# ── compare_ram_lite_vs_full ──────────────────────────────────────────────────
+# â”€â”€ compare_ram_lite_vs_full â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestCompareRamLiteVsFull:
     def test_returns_required_keys(self):

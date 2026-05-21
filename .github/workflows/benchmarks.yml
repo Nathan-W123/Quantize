@@ -32,16 +32,16 @@ jobs:
         run: python -m pytest dev/tests/test_benchmark_suite.py dev/tests/test_conformer_benchmark_suite.py dev/tests/test_lam_benchmarks.py dev/tests/test_lam_acetaldehyde.py -q -m "not slow"
 
       - name: Run LAM benchmark suite with thresholds
-        run: python cli.py benchmark lam --baseline dev/benchmarks/baselines/lam.json --output results/benchmarks/lam-latest.json --history-dir results/benchmarks/history --enforce-thresholds
+        run: python cli.py benchmark lam --baseline dev/benchmarks/baselines/lam.json --output output/results/benchmarks/lam-latest.json --history-dir output/results/benchmarks/history --enforce-thresholds
 
       - name: Run conformer benchmark suite with thresholds
-        run: python cli.py benchmark conformer --baseline dev/benchmarks/baselines/conformer.json --output results/benchmarks/conformer-latest.json --history-dir results/benchmarks/history --enforce-thresholds
+        run: python cli.py benchmark conformer --baseline dev/benchmarks/baselines/conformer.json --output output/results/benchmarks/conformer-latest.json --history-dir output/results/benchmarks/history --enforce-thresholds
 
       - name: Upload benchmark artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: benchmark-artifacts-${{ github.run_number }}
-          path: results/benchmarks/
+          path: output/results/benchmarks/
           if-no-files-found: error
           retention-days: 90

@@ -1,4 +1,4 @@
-"""
+﻿"""
 Iterative least-squares fitting of RAM-lite torsion Hamiltonian parameters.
 
 Implements a damped Gauss-Newton loop using the finite-difference Jacobian
@@ -31,13 +31,13 @@ from typing import Optional
 
 import numpy as np
 
-from backend.torsion_average import (
+from backend.torsion.torsion_average import (
     TorsionScan,
     average_torsion_scan_quantum,
     average_torsion_scan_quantum_thermal,
 )
-from backend.torsion_hamiltonian import TorsionHamiltonianSpec, solve_ram_lite_levels
-from backend.torsion_uncertainty import (
+from backend.torsion.torsion_hamiltonian import TorsionHamiltonianSpec, solve_ram_lite_levels
+from backend.torsion.torsion_uncertainty import (
     TorsionParameter,
     default_torsion_parameters,
     finite_difference_jacobian,
@@ -153,7 +153,7 @@ def _gauss_newton_step(
     weights: np.ndarray,
     damping: float,
 ) -> np.ndarray:
-    """Solve (J^T W J + λI) δp = J^T W r for the parameter update."""
+    """Solve (J^T W J + Î»I) Î´p = J^T W r for the parameter update."""
     WJ = np.sqrt(weights)[:, None] * J
     Wr = np.sqrt(weights) * residuals
     N = WJ.T @ WJ + damping * np.eye(J.shape[1])
@@ -306,7 +306,7 @@ def fit_torsion_to_levels(
     params : parameters to fit; defaults to F, rho, and all Vcos/Vsin harmonics
              in spec.potential
     max_iter : maximum Gauss-Newton iterations
-    xtol : convergence tolerance on max |Δp / p_scale|
+    xtol : convergence tolerance on max |Î”p / p_scale|
     ftol : convergence tolerance on RMS residual change
     damping : Levenberg-Marquardt damping added to normal matrix
     default_sigma_cm1 : default per-level uncertainty used when 'sigma_cm-1' absent
@@ -314,15 +314,15 @@ def fit_torsion_to_levels(
     Returns
     -------
     dict with:
-      fitted_spec       : TorsionHamiltonianSpec — best-fit parameters
+      fitted_spec       : TorsionHamiltonianSpec â€” best-fit parameters
       param_names       : list[str]
-      param_values      : np.ndarray — final parameter values
-      param_values_init : np.ndarray — initial parameter values
-      rms_cm-1          : float — final RMS residual
-      rms_cm-1_init     : float — initial RMS residual
+      param_values      : np.ndarray â€” final parameter values
+      param_values_init : np.ndarray â€” initial parameter values
+      rms_cm-1          : float â€” final RMS residual
+      rms_cm-1_init     : float â€” initial RMS residual
       n_iter            : int
       converged         : bool
-      residuals_cm-1    : np.ndarray — per-level residuals at convergence
+      residuals_cm-1    : np.ndarray â€” per-level residuals at convergence
       warnings          : list[str]
     """
     if not observed_rows:
@@ -630,9 +630,9 @@ def fit_torsion_joint(
     ----------
     spec : TorsionHamiltonianSpec
     level_rows : list of dicts with 'obs_cm1' and optionally 'sigma_cm1', 'type',
-        'J', 'symmetry' — same format as fit_torsion_to_levels / fit_torsion_to_transitions
+        'J', 'symmetry' â€” same format as fit_torsion_to_levels / fit_torsion_to_transitions
     rotational_targets : list of TorsionRotationalTarget
-    scan : TorsionScan — torsion grid used for quantum averaging
+    scan : TorsionScan â€” torsion grid used for quantum averaging
     elements : sequence of element symbols
     masses : optional explicit masses (defaults to built-in element masses)
     sigma_level_cm1 : default uncertainty on torsional levels [cm^-1]
@@ -651,7 +651,7 @@ def fit_torsion_joint(
       n_level_obs : number of level observations
       n_rot_obs : number of rotational observations
     """
-    from backend.torsion_average import average_torsion_scan_quantum_thermal
+    from backend.torsion.torsion_average import average_torsion_scan_quantum_thermal
 
     warnings: list[str] = []
 
@@ -660,7 +660,7 @@ def fit_torsion_joint(
     if not params:
         warnings.append("No free parameters selected for joint fitting.")
 
-    # ── Build level observations ────────────────────────────────────────────
+    # â”€â”€ Build level observations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     _component_map = {"A": 0, "B": 1, "C": 2}
     level_requests = _torsion_level_requests_from_rows(level_rows) if level_rows else []
     level_obs = _obs_energies_from_rows(level_rows) if level_rows else np.array([], dtype=float)
@@ -670,7 +670,7 @@ def fit_torsion_joint(
     )
     level_weights = 1.0 / level_sigma ** 2 if level_sigma.size > 0 else np.array([], dtype=float)
 
-    # ── Build rotational observations ───────────────────────────────────────
+    # â”€â”€ Build rotational observations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     rot_comp_indices = []
     rot_obs = []
     rot_sigma = []
@@ -688,7 +688,7 @@ def fit_torsion_joint(
     rot_sigma = np.asarray(rot_sigma, dtype=float)
     rot_weights = 1.0 / rot_sigma ** 2 if rot_sigma.size > 0 else np.array([], dtype=float)
 
-    # ── Pack initial parameters ─────────────────────────────────────────────
+    # â”€â”€ Pack initial parameters â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     p0 = pack_torsion_parameters(spec, params)
     lower, upper = _normalise_bounds(params, bounds)
     priors_norm = _normalise_priors(params, priors)
@@ -713,7 +713,7 @@ def fit_torsion_joint(
                     max_states=int(max_states),
                 )
             else:
-                from backend.torsion_average import average_torsion_scan_quantum
+                from backend.torsion.torsion_average import average_torsion_scan_quantum
                 avg_out = average_torsion_scan_quantum(
                     elements,
                     scan,
@@ -758,7 +758,7 @@ def fit_torsion_joint(
     fitted_spec = unpack_torsion_parameters(spec, params, p)
     pred_final = _obs_fn(p)
 
-    # ── Split residuals for per-stream RMS ─────────────────────────────────
+    # â”€â”€ Split residuals for per-stream RMS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     res_level = (obs_full[:n_level] - pred_final[:n_level]) if n_level > 0 else np.array([], dtype=float)
     res_rot = (obs_full[n_level:] - pred_final[n_level:]) if n_rot > 0 else np.array([], dtype=float)
     rms_level = float(np.sqrt(np.mean(res_level ** 2))) if res_level.size > 0 else float("nan")

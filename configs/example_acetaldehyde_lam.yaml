@@ -139,5 +139,5 @@ torsion_hamiltonian:
     format: png
 
 output:
-  root: runs
+  root: output/runs
   artifacts: true
