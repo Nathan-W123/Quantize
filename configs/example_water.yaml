@@ -1,0 +1,16 @@
+# Example quantize run — copy and edit, then:
+#   python run_from_config.py configs/your_copy.yaml
+#
+# molecule: must match run_molecule keys (water, so2, co2, methanol, …)
+# preset:   FAST_DEBUG | BALANCED | STRICT  (omit or null → runner default)
+#
+# orca_method / orca_basis: optional. Omit both to use run_settings defaults
+# for that molecule. When set, they override for this run only (env vars).
+# orca_exe: optional full path to ORCA binary for this run only.
+
+molecule: water
+preset: BALANCED
+
+orca_method: wB97X-D4
+orca_basis: def2-SVP
+# orca_exe: /path/to/orca

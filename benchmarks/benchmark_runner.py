@@ -2,8 +2,8 @@
 """General benchmark harness with model-selection recommendations.
 
 Usage:
-  python benchmarks/benchmark_runner.py configs/Water.yaml
-  python benchmarks/benchmark_runner.py --config-dir configs
+  PYTHONPATH=. .venv/bin/python benchmarks/benchmark_runner.py configs/Water.yaml
+  PYTHONPATH=. .venv/bin/python benchmarks/benchmark_runner.py --config-dir configs
 """
 
 from __future__ import annotations
@@ -16,10 +16,11 @@ from datetime import UTC, datetime
 import sys
 from pathlib import Path
 
-from paths import OUTPUT_RUNS_DIR, ensure_repo_paths
+import numpy as np
 
-_ROOT = ensure_repo_paths(Path(__file__).resolve().parent.parent)
-_BENCHMARK_SUMMARY_DIR = OUTPUT_RUNS_DIR / "benchmarks" / "summary"
+_ROOT = Path(__file__).resolve().parent.parent
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
 
 from backend.model_selection import (
     ModeCalibration,
@@ -29,7 +30,7 @@ from backend.model_selection import (
     recommend_torsion_model,
 )
 from runner.run_generic import main as run_generic_main
-from runner.usability import load_config, validate_config
+from runner.usability import load_config, prepare_run_directory, validate_config
 
 
 def _run_mode(cfg: dict, mode: str, out_root: Path) -> dict:
@@ -38,6 +39,7 @@ def _run_mode(cfg: dict, mode: str, out_root: Path) -> dict:
     cfg_mode.setdefault("output", {})
     cfg_mode["output"]["artifacts"] = True
     cfg_mode["output"]["root"] = str(out_root)
+    prepare_run_directory(cfg_mode)
     result = run_generic_main(cfg_mode)
     best = result["best"]
     score = result.get("score", {}) or {}
@@ -99,11 +101,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Run Quantize benchmark suite across one or more configs.")
     parser.add_argument("configs", nargs="*", help="Config file paths.")
     parser.add_argument("--config-dir", help="Directory containing benchmark configs (*.yaml/*.json).")
-    parser.add_argument(
-        "--output-dir",
-        default=str(_BENCHMARK_SUMMARY_DIR),
-        help="Summary output directory.",
-    )
+    parser.add_argument("--output-dir", default="runs/benchmarks/summary", help="Summary output directory.")
     parser.add_argument(
         "--no-history-calibration",
         action="store_true",
@@ -119,7 +117,7 @@ def main() -> int:
     stamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     out_dir = Path(args.output_dir).resolve() / stamp
     out_dir.mkdir(parents=True, exist_ok=True)
-    run_root = Path(OUTPUT_RUNS_DIR).resolve() / "benchmarks" / stamp
+    run_root = Path("runs").resolve() / "benchmarks" / stamp
     run_root.mkdir(parents=True, exist_ok=True)
 
     base_summary_root = Path(args.output_dir).resolve()
@@ -138,7 +136,7 @@ def main() -> int:
         cfg = load_config(cfg_path)
         validate_config(cfg)
         if "elements" not in cfg:
-            print(f"[skip] {cfg_path} (no 'elements' key)")
+            print(f"[skip] {cfg_path} (legacy molecule config)")
             continue
         name = str(cfg.get("name", cfg_path.stem))
         this_run_root = run_root / name

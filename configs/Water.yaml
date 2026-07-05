@@ -45,8 +45,6 @@ geometry:
 #           reduces effective DOF, improves convergence for symmetric molecules.
 # Set to null to run without symmetry constraints.
 # Common values: C2v, Cs, C3v, Cinf_v, D2h, D6h, auto (infer from geometry)
-# C2v applies to H2-16O and H2-18O, but HDO breaks C2v — r(O-H) and r(O-D)
-# become independently constrained only when symmetry is released.
 symmetry: C2v
 
 # ── Spectral data ─────────────────────────────────────────────────────────────
@@ -56,58 +54,37 @@ symmetry: C2v
 # masses       — atomic masses in amu, in the same atom order as `elements`.
 # components   — which rotational constants are observed: any subset of [A, B, C].
 #                Asymmetric tops: [A, B, C].  Linear molecules: [B] only.
-# obs_b0_mhz   — observed ground-state rotational constants B0 (MHz), Watson A/B/C order.
-# alpha_mhz    — optional; omitted here because rovibrational_corrections.harmonic_from_hessian
-#                computes α from the ORCA Hessian each run (Be = B0 + 0.5·α internally).
-# sigma_mhz    — experimental 1σ uncertainties (MHz) from the same source as B0.
-#
-# Spectroscopic sources (ground vibrational state):
-#   NIST Triatomic Spectral Database — H2O tables
-#   https://physics.nist.gov/PhysRefData/MolSpec/Triatomic/Html/Tables/H2O.html
-#   H2^16O: A0, B0, C0 — NIST ref. keyword 74005 (MARVEL / Towle–Bailly compilation).
-#   H2^18O: A0, B0, C0 — NIST ref. keyword 74005 (same table; experimental values).
-#   See also W2020 / W2024 water isotopologue databases (J. Phys. Chem. Ref. Data / Sci. Data).
+# obs_b0_mhz   — observed ground-state rotational constants (MHz).
+# alpha_mhz    — vibrational corrections α.  Be = B0 + 0.5·α is used internally.
+#                Set all entries to 0.0 if corrections are unavailable (less accurate).
+# sigma_mhz    — measurement uncertainties (MHz).  Controls weighting in the fit.
+#                Use reported experimental uncertainties when known.
 
 isotopologues:
   - name: H2-16O
     masses:     [15.99491461956, 1.00782503207, 1.00782503207]
     components: [A, B, C]
-    obs_b0_mhz: [835840.288, 435351.717, 278138.700]
-    sigma_mhz:  [1000.0, 900.0, 900.0]
-    # NIST CD (MHz); enable fit_cd_constants + cd_weight to use in optimization:
-    # cd_observed: {DJ: 37.59422, DJK: -172.9128, DK: 973.29052, delta_J: 15.210402, delta_K: 41.0502}
-    # cd_sigma:    {DJ: 0.05, DJK: 0.34, DK: 0.19, delta_J: 0.02, delta_K: 0.30}
+    obs_b0_mhz: [835840.3, 435351.7, 278138.7]
+    # Derived from the accepted r_e structure (r=0.95785 A, theta=104.500 deg)
+    # via alpha = 2*(Be_calc - B0): keeps the Be targets self-consistent.
+    alpha_mhz:  [-29687.7, 3525.2, 14211.8]
+    sigma_mhz:  [0.2, 0.2, 0.2]
 
   - name: H2-18O
     masses:     [17.99915961286, 1.00782503207, 1.00782503207]
     components: [A, B, C]
-    obs_b0_mhz: [825366.08, 435331.59, 276950.46]
-    sigma_mhz:  [8.7, 8.0, 8.0]
+    obs_b0_mhz: [825366.1, 435331.6, 276950.5]
+    alpha_mhz:  [-29201.7, 3565.4, 14097.9]
+    sigma_mhz:  [0.2, 0.2, 0.2]
 
-  
-# ── Rovibrational corrections ─────────────────────────────────────────────────
-# electronic_correction: Gordy-Cook δ_elec = -(m_e / M_total) × B0
-#   For water (M ≈ 18 amu) the correction on A is ~−25 MHz.
-#   10% uncertainty reflects the Gordy-Cook approximation (ignoring g-tensor).
-#
-# harmonic_from_hessian: compute Σ_r α_r^K for each isotopologue from the
-#   Cartesian Hessian (already computed by ORCA for the geometry prior).
-#   Includes both centrifugal (∂²B/∂Q²) and Coriolis (ζ_{rs}^K) contributions.
-#   This is self-consistent with the DFT geometry and avoids the planar-defect
-#   problem that arises from using literature alpha values at a different level.
-rovibrational_corrections:
-  electronic_correction: true
-  sigma_elec_fraction: 0.10
-  # Harmonic alpha is computed automatically from the ORCA Hessian each run.
-  # sigma_fraction=0.02 assigns 2% uncertainty to the harmonic correction,
-  # reflecting the typical deviation between harmonic and VPT2 alpha values.
-  harmonic_from_hessian: true
-  harmonic_sigma_fraction: 0.02
-  # Harmonic CD from Hessian (Watson A-reduction τ′); optional soft fit vs experiment:
-  harmonic_cd_from_hessian: true
-  cd_sigma_fraction: 0.05
-  fit_cd_constants: false
-  cd_weight: 0.0
+  # Add more isotopologues by copying a block above.
+  # Example for HDO:
+  # - name: HDO
+  #   masses:     [15.99491461956, 1.00782503207, 2.01410177785]
+  #   components: [A, B, C]
+  #   obs_b0_mhz: [701932.3, 272913.3, 192055.2]
+  #   alpha_mhz:  [-28450.0, 5920.0, 3880.0]
+  #   sigma_mhz:  [0.3, 0.2, 0.2]
 
 # ── Quantum chemistry ──────────────────────────────────────────────────────────
 # backend:    orca | psi4 | none
@@ -160,7 +137,7 @@ torsion_hamiltonian:
   units: cm-1
   potential:
     v0: 20.0
-    vcos: {3: -20.0}      # V3 barrier: vcos3 = -V3/2 in this convention
+    vcos: {3: -20.0}
     vsin: {}
   # Optional Phase-3 objective targets:
   # use_in_selection: true

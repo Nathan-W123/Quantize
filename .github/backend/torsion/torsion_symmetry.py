@@ -231,10 +231,16 @@ def symmetry_selection_rules(
       E <-> E (including E1<->E1, E2<->E2, E1<->E2) : allowed
       A <-> E : forbidden
 
+    For a C2 rotor (rotor_fold=2) the analogous rules are:
+      A <-> A : allowed
+      B <-> B : allowed
+      A <-> B : forbidden
+
     Parameters
     ----------
-    symmetry_lo, symmetry_hi : species labels ('A', 'E', 'E1', 'E2')
-    rotor_fold : rotational symmetry order (currently only 3 implemented)
+    symmetry_lo, symmetry_hi : species labels ('A', 'E', 'E1', 'E2' for C3;
+        'A', 'B' for C2)
+    rotor_fold : rotational symmetry order (2 and 3 implemented)
 
     Returns
     -------
@@ -257,6 +263,17 @@ def symmetry_selection_rules(
             return {
                 "allowed": False,
                 "reason": "Aâ†”E forbidden: different nuclear spin statistics for C3 rotor.",
+            }
+        return {"allowed": None, "reason": f"Unknown symmetry labels: lo={symmetry_lo!r}, hi={symmetry_hi!r}"}
+
+    if rotor_fold == 2:
+        known = {"A", "B"}
+        if lo in known and hi in known:
+            if lo == hi:
+                return {"allowed": True, "reason": f"{lo}↔{hi}: same nuclear spin species (C2 rotor)."}
+            return {
+                "allowed": False,
+                "reason": "A↔B forbidden: different nuclear spin statistics for C2 rotor.",
             }
         return {"allowed": None, "reason": f"Unknown symmetry labels: lo={symmetry_lo!r}, hi={symmetry_hi!r}"}
 

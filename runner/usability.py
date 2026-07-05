@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import csv
 import json
@@ -10,8 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from backend.spectral.spectral_model import normalize_spectral_model
-from paths import OUTPUT_RUNS_DIR
+from backend.spectral_model import normalize_spectral_model
 from runner.config_schema import CONFIG_SCHEMA_VERSION, normalize_config
 
 try:
@@ -87,75 +86,8 @@ def _check_numeric_list(value: Any, path: str, n: int | None = None, positive: b
             raise ConfigError(f"'{path}[{i}]' must be positive; got {item!r}.")
 
 
-def _warn_isotopologue_consistency(cfg: dict[str, Any]) -> None:
-    """Print warnings for physically implausible isotopologue pairs.
-
-    Two checks:
-    1. Heavier isotopologue must not have larger rotational constants.
-    2. |Î”B/B| must not wildly exceed |Î”M/M| â€” catches unit errors (GHz vs MHz)
-       or transposed component entries.
-    """
-    isos = _as_list(cfg.get("isotopologues"), "isotopologues") or []
-    if len(isos) < 2:
-        return
-
-    def _comp_map(iso):
-        comps = [str(c).strip().upper() for c in (iso.get("components") or ["A", "B", "C"])]
-        obs   = list(iso.get("obs_b0_mhz") or [])
-        return {c: float(v) for c, v in zip(comps, obs) if v is not None}
-
-    for i in range(len(isos)):
-        for j in range(i + 1, len(isos)):
-            iso1, iso2 = isos[i], isos[j]
-            m1 = iso1.get("masses") or []
-            m2 = iso2.get("masses") or []
-            if not m1 or not m2:
-                continue
-            M1 = sum(float(x) for x in m1)
-            M2 = sum(float(x) for x in m2)
-            if M1 <= 0 or M2 <= 0:
-                continue
-            n1 = str(iso1.get("name", f"iso[{i}]"))
-            n2 = str(iso2.get("name", f"iso[{j}]"))
-            bmap1 = _comp_map(iso1)
-            bmap2 = _comp_map(iso2)
-            shared = sorted(set(bmap1) & set(bmap2))
-            if not shared:
-                continue
-
-            # Check 1: heavier isotopologue must have smaller B
-            if M2 > M1 * 1.0001:
-                for comp in shared:
-                    B1, B2 = bmap1[comp], bmap2[comp]
-                    if B2 > B1 * 1.001:
-                        print(
-                            f"[input-warn] '{n2}' is heavier than '{n1}' "
-                            f"(M={M2:.3f} > {M1:.3f} amu) but {comp} is larger "
-                            f"({B2:.1f} > {B1:.1f} MHz). "
-                            "Check for transposed entries or wrong units (expect MHz)."
-                        )
-
-            # Check 2: |Î”B/B| / |Î”M/M| must not exceed 20
-            dM_frac = abs(M2 - M1) / max(M1, M2)
-            if dM_frac < 1e-6:
-                continue
-            for comp in shared:
-                B1, B2 = bmap1[comp], bmap2[comp]
-                if B1 <= 0:
-                    continue
-                dB_frac = abs(B2 - B1) / B1
-                ratio = dB_frac / dM_frac
-                if ratio > 20:
-                    print(
-                        f"[input-warn] {comp}-constant change between '{n1}' and '{n2}' "
-                        f"is {dB_frac*100:.1f}% but mass change is only {dM_frac*100:.1f}% "
-                        f"(ratio {ratio:.1f}Ã—). "
-                        "Check units (MHz expected) and component order."
-                    )
-
-
 def validate_config(cfg: dict[str, Any]) -> None:
-    """Validate YAML/JSON config shape with clear errors."""
+    """Validate supported legacy and generalized config shapes with clear errors."""
     if not isinstance(cfg, dict):
         raise ConfigError("Config must be a mapping/object.")
     schema_v = str(cfg.get("schema_version", CONFIG_SCHEMA_VERSION)).strip()
@@ -164,13 +96,12 @@ def validate_config(cfg: dict[str, Any]) -> None:
             f"'schema_version' must be '{CONFIG_SCHEMA_VERSION}' for this build (got '{schema_v}')."
         )
 
-    if "molecule" in cfg:
-        raise ConfigError(
-            "Legacy 'molecule' configs are removed. Use 'elements', 'geometry', and "
-            "'isotopologues' (see configs/example_CO2.yaml)."
-        )
-    if "elements" not in cfg:
-        raise ConfigError("Config must set 'elements' (list of element symbols).")
+    has_elements = "elements" in cfg
+    has_molecule = "molecule" in cfg
+    if has_elements and has_molecule:
+        raise ConfigError("Set either 'elements' for a generalized run or 'molecule' for legacy mode, not both.")
+    if not has_elements and not has_molecule:
+        raise ConfigError("Config must set either 'elements' or 'molecule'.")
 
     preset = cfg.get("preset")
     if preset is not None and str(preset).strip().upper() not in VALID_PRESETS:
@@ -180,6 +111,12 @@ def validate_config(cfg: dict[str, Any]) -> None:
     for key in ("root", "run_dir"):
         if key in output and output[key] is not None and not str(output[key]).strip():
             raise ConfigError(f"'output.{key}' cannot be blank.")
+
+    if has_molecule:
+        molecule = str(cfg.get("molecule", "")).strip()
+        if not molecule:
+            raise ConfigError("'molecule' cannot be blank.")
+        return
 
     elements = _as_list(cfg.get("elements"), "elements")
     if not elements:
@@ -211,12 +148,6 @@ def validate_config(cfg: dict[str, Any]) -> None:
                         )
             if "bond_lengths" in geometry and geometry["bond_lengths"] is not None:
                 _check_numeric_list(geometry["bond_lengths"], "geometry.bond_lengths", len(bonds), positive=True)
-                for _bi, _bv in enumerate([float(v) for v in geometry["bond_lengths"]]):
-                    if _bv < 0.3 or _bv > 5.0:
-                        raise ConfigError(
-                            f"'geometry.bond_lengths[{_bi}]' = {_bv:.3f} Ã… is outside the physical "
-                            "range [0.3, 5.0] Ã…. Check your initial geometry (values in Angstrom)."
-                        )
         elif method == "pubchem":
             if not str(geometry.get("identifier", "")).strip():
                 raise ConfigError("'geometry.identifier' is required when geometry.method is pubchem.")
@@ -230,8 +161,6 @@ def validate_config(cfg: dict[str, Any]) -> None:
     isotopologues = _as_list(cfg.get("isotopologues"), "isotopologues")
     if not isotopologues:
         raise ConfigError("'isotopologues' must contain at least one entry.")
-    _rc_block = cfg.get("rovibrational_corrections") or {}
-    _harmonic_from_hessian = bool(_rc_block.get("harmonic_from_hessian", False))
     seen_iso_names: set[str] = set()
     for iso_i, iso in enumerate(isotopologues):
         if not isinstance(iso, dict):
@@ -259,25 +188,13 @@ def validate_config(cfg: dict[str, Any]) -> None:
         n_comp = len(comps)
         if "obs_b0_mhz" not in iso:
             raise ConfigError(f"'{prefix}.obs_b0_mhz' is required (one value per listed component).")
-        if "alpha_mhz" not in iso and not _harmonic_from_hessian:
+        if "alpha_mhz" not in iso:
             raise ConfigError(f"'{prefix}.alpha_mhz' is required (one value per listed component).")
         if "sigma_mhz" not in iso:
             raise ConfigError(f"'{prefix}.sigma_mhz' is required (one value per listed component).")
-        _check_numeric_list(iso.get("obs_b0_mhz"), f"{prefix}.obs_b0_mhz", n_comp, positive=True)
-        if "alpha_mhz" in iso:
-            _check_numeric_list(iso.get("alpha_mhz"), f"{prefix}.alpha_mhz", n_comp)
+        _check_numeric_list(iso.get("obs_b0_mhz"), f"{prefix}.obs_b0_mhz", n_comp)
+        _check_numeric_list(iso.get("alpha_mhz"), f"{prefix}.alpha_mhz", n_comp)
         _check_numeric_list(iso.get("sigma_mhz"), f"{prefix}.sigma_mhz", n_comp, positive=True)
-        # Rotational constant ordering: A >= B >= C when all three are supplied.
-        if norm_comps == ["A", "B", "C"]:
-            _obs = [float(v) for v in iso["obs_b0_mhz"]]
-            if not (_obs[0] >= _obs[1] >= _obs[2]):
-                raise ConfigError(
-                    f"'{prefix}.obs_b0_mhz' must satisfy A >= B >= C for an asymmetric top "
-                    f"(got A={_obs[0]:.4f}, B={_obs[1]:.4f}, C={_obs[2]:.4f} MHz). "
-                    "Check units (values must be in MHz) and component order."
-                )
-
-    _warn_isotopologue_consistency(cfg)
 
     if "spectral_model" in cfg and cfg.get("spectral_model") is not None:
         try:
@@ -377,7 +294,7 @@ def _validate_internal_priors_block(cfg: dict[str, Any], n_atoms: int) -> None:
                 raise ConfigError(f"'{path}.sigma' must be positive.")
         units = p.get("units")
         if units is not None and str(units).strip().lower() not in {
-            "angstrom", "a", "Ã¥", "radian", "rad", "degree", "degrees", "deg"
+            "angstrom", "a", "å", "radian", "rad", "degree", "degrees", "deg"
         }:
             raise ConfigError(f"'{path}.units' must be angstrom, radian, or degree variants.")
 
@@ -398,7 +315,7 @@ def _validate_rovibrational_corrections_block(cfg: dict[str, Any]) -> None:
         )
 
     correction_table = rc.get("correction_table")
-    if correction_table is not None and not isinstance(correction_table, dict):
+    if correction_table is not None:
         p = Path(str(correction_table)).expanduser()
         if not p.is_file():
             raise ConfigError(
@@ -433,123 +350,13 @@ def _validate_rovibrational_corrections_block(cfg: dict[str, Any]) -> None:
     bob = rc.get("bob_params")
     if bob is not None and not isinstance(bob, dict):
         raise ConfigError(
-            "'rovibrational_corrections.bob_params' must be a mapping of element â†’ component â†’ u-value."
+            "'rovibrational_corrections.bob_params' must be a mapping of element → component → u-value."
         )
 
 
-_VALID_TORSION_SYMMETRY_MODES = {"c3", "3fold", "threefold", "none", "off", "null", ""}
+_VALID_TORSION_SYMMETRY_MODES = {"c3", "3fold", "threefold", "c2", "2fold", "twofold", "none", "off", "null", ""}
 _VALID_SCAN_ANGLE_UNITS = {"degrees", "deg", "degree", "radians", "rad", "radian"}
 _VALID_SCAN_ENERGY_UNITS = {"cm-1", "cm_1", "hartree", "ha", "kcal/mol", "kcal", "kj/mol", "kj"}
-_VALID_CONFORMER_WEIGHT_MODES = {"fixed", "uniform", "boltzmann"}
-_VALID_CONFORMER_ENERGY_UNITS = {"kcal/mol", "kcal", "cm-1", "cm1", "cm_1", "hartree", "ha", "dimensionless", "arb", "arbitrary"}
-
-
-def _validate_conformer_block(cfg: dict[str, Any], *, n_atoms: int) -> None:
-    block = cfg.get("conformers")
-    if block is None:
-        return
-    if not isinstance(block, dict):
-        raise ConfigError("'conformers' must be a mapping/object.")
-
-    enabled = block.get("enabled")
-    if enabled is not None and not isinstance(enabled, bool):
-        raise ConfigError("'conformers.enabled' must be true or false.")
-
-    weight_mode = block.get("weight_mode")
-    if weight_mode is not None and str(weight_mode).strip().lower() not in _VALID_CONFORMER_WEIGHT_MODES:
-        raise ConfigError(f"'conformers.weight_mode' must be one of {sorted(_VALID_CONFORMER_WEIGHT_MODES)}.")
-
-    temperature_k = block.get("temperature_k")
-    if temperature_k is not None:
-        try:
-            tv = float(temperature_k)
-        except (TypeError, ValueError) as exc:
-            raise ConfigError("'conformers.temperature_k' must be numeric.") from exc
-        if tv <= 0.0:
-            raise ConfigError("'conformers.temperature_k' must be positive.")
-
-    energy_unit = block.get("energy_unit")
-    if energy_unit is not None and str(energy_unit).strip().lower() not in _VALID_CONFORMER_ENERGY_UNITS:
-        raise ConfigError(
-            f"'conformers.energy_unit' must be one of {sorted(_VALID_CONFORMER_ENERGY_UNITS)}."
-        )
-
-    entries = block.get("conformers", block.get("entries"))
-    if entries is not None:
-        if not isinstance(entries, list):
-            raise ConfigError("'conformers.conformers' must be a list.")
-        for i, entry in enumerate(entries):
-            if not isinstance(entry, dict):
-                raise ConfigError(f"'conformers.conformers[{i}]' must be a mapping/object.")
-            coords = entry.get("coords_angstrom", entry.get("coords"))
-            offset = entry.get("offset_angstrom", entry.get("offset"))
-            if coords is not None and offset is not None:
-                raise ConfigError(
-                    f"'conformers.conformers[{i}]' must provide either coords_angstrom or offset_angstrom, not both."
-                )
-            if coords is not None:
-                rows = _as_list(coords, f"conformers.conformers[{i}].coords_angstrom")
-                if len(rows) != n_atoms:
-                    raise ConfigError(
-                        f"'conformers.conformers[{i}].coords_angstrom' must have {n_atoms} coordinate rows."
-                    )
-                for row_i, row in enumerate(rows):
-                    _check_numeric_list(row, f"conformers.conformers[{i}].coords_angstrom[{row_i}]", 3)
-            if offset is not None:
-                rows = _as_list(offset, f"conformers.conformers[{i}].offset_angstrom")
-                if len(rows) != n_atoms:
-                    raise ConfigError(
-                        f"'conformers.conformers[{i}].offset_angstrom' must have {n_atoms} coordinate rows."
-                    )
-                for row_i, row in enumerate(rows):
-                    _check_numeric_list(row, f"conformers.conformers[{i}].offset_angstrom[{row_i}]", 3)
-            for num_key in ("weight", "energy"):
-                if entry.get(num_key) is not None:
-                    try:
-                        float(entry[num_key])
-                    except (TypeError, ValueError) as exc:
-                        raise ConfigError(f"'conformers.conformers[{i}].{num_key}' must be numeric.") from exc
-            unit = entry.get("energy_unit")
-            if unit is not None and str(unit).strip().lower() not in _VALID_CONFORMER_ENERGY_UNITS:
-                raise ConfigError(
-                    f"'conformers.conformers[{i}].energy_unit' must be one of {sorted(_VALID_CONFORMER_ENERGY_UNITS)}."
-                )
-
-    generation = block.get("generation")
-    if generation is not None:
-        if not isinstance(generation, dict):
-            raise ConfigError("'conformers.generation' must be a mapping/object.")
-        for bool_key in ("enabled", "optimize", "include_input_geometry"):
-            if bool_key in generation and not isinstance(generation[bool_key], bool):
-                raise ConfigError(f"'conformers.generation.{bool_key}' must be true or false.")
-        for int_key in ("max_rotatable_bonds", "max_conformers", "max_combination_count", "optimization_steps"):
-            if generation.get(int_key) is not None:
-                try:
-                    iv = int(generation[int_key])
-                except (TypeError, ValueError) as exc:
-                    raise ConfigError(f"'conformers.generation.{int_key}' must be an integer.") from exc
-                if iv < 1:
-                    raise ConfigError(f"'conformers.generation.{int_key}' must be >= 1.")
-        for float_key in ("prune_rmsd_ang", "prune_constants_mhz", "energy_window_kcal_mol"):
-            if generation.get(float_key) is not None:
-                try:
-                    fv = float(generation[float_key])
-                except (TypeError, ValueError) as exc:
-                    raise ConfigError(f"'conformers.generation.{float_key}' must be numeric.") from exc
-                if fv < 0.0:
-                    raise ConfigError(f"'conformers.generation.{float_key}' must be >= 0.")
-        if generation.get("angle_grid_deg") is not None:
-            _check_numeric_list(generation["angle_grid_deg"], "conformers.generation.angle_grid_deg")
-        if generation.get("rotatable_bonds") is not None:
-            bonds = _as_list(generation["rotatable_bonds"], "conformers.generation.rotatable_bonds")
-            for i, pair in enumerate(bonds):
-                if not isinstance(pair, list) or len(pair) != 2:
-                    raise ConfigError(f"'conformers.generation.rotatable_bonds[{i}]' must be a two-item list.")
-                for atom_i in pair:
-                    if not isinstance(atom_i, int) or atom_i < 0 or atom_i >= n_atoms:
-                        raise ConfigError(
-                            f"'conformers.generation.rotatable_bonds[{i}]' contains invalid atom index {atom_i!r}."
-                        )
 
 
 def _validate_conformer_mixture_block(cfg: dict[str, Any], n_atoms: int) -> None:
@@ -990,8 +797,9 @@ def _validate_torsion_block(cfg: dict[str, Any]) -> None:
             )
 
     # --- potential sign-convention warning ---
+    # Physics-level check: only meaningful when the torsion pipeline will run.
     pot = t.get("potential")
-    if isinstance(pot, dict):
+    if enabled and isinstance(pot, dict):
         vcos = pot.get("vcos") or {}
         if isinstance(vcos, dict):
             for k, v in vcos.items():
@@ -999,7 +807,7 @@ def _validate_torsion_block(cfg: dict[str, Any]) -> None:
                     ki, vi = int(k), float(v)
                 except (TypeError, ValueError):
                     continue
-                # Only check the fundamental 3-fold term â€” higher harmonics (V6, V9â€¦)
+                # Only check the fundamental 3-fold term — higher harmonics (V6, V9…)
                 # are overtone corrections whose sign is physically independent.
                 if ki == 3 and vi > 0:
                     raise ConfigError(
@@ -1246,7 +1054,7 @@ def prepare_run_directory(cfg: dict[str, Any], config_path: Path | None = None) 
     if explicit:
         run_dir = Path(str(explicit)).expanduser()
     else:
-        root = Path(str(output.get("root", OUTPUT_RUNS_DIR))).expanduser()
+        root = Path(str(output.get("root", "runs"))).expanduser()
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         run_dir = root / f"{stamp}_{safe_run_name(cfg.get('name') or cfg.get('molecule'))}"
         if run_dir.exists():
@@ -1290,7 +1098,7 @@ def write_final_geometry_csv(path: Path, elems: list[str], coords: np.ndarray) -
 
 
 def residual_rows(coords: np.ndarray, spectral_isotopologues: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    from backend.spectral.spectral import SpectralEngine
+    from backend.spectral import SpectralEngine
 
     engine = SpectralEngine(spectral_isotopologues)
     rows: list[dict[str, Any]] = []
@@ -1323,19 +1131,106 @@ def write_residuals_csv(path: Path, rows: list[dict[str, Any]]) -> None:
 
 
 def singular_values(coords: np.ndarray, spectral_isotopologues: list[dict[str, Any]]) -> np.ndarray:
-    from backend.spectral.spectral import SpectralEngine
+    from backend.spectral import SpectralEngine
 
     engine = SpectralEngine(spectral_isotopologues)
     J, _ = engine.stacked_unweighted(coords)
     return np.linalg.svd(J, compute_uv=False)
 
 
+def kraitchman_run_analysis(coords: np.ndarray, spectral_isotopologues: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """
+    Kraitchman rs analysis for a completed run.
+
+    Uses only isotopologues that observe all three components (A, B, C); the
+    substitution coordinates are compared against the fitted geometry in its
+    principal axis system.  Returns None when fewer than two full-ABC species
+    are available.
+    """
+    from backend.kraitchman import compare_rs_to_geometry, kraitchman_analysis
+
+    full_abc = []
+    for iso in spectral_isotopologues:
+        comp = sorted(int(c) for c in iso.get("component_indices", []))
+        obs = np.asarray(iso.get("obs_constants", []), dtype=float)
+        if comp == [0, 1, 2] and obs.size == 3 and np.all(obs > 0):
+            full_abc.append({
+                "name": iso.get("name"),
+                "masses": np.asarray(iso["masses"], dtype=float),
+                "obs_constants": obs,
+            })
+    if len(full_abc) < 2:
+        return None
+    out = kraitchman_analysis(full_abc)
+    parent_masses = full_abc[0]["masses"]
+    out["comparison"] = compare_rs_to_geometry(out["rows"], np.asarray(coords, dtype=float), parent_masses)
+    return out
+
+
+def write_kraitchman_csv(path: Path, kr: dict[str, Any]) -> None:
+    """Write rs coordinates (+fit comparison) and inertial defects to one CSV."""
+    fields = [
+        "name", "atom_index", "delta_mass_amu",
+        "abs_a_angstrom", "abs_b_angstrom", "abs_c_angstrom",
+        "sigma_a_angstrom", "sigma_b_angstrom", "sigma_c_angstrom",
+        "fit_abs_a_angstrom", "fit_abs_b_angstrom", "fit_abs_c_angstrom",
+        "delta_a_angstrom", "delta_b_angstrom", "delta_c_angstrom",
+        "imaginary_axes", "inertial_defect_amuA2",
+    ]
+    rows = list(kr.get("comparison") or kr.get("rows") or [])
+    defects = {d["name"]: d["inertial_defect_amuA2"] for d in kr.get("defects", [])}
+    with path.open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.DictWriter(fh, fieldnames=fields, extrasaction="ignore")
+        writer.writeheader()
+        for row in rows:
+            out = dict(row)
+            out["inertial_defect_amuA2"] = defects.get(row.get("name"), "")
+            writer.writerow(out)
+        # Species without substitution rows (e.g. the parent) still get defects.
+        named = {r.get("name") for r in rows}
+        for name, defect in defects.items():
+            if name not in named:
+                writer.writerow({"name": name, "inertial_defect_amuA2": defect})
+
+
+def generate_kraitchman_report_section(kr: dict[str, Any]) -> str:
+    """Markdown section comparing Kraitchman rs coordinates with the fit."""
+    lines = ["## Kraitchman Substitution Analysis (rs)", ""]
+    comparison = kr.get("comparison") or []
+    if comparison:
+        lines.extend([
+            "Substitution coordinates |a|, |b|, |c| from Kraitchman's equations vs the fitted geometry",
+            "(parent principal axis system; sigma = Costain rule 0.0015/|z|):",
+            "",
+            "| species | atom | rs |a| | rs |b| | rs |c| | fit |a| | fit |b| | fit |c| | max dev (Å) |",
+            "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+        ])
+        for row in comparison:
+            max_dev = max(abs(row[f"delta_{ax}_angstrom"]) for ax in ("a", "b", "c"))
+            lines.append(
+                f"| {row['name']} | {row['atom_index']} | "
+                f"{row['abs_a_angstrom']:.5f} | {row['abs_b_angstrom']:.5f} | {row['abs_c_angstrom']:.5f} | "
+                f"{row['fit_abs_a_angstrom']:.5f} | {row['fit_abs_b_angstrom']:.5f} | {row['fit_abs_c_angstrom']:.5f} | "
+                f"{max_dev:.5f} |"
+            )
+    defects = kr.get("defects") or []
+    if defects:
+        lines.extend([
+            "",
+            "Inertial defects (Δ = I_c − I_a − I_b; ≈ 0 for rigid planar molecules):",
+            "",
+            "| species | Δ (amu·Å²) |",
+            "|---|---:|",
+        ])
+        for d in defects:
+            lines.append(f"| {d['name']} | {d['inertial_defect_amuA2']:.5f} |")
+    for w in kr.get("warnings", []):
+        lines.append(f"- ⚠ {w}")
+    return "\n".join(lines)
+
+
 def write_markdown_report(path: Path, result: dict[str, Any], artifacts: dict[str, Any] | None = None) -> None:
-    from runner.reporting import (
-        generate_conformer_report_section,
-        generate_lam_report_section,
-        generate_rovib_report_section,
-    )
+    from runner.reporting import generate_lam_report_section, generate_rovib_report_section
 
     best = result["best"]
     score = result.get("score", {})
@@ -1359,9 +1254,8 @@ def write_markdown_report(path: Path, result: dict[str, Any], artifacts: dict[st
     if iso_snapshot:
         lines.extend(["", generate_rovib_report_section(iso_snapshot)])
 
-    conformer_summary = result.get("conformer_summary") or best.get("conformer_summary") or {}
-    if conformer_summary:
-        lines.extend(["", generate_conformer_report_section(conformer_summary)])
+    if result.get("kraitchman"):
+        lines.extend(["", generate_kraitchman_report_section(result["kraitchman"])])
 
     torsion_summary = result.get("torsion_summary") or {}
     if torsion_summary:
@@ -1417,14 +1311,14 @@ def write_markdown_report(path: Path, result: dict[str, Any], artifacts: dict[st
                 )
     lines.extend(["", "## Outputs", "", "- `exports/final_geometry.csv`", "- `exports/residuals.csv`"])
     if artifacts:
+        if artifacts.get("kraitchman_csv") is not None:
+            lines.append("- `exports/kraitchman_rs.csv`")
         if artifacts.get("rovib_corrections_csv") is not None:
             lines.append("- `exports/rovib_corrections.csv`")
         if artifacts.get("semi_experimental_targets_csv") is not None:
             lines.append("- `exports/semi_experimental_targets.csv`")
         if artifacts.get("rovib_warnings_json") is not None:
             lines.append("- `exports/rovib_warnings.json`")
-        if artifacts.get("conformer_summary_json") is not None:
-            lines.append("- `exports/conformer_summary.json`")
         if artifacts.get("internal_uncertainty_csv") is not None:
             lines.append("- `exports/internal_uncertainty.csv`")
         if artifacts.get("internal_covariance_csv") is not None:
@@ -1623,7 +1517,6 @@ def write_plots(run_dir: Path, result: dict[str, Any]) -> list[Path]:
 def write_outputs(result: dict[str, Any]) -> dict[str, Path | list[Path]]:
     """Write CSV, Markdown, and plot artifacts for a completed generic run."""
     from runner.reporting import (
-        export_conformer_summary_json,
         export_rovib_corrections_csv,
         export_rovib_warnings_json,
         export_semi_experimental_targets_csv,
@@ -1648,6 +1541,19 @@ def write_outputs(result: dict[str, Any]) -> dict[str, Path | list[Path]]:
         "geometry_csv": geom_csv,
         "residuals_csv": residual_csv,
     }
+
+    # Kraitchman rs analysis + inertial defects (needs full A/B/C per species).
+    kraitchman_csv = None
+    try:
+        kr = kraitchman_run_analysis(result["best"]["coords"], iso_snapshot)
+        result["kraitchman"] = kr
+        if kr and (kr["rows"] or kr["defects"]):
+            kraitchman_csv = exports_dir / "kraitchman_rs.csv"
+            write_kraitchman_csv(kraitchman_csv, kr)
+            artifacts["kraitchman_csv"] = kraitchman_csv
+    except Exception as exc:  # diagnostics must never break the run
+        result["kraitchman"] = None
+        result.setdefault("warnings", []).append(f"kraitchman: {exc}")
 
     # Conformer-mixture diagnostics (if present in optimization history).
     hist = list(result.get("best", {}).get("history", []) or [])
@@ -1706,20 +1612,15 @@ def write_outputs(result: dict[str, Any]) -> dict[str, Path | list[Path]]:
         artifacts["semi_experimental_targets_csv"] = semi_csv
         artifacts["rovib_warnings_json"] = warn_json
 
-    conformer_summary = result.get("conformer_summary") or result.get("best", {}).get("conformer_summary")
-    if conformer_summary:
-        conformer_json = export_conformer_summary_json(conformer_summary, exports_dir / "conformer_summary.json")
-        artifacts["conformer_summary_json"] = conformer_json
-
     # Internal-coordinate uncertainty / identifiability exports.
     cfg = result.get("cfg", {}) or {}
     coord_mode = str(cfg.get("coordinate_mode", "cartesian")).strip().lower()
     if coord_mode == "internal" and iso_snapshot:
-        from backend.internal.internal_fit import InternalCoordinateSet, spectral_jacobian_q, build_internal_priors
-        from backend.spectral.spectral import SpectralEngine
+        from backend.internal_fit import InternalCoordinateSet, spectral_jacobian_q, build_internal_priors
+        from backend.spectral import SpectralEngine
         from backend.uncertainty import uncertainty_table, compute_uncertainty
-        from backend.internal.identifiability import identifiability_table
-        from backend.priors.prior_sensitivity import classify_prior_dominance, prior_sensitivity_analysis
+        from backend.identifiability import identifiability_table
+        from backend.prior_sensitivity import classify_prior_dominance, prior_sensitivity_analysis
 
         ic_cfg = cfg.get("internal_coordinates", {}) or {}
         use_dihedrals = bool(ic_cfg.get("use_dihedrals", False))
@@ -1791,7 +1692,6 @@ def write_outputs(result: dict[str, Any]) -> dict[str, Path | list[Path]]:
                         "ci_lo",
                         "ci_hi",
                         "ci_unit",
-                        "chi2_scale",
                         "prior_dominance",
                         "prior_sensitivity",
                         "prior_delta",
@@ -1819,8 +1719,8 @@ def write_outputs(result: dict[str, Any]) -> dict[str, Path | list[Path]]:
                         target = np.degrees(float(target)) if target is not None else target
                         sig_v = np.degrees(float(sig_v)) if sig_v is not None else sig_v
                         units = "deg"
-                    elif kind == "bond" and units in {"angstrom", "a", "Ã¥"}:
-                        units = "Ã…"
+                    elif kind == "bond" and units in {"angstrom", "a", "å"}:
+                        units = "Å"
                     row = dict(r)
                     row.update(
                         {
@@ -1872,8 +1772,8 @@ def write_outputs(result: dict[str, Any]) -> dict[str, Path | list[Path]]:
                         target = np.degrees(float(target)) if target is not None else target
                         sig_v = np.degrees(float(sig_v)) if sig_v is not None else sig_v
                         units = "deg"
-                    elif kind == "bond" and units in {"angstrom", "a", "Ã¥"}:
-                        units = "Ã…"
+                    elif kind == "bond" and units in {"angstrom", "a", "å"}:
+                        units = "Å"
                     writer.writerow(
                         {
                             "name": m.get("name"),
@@ -1915,7 +1815,7 @@ def write_outputs(result: dict[str, Any]) -> dict[str, Path | list[Path]]:
                     writer.writerow(r)
             artifacts["internal_prior_sensitivity_csv"] = sens_csv
 
-            cov, _, _, _ = compute_uncertainty(
+            cov, _, _ = compute_uncertainty(
                 Jq,
                 sigma_prior=sigma_prior,
                 lambda_reg=damping,

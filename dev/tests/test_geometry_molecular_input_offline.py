@@ -8,7 +8,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from tests.conftest import assert_finite_coords, initial_guess
+from conftest import assert_finite_coords, initial_guess
 
 
 @pytest.mark.orca

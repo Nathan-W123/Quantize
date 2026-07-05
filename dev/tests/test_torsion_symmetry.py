@@ -172,12 +172,82 @@ class TestSymmetrySelectionRules:
         assert result["allowed"] is False
 
     def test_unknown_rotor_fold(self):
-        result = symmetry_selection_rules("A", "A", rotor_fold=2)
+        result = symmetry_selection_rules("A", "A", rotor_fold=5)
         assert result["allowed"] is None
 
     def test_case_insensitive(self):
         result = symmetry_selection_rules("a", "e", rotor_fold=3)
         assert result["allowed"] is False
+
+    def test_c2_A_A_allowed(self):
+        result = symmetry_selection_rules("A", "A", rotor_fold=2)
+        assert result["allowed"] is True
+
+    def test_c2_B_B_allowed(self):
+        result = symmetry_selection_rules("B", "B", rotor_fold=2)
+        assert result["allowed"] is True
+
+    def test_c2_A_B_forbidden(self):
+        result = symmetry_selection_rules("A", "B", rotor_fold=2)
+        assert result["allowed"] is False
+        result = symmetry_selection_rules("B", "A", rotor_fold=2)
+        assert result["allowed"] is False
+
+    def test_c2_unknown_label(self):
+        result = symmetry_selection_rules("E1", "A", rotor_fold=2)
+        assert result["allowed"] is None
+
+
+# ── C2 symmetry mode (2-fold rotors) ─────────────────────────────────────────
+
+def _make_c2_spec(V2=600.0, n_basis=20):
+    """Spec with a pure C2 potential (only Vcos_2 harmonic)."""
+    pot = TorsionFourierPotential(v0=float(V2), vcos={2: -float(V2)}, units="cm-1")
+    return TorsionHamiltonianSpec(F=10.0, rho=0.0, potential=pot, n_basis=n_basis, units="cm-1")
+
+
+class TestC2SymmetryMode:
+    def test_c2_labels_are_A_or_B(self):
+        from backend.torsion_hamiltonian import solve_ram_lite_levels
+        res = solve_ram_lite_levels(_make_c2_spec(), J=0, K=0, symmetry_mode="c2", n_levels=6)
+        assert set(res["symmetry_labels"]) <= {"A", "B"}
+
+    def test_c2_blocks_A_and_B(self):
+        from backend.torsion_hamiltonian import solve_ram_lite_levels
+        res = solve_ram_lite_levels(
+            _make_c2_spec(), J=0, K=0, symmetry_mode="c2", return_blocks=True
+        )
+        assert set(res["symmetry_blocks"].keys()) == {"A", "B"}
+
+    def test_c2_ground_pair_nearly_degenerate_below_barrier(self):
+        """Deep below a high V2 barrier the A/B tunneling pair is nearly degenerate."""
+        from backend.torsion_hamiltonian import solve_ram_lite_levels
+        res = solve_ram_lite_levels(
+            _make_c2_spec(V2=2000.0), J=0, K=0, symmetry_mode="c2", n_levels=2
+        )
+        e = res["energies_cm-1"]
+        assert abs(e[1] - e[0]) < 1e-3
+        assert set(res["symmetry_labels"][:2]) == {"A", "B"}
+
+    def test_c2_line_list_enforces_selection_rules(self):
+        from backend.torsion_intensities import compute_torsion_line_list
+        lines = compute_torsion_line_list(
+            _make_c2_spec(), J_values=[0, 1], K_values=[0],
+            n_levels=4, symmetry_mode="c2", rotor_fold=2,
+        )
+        assert lines
+        cross = [r for r in lines if r["symmetry_lo"] != r["symmetry_hi"]]
+        assert cross
+        for row in cross:
+            assert row["allowed"] is False
+            assert row["relative_intensity"] == 0.0
+
+    def test_c2_mismatched_potential_warns(self):
+        from backend.torsion_hamiltonian import solve_ram_lite_levels
+        pot = TorsionFourierPotential(v0=100.0, vcos={3: -100.0}, units="cm-1")
+        spec = TorsionHamiltonianSpec(F=10.0, n_basis=15, potential=pot, units="cm-1")
+        res = solve_ram_lite_levels(spec, J=0, K=0, symmetry_mode="c2")
+        assert any("non-2-fold" in w for w in res["warnings"])
 
 
 # â”€â”€ symmetry_purity_table â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

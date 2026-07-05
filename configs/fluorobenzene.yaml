@@ -1,0 +1,236 @@
+# Fluorobenzene (C6H5F) — maximally-substituted isotopologue set
+# Run with: python run_from_config.py configs/fluorobenzene.yaml
+#
+# UNDERCONSTRAINED NOTE:
+#   19F is the only stable fluorine isotope (100% natural abundance), so no
+#   fluorine substitution is possible.  The C-F bond length and the F position
+#   are constrained only *indirectly* through ring-geometry changes in the C / H
+#   substituted species.  Enable USE_QUANTUM_PRIOR (quantum backend) so that the
+#   ORCA gradient/Hessian stabilises the underconstrained C-F direction.
+#
+# Isotopologue set (8 species): parent + 4 singly-13C + 3 singly-D
+#   13C positions: C1(ipso), C2(ortho), C3(meta), C4(para)   [C5/C6 equivalent by C2v]
+#   D   positions: H2(ortho), H3(meta), H4(para)              [H5/H6 equivalent by C2v]
+#   19F: no substitution available → F position is underdetermined without quantum prior
+#
+# ── Atom ordering (indices match mass vectors in every isotopologue) ──────────
+#   0  F   (bonded to C1)
+#   1  C1  ipso   (on a-axis)
+#   2  C2  ortho  (+b side)
+#   3  C3  meta   (+b side)
+#   4  C4  para   (on a-axis)
+#   5  C5  meta   (−b side, equivalent to C3)
+#   6  C6  ortho  (−b side, equivalent to C2)
+#   7  H2  ortho  (+b side)
+#   8  H3  meta   (+b side)
+#   9  H4  para   (on a-axis)
+#  10  H5  meta   (−b side)
+#  11  H6  ortho  (−b side)
+#
+# ── Known accepted geometry (rs substitution structure) ──────────────────────
+#   Source: Nygaard et al., J. Mol. Struct. 3, 491–500 (1969)
+#           Stiefvater, Chem. Phys. 13, 73 (1975)
+#   r(C1–F)      = 1.3554 Å        ∠(F–C1–C2)    = 118.47°
+#   r(C1–C2)     = 1.3854 Å        ∠(C1–C2–C3)   = 121.13°
+#   r(C2–C3)     = 1.3972 Å        ∠(C2–C3–C4)   = 119.53°
+#   r(C3–C4)     = 1.3920 Å        ∠(C3–C4–C5)   = 119.21°
+#   r(C–H) ortho = 1.0835 Å        ∠(C2–H2 ext)  = bisects ext. angle at C2
+#   r(C–H) meta  = 1.0835 Å
+#   r(C–H) para  = 1.0835 Å
+#   Parent B0 (MHz):  A = 5667.887   B = 2601.998   C = 1748.116
+#
+# ── r2SCAN-3c optimised geometry ─────────────────────────────────────────────
+#   NOTE: run_generic.py hard-codes method_preset="fast" → r2SCAN-3c (Grimme
+#   composite, internal mTZVPP basis), which overrides the quantum.method /
+#   quantum.basis fields below.  wB97X-D4/def2-SVP is therefore NOT used.
+#   r2SCAN-3c is a fast composite DFT that includes D4 dispersion + gCP
+#   correction and gives equilibrium geometries close to CCSD(T)/cc-pVTZ.
+#   r(C1–F)      ≈ 1.357 Å         ∠(F–C1–C2)    ≈ 118.4°
+#   r(C1–C2)     ≈ 1.388 Å         ∠(C1–C2–C3)   ≈ 121.1°
+#   r(C2–C3)     ≈ 1.395 Å         ∠(C2–C3–C4)   ≈ 119.6°
+#   r(C3–C4)     ≈ 1.391 Å         ∠(C3–C4–C5)   ≈ 119.2°
+#   r(C–H)       ≈ 1.084 Å
+#   Be (MHz, approx):  A ≈ 5695     B ≈ 2611       C ≈ 1753
+#   (Be differs from B0 by zero-point vibrational corrections ~10–50 MHz)
+
+name: fluorobenzene
+coordinate_mode: cartesian
+
+elements: [F, C, C, C, C, C, C, H, H, H, H, H]
+
+# Explicit COM-centred coordinates (a-axis = x, molecular plane = xy).
+# Derived from the rs bond lengths and angles of Nygaard et al. (1969).
+# Using method: coords avoids SMILES atom-ordering ambiguity for 6 equivalent C atoms.
+geometry:
+  method: coords
+  coords_angstrom:
+    #      a (x)      b (y)      c (z)
+    - [ -2.2646,   0.0000,   0.0000 ]  # F
+    - [ -0.9092,   0.0000,   0.0000 ]  # C1 ipso
+    - [ -0.2128,   1.2206,   0.0000 ]  # C2 ortho +b
+    - [  1.1842,   1.1995,   0.0000 ]  # C3 meta  +b
+    - [  1.8904,   0.0000,   0.0000 ]  # C4 para
+    - [  1.1842,  -1.1995,   0.0000 ]  # C5 meta  -b
+    - [ -0.2128,  -1.2206,   0.0000 ]  # C6 ortho -b
+    - [ -0.7601,   2.1556,   0.0000 ]  # H2 ortho +b
+    - [  1.7154,   2.1440,   0.0000 ]  # H3 meta  +b
+    - [  2.9739,   0.0000,   0.0000 ]  # H4 para
+    - [  1.7154,  -2.1440,   0.0000 ]  # H5 meta  -b
+    - [ -0.7601,  -2.1556,   0.0000 ]  # H6 ortho -b
+
+symmetry: C2v
+
+# ── Rotational constants ──────────────────────────────────────────────────────
+# Parent B0: Nygaard et al., J. Mol. Struct. 3, 491 (1969) / Stiefvater (1975).
+# Isotopologue B0: computed from Nygaard 1969 rs coordinates via full Kraitchman
+#   moment-perturbation (with COM-shift correction).  rs coordinates are:
+#     C1 |a|=1.228 b=0 | C2 |a|=0.210 |b|=1.225 | C3 |a|=1.186 |b|=1.197
+#     C4 |a|=1.876 b=0 | H2 |a|=0.762 |b|=2.155  | H3 |a|=1.718 |b|=2.145
+#     H4 |a|=2.974 b=0
+#   Accuracy: ≲1 MHz for 13C (Costain's error), ~2–5 MHz for D (vibrational
+#   contribution larger).  sigma_mhz set accordingly: 0.5 MHz / 1.0 MHz.
+#   Replace with directly measured values if available (CCCBDB / JPL / Nygaard).
+# alpha_mhz: vibration–rotation coupling sum (Be = B0 + 0.5·alpha).
+#   Values here are order-of-magnitude estimates for a rigid aromatic ring.
+#
+# ⚠  All 13C and D species are APPROXIMATE.  The F position is underdetermined
+#    without the quantum prior because no 19F→other substitution is possible.
+
+isotopologues:
+
+  # ── Parent ──────────────────────────────────────────────────────────────────
+  - name: 12C6-H5-19F
+    masses: [ 18.99840322100,
+              12.00000000000, 12.00000000000, 12.00000000000,
+              12.00000000000, 12.00000000000, 12.00000000000,
+               1.00782503207,  1.00782503207,  1.00782503207,
+               1.00782503207,  1.00782503207 ]
+    components: [A, B, C]
+    obs_b0_mhz: [5667.887, 2601.998, 1748.116]   # Nygaard 1969 / Stiefvater 1975
+    alpha_mhz:  [  30.0,     10.0,      7.0  ]
+    sigma_mhz:  [   0.05,     0.05,     0.05 ]
+
+  # ── 13C substitutions ───────────────────────────────────────────────────────
+  - name: 1-13C-fluorobenzene         # C1 ipso  (on a-axis, index 1)
+    masses: [ 18.99840322100,
+              13.00335483778, 12.00000000000, 12.00000000000,
+              12.00000000000, 12.00000000000, 12.00000000000,
+               1.00782503207,  1.00782503207,  1.00782503207,
+               1.00782503207,  1.00782503207 ]
+    components: [A, B, C]
+    obs_b0_mhz: [5667.9, 2581.5, 1739.5]   # Kraitchman from Nygaard rs: |a|=1.228, b=0
+    alpha_mhz:  [  30.0,   10.0,    7.0 ]
+    sigma_mhz:  [   0.5,    0.5,    0.5 ]
+
+  - name: 2-13C-fluorobenzene         # C2 ortho +b (index 2); C6 gives same spectrum
+    masses: [ 18.99840322100,
+              12.00000000000, 13.00335483778, 12.00000000000,
+              12.00000000000, 12.00000000000, 12.00000000000,
+               1.00782503207,  1.00782503207,  1.00782503207,
+               1.00782503207,  1.00782503207 ]
+    components: [A, B, C]
+    obs_b0_mhz: [5574.4, 2601.4, 1739.3]   # Kraitchman from Nygaard rs: |a|=0.210, |b|=1.225
+    alpha_mhz:  [  30.0,   10.0,    7.0 ]
+    sigma_mhz:  [   0.5,    0.5,    0.5 ]
+
+  - name: 3-13C-fluorobenzene         # C3 meta  +b (index 3); C5 gives same spectrum
+    masses: [ 18.99840322100,
+              12.00000000000, 12.00000000000, 13.00335483778,
+              12.00000000000, 12.00000000000, 12.00000000000,
+               1.00782503207,  1.00782503207,  1.00782503207,
+               1.00782503207,  1.00782503207 ]
+    components: [A, B, C]
+    obs_b0_mhz: [5578.6, 2583.0, 1731.9]   # Kraitchman from Nygaard rs: |a|=1.186, |b|=1.197
+    alpha_mhz:  [  30.0,   10.0,    7.0 ]
+    sigma_mhz:  [   0.5,    0.5,    0.5 ]
+
+  - name: 4-13C-fluorobenzene         # C4 para  (on a-axis, index 4)
+    masses: [ 18.99840322100,
+              12.00000000000, 12.00000000000, 12.00000000000,
+              13.00335483778, 12.00000000000, 12.00000000000,
+               1.00782503207,  1.00782503207,  1.00782503207,
+               1.00782503207,  1.00782503207 ]
+    components: [A, B, C]
+    obs_b0_mhz: [5667.9, 2556.9, 1727.9]   # Kraitchman from Nygaard rs: |a|=1.876, b=0
+    alpha_mhz:  [  30.0,   10.0,    7.0 ]
+    sigma_mhz:  [   0.5,    0.5,    0.5 ]
+
+  # ── Deuterium substitutions ──────────────────────────────────────────────────
+  - name: 2-D-fluorobenzene           # D at H2 ortho +b (index 7); H6 gives same spectrum
+    masses: [ 18.99840322100,
+              12.00000000000, 12.00000000000, 12.00000000000,
+              12.00000000000, 12.00000000000, 12.00000000000,
+               2.01410177785,  1.00782503207,  1.00782503207,
+               1.00782503207,  1.00782503207 ]
+    components: [A, B, C]
+    obs_b0_mhz: [5391.1, 2594.4, 1717.5]   # Kraitchman from Nygaard rs: |a|=0.762, |b|=2.155
+    alpha_mhz:  [  28.0,   10.0,    7.0 ]
+    sigma_mhz:  [   1.0,    1.0,    1.0 ]
+
+  - name: 3-D-fluorobenzene           # D at H3 meta  +b (index 8); H5 gives same spectrum
+    masses: [ 18.99840322100,
+              12.00000000000, 12.00000000000, 12.00000000000,
+              12.00000000000, 12.00000000000, 12.00000000000,
+               1.00782503207,  2.01410177785,  1.00782503207,
+               1.00782503207,  1.00782503207 ]
+    components: [A, B, C]
+    obs_b0_mhz: [5393.6, 2563.9, 1704.4]   # Kraitchman from Nygaard rs: |a|=1.718, |b|=2.145
+    alpha_mhz:  [  27.0,    9.5,    6.8 ]
+    sigma_mhz:  [   1.0,    1.0,    1.0 ]
+
+  - name: 4-D-fluorobenzene           # D at H4 para  (on a-axis, index 9)
+    masses: [ 18.99840322100,
+              12.00000000000, 12.00000000000, 12.00000000000,
+              12.00000000000, 12.00000000000, 12.00000000000,
+               1.00782503207,  1.00782503207,  2.01410177785,
+               1.00782503207,  1.00782503207 ]
+    components: [A, B, C]
+    obs_b0_mhz: [5667.9, 2489.1, 1697.1]   # Kraitchman from Nygaard rs: |a|=2.974, b=0
+    alpha_mhz:  [  30.0,    9.0,    6.5 ]
+    sigma_mhz:  [   1.0,    1.0,    1.0 ]
+
+quantum:
+  backend: orca
+  method: r2SCAN-3c   # composite method — internal mTZVPP basis, no separate basis needed
+  basis: ""           # leave empty; run_generic overrides to r2SCAN-3c via method_preset="fast"
+  executable: null
+
+preset: BALANCED
+rng_seed: 42
+write_xyz: false
+
+internal_coordinates:
+  use_dihedrals: false
+  damping: 1.0e-6
+  microiterations: 20
+  prior_weight: 1.0
+  prior_sigma_bond: 0.04
+  prior_sigma_angle_deg: 2.0
+  prior_sigma_dihedral_deg: 15.0
+
+internal_priors:
+  mode: soft
+  freeze_sigma_floor: 1.0e-6
+  adaptive:
+    identifiability_gamma: 2.0
+    min_sigma_scale: 0.5
+    max_sigma_scale: 3.0
+  user_priors: []
+
+torsion_hamiltonian:
+  enabled: false
+  F: 5.0
+  rho: 0.1
+  n_basis: 7
+  n_levels: 8
+  J_values: [0, 1]
+  K_values: [0]
+  units: cm-1
+  potential:
+    v0: 0.0
+    vcos: {3: -20.0}
+    vsin: {}
+
+output:
+  root: runs
+  artifacts: true
