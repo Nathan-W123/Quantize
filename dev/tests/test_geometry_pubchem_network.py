@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from tests.conftest import assert_finite_coords
+from conftest import assert_finite_coords
 
 
 @pytest.mark.network
@@ -32,7 +32,7 @@ def test_pubchem_water_cid_relaxed(water_pubchem_then_relaxed):
 @pytest.mark.network
 @pytest.mark.orca
 def test_pubchem_prefer_name_relaxed(tmp_path):
-    from tests.conftest import initial_guess, relax_initial_geometry, require_orca_exe
+    from conftest import initial_guess, relax_initial_geometry, require_orca_exe
 
     exe = require_orca_exe()
     coords0, elems = initial_guess("water", pubchem_prefer="name", pubchem_timeout=45.0)
@@ -50,7 +50,7 @@ def test_pubchem_prefer_name_relaxed(tmp_path):
 @pytest.mark.network
 @pytest.mark.orca
 def test_pubchem_smiles_ethanol_relaxed(tmp_path):
-    from tests.conftest import initial_guess, relax_initial_geometry, require_orca_exe
+    from conftest import initial_guess, relax_initial_geometry, require_orca_exe
 
     exe = require_orca_exe()
     coords0, elems = initial_guess("CCO", pubchem_prefer="smiles", pubchem_timeout=45.0)

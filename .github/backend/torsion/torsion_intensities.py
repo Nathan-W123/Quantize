@@ -237,7 +237,7 @@ def compute_torsion_line_list(
       allowed                    : bool â€” symmetry selection rule result
     """
     sym_mode = str(symmetry_mode).strip().lower() if symmetry_mode else None
-    label = sym_mode == "c3"
+    label = sym_mode in {"c3", "c2"}
 
     # Solve and cache all (J, K) blocks
     blocks: dict[tuple[int, int], dict] = {}

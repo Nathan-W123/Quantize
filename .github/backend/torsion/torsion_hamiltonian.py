@@ -346,7 +346,16 @@ def _canonical_symmetry_mode(symmetry_mode: Optional[str]) -> Optional[str]:
         return None
     if mode in {"c3", "3fold", "threefold"}:
         return "c3"
-    raise ValueError(f"Unsupported symmetry_mode={symmetry_mode!r}. Supported: None, 'c3'.")
+    if mode in {"c2", "2fold", "twofold"}:
+        return "c2"
+    raise ValueError(f"Unsupported symmetry_mode={symmetry_mode!r}. Supported: None, 'c2', 'c3'.")
+
+
+_MODE_FOLD: dict[str, int] = {"c2": 2, "c3": 3}
+_RESIDUE_BLOCK_KEYS: dict[int, dict[int, str]] = {
+    2: {0: "A", 1: "B"},
+    3: {0: "A", 1: "E1", 2: "E2"},
+}
 
 
 def _warn_if_symmetry_mismatch(
@@ -354,29 +363,34 @@ def _warn_if_symmetry_mismatch(
     symmetry_mode: Optional[str],
     warnings: list[str],
 ) -> None:
-    if symmetry_mode != "c3":
+    fold = _MODE_FOLD.get(symmetry_mode or "")
+    if fold is None:
         return
     tol = 1e-12
     bad_harmonics: list[int] = []
     for k, amp in potential.vcos.items():
         kk = int(k)
-        if kk > 0 and abs(float(amp)) > tol and kk % 3 != 0:
+        if kk > 0 and abs(float(amp)) > tol and kk % fold != 0:
             bad_harmonics.append(kk)
     for k, amp in potential.vsin.items():
         kk = int(k)
-        if kk > 0 and abs(float(amp)) > tol and kk % 3 != 0:
+        if kk > 0 and abs(float(amp)) > tol and kk % fold != 0:
             bad_harmonics.append(kk)
     if bad_harmonics:
         uniq = sorted(set(bad_harmonics))
         warnings.append(
-            "symmetry_mode='c3' requested but potential contains non-3-fold harmonics "
-            f"{uniq}; A/E block purity may be reduced."
+            f"symmetry_mode={symmetry_mode!r} requested but potential contains non-{fold}-fold "
+            f"harmonics {uniq}; symmetry block purity may be reduced."
         )
 
 
-def _c3_residue_indices(m_values: np.ndarray) -> dict[int, np.ndarray]:
+def _residue_indices(m_values: np.ndarray, fold: int) -> dict[int, np.ndarray]:
     m = np.asarray(m_values, dtype=int).ravel()
-    return {r: np.where(np.mod(m, 3) == r)[0] for r in (0, 1, 2)}
+    return {r: np.where(np.mod(m, fold) == r)[0] for r in range(int(fold))}
+
+
+def _c3_residue_indices(m_values: np.ndarray) -> dict[int, np.ndarray]:
+    return _residue_indices(m_values, 3)
 
 
 def periodic_wavefunction_diagnostics(
@@ -442,6 +456,10 @@ def periodic_wavefunction_diagnostics(
         sub = {0: "A", 1: "E1", 2: "E2"}[dominant_res]
         out["symmetry_label"] = "A" if dominant_res == 0 else "E"
         out["symmetry_sublabel"] = sub
+    elif fold == 2:
+        lab = "A" if dominant_res == 0 else "B"
+        out["symmetry_label"] = lab
+        out["symmetry_sublabel"] = lab
     return out
 
 
@@ -467,12 +485,12 @@ def solve_ram_lite_levels(
     sublabels: list[str] = []
     purities: list[float] = []
     diags: list[dict] = []
-    if label_levels or mode == "c3":
-        fold = 3 if mode == "c3" else 2
+    if label_levels or mode in _MODE_FOLD:
+        fold = _MODE_FOLD.get(mode or "", 2)
         for i in range(U.shape[1]):
             d = periodic_wavefunction_diagnostics(U[:, i], m_vals, rotor_fold=fold)
             diags.append(d)
-            if mode == "c3":
+            if mode in _MODE_FOLD:
                 labels.append(str(d.get("symmetry_label", "unknown")))
                 sublabels.append(str(d.get("symmetry_sublabel", "unknown")))
             else:
@@ -491,8 +509,9 @@ def solve_ram_lite_levels(
             diags = diags[:n]
 
     block_data = None
-    if return_blocks and mode == "c3":
-        residues = _c3_residue_indices(m_vals)
+    if return_blocks and mode in _MODE_FOLD:
+        fold = _MODE_FOLD[mode]
+        residues = _residue_indices(m_vals, fold)
         block_data = {}
         for r, idx in residues.items():
             if idx.size == 0:
@@ -500,7 +519,7 @@ def solve_ram_lite_levels(
             Hb = H[np.ix_(idx, idx)]
             eb, Ub = np.linalg.eigh(Hb)
             eb = np.real_if_close(eb).astype(float)
-            key = {0: "A", 1: "E1", 2: "E2"}[r]
+            key = _RESIDUE_BLOCK_KEYS[fold][r]
             block_data[key] = {
                 "residue": int(r),
                 "m_values": m_vals[idx],
