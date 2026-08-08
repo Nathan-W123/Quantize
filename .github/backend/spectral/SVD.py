@@ -39,6 +39,15 @@ class SubspaceOptimizer:
     lambda_damp : float
         Levenberg–Marquardt regularisation added to the null-space Hessian.
         Prevents blow-up when the Hessian has near-zero eigenvalues.  Default 1e-4.
+    quantum_prior_sigma_ang : float or None
+        Displacement, in Angstroms, over which the quantum surface is trusted —
+        roughly the geometry error of the electronic-structure method. When set,
+        it replaces the ``alpha_quantum`` heuristics with a calibrated weight
+        that puts the quantum prior and the spectral chi-square on a common
+        scale, so growing correction uncertainty genuinely returns authority to
+        theory. Only meaningful with ``objective_mode="joint"``; the split
+        objective hands each range-space direction entirely to the data.
+        Default None (legacy heuristic behaviour).
     null_hessian_floor : float
         Eigenvalue floor applied to the projected null-space Hessian before
         the Newton solve.  Clips curvature that is numerically zero at the
@@ -63,6 +72,7 @@ class SubspaceOptimizer:
         quantum_weight_max=5.0,
         use_internal_preconditioner=False,
         null_hessian_floor=1e-8,
+        quantum_prior_sigma_ang=None,
     ):
         self.sv_threshold = sv_threshold
         self.sv_min_abs = max(0.0, float(sv_min_abs))
@@ -79,6 +89,9 @@ class SubspaceOptimizer:
         self.quantum_weight_min = float(quantum_weight_min)
         self.quantum_weight_max = float(quantum_weight_max)
         self.use_internal_preconditioner = use_internal_preconditioner
+        self.quantum_prior_sigma_ang = (
+            None if quantum_prior_sigma_ang is None else float(quantum_prior_sigma_ang)
+        )
 
     # ── Decomposition ─────────────────────────────────────────────────────────
 
@@ -166,16 +179,42 @@ class SubspaceOptimizer:
         return B.T @ q
 
     def _joint_step(self, J, residual, gradient, hessian, alpha_q):
+        """MAP step: (JᵀJ + α_q H + λI) dp = Jᵀr − α_q g.
+
+        Unlike the split step this has no hard range/null partition, so the
+        quantum surface retains influence over every direction in proportion to
+        its curvature and the spectral block's weight. That is what lets the
+        result fall back toward theory as the spectral targets lose credibility.
+        """
         JTJ = J.T @ J
         rhs = J.T @ residual - alpha_q * gradient
-        A = JTJ + alpha_q * hessian + self.lambda_damp * np.eye(JTJ.shape[0])
-        return np.linalg.solve(A, rhs)
+        A = JTJ + alpha_q * hessian
+        # lambda_damp is a dimensionless relative damping here. An absolute
+        # constant cannot regularise this matrix: ‖JᵀJ‖ carries the units of the
+        # observables over the parameters and the 1/sigma² weighting, so it
+        # ranges over many orders of magnitude between problems, and a fixed
+        # 1e-4 is silently negligible against it.
+        scale = np.linalg.norm(A) / max(A.shape[0], 1)
+        if not np.isfinite(scale) or scale <= 0.0:
+            scale = 1.0
+        A = A + self.lambda_damp * scale * np.eye(A.shape[0])
+        try:
+            return np.linalg.solve(A, rhs)
+        except np.linalg.LinAlgError:
+            # H carries six zero modes (translations/rotations), so A can still
+            # be singular to working precision.
+            return np.linalg.pinv(A) @ rhs
 
-    def _effective_quantum_weight(self, J, rank):
+    def _effective_quantum_weight(self, J, rank, hessian=None):
         """
         Dynamic quantum dominance factor.
         Stronger when spectral constraints are sparse relative to coordinate space.
+
+        When ``quantum_prior_sigma_ang`` is set, alpha_q is instead derived from
+        it and ignores the heuristics below — see :meth:`_calibrated_alpha_q`.
         """
+        if self.quantum_prior_sigma_ang is not None and hessian is not None:
+            return self._calibrated_alpha_q(hessian)
         if not self.dynamic_quantum_weight:
             return self.alpha_quantum
         n_params = max(1, J.shape[1])  # 3N coordinates
@@ -183,6 +222,37 @@ class SubspaceOptimizer:
         scale = 1.0 + self.quantum_weight_beta * max(0.0, 1.0 - rank_frac)
         alpha_eff = self.alpha_quantum * scale
         return float(np.clip(alpha_eff, self.quantum_weight_min, self.quantum_weight_max))
+
+    def _calibrated_alpha_q(self, hessian):
+        """Put the quantum prior on the same statistical footing as the data.
+
+        The spectral block is a sum of squared sigma-normalised residuals, so it
+        is dimensionless. The quantum block is an energy. Adding them with
+        alpha_quantum = 1.0 compares a chi-square to Hartrees, and the spectral
+        side wins by whatever factor the units happen to produce — for water
+        about 3e5, irrespective of how uncertain the targets are. That is why an
+        honest sigma cannot hand authority back to theory on its own.
+
+        Reading the quantum term as a Gaussian prior on geometry centred at the
+        theory minimum, E ~ 1/2 dp^T H dp, one prior standard deviation must cost
+        1/2 chi-square units. With sigma_x the displacement over which the theory
+        surface is trusted and lambda_bar a typical curvature,
+
+            E_scale = 1/2 * lambda_bar * sigma_x^2,   alpha_q = 1 / E_scale
+
+        so alpha_quantum becomes an interpretable statement about how good the
+        electronic structure method is, in Angstroms.
+        """
+        evals = np.linalg.eigvalsh(0.5 * (hessian + hessian.T))
+        positive = evals[evals > 1e-8]
+        if positive.size == 0:
+            return self.alpha_quantum
+        lam_bar = float(np.mean(positive))
+        sigma_x = float(self.quantum_prior_sigma_ang)
+        e_scale = 0.5 * lam_bar * sigma_x * sigma_x
+        if e_scale <= 0.0:
+            return self.alpha_quantum
+        return float(self.alpha_quantum / e_scale)
 
     def step(self, J, residual, gradient, hessian, B=None):
         """
@@ -210,7 +280,7 @@ class SubspaceOptimizer:
         Vt          : (n_p, n_p) right singular vectors (reuse to avoid recomputing SVD)
         """
         U, s, Vt, rank = self.decompose(J)
-        alpha_q_eff = self._effective_quantum_weight(J, rank)
+        alpha_q_eff = self._effective_quantum_weight(J, rank, hessian=hessian)
         if self.objective_mode == "joint":
             dp = self._joint_step(J, residual, gradient, hessian, alpha_q_eff)
         else:

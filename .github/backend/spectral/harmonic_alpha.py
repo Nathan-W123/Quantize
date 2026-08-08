@@ -46,6 +46,10 @@ _bk_mode_derivatives = _bk_mode_derivatives
 # rather than divided through, which would blow up the denominator.
 _DEGENERACY_TOL_CM2 = 1.0
 
+# Assumed size of the cubic term, relative to the harmonic one, when it has not
+# been computed. See the sigma block in compute_harmonic_alpha.
+_OMITTED_CUBIC_SCALE = 3.0
+
 
 def compute_harmonic_alpha(
     hess_bohr: np.ndarray,
@@ -194,16 +198,59 @@ def compute_harmonic_alpha(
     alpha_total = alpha_cent + alpha_cor + alpha_anh
     alpha_sum = alpha_total.sum(axis=1)
 
-    # Without the anharmonic term the residual model error is large and
-    # systematic (for CO it is 2.7x the harmonic term, opposite sign), so the
-    # reported uncertainty must not pretend to be a few percent.
-    eff_sigma_fraction = (
-        sigma_fraction if anh_status == "cubic_fd" else max(sigma_fraction, 1.0)
-    )
-    sigma_vals = {
-        k: max(abs(float(alpha_sum[i])) * eff_sigma_fraction, 1.0)
-        for i, k in enumerate(labels)
-    }
+    # Uncertainty on a truncated perturbation series is estimated by the size of
+    # the last term retained -- here the cubic contribution. A flat fraction of
+    # the total is not defensible: for H2O the cubic term is 4.9x the harmonic
+    # one for B and 10.6x for C, so the series is barely converging there and a
+    # 2% error bar understates the truth by more than an order of magnitude.
+    # Getting this wrong is not cosmetic; the fit weights each target by 1/sigma²,
+    # so an overconfident sigma lets a biased target drag the structure.
+    anh_sum = alpha_anh.sum(axis=1)
+    harm_sum = (alpha_cent + alpha_cor).sum(axis=1)
+
+    # Convergence of the perturbation series, per component. alpha is a
+    # truncated expansion; when the cubic term exceeds the harmonic one the
+    # series is not converging and the correction cannot be trusted, however
+    # small its formal uncertainty looks.
+    #
+    # This matters more than it appears. A biased target is not the same as an
+    # uncertain one: when the spectral block is exactly- or under-determined the
+    # fit drives its residual to zero and the weights drop out entirely, so no
+    # sigma model can protect against a bad correction. Knowing which components
+    # to distrust -- or drop -- is the only defence.
+    anh_ratio = {}
+    nonconvergent = []
+    for i, k in enumerate(labels):
+        denom = abs(float(harm_sum[i]))
+        ratio = float("inf") if denom == 0.0 else abs(float(anh_sum[i])) / denom
+        anh_ratio[k] = ratio
+        if ratio > 1.0:
+            nonconvergent.append(k)
+
+    if anh_status == "cubic_fd":
+        sigma_vals = {
+            k: max(
+                abs(float(alpha_sum[i])) * sigma_fraction,
+                abs(float(anh_sum[i])),
+                1.0,
+            )
+            for i, k in enumerate(labels)
+        }
+    else:
+        # The cubic term was not computed, so the size of the dominant
+        # contribution is unknown. 100% is not conservative enough: measured
+        # against the reference molecules the cubic term is 2.6x the harmonic one
+        # for CO and 5.6x / 10.7x for H2O's B and C, so an uncertainty equal to
+        # the harmonic term alone would understate the error. _OMITTED_CUBIC_SCALE
+        # is an empirical floor, not a derived bound -- computing the cubic term
+        # is strongly preferred to relying on it.
+        sigma_vals = {
+            k: max(
+                abs(float(alpha_sum[i])) * max(sigma_fraction, _OMITTED_CUBIC_SCALE),
+                1.0,
+            )
+            for i, k in enumerate(labels)
+        }
 
     return (
         {k: float(alpha_sum[i]) for i, k in enumerate(labels)},
@@ -221,6 +268,8 @@ def compute_harmonic_alpha(
             "alpha_anharmonic_mhz": {
                 k: float(alpha_anh.sum(axis=1)[i]) for i, k in enumerate(labels)
             },
+            "anharmonic_ratio": anh_ratio,
+            "nonconvergent_components": nonconvergent,
             "frequencies_cm": omega_cm.tolist(),
         },
     )
@@ -315,6 +364,7 @@ def build_correction_table_from_hessian(
         else "alpha from Hessian (harmonic + Coriolis only; anharmonic term omitted)"
     )
     statuses: list[str] = []
+    nonconvergent: dict = {}
     cubic_cart = None
     if hessian_fn is not None:
         cubic_cart = cartesian_cubic_force_field(hessian_fn, coords_ang, fd_delta_cubic)
@@ -334,17 +384,29 @@ def build_correction_table_from_hessian(
         )
         total_near_degen_skips += res_info.get("near_degen_skips", 0)
         statuses.append(str(res_info.get("anharmonic_status", "unknown")))
+        ratios = res_info.get("anharmonic_ratio", {})
+        bad = set(res_info.get("nonconvergent_components", []))
+        for comp in bad:
+            nonconvergent.setdefault(name, {})[comp] = float(ratios.get(comp, float("nan")))
         table[name] = {
             comp: {
                 "alpha_sum_mhz": alpha_sum[comp],
-                "sigma_mhz": sigma[comp],
+                # parse_correction_table defines sigma_mhz as the uncertainty on
+                # the correction itself, and the correction is delta = 0.5*alpha_sum
+                # (vpt2_delta_b), so the alpha uncertainty is halved to match.
+                "sigma_mhz": 0.5 * sigma[comp],
                 "source": "harmonic_hessian",
                 "method": method,
-                "notes": notes,
+                "notes": (
+                    f"{notes}; WARNING cubic/harmonic = {ratios.get(comp, float('nan')):.1f}"
+                    " -- perturbation series not converging, correction unreliable"
+                    if comp in bad else notes
+                ),
             }
             for comp in ("A", "B", "C")
         }
     return table, {
         "total_near_degen_skips": total_near_degen_skips,
         "anharmonic_statuses": statuses,
+        "nonconvergent": nonconvergent,
     }

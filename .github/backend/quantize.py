@@ -250,6 +250,7 @@ class MolecularOptimizer:
         lambda_damp=1e-4,
         objective_mode="split",
         alpha_quantum=1.0,
+        quantum_prior_sigma_ang=None,
         robust_loss="none",
         robust_param=1.0,
         sigma_floor_mhz=0.0,
@@ -517,6 +518,7 @@ class MolecularOptimizer:
             lambda_damp,
             objective_mode=objective_mode,
             alpha_quantum=alpha_quantum,
+            quantum_prior_sigma_ang=quantum_prior_sigma_ang,
             dynamic_quantum_weight=dynamic_quantum_weight,
             quantum_weight_beta=quantum_weight_beta,
             quantum_weight_min=quantum_weight_min,
@@ -905,6 +907,27 @@ class MolecularOptimizer:
         for status in dict.fromkeys(_res_info.get("anharmonic_statuses", [])):
             if status not in ("cubic_fd", "not_requested"):
                 print(f"  [anharmonic] WARNING: {status}")
+
+        # A component whose cubic term exceeds its harmonic one has a diverging
+        # perturbation series, and its correction is unreliable no matter how
+        # small the formal sigma is. Worth saying loudly: when the spectral block
+        # is exactly determined the fit reproduces its targets exactly, weights
+        # never enter, and a bad correction goes straight into the geometry.
+        _nonconv = _res_info.get("nonconvergent", {})
+        if _nonconv:
+            for _iso_name, _comps in _nonconv.items():
+                _detail = ", ".join(
+                    f"{c} (cubic/harmonic = {r:.1f})" for c, r in sorted(_comps.items())
+                )
+                print(
+                    f"  [anharmonic] WARNING: {_iso_name}: perturbation series not "
+                    f"converging for {_detail}."
+                )
+            print(
+                "  [anharmonic] These corrections are unreliable. Prefer components "
+                "with a converging\n  [anharmonic] series, or improve the Hessian; "
+                "reweighting cannot compensate for a biased target."
+            )
         _near_degen = _res_info.get("total_near_degen_skips", 0)
         if _near_degen > 0:
             print(
