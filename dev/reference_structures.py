@@ -80,6 +80,54 @@ FLUOROBENZENE_ANGLES = {
 }
 
 
+#: Symmetry-unique single substitutions. C2v makes the two ortho carbons
+#: equivalent, and likewise the two meta carbons and their hydrogens, so one
+#: substitution of each kind spans the available information.
+FLUOROBENZENE_SUBSTITUTIONS = {
+    "1-13C  (ipso)":  (1, 13.00335483507),
+    "2-13C  (ortho)": (2, 13.00335483507),
+    "3-13C  (meta)":  (4, 13.00335483507),
+    "4-13C  (para)":  (6, 13.00335483507),
+    "2-D    (ortho)": (7, 2.01410177812),
+    "3-D    (meta)":  (9, 2.01410177812),
+    "4-D    (para)":  (11, 2.01410177812),
+}
+
+
+def fluorobenzene_isotopologues(zero_point_scale=None) -> list[dict]:
+    """Parent plus every symmetry-unique single substitution.
+
+    Rotational constants are the rigid values of the published structure scaled
+    by ``zero_point_scale``, a per-component factor. Passing the ratio the real
+    parent shows -- observed B_0 divided by the rigid value of the r_s geometry
+    -- reproduces the r_s/r_0 offset that real ground-state constants carry, so
+    a rigid fit to them lands off the r_s structure by the same amount real data
+    would push it. Without that the constants are exactly consistent with the
+    reference geometry and any fit recovers it trivially.
+
+    These are DERIVED, not measured. Published constants exist for the
+    isotopologues (they are what the r_s structure was built from) but are not
+    in any source reachable here.
+    """
+    from backend.spectral.centrifugal_distortion import rotational_constants_mhz
+
+    scale = np.ones(3) if zero_point_scale is None else np.asarray(zero_point_scale, float)
+    out = []
+    for label, masses in [("parent", FLUOROBENZENE_MASSES)] + [
+        (name, _substituted_masses(idx, mass))
+        for name, (idx, mass) in FLUOROBENZENE_SUBSTITUTIONS.items()
+    ]:
+        abc = rotational_constants_mhz(FLUOROBENZENE_GEOM, masses) * scale
+        out.append({"name": label, "masses": np.asarray(masses, float), "abc_mhz": abc})
+    return out
+
+
+def _substituted_masses(index: int, mass: float) -> np.ndarray:
+    masses = FLUOROBENZENE_MASSES.copy()
+    masses[index] = mass
+    return masses
+
+
 def internal_coordinates(coords, bonds=None, angles=None) -> dict[str, float]:
     """Symmetry-averaged bond lengths (A) and angles (deg)."""
     bonds = FLUOROBENZENE_BONDS if bonds is None else bonds
