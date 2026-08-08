@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from backend.spectral_model import normalize_spectral_model
+from backend.spectral.spectral_model import normalize_spectral_model
 from runner.config_schema import CONFIG_SCHEMA_VERSION, normalize_config
 
 try:
@@ -360,30 +360,41 @@ _VALID_SCAN_ENERGY_UNITS = {"cm-1", "cm_1", "hartree", "ha", "kcal/mol", "kcal",
 
 
 def _validate_conformer_mixture_block(cfg: dict[str, Any], n_atoms: int) -> None:
-    cm = cfg.get("conformer_mixture")
+    """Validate both explicit-conformer blocks.
+
+    ``conformer_mixture`` (fixed/Boltzmann mixture) and ``conformers`` (the
+    generation workflow) are parsed by the same ``_explicit_conformer_defs``
+    reader, so both accept a ``conformers:`` list of ``coords_angstrom`` /
+    ``offset_angstrom`` entries and both need the same shape checks.
+    """
+    for key in ("conformer_mixture", "conformers"):
+        _validate_conformer_block(cfg.get(key), key, n_atoms)
+
+
+def _validate_conformer_block(cm: Any, key: str, n_atoms: int) -> None:
     if cm is None:
         return
     if not isinstance(cm, dict):
-        raise ConfigError("'conformer_mixture' must be a mapping/object.")
+        raise ConfigError(f"'{key}' must be a mapping/object.")
     if "enabled" in cm and not isinstance(cm["enabled"], bool):
-        raise ConfigError("'conformer_mixture.enabled' must be true or false.")
+        raise ConfigError(f"'{key}.enabled' must be true or false.")
     mode = str(cm.get("weight_mode", "fixed")).strip().lower()
     if mode not in {"fixed", "boltzmann"}:
-        raise ConfigError("'conformer_mixture.weight_mode' must be fixed or boltzmann.")
+        raise ConfigError(f"'{key}.weight_mode' must be fixed or boltzmann.")
     if "temperature_k" in cm:
         try:
             t = float(cm["temperature_k"])
         except (TypeError, ValueError) as exc:
-            raise ConfigError("'conformer_mixture.temperature_k' must be numeric.") from exc
+            raise ConfigError(f"'{key}.temperature_k' must be numeric.") from exc
         if t <= 0.0:
-            raise ConfigError("'conformer_mixture.temperature_k' must be > 0.")
+            raise ConfigError(f"'{key}.temperature_k' must be > 0.")
     conformers = cm.get("conformers")
     if conformers is None:
         return
     if not isinstance(conformers, list):
-        raise ConfigError("'conformer_mixture.conformers' must be a list.")
+        raise ConfigError(f"'{key}.conformers' must be a list.")
     for i, c in enumerate(conformers):
-        p = f"conformer_mixture.conformers[{i}]"
+        p = f"{key}.conformers[{i}]"
         if not isinstance(c, dict):
             raise ConfigError(f"'{p}' must be a mapping/object.")
         if "weight" in c and c["weight"] is not None:
@@ -1098,7 +1109,7 @@ def write_final_geometry_csv(path: Path, elems: list[str], coords: np.ndarray) -
 
 
 def residual_rows(coords: np.ndarray, spectral_isotopologues: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    from backend.spectral import SpectralEngine
+    from backend.spectral.spectral import SpectralEngine
 
     engine = SpectralEngine(spectral_isotopologues)
     rows: list[dict[str, Any]] = []
@@ -1131,7 +1142,7 @@ def write_residuals_csv(path: Path, rows: list[dict[str, Any]]) -> None:
 
 
 def singular_values(coords: np.ndarray, spectral_isotopologues: list[dict[str, Any]]) -> np.ndarray:
-    from backend.spectral import SpectralEngine
+    from backend.spectral.spectral import SpectralEngine
 
     engine = SpectralEngine(spectral_isotopologues)
     J, _ = engine.stacked_unweighted(coords)
@@ -1230,7 +1241,11 @@ def generate_kraitchman_report_section(kr: dict[str, Any]) -> str:
 
 
 def write_markdown_report(path: Path, result: dict[str, Any], artifacts: dict[str, Any] | None = None) -> None:
-    from runner.reporting import generate_lam_report_section, generate_rovib_report_section
+    from runner.reporting import (
+        generate_conformer_report_section,
+        generate_lam_report_section,
+        generate_rovib_report_section,
+    )
 
     best = result["best"]
     score = result.get("score", {})
@@ -1260,6 +1275,10 @@ def write_markdown_report(path: Path, result: dict[str, Any], artifacts: dict[st
     torsion_summary = result.get("torsion_summary") or {}
     if torsion_summary:
         lines.extend(["", generate_lam_report_section(torsion_summary)])
+
+    conformer_summary = best.get("conformer_summary") or {}
+    if conformer_summary:
+        lines.extend(["", generate_conformer_report_section(conformer_summary)])
 
     lines.extend(["", "## Final Geometry", "", "| atom | element | x (Ang) | y (Ang) | z (Ang) |", "|---:|---|---:|---:|---:|"])
     for i, (elem, xyz) in enumerate(zip(result["elems"], np.asarray(best["coords"], dtype=float))):
@@ -1517,6 +1536,7 @@ def write_plots(run_dir: Path, result: dict[str, Any]) -> list[Path]:
 def write_outputs(result: dict[str, Any]) -> dict[str, Path | list[Path]]:
     """Write CSV, Markdown, and plot artifacts for a completed generic run."""
     from runner.reporting import (
+        export_conformer_summary_json,
         export_rovib_corrections_csv,
         export_rovib_warnings_json,
         export_semi_experimental_targets_csv,
@@ -1585,23 +1605,25 @@ def write_outputs(result: dict[str, Any]) -> dict[str, Path | list[Path]]:
             for r in conformer_rows:
                 writer.writerow(r)
         artifacts["conformer_weights_history_csv"] = conf_csv
-        final = [r for r in conformer_rows if r["iteration"] == max(x["iteration"] for x in conformer_rows)]
-        conf_json = exports_dir / "conformer_summary.json"
-        conf_json.write_text(
-            json.dumps(
-                {
-                    "n_iterations_with_conformer_data": len({r["iteration"] for r in conformer_rows}),
-                    "n_conformers": len(final),
-                    "final_weights": [
-                        {"conformer_index": int(r["conformer_index"]), "weight": float(r["weight"])}
-                        for r in final
-                    ],
-                },
-                indent=2,
-            ),
-            encoding="utf-8",
+
+    # Ensemble summary (names, sources, energies, generation diagnostics) as built
+    # by run_generic. Written independently of the per-iteration weight history,
+    # which is only populated when the optimizer refits weights each iteration.
+    conformer_summary = dict(result.get("best", {}).get("conformer_summary") or {})
+    if conformer_rows:
+        final_iter = max(x["iteration"] for x in conformer_rows)
+        final = [r for r in conformer_rows if r["iteration"] == final_iter]
+        conformer_summary["n_iterations_with_conformer_data"] = len(
+            {r["iteration"] for r in conformer_rows}
         )
-        artifacts["conformer_summary_json"] = conf_json
+        conformer_summary["final_weights"] = [
+            {"conformer_index": int(r["conformer_index"]), "weight": float(r["weight"])}
+            for r in final
+        ]
+    if conformer_summary:
+        artifacts["conformer_summary_json"] = export_conformer_summary_json(
+            conformer_summary, exports_dir / "conformer_summary.json"
+        )
 
     # Rovib correction exports (written whenever isotopologue data exists).
     if iso_snapshot:
@@ -1616,11 +1638,11 @@ def write_outputs(result: dict[str, Any]) -> dict[str, Path | list[Path]]:
     cfg = result.get("cfg", {}) or {}
     coord_mode = str(cfg.get("coordinate_mode", "cartesian")).strip().lower()
     if coord_mode == "internal" and iso_snapshot:
-        from backend.internal_fit import InternalCoordinateSet, spectral_jacobian_q, build_internal_priors
-        from backend.spectral import SpectralEngine
+        from backend.internal.internal_fit import InternalCoordinateSet, spectral_jacobian_q, build_internal_priors
+        from backend.spectral.spectral import SpectralEngine
         from backend.uncertainty import uncertainty_table, compute_uncertainty
-        from backend.identifiability import identifiability_table
-        from backend.prior_sensitivity import classify_prior_dominance, prior_sensitivity_analysis
+        from backend.internal.identifiability import identifiability_table
+        from backend.priors.prior_sensitivity import classify_prior_dominance, prior_sensitivity_analysis
 
         ic_cfg = cfg.get("internal_coordinates", {}) or {}
         use_dihedrals = bool(ic_cfg.get("use_dihedrals", False))
@@ -1678,6 +1700,7 @@ def write_outputs(result: dict[str, Any]) -> dict[str, Path | list[Path]]:
                 lambda_reg=damping,
                 dominance_labels=dominance,
                 sensitivity_rows=sensitivity_rows,
+                residual_w=residual_w,
             )
             unc_csv = exports_dir / "internal_uncertainty.csv"
             with unc_csv.open("w", newline="", encoding="utf-8") as fh:
@@ -1706,6 +1729,7 @@ def write_outputs(result: dict[str, Any]) -> dict[str, Path | list[Path]]:
                         "prior_notes",
                         "prior_identifiability_score",
                         "prior_sigma_scale",
+                        "chi2_scale",
                     ],
                 )
                 writer.writeheader()
@@ -1815,10 +1839,13 @@ def write_outputs(result: dict[str, Any]) -> dict[str, Path | list[Path]]:
                     writer.writerow(r)
             artifacts["internal_prior_sensitivity_csv"] = sens_csv
 
-            cov, _, _ = compute_uncertainty(
+            # Same chi2 inflation as the uncertainty table above, so the exported
+            # covariance and the exported std_errs describe the same posterior.
+            cov, _, _, _ = compute_uncertainty(
                 Jq,
                 sigma_prior=sigma_prior,
                 lambda_reg=damping,
+                residual_w=residual_w,
             )
             cov_csv = exports_dir / "internal_covariance.csv"
             with cov_csv.open("w", newline="", encoding="utf-8") as fh:
