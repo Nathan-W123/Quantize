@@ -388,6 +388,15 @@ def _validate_rovibrational_corrections_block(cfg: dict[str, Any]) -> None:
             "Hessian-derived alpha, which is only computed in that mode."
         )
 
+    policy = rc.get("nonconvergent_policy")
+    if policy is not None:
+        valid_policies = {"warn", "inflate", "drop"}
+        if str(policy).strip().lower() not in valid_policies:
+            raise ConfigError(
+                f"'rovibrational_corrections.nonconvergent_policy' must be one of "
+                f"{sorted(valid_policies)}, got '{policy}'."
+            )
+
     step = rc.get("anharmonic_fd_delta_ang")
     if step is not None:
         try:

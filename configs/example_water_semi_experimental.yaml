@@ -70,6 +70,15 @@ rovibrational_corrections:
   anharmonic_from_hessian: true
   anharmonic_fd_delta_ang: 0.01
 
+  # What to do with a component whose cubic term exceeds its harmonic one, i.e.
+  # whose perturbation series is not converging and whose correction therefore
+  # cannot be trusted at any stated uncertainty.
+  #   warn    keep it, annotate the notes, print a warning (default)
+  #   inflate also scale its sigma by the divergence ratio -- only bites when the
+  #           spectral block is over-determined
+  #   drop    leave it out of the correction table entirely
+  nonconvergent_policy: warn
+
   # Electronic correction: -(m_e/m_p) * g_alpha * B_obs.
   # g values below are for H2O. Without a g_tensor the code falls back to a
   # crude 1/M_total estimate that is roughly an order of magnitude too small

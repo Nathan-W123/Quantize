@@ -50,6 +50,8 @@ _DEGENERACY_TOL_CM2 = 1.0
 # been computed. See the sigma block in compute_harmonic_alpha.
 _OMITTED_CUBIC_SCALE = 3.0
 
+_NONCONVERGENT_POLICIES = {"warn", "inflate", "drop"}
+
 
 def compute_harmonic_alpha(
     hess_bohr: np.ndarray,
@@ -345,6 +347,7 @@ def build_correction_table_from_hessian(
     sigma_fraction: float = 0.02,
     hessian_fn=None,
     fd_delta_cubic: float = 0.01,
+    nonconvergent_policy: str = "warn",
 ) -> tuple[dict, dict]:
     """
     Build a correction_table dict (compatible with parse_correction_table)
@@ -354,7 +357,30 @@ def build_correction_table_from_hessian(
     The semi-diagonal cubic force constants depend only on the electronic PES,
     not on nuclear masses, so they are computed once and reused across every
     isotopologue rather than once per isotopologue.
+
+    ``nonconvergent_policy`` decides what happens to a component whose cubic
+    term exceeds its harmonic one, i.e. whose perturbation series is not
+    converging:
+
+      ``"warn"``    keep it and annotate the notes (default; preserves
+                    historical behaviour)
+      ``"inflate"`` additionally scale its sigma by the divergence ratio, on the
+                    geometric assumption that the first omitted term is larger
+                    than the last retained one by roughly that factor
+      ``"drop"``    omit the component from the table entirely, so the fit falls
+                    back to whatever the uncorrected data or the quantum prior
+                    provides
+
+    ``"inflate"`` only bites when the spectral block is over-determined; where it
+    is exactly determined the fit reproduces its targets regardless of weight and
+    only ``"drop"`` changes the outcome.
     """
+    policy = str(nonconvergent_policy or "warn").strip().lower()
+    if policy not in _NONCONVERGENT_POLICIES:
+        raise ValueError(
+            f"Unknown nonconvergent_policy '{nonconvergent_policy}'. "
+            f"Valid: {sorted(_NONCONVERGENT_POLICIES)}"
+        )
     table: dict = {}
     total_near_degen_skips = 0
     method = "VPT2_semidiag" if hessian_fn is not None else "harmonic_VR"
@@ -365,6 +391,7 @@ def build_correction_table_from_hessian(
     )
     statuses: list[str] = []
     nonconvergent: dict = {}
+    dropped: dict = {}
     cubic_cart = None
     if hessian_fn is not None:
         cubic_cart = cartesian_cubic_force_field(hessian_fn, coords_ang, fd_delta_cubic)
@@ -388,25 +415,37 @@ def build_correction_table_from_hessian(
         bad = set(res_info.get("nonconvergent_components", []))
         for comp in bad:
             nonconvergent.setdefault(name, {})[comp] = float(ratios.get(comp, float("nan")))
-        table[name] = {
-            comp: {
+        entries: dict = {}
+        for comp in ("A", "B", "C"):
+            ratio = float(ratios.get(comp, float("nan")))
+            if comp in bad and policy == "drop":
+                dropped.setdefault(name, []).append(comp)
+                continue
+            # parse_correction_table defines sigma_mhz as the uncertainty on the
+            # correction itself, and the correction is delta = 0.5*alpha_sum
+            # (vpt2_delta_b), so the alpha uncertainty is halved to match.
+            sigma_mhz = 0.5 * sigma[comp]
+            note = notes
+            if comp in bad:
+                note = (
+                    f"{notes}; WARNING cubic/harmonic = {ratio:.1f} -- "
+                    "perturbation series not converging, correction unreliable"
+                )
+                if policy == "inflate" and np.isfinite(ratio):
+                    sigma_mhz *= max(1.0, ratio)
+                    note += "; sigma inflated by the divergence ratio"
+            entries[comp] = {
                 "alpha_sum_mhz": alpha_sum[comp],
-                # parse_correction_table defines sigma_mhz as the uncertainty on
-                # the correction itself, and the correction is delta = 0.5*alpha_sum
-                # (vpt2_delta_b), so the alpha uncertainty is halved to match.
-                "sigma_mhz": 0.5 * sigma[comp],
+                "sigma_mhz": sigma_mhz,
                 "source": "harmonic_hessian",
                 "method": method,
-                "notes": (
-                    f"{notes}; WARNING cubic/harmonic = {ratios.get(comp, float('nan')):.1f}"
-                    " -- perturbation series not converging, correction unreliable"
-                    if comp in bad else notes
-                ),
+                "notes": note,
             }
-            for comp in ("A", "B", "C")
-        }
+        table[name] = entries
     return table, {
         "total_near_degen_skips": total_near_degen_skips,
         "anharmonic_statuses": statuses,
         "nonconvergent": nonconvergent,
+        "nonconvergent_policy": policy,
+        "dropped_components": dropped,
     }
