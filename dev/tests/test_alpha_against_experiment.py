@@ -8,10 +8,14 @@ import numpy as np
 import pytest
 
 from backend.spectral.centrifugal_distortion import (
+    CD_NAMES,
+    bk_mode_derivatives,
+    compute_cd_constants,
     is_linear,
     normal_modes,
     rigid_mode_count,
     rotational_constants_mhz,
+    tau_prime_from_dB1_cm,
     _MHZ_TO_CM,
 )
 from backend.spectral.harmonic_alpha import compute_harmonic_alpha
@@ -164,6 +168,45 @@ def test_water_be_correction_improves_with_anharmonic_term():
     err_harm = total_error()
     err_full = total_error(hessian_fn=h2o_hessian)
     assert err_full < 0.25 * err_harm
+
+
+def test_tau_prime_requires_frequencies():
+    """The unweighted sum is not an energy; refuse to compute it."""
+    with pytest.raises(TypeError, match="lambda_r"):
+        tau_prime_from_dB1_cm(np.ones((3, 3)))
+
+
+def test_tau_prime_is_negative_definite():
+    """tau = -2 sum_r (dB/dQ)(dB/dQ)/lambda_r is a negative-weighted Gram matrix."""
+    coords = h2o_coords()
+    hess = h2o_hessian(coords)
+    omega, L = normal_modes(
+        hess, H2O_MASSES, n_rigid=rigid_mode_count(coords, H2O_MASSES)
+    )
+    dB1_mhz, _ = bk_mode_derivatives(coords, H2O_MASSES, L, omega, 0.05)
+    tau = tau_prime_from_dB1_cm(dB1_mhz * _MHZ_TO_CM, omega)
+    assert np.allclose(tau, tau.T)
+    assert np.all(np.linalg.eigvalsh(tau) <= 1e-12)
+
+
+def test_cd_constants_land_in_the_physical_range():
+    """Guards the 1/lambda_r weighting: without it these were ~1e5 too large.
+
+    The tau -> A-reduction mapping is still unvalidated, so this only pins the
+    order of magnitude against the observed H2-16O constants (tens to ~1000 MHz).
+    """
+    coords = h2o_coords()
+    cd = compute_cd_constants(h2o_hessian(coords), coords, H2O_MASSES)
+    for name in CD_NAMES:
+        value = abs(getattr(cd, name))
+        assert value < 1.0e5, f"{name} = {value:.3g} MHz is unphysically large"
+
+
+def test_cd_constants_report_full_uncertainty_while_mapping_is_unvalidated():
+    coords = h2o_coords()
+    cd = compute_cd_constants(h2o_hessian(coords), coords, H2O_MASSES, sigma_fraction=0.05)
+    for name in CD_NAMES:
+        assert cd.sigma[name] >= abs(getattr(cd, name))
 
 
 def test_water_alpha_signs_match_the_required_correction():
