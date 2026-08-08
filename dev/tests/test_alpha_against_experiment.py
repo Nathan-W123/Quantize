@@ -21,7 +21,10 @@ from backend.spectral.centrifugal_distortion import (
     tau_prime_from_dB1_cm,
     _MHZ_TO_CM,
 )
-from backend.spectral.harmonic_alpha import compute_harmonic_alpha
+from backend.spectral.harmonic_alpha import (
+    build_correction_table_from_hessian,
+    compute_harmonic_alpha,
+)
 
 from reference_molecules import (
     CO_ALPHA_E,
@@ -115,16 +118,58 @@ def test_anharmonic_term_dominates_and_flips_the_sign():
     assert full_err < 0.25 * harm_err
 
 
-def test_omitting_anharmonic_term_widens_the_reported_sigma():
-    """Reported uncertainty must reflect the omitted dominant term."""
-    _, _, sig_harm, _ = compute_harmonic_alpha(
+def test_reported_sigma_covers_the_actual_correction_error():
+    """A sigma the fit can trust: it must bracket the true error in both modes.
+
+    Weighting cannot rescue a biased target, so the sigma has to be honest at
+    source. For CO the harmonic-only alpha is wrong by ~2.7x its own size, which
+    a nominal 2% -- or even 100% -- would badly understate.
+    """
+    exact_mhz = CO_ALPHA_E / _MHZ_TO_CM
+
+    harm, _, sig_harm, _ = compute_harmonic_alpha(
         co_hessian(CO_COORDS), CO_COORDS, CO_MASSES, sigma_fraction=0.02
     )
-    _, _, sig_full, _ = compute_harmonic_alpha(
+    full, _, sig_full, _ = compute_harmonic_alpha(
         co_hessian(CO_COORDS), CO_COORDS, CO_MASSES,
         sigma_fraction=0.02, hessian_fn=co_hessian,
     )
-    assert sig_harm["B"] > 10.0 * sig_full["B"]
+    assert abs(harm["B"] - exact_mhz) < sig_harm["B"]
+    assert abs(full["B"] - exact_mhz) < sig_full["B"]
+
+    # And the nominal fraction must not be what is actually applied.
+    assert sig_harm["B"] > 0.5 * abs(harm["B"])
+    assert sig_full["B"] > 0.02 * abs(full["B"])
+
+
+def test_diverging_perturbation_series_is_flagged():
+    """A cubic term larger than the harmonic one means alpha cannot be trusted,
+    however small its formal sigma looks."""
+    _, _, _, info = compute_harmonic_alpha(
+        co_hessian(CO_COORDS), CO_COORDS, CO_MASSES, hessian_fn=co_hessian
+    )
+    assert info["anharmonic_ratio"]["B"] > 1.0
+    assert "B" in info["nonconvergent_components"]
+
+    coords = h2o_coords()
+    _, _, _, winfo = compute_harmonic_alpha(
+        h2o_hessian(coords), coords, H2O_MASSES, hessian_fn=h2o_hessian
+    )
+    # A's series converges for water; B and C's do not.
+    assert winfo["anharmonic_ratio"]["A"] < 1.0
+    assert set(winfo["nonconvergent_components"]) == {"B", "C"}
+
+
+def test_correction_table_marks_unreliable_components():
+    coords = h2o_coords()
+    table, info = build_correction_table_from_hessian(
+        h2o_hessian(coords), coords,
+        [{"name": "H2-16O", "masses": H2O_MASSES.tolist()}],
+        hessian_fn=h2o_hessian,
+    )
+    assert set(info["nonconvergent"]["H2-16O"]) == {"B", "C"}
+    assert "not converging" in table["H2-16O"]["C"]["notes"]
+    assert "not converging" not in table["H2-16O"]["A"]["notes"]
 
 
 # ── Water: symmetry and end-to-end accuracy ──────────────────────────────────
