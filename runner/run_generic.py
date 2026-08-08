@@ -1881,6 +1881,10 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
     orca_method = str(qsec.get("method", "wB97X-D4")).strip()
     orca_basis = str(qsec.get("basis", "def2-TZVPP")).strip()
     orca_exe = qsec.get("executable") or BASE_SETTINGS["orca_exe"]
+    # method_preset overrides method/basis inside MolecularOptimizer, so applying
+    # it unconditionally silently discarded whatever the config asked for. Only
+    # fall back to the preset when the config did not name a method.
+    method_preset = None if str(qsec.get("method", "")).strip() else "fast"
 
     # â”€â”€ Rovibrational corrections (optional) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     # Canonical key: rovibrational_corrections: {mode, correction_table, ...}
@@ -1991,7 +1995,7 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
     optimizer_kwargs = dict(
         quantum_backend=backend if not spectral_only else "orca",
         orca_executable=orca_exe,
-        method_preset="fast",
+        method_preset=method_preset,
         orca_method=orca_method,
         orca_basis=orca_basis,
         spectral_only=spectral_only,

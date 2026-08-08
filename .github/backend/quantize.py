@@ -680,8 +680,17 @@ class MolecularOptimizer:
                     self._backend = None
                     print(f"Note: Could not initialize Psi4 backend: {e}")
             else:
-                # Generic path for future backends â€” they declare their own kwargs
-                self._backend = backend_cls(elems=self.elems)
+                # Generic path for registered third-party backends. Pass the
+                # method/basis/charge the config actually specified; constructing
+                # with elems alone silently discarded them, so a new backend could
+                # only ever run at its own defaults.
+                self._backend = backend_cls(
+                    elems=self.elems,
+                    method=self.orca_method,
+                    basis=self.orca_basis,
+                    charge=self.charge,
+                    multiplicity=self.multiplicity,
+                )
 
     @staticmethod
     def _covalent_radius(elem):
