@@ -151,15 +151,33 @@ def bk_mode_derivatives(coords, masses, L_mw, omega_cm, fd_delta, B0_ref=None):
     return dB1, d2B
 
 
-def tau_prime_from_dB1_cm(dB1_cm: np.ndarray) -> np.ndarray:
-    """τ′_αβ [cm⁻¹] = −½ Σ_r (∂B_α/∂Q_r)(∂B_β/∂Q_r) with B derivatives in cm⁻¹."""
-    n_vib = dB1_cm.shape[1]
-    tau = np.zeros((3, 3))
-    for r in range(n_vib):
-        for K in range(3):
-            for J in range(3):
-                tau[K, J] -= 0.5 * dB1_cm[K, r] * dB1_cm[J, r]
-    return tau
+def tau_prime_from_dB1_cm(dB1_cm: np.ndarray, omega_cm: np.ndarray = None) -> np.ndarray:
+    """τ′_αβ [cm⁻¹] = −2 Σ_r (∂B_α/∂Q_r)(∂B_β/∂Q_r) / λ_r.
+
+    From the Kivelson-Wilson result τ_αβγδ = −(ħ⁴/2) Σ_r a_r^αβ a_r^γδ /
+    (I_α I_β I_γ I_δ λ_r); substituting a_r^αα = −I_α (∂B_α/∂Q_r)/B_α and
+    B_α I_α = ħ²/2 collapses it to the form above.
+
+    The 1/λ_r weighting is what makes τ an energy. ∂B/∂Q_r is cm⁻¹ per Å·√amu,
+    so Σ_r (∂B/∂Q_r)² alone is cm⁻²/(Å²·amu) — not an energy — and dividing by
+    λ_r [cm⁻¹/(Å²·amu)] restores cm⁻¹. Omitting it inflates τ by ~10⁵.
+
+    Parameters
+    ----------
+    dB1_cm   : (3, n_vib)  ∂B_K/∂Q_r in cm⁻¹ per Å·√amu
+    omega_cm : (n_vib,)    harmonic frequencies in cm⁻¹. Required; the default
+                           of None is rejected rather than silently reproducing
+                           the unweighted (dimensionally invalid) sum.
+    """
+    if omega_cm is None:
+        raise TypeError(
+            "tau_prime_from_dB1_cm requires omega_cm: without the 1/lambda_r "
+            "weighting the result is not an energy and is wrong by ~1e5."
+        )
+    omega = np.asarray(omega_cm, dtype=float)
+    # λ_r in cm⁻¹/(Å²·amu): for V = ½λQ², ⟨V⟩₀ = ¼ω̃ and ⟨Q²⟩₀ = _ZPE_AMP/ω̃.
+    lam = omega ** 2 / (2.0 * _ZPE_AMP)
+    return -2.0 * np.einsum("Kr,Jr,r->KJ", dB1_cm, dB1_cm, 1.0 / lam, optimize=True)
 
 
 def watson_a_reduction_cd_from_tau_cm(tau_cm: np.ndarray) -> dict[str, float]:
@@ -167,6 +185,17 @@ def watson_a_reduction_cd_from_tau_cm(tau_cm: np.ndarray) -> dict[str, float]:
     Watson A-reduction quartic CD constants in cm⁻¹ (x,y,z = A,B,C principal axes).
 
     Maps to standard NIST labels: DJ=Δ_J, DJK=Δ_JK, DK=Δ_K, delta_J=δ_J, delta_K=δ_K.
+
+    .. warning::
+       This mapping does not reproduce published constants and should be treated
+       as unvalidated. Checked against H2-16O with τ′ computed from the
+       Hoy/Mills/Strey force field, it gives Δ_J with the wrong sign (τ′ is
+       negative-definite by construction, so a positive-coefficient mapping
+       cannot produce the positive Δ_J that essentially every molecule has) and
+       δ_K roughly 40x the observed 41.05 MHz. Compare against the standard
+       Watson (1977) / Gordy & Cook §8 relations before relying on these values.
+       ``compute_cd_constants`` therefore reports 100% uncertainty, and
+       ``fit_cd_constants`` defaults to off.
     """
     t = tau_cm
     DJ = (1.0 / 32.0) * (
@@ -251,11 +280,14 @@ def compute_cd_constants(
     B0_ref = rotational_constants_mhz(coords, masses)
     dB1_mhz, _ = bk_mode_derivatives(coords, masses, L_mw, omega_cm, fd_delta, B0_ref)
     dB1_cm = dB1_mhz * _MHZ_TO_CM
-    tau_cm = tau_prime_from_dB1_cm(dB1_cm)
+    tau_cm = tau_prime_from_dB1_cm(dB1_cm, omega_cm)
     cd_cm = watson_a_reduction_cd_from_tau_cm(tau_cm)
     cd_mhz = {k: v * _CM_TO_MHZ for k, v in cd_cm.items()}
+    # The tau -> A-reduction mapping below is not validated against experiment
+    # (see watson_a_reduction_cd_from_tau_cm), so the per-constant sigma is
+    # floored at 100% rather than the caller's nominal fraction.
     sigma = {
-        k: max(abs(cd_mhz[k]) * sigma_fraction, 0.01) for k in CD_NAMES
+        k: max(abs(cd_mhz[k]) * max(sigma_fraction, 1.0), 0.01) for k in CD_NAMES
     }
     return CDConstants(
         DJ=cd_mhz["DJ"],
@@ -266,7 +298,10 @@ def compute_cd_constants(
         source="harmonic_hessian",
         method="harmonic_VR",
         sigma=sigma,
-        notes="Harmonic τ′ → Watson A-reduction CD",
+        notes=(
+            "Harmonic τ′ → Watson A-reduction CD. "
+            "A-reduction mapping UNVALIDATED — treat as order-of-magnitude."
+        ),
     )
 
 
