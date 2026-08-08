@@ -224,6 +224,7 @@ def validate_config(cfg: dict[str, Any]) -> None:
             f"'quantum.backend' must be one of {', '.join(sorted(allowed))}."
         )
 
+    _check_inertial_defects(cfg)
     _validate_rovibrational_corrections_block(cfg)
     _validate_conformer_mixture_block(cfg, n_atoms=n_atoms)
     _validate_torsion_block(cfg)
@@ -314,6 +315,57 @@ def _validate_internal_priors_block(cfg: dict[str, Any], n_atoms: int) -> None:
             "angstrom", "a", "å", "radian", "rad", "degree", "degrees", "deg"
         }:
             raise ConfigError(f"'{path}.units' must be angstrom, radian, or degree variants.")
+
+
+#: |I_c - I_a - I_b| beyond this (amu*A^2) is reported as suspect.
+#:
+#: The defect equals -2 P_c, where P_c = sum(m z^2) is the out-of-plane second
+#: moment and cannot be negative for real atoms. Zero-point motion makes it
+#: slightly negative in practice, so a planar molecule shows a small positive
+#: defect -- about +0.05 for water, +0.16 for fluorobenzene -- and a floppy
+#: out-of-plane mode can push it to order 1. Several amu*A^2 implies a strongly
+#: negative P_c, which no structure can produce.
+_INERTIAL_DEFECT_WARN = 1.0
+_INERTIA_TO_MHZ = 505379.0084353526
+
+
+def inertial_defect_mhz(a_mhz: float, b_mhz: float, c_mhz: float) -> float:
+    """I_c - I_a - I_b in amu*A^2 from rotational constants in MHz."""
+    moments = [_INERTIA_TO_MHZ / float(v) for v in (a_mhz, b_mhz, c_mhz)]
+    return moments[2] - moments[0] - moments[1]
+
+
+def _check_inertial_defects(cfg: dict[str, Any]) -> None:
+    """Warn when supplied constants cannot come from any real structure.
+
+    This is nearly free and catches transcription errors before a run burns
+    hours converging on impossible data. It only warns: the check needs all
+    three of A, B and C, and a very floppy molecule can legitimately sit near
+    the threshold.
+    """
+    suspect: list[str] = []
+    for i, iso in enumerate(_as_list(cfg.get("isotopologues"), "isotopologues"), start=1):
+        if not isinstance(iso, dict):
+            continue
+        comps = [str(c).strip().upper() for c in (iso.get("components") or [])]
+        obs = iso.get("obs_b0_mhz")
+        if sorted(comps) != ["A", "B", "C"] or not isinstance(obs, list) or len(obs) != 3:
+            continue
+        try:
+            values = {c: float(v) for c, v in zip(comps, obs)}
+            defect = inertial_defect_mhz(values["A"], values["B"], values["C"])
+        except (TypeError, ValueError, ZeroDivisionError):
+            continue
+        if abs(defect) > _INERTIAL_DEFECT_WARN:
+            suspect.append(f"{iso.get('name', f'iso_{i}')}: {defect:+.3f}")
+
+    if suspect:
+        print(
+            "[config-warning] Inertial defect I_c - I_a - I_b is implausible for:\n"
+            + "".join(f"  - {s} amu*A^2\n" for s in suspect)
+            + "[config-warning] A real structure gives roughly +0.1 to +0.4 for a planar\n"
+            "[config-warning] molecule. Check the constants before trusting a fit to them."
+        )
 
 
 def _validate_rovibrational_corrections_block(cfg: dict[str, Any]) -> None:

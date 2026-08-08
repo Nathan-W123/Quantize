@@ -1,5 +1,31 @@
 # Fluorobenzene (C6H5F) — maximally-substituted isotopologue set
-# Run with: python run_from_config.py configs/fluorobenzene.yaml
+# Run with: python -m cli run configs/fluorobenzene.yaml
+#
+# ############################################################################
+# ⚠  THE ROTATIONAL CONSTANTS BELOW ARE WRONG. DO NOT FIT TO THEM.
+#
+#   Every isotopologue has an inertial defect I_c - I_a - I_b of about
+#   +5.6 amu·Å².  Fluorobenzene is planar, so the defect must be near zero —
+#   roughly +0.1 to +0.4 from zero-point motion.  A defect of +5.6 is not
+#   reachable by any real structure, so the constants cannot be right.  This
+#   needs no external reference: it is internal to the numbers listed here.
+#   (`python -m cli validate` now reports it.)
+#
+#   Two further problems:
+#     * The listed B_0 disagree with this file's own coords_angstrom block by
+#       up to 1726σ — a systematic ~+86 MHz on B across all eight species.
+#     * The quoted ring angles below sum to 723.59°, where a closed planar
+#       hexagon requires exactly 720.00°.
+#
+#   For reference, the accepted parent constants are approximately
+#   A = 5663.5, B = 2570.6, C = 1767.1 MHz (defect +0.16).
+#
+#   Left in place rather than silently rewritten, because it is not clear which
+#   values were intended.  Fitting this file stalls near 50 MHz residual and
+#   drifts to ~48 mÅ of bond error — that measures the bad data, not the method.
+#   See scripts/fluorobenzene_three_way.py, which synthesises self-consistent
+#   constants so the comparison means something.
+# ############################################################################
 #
 # UNDERCONSTRAINED NOTE:
 #   19F is the only stable fluorine isotope (100% natural abundance), so no
