@@ -4,6 +4,9 @@ These pin down the accuracy claims that motivate the rovibrational correction
 machinery. They use analytic potentials, so they run without Psi4 or ORCA.
 """
 
+import sys
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -207,6 +210,29 @@ def test_cd_constants_report_full_uncertainty_while_mapping_is_unvalidated():
     cd = compute_cd_constants(h2o_hessian(coords), coords, H2O_MASSES, sigma_fraction=0.05)
     for name in CD_NAMES:
         assert cd.sigma[name] >= abs(getattr(cd, name))
+
+
+def test_corrected_targets_recover_the_equilibrium_structure():
+    """Geometry-level check: fitting (r_OH, theta) to corrected targets must land
+    closer to the accepted r_e structure than fitting to raw B_0, and the targets
+    must be far more self-consistent (smaller inertial defect, smaller fit RMS)."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "scripts"))
+    from geometry_accuracy import R_E_ANG, THETA_E_DEG, fit, inertial_defect
+
+    raw = fit("none")
+    full = fit("anharmonic")
+
+    # The observed B_0 are not consistent with any rigid planar geometry.
+    assert inertial_defect(H2O_B0_MHZ) > 0.04
+    assert abs(full["defect"]) < 0.5 * abs(inertial_defect(H2O_B0_MHZ))
+
+    # Corrected targets are reproducible by a single rigid structure.
+    assert full["rms_mhz"] < 0.25 * raw["rms_mhz"]
+
+    # And that structure is closer to equilibrium on the angle.
+    assert abs(full["theta_deg"] - THETA_E_DEG) < abs(raw["theta_deg"] - THETA_E_DEG)
+    assert abs(full["r_ang"] - R_E_ANG) < 0.005
+    assert abs(full["theta_deg"] - THETA_E_DEG) < 0.5
 
 
 def test_water_alpha_signs_match_the_required_correction():
