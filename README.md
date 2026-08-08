@@ -97,13 +97,34 @@ Two ways to hand authority back:
 | `optimizer.sv_min_abs` | Absolute floor on the singular value. The Jacobian is σ-weighted, so \(1/s\) is the parameter uncertainty along a direction — the floor means "only trust what the data resolves this well". All-or-nothing per direction. |
 | `optimizer.objective_mode: joint` with `optimizer.quantum_prior_sigma_ang` | Solves \((J^TJ + \alpha_q H + \lambda I)\,\Delta p = J^T r - \alpha_q g\), leaving every direction contested and weighted by how well each source knows it. `quantum_prior_sigma_ang` is the displacement over which the quantum surface is trusted, roughly the geometry error of the method, which is what makes \(\alpha_q\) interpretable rather than an arbitrary knob. |
 
-On the water test case (`scripts/theory_vs_experiment_vs_hybrid.py`), the split
-default gives \(\Delta r = -4.1\) mÅ and \(\Delta\theta = +0.957°\); the joint
-objective at `quantum_prior_sigma_ang: 0.005` gives \(-0.7\) mÅ and \(+0.426°\) —
-better than theory alone, experiment alone, and the split default on both
-parameters at once. Scan the value for your own system with
-`python scripts/tune_quantum_prior.py`; 0.005 Å is one molecule's result, not a
-validated default.
+### Which objective to use depends on how much data you have
+
+This is the single most consequential setting, and it flips with the size of the
+dataset. Two measured cases:
+
+| Case | Observables | Best objective |
+|------|-------------|----------------|
+| Water, one isotopologue (`scripts/theory_vs_experiment_vs_hybrid.py`) | 3 | `joint`, `quantum_prior_sigma_ang: 0.005` |
+| Fluorobenzene, one isotopologue (`scripts/fluorobenzene_vs_published.py`) | 3 | `joint`, `quantum_prior_sigma_ang: 0.005` |
+| Fluorobenzene, eight isotopologues (`scripts/fluorobenzene_full_data.py`) | 24 | `split` (the default) |
+
+With few observables the split partition hands whole directions to data that
+barely resolves them, drives the residual below what the physics justifies, and
+distorts the structure doing it — on water the angle error trebles, on
+fluorobenzene the C–H angles do. A calibrated prior keeps those directions
+contested and fixes most of it.
+
+With a full isotopologue set the position reverses. Against the published
+fluorobenzene structure, 24 observables give RMS bond errors of 11.4 mÅ from
+theory alone, 8.2 mÅ from spectroscopy alone, and **4.0 mÅ** from the split
+hybrid — better than either input on bond lengths, angles and the C–F distance
+at once. Forcing `quantum_prior_sigma_ang: 0.005` there costs more than half the
+gain (8.9 mÅ), because the prior now over-constrains directions the data
+determines perfectly well.
+
+Rule of thumb: reach for the calibrated prior when the fit is undersaturated,
+and leave the default alone when it is not. `python scripts/tune_quantum_prior.py`
+scans the value; 0.005 Å is a sparse-data result, not a validated default.
 
 ## Torsion / Large-Amplitude Motion (LAM) pipeline
 
