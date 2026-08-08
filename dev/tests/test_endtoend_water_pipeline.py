@@ -96,6 +96,34 @@ def test_full_chain_improves_the_bond_length_end_to_end(tmp_path):
     assert abs(r_full - R_E) < 0.010
 
 
+def test_hybrid_beats_both_theory_and_experiment_alone():
+    """The point of the package: combining a biased quantum surface with
+    vibrationally-averaged constants should beat either on its own.
+
+    Bond length only. With one isotopologue the angle stays prior-dominated --
+    the run reports a standard error over a degree on it -- so it is not a
+    parameter either leg determines.
+    """
+    import scripts.theory_vs_experiment_vs_hybrid as tve
+
+    r_theory, _ = tve.theory_alone()
+    (r_expt, _), _ = tve._pipeline("none", False, False)
+    (r_hybrid, _), _ = tve._pipeline("analytic_water_detuned", True, True)
+
+    err_theory = abs(r_theory - R_E)
+    err_expt = abs(r_expt - R_E)
+    err_hybrid = abs(r_hybrid - R_E)
+
+    assert err_hybrid < err_theory, (
+        f"hybrid {err_hybrid * 1000:.1f} mA vs theory {err_theory * 1000:.1f} mA"
+    )
+    assert err_hybrid < err_expt, (
+        f"hybrid {err_hybrid * 1000:.1f} mA vs experiment {err_expt * 1000:.1f} mA"
+    )
+    # Experiment alone returns an r_0-like structure, longer than r_e.
+    assert r_expt > R_E
+
+
 def test_run_reports_low_confidence_for_a_single_isotopologue(tmp_path):
     """One isotopologue cannot pin water's structure, and the run should say so
     rather than presenting the numbers as settled."""
