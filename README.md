@@ -79,6 +79,32 @@ constraints, and published CO/H₂O constants — no Psi4 or ORCA needed).
 > constants. `compute_cd_constants` reports 100% uncertainty accordingly, and
 > `fit_cd_constants` defaults to off.
 
+## How data and theory share authority
+
+The default `split` objective partitions the parameter space hard: whatever
+survives the SVD rank cutoff is handed **entirely** to the spectral data, and the
+quantum surface governs only the null space. That works when the retained
+directions are well determined — but the cutoff is *relative*
+(`sv_threshold × s_max`, with `sv_min_abs` defaulting to 0), so a direction the
+data resolves only loosely is still treated as fully constrained and theory gets
+no vote in it. Water's bond angle is such a direction, and it comes out worse
+than either theory or experiment alone would give.
+
+Two ways to hand authority back:
+
+| Control | Effect |
+|---------|--------|
+| `optimizer.sv_min_abs` | Absolute floor on the singular value. The Jacobian is σ-weighted, so \(1/s\) is the parameter uncertainty along a direction — the floor means "only trust what the data resolves this well". All-or-nothing per direction. |
+| `optimizer.objective_mode: joint` with `optimizer.quantum_prior_sigma_ang` | Solves \((J^TJ + \alpha_q H + \lambda I)\,\Delta p = J^T r - \alpha_q g\), leaving every direction contested and weighted by how well each source knows it. `quantum_prior_sigma_ang` is the displacement over which the quantum surface is trusted, roughly the geometry error of the method, which is what makes \(\alpha_q\) interpretable rather than an arbitrary knob. |
+
+On the water test case (`scripts/theory_vs_experiment_vs_hybrid.py`), the split
+default gives \(\Delta r = -4.1\) mÅ and \(\Delta\theta = +0.957°\); the joint
+objective at `quantum_prior_sigma_ang: 0.005` gives \(-0.7\) mÅ and \(+0.426°\) —
+better than theory alone, experiment alone, and the split default on both
+parameters at once. Scan the value for your own system with
+`python scripts/tune_quantum_prior.py`; 0.005 Å is one molecule's result, not a
+validated default.
+
 ## Torsion / Large-Amplitude Motion (LAM) pipeline
 
 A self-contained torsion-rotation pipeline handles molecules with an internal methyl (or other Cn) rotor. It uses a RAM-lite (rho-axis method) Hamiltonian in a Fourier basis |m⟩ and is independent of the geometry-inversion loop above.
