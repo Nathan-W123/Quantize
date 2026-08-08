@@ -285,6 +285,7 @@ def resolve_corrections(
     correction_elec: bool = False,
     sigma_elec_fraction: float = 0.1,
     correction_bob_params: Optional[dict] = None,
+    g_tensor: Optional[dict] = None,
 ) -> list:
     """
     For each isotopologue Ã— component pair, resolve all corrections and return
@@ -323,7 +324,12 @@ def resolve_corrections(
         This requires elems to be supplied.
     sigma_elec_fraction : float
         Fractional uncertainty on the electronic correction (default 0.1 = 10%).
-        Reflects the approximation error from ignoring the electronic g-tensor.
+        Floored at 100% when no g_tensor is supplied, since the fallback formula
+        is only order-of-magnitude.
+    g_tensor : dict or None
+        Rotational g-tensor components, ``{"A": g_aa, "B": g_bb, "C": g_cc}``.
+        When given, the standard delta_elec = -(m_e/m_p) * g * B_obs is used
+        instead of the crude 1/M_total fallback. Components may be negative.
     correction_bob_params : dict or None
         Per-element BOB u-parameters. When supplied, computes:
             delta_bob = -Î£_a (m_e / m_a) * u_a^X
@@ -418,10 +424,25 @@ def resolve_corrections(
                     quality_flags=["no_correction"],
                 ))
 
-            # â”€â”€ Electronic mass correction â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            # â”€â”€ Electronic correction â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             if correction_elec and total_mass > 0.0:
-                delta_e = electronic_delta_b(b0, total_mass)
-                sig_e = abs(delta_e) * sigma_elec_fraction if sigma_elec_fraction > 0.0 else None
+                g_val = (g_tensor or {}).get(comp_label)
+                g_val = _finite_or_none(g_val)
+                delta_e = electronic_delta_b(b0, total_mass, g_value=g_val)
+                if g_val is not None:
+                    notes_e = f"-(m_e/m_p)*g*B_obs with g_{comp_label}={g_val:g}"
+                    frac = sigma_elec_fraction
+                    flags: list = []
+                else:
+                    notes_e = (
+                        "fallback -(m_e/M_total)*B_obs; not the standard g-tensor "
+                        "formula, order-of-magnitude only"
+                    )
+                    # The fallback is off by roughly (M_total * g) and can have the
+                    # wrong sign, so its uncertainty must cover its own magnitude.
+                    frac = max(sigma_elec_fraction, 1.0)
+                    flags = ["electronic_no_g_tensor"]
+                sig_e = abs(delta_e) * frac if frac > 0.0 else None
                 records.append(CorrectionRecord(
                     isotopologue_label=name,
                     component=comp_label,
@@ -429,7 +450,8 @@ def resolve_corrections(
                     sigma_mhz=sig_e,
                     source="computed",
                     method="elec",
-                    notes="Gordy-Cook: -(m_e/M_total)*B_obs",
+                    notes=notes_e,
+                    quality_flags=flags,
                 ))
 
             # â”€â”€ Born-Oppenheimer Breakdown correction â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
