@@ -1934,6 +1934,8 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
     )
     harmonic_from_hessian = bool(_rc_block.get("harmonic_from_hessian", False))
     harmonic_sigma_fraction = float(_rc_block.get("harmonic_sigma_fraction", 0.02))
+    anharmonic_from_hessian = bool(_rc_block.get("anharmonic_from_hessian", False))
+    anharmonic_fd_delta_ang = float(_rc_block.get("anharmonic_fd_delta_ang", 0.01))
     harmonic_cd_from_hessian = bool(_rc_block.get("harmonic_cd_from_hessian", False))
     cd_sigma_fraction = float(_rc_block.get("cd_sigma_fraction", 0.05))
     fit_cd_constants = bool(_rc_block.get("fit_cd_constants", False))
@@ -2046,6 +2048,8 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
         correction_bob_params=correction_bob_params,
         harmonic_from_hessian=harmonic_from_hessian,
         harmonic_sigma_fraction=harmonic_sigma_fraction,
+        anharmonic_from_hessian=anharmonic_from_hessian,
+        anharmonic_fd_delta_ang=anharmonic_fd_delta_ang,
         harmonic_cd_from_hessian=harmonic_cd_from_hessian,
         cd_sigma_fraction=cd_sigma_fraction,
         fit_cd_constants=fit_cd_constants,
