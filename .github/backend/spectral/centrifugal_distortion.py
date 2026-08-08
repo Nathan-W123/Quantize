@@ -58,8 +58,38 @@ def inertia_paf(coords_ang, masses_amu):
     return eigvals, V, r @ V
 
 
+def is_linear(coords_ang, masses_amu, rel_tol: float = 1e-6) -> bool:
+    """True when the smallest principal moment of inertia is negligible.
+
+    Compared against the largest moment so the test is scale-free; a genuine
+    linear molecule has I_a exactly zero up to rounding, while the smallest
+    moment of any bent molecule is a finite fraction of the largest.
+    """
+    coords = np.asarray(coords_ang, dtype=float)
+    if coords.shape[0] < 3:
+        return True
+    eigvals = np.sort(np.abs(inertia_paf(coords, masses_amu)[0]))
+    if eigvals[-1] <= 0.0:
+        return True
+    return bool(eigvals[0] / eigvals[-1] < rel_tol)
+
+
+def rigid_mode_count(coords_ang, masses_amu) -> int:
+    """Number of zero-frequency translation+rotation modes: 5 if linear else 6."""
+    n_atoms = np.asarray(coords_ang, dtype=float).shape[0]
+    if n_atoms < 2:
+        return 3
+    return 5 if is_linear(coords_ang, masses_amu) else 6
+
+
 def normal_modes(hess_bohr, masses_amu, n_rigid=6, min_eigval=1e-6):
-    """Vibrational frequencies (cm⁻¹) and mass-weighted eigenvectors."""
+    """Vibrational frequencies (cm⁻¹) and mass-weighted eigenvectors.
+
+    ``n_rigid`` is the number of translation/rotation modes to discard. Pass 5
+    for linear molecules (3N-5 vibrations); :func:`rigid_mode_count` derives it
+    from the geometry. Leaving it at 6 for a linear molecule silently discards a
+    real vibration -- for a diatomic, the only one.
+    """
     masses = np.asarray(masses_amu, dtype=float)
     M_inv_sqrt = np.repeat(1.0 / np.sqrt(masses), 3)
     F_mw = hess_bohr * M_inv_sqrt[:, None] * M_inv_sqrt[None, :]
@@ -80,10 +110,14 @@ def bk_mode_derivatives(coords, masses, L_mw, omega_cm, fd_delta, B0_ref=None):
     """
     First and second derivatives of B_K w.r.t. each normal coordinate Q_r.
 
+    Q_r is the mass-weighted normal coordinate in Å·√amu, which is the unit
+    ``_ZPE_AMP`` is expressed in, so ⟨Q_r²⟩ = _ZPE_AMP / ω̃_r combines with these
+    derivatives directly.
+
     Returns
     -------
-    dB1 : (3, n_vib)  ∂B_K/∂Q_r  [MHz / (Å/√amu)]
-    d2B : (3, n_vib)  ∂²B_K/∂Q_r²  [MHz / (Å/√amu)²]
+    dB1 : (3, n_vib)  ∂B_K/∂Q_r  [MHz / (Å·√amu)]
+    d2B : (3, n_vib)  ∂²B_K/∂Q_r²  [MHz / (Å·√amu)²]
     """
     N = coords.shape[0]
     n_vib = L_mw.shape[1]
@@ -93,11 +127,27 @@ def bk_mode_derivatives(coords, masses, L_mw, omega_cm, fd_delta, B0_ref=None):
     dB1 = np.zeros((3, n_vib))
     d2B = np.zeros((3, n_vib))
     for r in range(n_vib):
-        d_r = (L_mw[:, r].reshape(N, 3) / np.sqrt(masses[:, None])) * _BOHR_TO_ANG
-        B_plus = rotational_constants_mhz(coords + fd_delta * d_r, masses)
-        B_minus = rotational_constants_mhz(coords - fd_delta * d_r, masses)
-        dB1[:, r] = (B_plus - B_minus) / (2.0 * fd_delta)
-        d2B[:, r] = (B_plus + B_minus - 2.0 * B0_ref) / (fd_delta ** 2)
+        # L_mw is the orthonormal mass-weighted eigenvector, so the Cartesian
+        # displacement per unit Q_r is L/√m with coords already in Å. Scaling by
+        # a Bohr→Å factor here would put Q in Bohr·√amu and break the pairing
+        # with _ZPE_AMP.
+        d_r = L_mw[:, r].reshape(N, 3) / np.sqrt(masses[:, None])
+
+        def _diffs(h):
+            B_plus = rotational_constants_mhz(coords + h * d_r, masses)
+            B_minus = rotational_constants_mhz(coords - h * d_r, masses)
+            return (
+                (B_plus - B_minus) / (2.0 * h),
+                (B_plus + B_minus - 2.0 * B0_ref) / (h * h),
+            )
+
+        # These are closed-form functions of geometry alone -- no quantum
+        # chemistry, so no numerical noise -- which makes Richardson
+        # extrapolation safe and removes the O(h^2) truncation error.
+        d1_h, d2_h = _diffs(fd_delta)
+        d1_half, d2_half = _diffs(0.5 * fd_delta)
+        dB1[:, r] = (4.0 * d1_half - d1_h) / 3.0
+        d2B[:, r] = (4.0 * d2_half - d2_h) / 3.0
     return dB1, d2B
 
 
@@ -186,7 +236,9 @@ def compute_cd_constants(
     """
     masses = np.asarray(masses_amu, dtype=float)
     coords = np.asarray(coords_ang, dtype=float)
-    omega_cm, L_mw = normal_modes(hess_bohr, masses)
+    omega_cm, L_mw = normal_modes(
+        hess_bohr, masses, n_rigid=rigid_mode_count(coords, masses)
+    )
     mask = omega_cm >= min_freq_cm
     omega_cm = omega_cm[mask]
     L_mw = L_mw[:, mask]

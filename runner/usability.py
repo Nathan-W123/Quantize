@@ -353,6 +353,36 @@ def _validate_rovibrational_corrections_block(cfg: dict[str, Any]) -> None:
             "'rovibrational_corrections.bob_params' must be a mapping of element → component → u-value."
         )
 
+    for flag_key in ("harmonic_from_hessian", "anharmonic_from_hessian",
+                     "harmonic_cd_from_hessian", "fit_cd_constants"):
+        v = rc.get(flag_key)
+        if v is not None and not isinstance(v, bool):
+            raise ConfigError(
+                f"'rovibrational_corrections.{flag_key}' must be true or false."
+            )
+
+    if rc.get("anharmonic_from_hessian") and not rc.get("harmonic_from_hessian"):
+        raise ConfigError(
+            "'rovibrational_corrections.anharmonic_from_hessian' requires "
+            "'harmonic_from_hessian: true' — the anharmonic term is added to the "
+            "Hessian-derived alpha, which is only computed in that mode."
+        )
+
+    step = rc.get("anharmonic_fd_delta_ang")
+    if step is not None:
+        try:
+            sv = float(step)
+        except (TypeError, ValueError) as exc:
+            raise ConfigError(
+                "'rovibrational_corrections.anharmonic_fd_delta_ang' must be numeric."
+            ) from exc
+        if not 1e-4 <= sv <= 0.1:
+            raise ConfigError(
+                "'rovibrational_corrections.anharmonic_fd_delta_ang' must be between "
+                "1e-4 and 0.1 Angstrom; smaller amplifies Hessian noise, larger "
+                "loses the third-derivative signal to truncation error."
+            )
+
 
 _VALID_TORSION_SYMMETRY_MODES = {"c3", "3fold", "threefold", "c2", "2fold", "twofold", "none", "off", "null", ""}
 _VALID_SCAN_ANGLE_UNITS = {"degrees", "deg", "degree", "radians", "rad", "radian"}

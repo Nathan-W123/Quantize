@@ -316,6 +316,8 @@ class MolecularOptimizer:
         correction_bob_params=None,
         harmonic_from_hessian=False,
         harmonic_sigma_fraction=0.02,
+        anharmonic_from_hessian=False,
+        anharmonic_fd_delta_ang=0.01,
         harmonic_cd_from_hessian=False,
         cd_sigma_fraction=0.05,
         fit_cd_constants=False,
@@ -351,6 +353,8 @@ class MolecularOptimizer:
         # â”€â”€ Rovibrational corrections (M1-M4) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         self._harmonic_from_hessian = bool(harmonic_from_hessian)
         self._harmonic_sigma_fraction = max(float(harmonic_sigma_fraction), 1e-6)
+        self._anharmonic_from_hessian = bool(anharmonic_from_hessian)
+        self._anharmonic_fd_delta_ang = max(float(anharmonic_fd_delta_ang), 1e-4)
         self._harmonic_cd_from_hessian = bool(harmonic_cd_from_hessian)
         self._cd_sigma_fraction = max(float(cd_sigma_fraction), 1e-6)
         self._fit_cd_constants = bool(fit_cd_constants)
@@ -860,13 +864,40 @@ class MolecularOptimizer:
         if self.quantum is None:
             return
         hess_bohr = self.quantum._hessian_bohr
-        print("\n  [harmonic-alpha] Computing harmonic alpha from Hessian...")
+
+        # The anharmonic (cubic) term is the dominant contribution to alpha and
+        # carries the opposite sign to the harmonic one, so omitting it biases
+        # B_e systematically. It costs 6N extra Hessians, hence opt-in.
+        hessian_fn = None
+        if self._anharmonic_from_hessian:
+            if self._backend is None:
+                print(
+                    "  [anharmonic] Requested but no quantum backend is available; "
+                    "falling back to harmonic+Coriolis alpha only."
+                )
+            else:
+                n_hess = 6 * len(self.elems)
+                print(
+                    f"  [anharmonic] Building Cartesian cubic force field "
+                    f"({n_hess} Hessian evaluations)..."
+                )
+
+                def hessian_fn(coords_ang):
+                    return self._backend.run_hessian(coords_ang).hessian_bohr
+
+        label = "alpha (harmonic+Coriolis+anharmonic)" if hessian_fn else "harmonic alpha"
+        print(f"\n  [harmonic-alpha] Computing {label} from Hessian...")
         ctbl_raw, _res_info = build_correction_table_from_hessian(
             hess_bohr,
             self.coords,
             self._raw_isotopologues,
             sigma_fraction=self._harmonic_sigma_fraction,
+            hessian_fn=hessian_fn,
+            fd_delta_cubic=self._anharmonic_fd_delta_ang,
         )
+        for status in dict.fromkeys(_res_info.get("anharmonic_statuses", [])):
+            if status not in ("cubic_fd", "not_requested"):
+                print(f"  [anharmonic] WARNING: {status}")
         _near_degen = _res_info.get("total_near_degen_skips", 0)
         if _near_degen > 0:
             print(
