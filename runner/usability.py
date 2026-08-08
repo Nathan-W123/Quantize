@@ -21,6 +21,20 @@ except ModuleNotFoundError:  # pragma: no cover - handled by load_config error p
 
 COMPONENT_LABELS = ("A", "B", "C")
 VALID_PRESETS = {"FAST_DEBUG", "BALANCED", "STRICT"}
+def valid_backends() -> set[str]:
+    """Backend names accepted in a config: whatever is registered, plus "none".
+
+    Consulting the registry rather than a hardcoded list is what makes
+    ``@register_backend`` actually usable — base_backend.py tells you to add a
+    backend by registering it and importing it from backend/__init__.py, but a
+    hardcoded validator rejected the new name before the runner ever saw it.
+    """
+    from backend.registry import list_backends
+
+    return set(list_backends()) | {"none"}
+
+
+# Retained as a module-level name for callers that imported it.
 VALID_BACKENDS = {"orca", "psi4", "none"}
 VALID_GEOMETRY_METHODS = {"bonds", "pubchem", "coords"}
 _ELEMENT_RE = re.compile(r"^[A-Z][a-z]?$")
@@ -204,8 +218,11 @@ def validate_config(cfg: dict[str, Any]) -> None:
 
     quantum = _expect_mapping(cfg, "quantum")
     backend = str(quantum.get("backend", "orca")).strip().lower()
-    if backend not in VALID_BACKENDS:
-        raise ConfigError("'quantum.backend' must be one of orca, psi4, or none.")
+    allowed = valid_backends()
+    if backend not in allowed:
+        raise ConfigError(
+            f"'quantum.backend' must be one of {', '.join(sorted(allowed))}."
+        )
 
     _validate_rovibrational_corrections_block(cfg)
     _validate_conformer_mixture_block(cfg, n_atoms=n_atoms)
