@@ -245,12 +245,10 @@ def main():
     print("\n  The control row recovers r_e exactly, so the optimizer, the SVD split and")
     print("  the range/null steps are sound -- every milliangstrom of residual error in")
     print("  the rows above comes from the accuracy of alpha, i.e. of the Hessian.")
-    print("\n  Note that B+C lands further from r_e than B alone, and further than theory.")
-    print("  Rank is 2 either way and the Jacobian is well conditioned (cond 2.4), so this")
-    print("  is not degeneracy: it is which two directions get constrained. B+C leaves r")
-    print("  partly inside the quantum-governed null space, where the detuned PES pulls it.")
-    print("  Partial data helps only along the directions it actually sees -- check the")
-    print("  identifiability table before trusting a parameter.")
+    print("\n  Every hybrid row should beat theory. If one does not, check first that the")
+    print("  corrections are actually being applied: targeting a ground-state B_0 as if it")
+    print("  were B_e is a systematic error of several thousand MHz, far larger than the")
+    print("  theory bias the quantum prior is there to absorb.")
 
 
 def exact_correction_control():

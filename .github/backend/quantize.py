@@ -320,6 +320,7 @@ class MolecularOptimizer:
         harmonic_sigma_fraction=0.02,
         anharmonic_from_hessian=False,
         anharmonic_fd_delta_ang=0.01,
+        nonconvergent_policy="warn",
         harmonic_cd_from_hessian=False,
         cd_sigma_fraction=0.05,
         fit_cd_constants=False,
@@ -357,6 +358,7 @@ class MolecularOptimizer:
         self._harmonic_sigma_fraction = max(float(harmonic_sigma_fraction), 1e-6)
         self._anharmonic_from_hessian = bool(anharmonic_from_hessian)
         self._anharmonic_fd_delta_ang = max(float(anharmonic_fd_delta_ang), 1e-4)
+        self._nonconvergent_policy = str(nonconvergent_policy or "warn").strip().lower()
         self._harmonic_cd_from_hessian = bool(harmonic_cd_from_hessian)
         self._cd_sigma_fraction = max(float(cd_sigma_fraction), 1e-6)
         self._fit_cd_constants = bool(fit_cd_constants)
@@ -903,6 +905,7 @@ class MolecularOptimizer:
             sigma_fraction=self._harmonic_sigma_fraction,
             hessian_fn=hessian_fn,
             fd_delta_cubic=self._anharmonic_fd_delta_ang,
+            nonconvergent_policy=self._nonconvergent_policy,
         )
         for status in dict.fromkeys(_res_info.get("anharmonic_statuses", [])):
             if status not in ("cubic_fd", "not_requested"):
@@ -923,11 +926,28 @@ class MolecularOptimizer:
                     f"  [anharmonic] WARNING: {_iso_name}: perturbation series not "
                     f"converging for {_detail}."
                 )
-            print(
-                "  [anharmonic] These corrections are unreliable. Prefer components "
-                "with a converging\n  [anharmonic] series, or improve the Hessian; "
-                "reweighting cannot compensate for a biased target."
-            )
+            _policy = _res_info.get("nonconvergent_policy", "warn")
+            _dropped = _res_info.get("dropped_components", {})
+            if _policy == "drop" and _dropped:
+                for _iso_name, _comps in _dropped.items():
+                    print(
+                        f"  [anharmonic] {_iso_name}: dropped {', '.join(sorted(_comps))} "
+                        "from the correction table (nonconvergent_policy=drop)."
+                    )
+            elif _policy == "inflate":
+                print(
+                    "  [anharmonic] Their sigma has been inflated by the divergence "
+                    "ratio. Note this only\n  [anharmonic] changes the fit where the "
+                    "spectral block is over-determined."
+                )
+            else:
+                print(
+                    "  [anharmonic] These corrections are unreliable. Prefer components "
+                    "with a converging\n  [anharmonic] series, or improve the Hessian; "
+                    "reweighting cannot compensate for a biased target. Set\n"
+                    "  [anharmonic] rovibrational_corrections.nonconvergent_policy: drop "
+                    "to exclude them."
+                )
         _near_degen = _res_info.get("total_near_degen_skips", 0)
         if _near_degen > 0:
             print(
@@ -1026,16 +1046,27 @@ class MolecularOptimizer:
                 old_iso["pred_cd"] = cd
         self.spectral.set_hessian_for_cd(hess_bohr)
 
+    @staticmethod
+    def _due_every(call_count: int, period: int) -> bool:
+        """True on call 1, 1+period, 1+2*period, ...
+
+        ``call_count % period == 1`` looks equivalent but silently fails for
+        period 1: every integer mod 1 is 0, never 1, so a period of "every call"
+        fired on no call at all.
+        """
+        n = max(1, int(period))
+        return (int(call_count) - 1) % n == 0
+
     def _update_orca(self):
         """Decide whether to do a full Hessian recalculation or gradient-only update."""
         self._orca_call_count += 1
-        if self.quantum is None or self._orca_call_count % self.hess_recalc_every == 1:
+        if self.quantum is None or self._due_every(self._orca_call_count, self.hess_recalc_every):
             self._run_hessian()
-            if self.use_orca_rovib and self._orca_call_count % self.rovib_recalc_every == 1:
+            if self.use_orca_rovib and self._due_every(self._orca_call_count, self.rovib_recalc_every):
                 self._run_rovib()
-            if self._harmonic_from_hessian and self._orca_call_count % self.hess_recalc_every == 1:
+            if self._harmonic_from_hessian and self._due_every(self._orca_call_count, self.hess_recalc_every):
                 self._apply_harmonic_alpha_corrections()
-            if self._harmonic_cd_from_hessian and self._orca_call_count % self.hess_recalc_every == 1:
+            if self._harmonic_cd_from_hessian and self._due_every(self._orca_call_count, self.hess_recalc_every):
                 self._apply_harmonic_cd_corrections()
             elif self._fit_cd_constants and self._cd_weight > 0.0 and self.quantum is not None:
                 self.spectral.set_hessian_for_cd(self.quantum._hessian_bohr)

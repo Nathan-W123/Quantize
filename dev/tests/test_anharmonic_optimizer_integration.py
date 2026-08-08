@@ -88,6 +88,40 @@ def test_optimizer_constructs_with_default_autoconfig(use_autoconfig, heuristic_
     assert (opt.autoconfig is not None) == use_autoconfig
 
 
+@pytest.mark.parametrize("period", [1, 2, 3])
+def test_due_every_fires_on_the_first_call_for_any_period(period):
+    """`count % period == 1` is never true for period 1, since every integer mod
+    1 is 0. That silently disabled harmonic_from_hessian at the default setting."""
+    due = [c for c in range(1, 10) if MolecularOptimizer._due_every(c, period)]
+    assert due[0] == 1
+    assert due == list(range(1, 10, period))
+
+
+def test_corrections_are_applied_during_run_at_default_recalc_period():
+    """Regression: with hess_recalc_every=1 the correction chain never ran, so the
+    fit targeted ground-state B_0 as if it were B_e."""
+    opt = _build(True)
+    opt2 = MolecularOptimizer(
+        elems=list(H2O_ELEMS),
+        coords=h2o_coords(),
+        isotopologues=_isotopologues(),
+        quantum_backend="analytic_water_test",
+        harmonic_from_hessian=True,
+        anharmonic_from_hessian=True,
+        coordinate_mode="cartesian",
+        hess_recalc_every=1,
+        max_iter=2,
+    )
+    opt2.run()
+    targets = np.asarray(
+        opt2.spectral.isotopologues[0]["obs_constants"], dtype=float
+    )
+    assert not np.allclose(targets, H2O_B0_MHZ), (
+        "spectral targets still equal the raw B_0; corrections never applied"
+    )
+    assert opt._backend.hessian_calls > 0
+
+
 def test_optimizer_applies_anharmonic_correction():
     """The corrected targets must differ, and move toward the geometric B_e."""
     harm = _build(False)
