@@ -87,6 +87,41 @@ def test_more_constants_do_not_hurt():
     assert abs(r_all - R_E) <= abs(r_one - R_E) + 5e-4
 
 
+def test_exact_targets_recover_the_reference_structure_from_any_surface():
+    """The optimizer and the SVD split introduce no error of their own.
+
+    Feed B_e taken straight from the reference geometry and the recovered
+    structure must be r_e regardless of where the theory surface has its
+    minimum. This is what places the residual in the correction-quality rows on
+    alpha, and therefore on the Hessian, rather than on the fitting machinery.
+    """
+    from backend.spectral.centrifugal_distortion import rotational_constants_mhz
+    from water_scenarios import run as run_scenario
+
+    be_exact = rotational_constants_mhz(h2o_coords(), H2O_MASSES)
+    for backend, start in (
+        ("ontarget_water", h2o_coords(0.9800, np.radians(107.0))),
+        ("detuned_water", h2o_coords(R_THEORY, np.radians(THETA_THEORY))),
+    ):
+        r, theta = run_scenario(backend, start, False, False, targets=be_exact)
+        assert r == pytest.approx(R_E, abs=1e-4)
+        assert theta == pytest.approx(THETA_E, abs=1e-2)
+
+
+def test_full_correction_chain_improves_the_bond_angle():
+    """On the full A/B/C data the corrections roughly a third the angle error.
+
+    Pinned separately from the bond length, which this force field does not
+    improve -- see scripts/water_scenarios.py for why.
+    """
+    from water_scenarios import run as run_scenario
+
+    start = h2o_coords(R_THEORY, np.radians(THETA_THEORY))
+    _, theta_raw = run_scenario("detuned_water", start, False, False)
+    _, theta_full = run_scenario("detuned_water", start, True, True)
+    assert abs(theta_full - THETA_E) < 0.5 * abs(theta_raw - THETA_E)
+
+
 def test_undersaturated_spectroscopy_alone_is_ambiguous():
     """One constant against two structural parameters has no unique solution,
     which is what makes the quantum prior necessary rather than merely helpful."""
