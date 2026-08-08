@@ -533,6 +533,11 @@ class MolecularOptimizer:
         self.use_autoconfig_heuristic_bases = bool(use_autoconfig_heuristic_bases)
         self.autoconfig_tune_sv_threshold = bool(autoconfig_tune_sv_threshold)
         self.autoconfig_tune_alpha_quantum = bool(autoconfig_tune_alpha_quantum)
+        # Declared before the heuristic-bases call below, which reads it. The
+        # AutoConfigEngine itself is built further down, once every base value
+        # it seeds from is final; the reseed inside the call is therefore a
+        # no-op here and the engine picks up these bases directly.
+        self.autoconfig = None
         if self.use_autoconfig and self.use_autoconfig_heuristic_bases:
             self._apply_heuristic_optimizer_bases(isotopologues)
 
@@ -590,7 +595,6 @@ class MolecularOptimizer:
         self.guardrail_lambda_boost = max(1.0, float(guardrail_lambda_boost))
         self.guardrail_trust_shrink = min(1.0, max(0.1, float(guardrail_trust_shrink)))
         self.autoconfig_update_every = max(1, int(autoconfig_update_every))
-        self.autoconfig = None
         if self.use_autoconfig:
             self.autoconfig = AutoConfigEngine(
                 n_params=3 * len(self.elems),
