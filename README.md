@@ -102,11 +102,13 @@ Two ways to hand authority back:
 This is the single most consequential setting, and it flips with the size of the
 dataset. Two measured cases:
 
-| Case | Observables | Best objective |
-|------|-------------|----------------|
-| Water, one isotopologue (`scripts/theory_vs_experiment_vs_hybrid.py`) | 3 | `joint`, `quantum_prior_sigma_ang: 0.005` |
-| Fluorobenzene, one isotopologue (`scripts/fluorobenzene_vs_published.py`) | 3 | `joint`, `quantum_prior_sigma_ang: 0.005` |
-| Fluorobenzene, eight isotopologues (`scripts/fluorobenzene_full_data.py`) | 24 | `split` (the default) |
+| Case | Observables | Internal DOF | Best objective |
+|------|-------------|--------------|----------------|
+| Water, one isotopologue (`scripts/theory_vs_experiment_vs_hybrid.py`) | 3 | 3 | `joint`, `quantum_prior_sigma_ang: 0.005` |
+| Fluorobenzene, one isotopologue (`scripts/fluorobenzene_vs_published.py`) | 3 | 30 | `joint`, `quantum_prior_sigma_ang: 0.005` |
+| Fluorobenzene, eight isotopologues (`scripts/fluorobenzene_full_data.py`) | 24 | 30 | `split` (the default) |
+| Vinyl / acetyl fluoride, fluoroethane — parent only (`scripts/monofluoro_benchmark.py`) | 3 | 12–18 | `joint`, `quantum_prior_sigma_ang: 0.005` |
+| Vinyl / acetyl fluoride, fluoroethane — all species (same script) | 18 | 12–18 | `split` (the default) |
 
 With few observables the split partition hands whole directions to data that
 barely resolves them, drives the residual below what the physics justifies, and
@@ -125,6 +127,27 @@ determines perfectly well.
 Rule of thumb: reach for the calibrated prior when the fit is undersaturated,
 and leave the default alone when it is not. `python scripts/tune_quantum_prior.py`
 scans the value; 0.005 Å is a sparse-data result, not a validated default.
+
+### Monofluorinated benchmark
+
+`scripts/monofluoro_benchmark.py` runs theory, spectroscopy-only, and both
+hybrids over three published structures (vinyl fluoride, acetyl fluoride,
+fluoroethane) at RHF/6-31G, at two data levels each.
+`scripts/build_monofluoro_report.py` turns the resulting JSON into
+[`reports/monofluoro_benchmark_report.pdf`](reports/monofluoro_benchmark_report.pdf);
+every number in that report is read from the run rather than typed in.
+
+Applying the rule above *a priori* — `joint` when observables < internal DOF,
+`split` otherwise — the hybrid beats theory alone in all 6 of the 6
+molecule/data-level combinations, on RMS bond error and on the C–F distance
+separately. Two results worth carrying forward:
+
+- **RHF/6-31G has a systematic C–F bias**, +27 to +31 mÅ, same sign in all three
+  molecules. That is a method bias, not scatter, and it is exactly what the
+  spectral data is good at removing.
+- **Choosing the objective wrongly is worse than not hybridising at all** in 2 of
+  the 6 cases. The undersaturation flip reproduces cleanly here: `joint` wins in
+  all three molecules on 3 observables, `split` wins in all three on 18.
 
 ## Torsion / Large-Amplitude Motion (LAM) pipeline
 
