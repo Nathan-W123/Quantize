@@ -128,26 +128,44 @@ Rule of thumb: reach for the calibrated prior when the fit is undersaturated,
 and leave the default alone when it is not. `python scripts/tune_quantum_prior.py`
 scans the value; 0.005 Å is a sparse-data result, not a validated default.
 
-### Monofluorinated benchmark
+### Monofluorinated benchmark — and a caveat on the two rows above
 
 `scripts/monofluoro_benchmark.py` runs theory, spectroscopy-only, and both
 hybrids over three published structures (vinyl fluoride, acetyl fluoride,
-fluoroethane) at RHF/6-31G, at two data levels each.
-`scripts/build_monofluoro_report.py` turns the resulting JSON into
-[`reports/monofluoro_benchmark_report.pdf`](reports/monofluoro_benchmark_report.pdf);
-every number in that report is read from the run rather than typed in.
+fluoroethane) at RHF/6-31G, at two data levels each. Every rotational constant
+is a **measured** literature value transcribed from *NBS Monograph 70,
+Microwave Spectral Tables* — nothing is back-calculated from a geometry.
+`scripts/check_monofluoro_references.py` validates each species before use, and
+`scripts/build_monofluoro_report.py` turns the run's JSON into
+[`reports/monofluoro_benchmark_report.pdf`](reports/monofluoro_benchmark_report.pdf).
 
-Applying the rule above *a priori* — `joint` when observables < internal DOF,
-`split` otherwise — the hybrid beats theory alone in all 6 of the 6
-molecule/data-level combinations, on RMS bond error and on the C–F distance
-separately. Two results worth carrying forward:
+**The objective-choice rule above does not survive measured data.** The water
+and fluorobenzene rows use isotopologue constants *derived* from their reference
+structures, which are mutually consistent by construction. That removes the
+systematic r_s-vs-r_0 offset which turns out to drive the behaviour. Re-run on
+measured constants, `split` wins at rank deficits of 15, 3 and 1 while `joint`
+wins at 12, 10 and 3 — no ordering at all. Treat those rows as describing
+self-consistent synthetic data, not experiment.
+
+What does hold up:
 
 - **RHF/6-31G has a systematic C–F bias**, +27 to +31 mÅ, same sign in all three
-  molecules. That is a method bias, not scatter, and it is exactly what the
-  spectral data is good at removing.
-- **Choosing the objective wrongly is worse than not hybridising at all** in 2 of
-  the 6 cases. The undersaturation flip reproduces cleanly here: `joint` wins in
-  all three molecules on 3 observables, `split` wins in all three on 18.
+  molecules. A method bias, not scatter, and what the spectral data is good at
+  removing: some combination of data and theory beats theory alone on C–F in 6
+  of 6 cases.
+- **Everything is undersaturated.** Counting constants overstates the
+  information badly. Vinyl fluoride's 22 measured constants carry rank **9**
+  against 12 internal DOF; acetyl fluoride 30 → rank 14 of 15; fluoroethane
+  18 → rank 15 of 18. All published data still leaves every molecule
+  underdetermined, so `sv_min_abs` / `objective_mode` matter in every real case.
+- **On overall bond error the hybrid is not dependably better than theory** —
+  5 of 6 even choosing the objective with hindsight. The binding constraint is
+  no longer the objective but the missing vibration-rotation correction: fitting
+  r_0 constants uncorrected against an r_s reference leaves a one-signed ~0.5%
+  residual that the fit removes by distorting the structure. In vinyl fluoride
+  that makes the spectroscopy-only fit *worse* with 22 constants (31.1 mÅ) than
+  with 3 (21.0 mÅ). Applying `anharmonic_from_hessian` here is the obvious next
+  step.
 
 ## Torsion / Large-Amplitude Motion (LAM) pipeline
 

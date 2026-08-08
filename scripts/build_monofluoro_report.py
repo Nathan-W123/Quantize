@@ -106,21 +106,12 @@ def worst_ch(mol, leg):
     return max(((got[n] - ref[n]) * 1000 for n in ch), key=abs) if ch else 0.0
 
 
-def recommended(mol, level):
-    """Which hybrid the counting rule picks, knowing nothing about the answer.
-
-    Fewer measurements than parameters -> the split partition hands directions to
-    data that data cannot support, so keep theory in play everywhere. Otherwise
-    the prior is the thing that over-constrains, so let the data have its
-    directions outright.
-    """
-    return ("hybrid, joint prior" if level["n_observables"] < mol["internal_dof"]
-            else "hybrid, split")
-
-
-def other(leg):
-    """The hybrid the counting rule did not pick."""
-    return "hybrid, split" if leg == "hybrid, joint prior" else "hybrid, joint prior"
+def best_hybrid(level, key="rms_bond_ma", absolute=False):
+    """Whichever objective did better. Chosen with hindsight, not predictable."""
+    def score(leg):
+        v = level["legs"][leg][key]
+        return abs(v) if absolute else v
+    return min(("hybrid, split", "hybrid, joint prior"), key=score)
 
 
 # ── report sections ──────────────────────────────────────────────────────────
@@ -133,29 +124,33 @@ def header(story, data):
                        "sub", parent=BODY, fontSize=10.5, leading=14,
                        textColor=MUTED, spaceAfter=14, alignment=0)))
     cf = sorted(abs(m["theory"]["cf_err_ma"]) for m in data)
-    cases = [(m, lv) for m in data for lv in m["levels"].values()]
-    n = len(cases)
-    right = sum(lv["legs"][recommended(m, lv)]["rms_bond_ma"]
-                < m["theory"]["rms_bond_ma"] for m in data
-                for lv in m["levels"].values())
-    wrong_worse = sum(
-        lv["legs"][other(recommended(m, lv))]["rms_bond_ma"]
-        > m["theory"]["rms_bond_ma"] for m in data for lv in m["levels"].values())
+    n = sum(len(m["levels"]) for m in data)
+    best_wins = sum(
+        lv["legs"][best_hybrid(lv)]["rms_bond_ma"] < m["theory"]["rms_bond_ma"]
+        for m in data for lv in m["levels"].values())
     story.append(Paragraph(
-        "<b>Short version.</b> Neither source of information wins outright. "
-        "Quantum chemistry alone gets the overall shape of a molecule roughly "
-        f"right but puts the carbon&ndash;fluorine bond {cf[0]:.0f} to {cf[-1]:.0f} "
-        "thousandths of an &Aring;ngstr&ouml;m too long in every one of the three "
-        "molecules tested, always in the same direction &mdash; a systematic bias, "
-        "not scatter. Rotational spectroscopy alone corrects that bias well when "
-        "there is enough data, and is erratic when there is not: on a single "
-        "isotopologue it barely improves on the geometry it started from. "
-        f"Combining the two beats theory in all {right} of the {n} "
-        "molecule-and-data-level combinations tested, both on overall bond accuracy "
-        "and on the C&ndash;F bond in particular &mdash; but only if they are "
-        "merged the right way, and the right way depends on how much data there is. "
-        f"Merged the wrong way, the hybrid is worse than plain theory in "
-        f"{wrong_worse} of the {n}.", BODY))
+        "<b>Short version.</b> Quantum chemistry alone puts the "
+        f"carbon&ndash;fluorine bond {cf[0]:.0f} to {cf[-1]:.0f} thousandths of an "
+        "&Aring;ngstr&ouml;m too long in every one of the three molecules tested, "
+        "always in the same direction &mdash; a systematic bias, not scatter, and "
+        "exactly the kind of error measurements should be able to fix. They "
+        "partly do: on the C&ndash;F bond, some combination of data and theory "
+        f"beats theory alone in all {n} cases tested. On overall bond accuracy the "
+        f"result is weaker &mdash; the better of the two ways of combining them "
+        f"wins in {best_wins} of {n}, even when that better way is picked with "
+        "hindsight, and no rule was found that picks it in advance.", BODY))
+    story.append(Paragraph(
+        "Two things explain the gap. First, every one of these molecules is "
+        "underdetermined <i>even with every published rotational constant "
+        "included</i> &mdash; vinyl fluoride's 22 measured constants carry only 9 "
+        "independent constraints on 12 structural parameters. Second, the "
+        "measurements and the reference structure are different kinds of quantity, "
+        "and the half-percent mismatch between them is currently uncorrected; that, "
+        "rather than the choice of algorithm, is what limits these results. An "
+        "earlier version of this experiment used isotopologue constants derived "
+        "from the reference structures instead of measured ones, and reached a "
+        "tidier and more favourable conclusion. It does not survive real data, and "
+        "section 7.4 says how.", BODY))
     story.append(Spacer(1, 4))
 
 
@@ -224,36 +219,41 @@ def section_methods(story):
                            "here 0.005 &Aring;.", CELL)])
     story.append(table(rows, [30 * mm, 34 * mm, 100 * mm], align_left=(0, 1, 2)))
     story.append(p(
-        "The two hybrids differ only in how the two sources are merged. Both were "
-        "run for every molecule and every data level, because the earlier work in "
-        "this repository found that which one is better flips depending on how "
-        "much data there is &mdash; and that flip turns out to reproduce here.",
-        CAPTION))
+        "The two hybrids differ only in how the two sources are merged. Both are "
+        "run for every molecule and every data level, because which one is better "
+        "turns out not to be predictable in advance (section 7.4).", CAPTION))
 
 
 def section_molecules(story, data):
     story.append(p("3. The molecules, and why these three", H1))
     story.append(p(
-        "Each molecule needed a published experimental structure <i>and</i> the "
-        "rotational constants from the same study, so that the structure being "
-        "aimed at and the data being fed in come from the same experiment. The two "
-        "must also be mutually consistent: feeding the published geometry back "
-        "through the rotational-constant calculation should reproduce the published "
-        "constants to within about 1%, which is the size of the unavoidable "
-        "zero-point-motion offset. A larger gap means one of the two numbers is "
-        "wrong, and the comparison would be measuring that error rather than "
-        "anything about the methods.", BODY))
+        "Each molecule needed a published experimental structure <i>and</i> "
+        "published measured rotational constants for a useful set of its isotopic "
+        "variants. The two must be mutually consistent: feeding the published "
+        "geometry back through the rotational-constant calculation should reproduce "
+        "<i>every</i> measured constant to within about 1%, the size of the "
+        "unavoidable zero-point-motion offset. A larger gap means the structure and "
+        "the data disagree, or a variant has been assigned to the wrong atom &mdash; "
+        "and the comparison would then be measuring that error rather than anything "
+        "about the methods. Every species was checked individually, not just the "
+        "parent, which is how the mislabelled vinyl fluoride species in section 4 "
+        "were caught.", BODY))
     rows = [["Molecule", "Formula", "Atoms", "Structural\nparameters",
-             "Isotopic\nvariants", "Self-\nconsistency"]]
+             "Measured\nspecies", "Measured\nconstants", "Worst\ndisagreement"]]
     for m in data:
+        n_obs = max(lv["n_observables"] for lv in m["levels"].values())
         rows.append([m["molecule"], Paragraph(sub(m["formula"]), CELL),
                      str(m["n_atoms"]), str(m["internal_dof"]),
-                     str(m["n_isotopologues"]), f"{m['consistency_pct']:.2f}%"])
-    story.append(table(rows, [40 * mm, 28 * mm, 18 * mm, 26 * mm, 24 * mm, 26 * mm],
-                       align_left=(0, 1)))
+                     str(m["n_isotopologues"]), str(n_obs),
+                     f"{m['consistency_pct']:.2f}%"])
+    story.append(table(rows, [34 * mm, 25 * mm, 15 * mm, 23 * mm, 22 * mm,
+                              23 * mm, 24 * mm], align_left=(0, 1)))
     story.append(p(
-        "Sources: " + "; ".join(f"<b>{m['molecule']}</b> &mdash; {m['source']}"
-                                for m in data) + ".", CAPTION))
+        "The last column is the worst disagreement between the published geometry "
+        "and any one of its measured constants. Sources &mdash; "
+        + "; ".join(f"<b>{m['molecule']}</b>: structure, {m['structure_source']}; "
+                    f"constants, {m['constants_source']}" for m in data) + ".",
+        CAPTION))
     story.append(p(
         "A fourth candidate, formyl fluoride (HCOF), was checked and dropped. Its "
         "tabulated geometry and its tabulated constants disagree by 6.2% &mdash; far "
@@ -288,41 +288,66 @@ def section_setup(story, data):
 
     story.append(p("The rotational constants", H2))
     story.append(p(
-        "The parent molecule's constants are the published measured values. The "
-        "constants for the isotopically substituted variants are <i>derived</i> "
-        "from the published structure rather than measured, because the measured "
-        "values, while they exist in the original papers, are not in any source "
-        "reachable from this environment. They are not simply the rigid values of "
-        "the reference geometry: each is scaled by the ratio the real parent "
-        "molecule shows between its measured constants and the rigid value of the "
-        "published structure. That reproduces the offset real ground-state "
-        "constants carry from zero-point vibration, so the data is not exactly "
-        "consistent with the answer and a fit cannot recover it for free.", BODY))
+        "Every constant used here is a measured literature value, transcribed from "
+        "<i>NBS Monograph 70, Microwave Spectral Tables</i> (National Bureau of "
+        "Standards, 1968&ndash;69) &mdash; the standard compilation of the microwave "
+        "work of that era. Nothing is back-calculated from a geometry. Where the "
+        "original study did not determine a constant it is left out rather than "
+        "filled in: two of the eight vinyl fluoride species have no measured A at "
+        "all, and several others have A quoted to three or four significant figures "
+        "against seven for B and C. That unevenness is real, and the fit is told "
+        "about it through per-constant uncertainties rather than having it "
+        "smoothed away.", BODY))
     story.append(p(
-        "This is the weakest link in the setup and is worth being blunt about. It "
-        "means the substituted-species data is more internally consistent than real "
-        "measurements would be, which flatters the experiment-only and hybrid legs "
-        "at the higher data level. It does not affect the theory leg at all, and it "
-        "does not affect the parent-only results, which use nothing but published "
-        "measured numbers.", BODY))
+        "The uncertainties are set by model error, not measurement error. The "
+        "reference structures are substitution (r<sub>s</sub>) structures while the "
+        "constants are ground-state (r<sub>0</sub>) values, and that difference is "
+        "worth a few tenths of a percent &mdash; far more than the 0.01 MHz to "
+        "which B and C are quoted. A is given twice the floor of B and C, because "
+        "it is both the least well determined constant of a near-prolate top and "
+        "the one most sensitive to zero-point out-of-plane motion; the measured "
+        "residuals show exactly that pattern.", BODY))
+    story.append(p(
+        "<b>One correction to the source.</b> The compilation's cis/trans labels on "
+        "the two doubly-deuterated vinyl fluoride species (ids 789 and 791) "
+        "contradict its own constants. Deuterating the CHF hydrogen shifts B by "
+        "only about 1 MHz, so B alone identifies which CH<sub>2</sub> hydrogen "
+        "carries the second deuterium &mdash; and on that test the labels are "
+        "swapped. Assigned by the constants, both species match the published "
+        "geometry to better than 0.4%; assigned by the labels they are off by 6 to "
+        "22%, which is impossible for an isotopic substitution. The assignments "
+        "here follow the constants. Every species is re-checked this way by "
+        '<font face="Courier" size="8.5">scripts/check_monofluoro_references.py'
+        "</font> before any fitting is done.", BODY))
 
-    story.append(p("Two data levels", H2))
-    rows = [["Data level", "Species", "Numbers measured", "Compared with"]]
+    story.append(p("Two data levels, and how much they actually constrain", H2))
+    story.append(p(
+        "Counting measurements overstates how much is known. Three constants from "
+        "one species are not three independent constraints on the structure: for a "
+        "planar molecule the third is nearly fixed by the first two, since the "
+        "inertial defect is close to zero. The honest measure is the rank of the "
+        "stacked sensitivity matrix &mdash; how many independent directions in the "
+        "structure the data can actually see. It is computable in advance, from the "
+        "starting geometry, without knowing the answer.", BODY))
+    rows = [["Data level", "Species", "Constants\nmeasured",
+             "Independent\nconstraints", "Parameters", "Unconstrained"]]
+    band = []
     for m in data:
         for label, lv in m["levels"].items():
-            rows.append([f"{m['molecule']} &mdash; {label}"
-                         .replace("&mdash;", "—"),
+            rows.append([f"{m['molecule']} — {label}",
                          str(lv["n_isotopologues"]), str(lv["n_observables"]),
-                         f"{m['internal_dof']} parameters"])
-    story.append(table(rows, [58 * mm, 22 * mm, 38 * mm, 38 * mm],
-                       align_left=(0,),
-                       band_rows=tuple(r for r in range(1, len(rows)) if r % 2 == 1)))
+                         str(lv["rank"]), str(m["internal_dof"]),
+                         str(lv["deficit"])])
+            if label != "parent only":
+                band.append(len(rows) - 1)
+    story.append(table(rows, [50 * mm, 18 * mm, 24 * mm, 26 * mm, 24 * mm, 26 * mm],
+                       align_left=(0,), band_rows=tuple(band)))
     story.append(p(
-        "The first level is the realistic hard case: one measured species, three "
-        "numbers, far fewer than the molecule has parameters. The second is the "
-        "comfortable case where the count of measurements reaches or passes the "
-        "count of parameters. The gap between them is where the interesting "
-        "behaviour lives.", CAPTION))
+        "Vinyl fluoride is the clearest case: 22 measured constants carry only 9 "
+        "independent constraints on 12 parameters. <b>Every molecule here is "
+        "underdetermined even with every published constant included</b> &mdash; "
+        "which is the situation the hybrid exists for, and not the comfortable "
+        "regime raw counting would suggest.", CAPTION))
 
     story.append(p("How error is measured", H2))
     story.append(p(
@@ -448,7 +473,31 @@ def section_findings(story, data):
         "experimental data is well placed to correct, and it is the single "
         "clearest argument for combining the two sources at all.", BODY))
 
-    story.append(p("7.2 Spectroscopy alone is unreliable on thin data", H2))
+    story.append(p("7.2 More data does not always help", H2))
+    vf = next(m for m in data if m["key"] == "vinyl_fluoride")
+    thin = vf["levels"]["parent only"]["legs"]["experiment"]["rms_bond_ma"]
+    full = vf["levels"]["all species"]["legs"]["experiment"]["rms_bond_ma"]
+    story.append(p(
+        "The most surprising result here is vinyl fluoride. Fitting the parent's "
+        f"three constants gives a bond error of {thin:.0f} m&Aring;. Adding every "
+        "other measured species &mdash; seven more, twenty-two constants in total "
+        f"&mdash; makes it <i>worse</i>, {full:.0f} m&Aring;, and worse than the "
+        "deliberately wrong geometry the fit started from. Some angles move by "
+        "nine degrees.", BODY))
+    story.append(p(
+        "This is not a bug, and checking that mattered. The published structure "
+        "reproduces its own measured constants with a reduced chi-squared near one, "
+        "so the data and the reference agree; the fit simply finds a structure that "
+        "fits the numbers <i>better</i> than the true one does. It can, because 22 "
+        "constants carry only 9 independent constraints on 12 parameters, and "
+        "because the residuals are systematically one-signed &mdash; B and C sit "
+        "about 0.5% off in the same direction for every species, which is the "
+        "r<sub>s</sub>-versus-r<sub>0</sub> offset described in section 4. The fit "
+        "spends its three unconstrained directions removing that bias, and pays for "
+        "it in structural distortion. More data made the pull stronger without "
+        "closing the directions it could pull through.", BODY))
+
+    story.append(p("7.3 Spectroscopy alone is unreliable on thin data", H2))
     thin = [m["levels"]["parent only"]["legs"]["experiment"]["rms_bond_ma"]
             for m in data]
     starts = [m["start_errors"]["rms_bond_ma"] for m in data]
@@ -472,115 +521,130 @@ def section_findings(story, data):
         "fifteen parameters there is nothing in the data forcing any particular "
         "answer, and the fit is entitled to any of them.", BODY))
 
-    story.append(p("7.3 Spectroscopy alone is strong on full data", H2))
-    full = [m["levels"]["all species"]["legs"]["experiment"]["rms_bond_ma"]
-            for m in data]
-    fsplit = [m["levels"]["all species"]["legs"]["hybrid, split"]["rms_bond_ma"]
-              for m in data]
+    story.append(p("7.4 Neither way of combining the sources is reliably better", H2))
     story.append(p(
-        "Once every symmetry-unique substitution is included the picture reverses. "
-        "Bond errors fall to " + ", ".join(f"{v:.1f}" for v in full) + " m&Aring;, "
-        "three to four times better than theory. This is the regime classical "
-        "microwave structure determination has always operated in, and the result "
-        "confirms the machinery uses the information correctly rather than "
-        "discovering anything. Adding theory on top costs nothing and helps a "
-        "little: the split hybrid gives "
-        + ", ".join(f"{v:.1f}" for v in fsplit) + " m&Aring;, equal or better in "
-        "all three.", BODY))
+        "The two hybrids get identical inputs and differ only in the merging rule, "
+        "and which one wins is not predictable from anything known in advance. The "
+        "<i>split</i> rule wins on fluoroethane at both data levels &mdash; "
+        "including the case with the <i>most</i> unconstrained directions of any "
+        "run here, fifteen of eighteen. The <i>joint</i> rule wins on vinyl "
+        "fluoride and on sparse acetyl fluoride. Sorting the six cases by how "
+        "underdetermined they are produces no pattern: split wins at deficits of "
+        "15, 3 and 1, joint at 12, 10 and 3.", BODY))
+    story.append(p(
+        "This is a correction to an earlier result in this project. Run against "
+        "isotopologue constants <i>derived</i> from the reference structures rather "
+        "than measured, the same six cases produced a clean rule &mdash; joint when "
+        "measurements are scarcer than parameters, split otherwise, holding in all "
+        "six. That rule does not survive real data. Derived constants are mutually "
+        "consistent by construction, which removes precisely the systematic "
+        "zero-point offset that turns out to drive the behaviour, and the tidy "
+        "pattern was an artefact of that.", BODY))
 
-    story.append(p("7.4 How the two sources are combined matters more than "
-                   "whether they are combined", H2))
+    story.append(p("7.5 The uncorrected zero-point offset is now the limiting factor",
+                   H2))
     story.append(p(
-        "The two hybrids are given identical inputs and differ only in the merging "
-        "rule, yet they behave quite differently on thin data. The <i>split</i> "
-        "rule hands every direction the data can see over to the data outright. On "
-        "three observables that is too generous: some of those directions are seen "
-        "only barely, and letting the data own them lets the same hydrogen-atom "
-        "wandering through that spoils the experiment-only fit. The <i>joint</i> "
-        "rule keeps theory's opinion in play everywhere, weighted by the distance "
-        "over which theory is trusted, and that is what stops the drift.", BODY))
-    story.append(p(
-        "On full data the ordering flips: there the prior is the thing that "
-        "over-constrains, and the split rule is better. The reversal is clean "
-        "&mdash; joint beats split in all three molecules on thin data, split beats "
-        "joint in all three on full data &mdash; and the same reversal was found "
-        "independently on fluorobenzene earlier in this project, so it is not a "
-        "quirk of one system. The practical rule is simple: use the joint objective "
-        "when measurements are scarcer than parameters, the split objective when "
-        "they are not.", BODY))
-    story.append(p(
-        "Angles are the one place the ordering is not uniform. In vinyl fluoride on "
-        "full data the joint hybrid is far better on angles than anything else "
-        "(0.43&deg; against about 2&deg; for the two data-led fits), because two of "
-        "the angles around the double bond get distorted by the data-led fits and "
-        "the prior holds them in place. In the other two molecules the split hybrid "
-        "wins on angles as well. Angles are the weaker part of this comparison "
-        "throughout, and worth treating with more caution than the bond lengths.",
-        BODY))
+        "The results are no longer mainly limited by how the two information "
+        "sources are merged. They are limited by fitting ground-state "
+        "(r<sub>0</sub>) constants with no vibration-rotation correction while "
+        "scoring against a substitution (r<sub>s</sub>) structure. That mismatch "
+        "shows up as a one-signed bias of roughly half a percent in every measured "
+        "B and C, and it is what the data-led fits spend their freedom chasing. It "
+        "is also the one limitation here with a concrete fix: the correction is "
+        "computable from a quantum force field, and this repository already "
+        "implements the machinery. Doing so is the clear next step, and would "
+        "change these numbers more than any change of objective.", BODY))
 
-    story.append(p("7.5 Does the hybrid beat theory?", H2))
+    story.append(p("7.6 Does the hybrid beat theory?", H2))
     story.append(p(
-        "The objective has to be chosen without knowing the answer, or the "
-        "comparison is worthless. It can be: the rule in section 7.4 needs only "
-        "the number of measurements and the number of parameters, both of which "
-        "are known before any fitting happens. The table below applies that rule "
-        "mechanically &mdash; joint below the parameter count, split at or above "
-        "it &mdash; and compares the result with theory.", BODY))
+        "Since no rule reliably picks the objective in advance, the fair thing to "
+        "report is the better of the two, while being explicit that the choice is "
+        "made <i>after</i> seeing the answer and so overstates what could be "
+        "achieved in practice. On a real problem both would be run &mdash; they "
+        "cost seconds &mdash; but with no ground truth there would be nothing to "
+        "choose between them.", BODY))
 
-    rows = [["Molecule", "Data level", "Rule picks", "theory", "hybrid", "change"]]
+    rows = [["Molecule", "Data level", "theory", "best hybrid", "which", "change"]]
     bold, wins, cf_wins = [], 0, 0
+    n = sum(len(m["levels"]) for m in data)
     for m in data:
         for label, lv in m["levels"].items():
-            pick = recommended(m, lv)
-            th, hy = m["theory"]["rms_bond_ma"], lv["legs"][pick]["rms_bond_ma"]
-            tcf = abs(m["theory"]["cf_err_ma"])
-            hcf = abs(lv["legs"][pick]["cf_err_ma"])
+            th = m["theory"]["rms_bond_ma"]
+            pick = best_hybrid(lv)
+            hy = lv["legs"][pick]["rms_bond_ma"]
+            cf_pick = best_hybrid(lv, "cf_err_ma", absolute=True)
             wins += hy < th
-            cf_wins += hcf < tcf
-            rows.append([m["molecule"], label, SHORT[pick].split()[1].strip("()"),
-                         f"{th:.1f}", f"{hy:.1f}", f"{hy - th:+.1f}"])
+            cf_wins += abs(lv["legs"][cf_pick]["cf_err_ma"]) < abs(m["theory"]["cf_err_ma"])
+            rows.append([m["molecule"], label, f"{th:.1f}", f"{hy:.1f}",
+                         SHORT[pick].split()[1].strip("()"), f"{hy - th:+.1f}"])
             if hy < th:
                 bold.append((len(rows) - 1, 5))
     story.append(table(rows, [34 * mm, 26 * mm, 22 * mm, 24 * mm, 24 * mm, 24 * mm],
-                       align_left=(0, 1, 2), bold_cells=bold))
-    n = sum(len(m["levels"]) for m in data)
+                       align_left=(0, 1, 4), bold_cells=bold))
     story.append(p(
-        f"RMS bond error in m&Aring;. The hybrid chosen by the counting rule beats "
-        f"theory in {wins} of the {n} cases, and is closer on the C&ndash;F bond "
-        f"specifically in {cf_wins} of {n}.", CAPTION))
+        f"RMS bond error in m&Aring;. Even choosing the better objective with "
+        f"hindsight, the hybrid beats theory in {wins} of {n} cases &mdash; not all "
+        f"of them. On the C&ndash;F bond specifically it wins {cf_wins} of {n}.",
+        CAPTION))
 
-    wrong_worse = sum(lv["legs"][other(recommended(m, lv))]["rms_bond_ma"]
-                      > m["theory"]["rms_bond_ma"] for m in data
-                      for lv in m["levels"].values())
     story.append(p(
-        "So: yes, with two qualifications. The margin is thin where data is scarce "
-        "&mdash; under a milli-&Aring;ngstr&ouml;m in two of the three molecules, "
-        "because three numbers leave little to add &mdash; and becomes large, around "
-        "12 m&Aring;, only on full data. And the hybrid configured the other way is "
-        f"<i>worse</i> than plain theory in {wrong_worse} of the {n} cases, so the "
-        "objective is not a detail to leave at its default. The gain that is both "
-        "large and consistent is the C&ndash;F bond, where a systematic error in the "
-        "theory is exactly what data removes well.", BODY))
+        "So the answer is a qualified no, and that is a change from what the same "
+        "six cases showed on derived data. Bond accuracy overall: the hybrid is "
+        f"better in {wins} of {n}, and vinyl fluoride on parent data is a case where "
+        "plain theory beats both hybrids and the experiment-only fit alike. The "
+        "C&ndash;F bond is the exception that holds up &mdash; there some "
+        "combination of data and theory is closer than theory alone every time, "
+        "because theory's error there is a systematic bias and any real information "
+        "about fluorine's position helps. But the C&ndash;F gain comes from the "
+        "<i>split</i> objective and from the data-only fit; the joint prior stays "
+        "within a few m&Aring; of theory on that bond, which is another way of "
+        "saying it barely moves.", BODY))
+    story.append(p(
+        "The honest summary is that on real measured constants, with no "
+        "vibration-rotation correction applied, combining the two sources is not "
+        "dependably better than using theory alone. That is a weaker claim than the "
+        "derived-constant version of this experiment supported, and the difference "
+        "between the two is the best argument in this report for insisting on "
+        "measured data.", BODY))
 
 
 def section_limits(story):
     story.append(p("8. Limitations", H1))
     items = [
-        ("The substituted-species constants are derived, not measured.",
-         "Described in section 4. It makes the full-data level cleaner than reality "
-         "and flatters the two data-using methods there. The parent-only level uses "
-         "only published measured numbers and is unaffected."),
+        ("No vibration-rotation correction is applied.",
+         "The measured constants are ground-state (r<sub>0</sub>) values and are "
+         "fitted as they stand, so the fit is pulled toward an r<sub>0</sub> "
+         "structure while being scored against an r<sub>s</sub> reference. The "
+         "residuals show this plainly: B and C sit 0.3&ndash;0.7% off in the same "
+         "direction in all three molecules, which is a real physical offset rather "
+         "than scatter. It penalises the two data-using methods and leaves theory "
+         "untouched. This repository implements the machinery to compute those "
+         "corrections from a quantum force field; applying it is the obvious next "
+         "step and would change these numbers."),
+        ("Structure and constants come from different studies.",
+         "For vinyl fluoride the reference structure is a 1989 determination while "
+         "the constants are the 1968 compilation of earlier work. They agree to "
+         "1.37%, inside the r<sub>s</sub>-versus-r<sub>0</sub> range, but they are "
+         "not one self-consistent experiment."),
+        ("Some measured species had to be excluded.",
+         "Fluoroethane's seven multiply-deuterated species are omitted because the "
+         "compilation's own configuration labels are ambiguous &mdash; it records "
+         "that several configurations belong to the same isotopic species yet lists "
+         "different constants for them &mdash; so which hydrogen each deuterium "
+         "occupies cannot be established from the table. Including them on a guess "
+         "would have been worse than leaving them out."),
         ("Hartree&ndash;Fock with a small basis is a weak level of theory.",
          "A better method would shrink theory's C&ndash;F bias and narrow the gap. "
          "That would change the size of the effect, not its direction; the point "
          "here is the comparison between ways of using a fixed quantum surface, not "
          "the absolute accuracy of any of them."),
-        ("Comparing across structure definitions.",
-         "The published structures come from isotopic substitution; the quantum "
-         "calculation produces the structure at the bottom of the energy well. "
-         "These differ by a few m&Aring; through zero-point vibration, so part of "
-         "every theory error quoted here is that definitional gap rather than a "
-         "failure of the calculation."),
+        ("Three different definitions of 'the structure' are in play.",
+         "The reference comes from isotopic substitution (r<sub>s</sub>), the data "
+         "are ground-state averages (r<sub>0</sub>), and the quantum calculation "
+         "produces the structure at the bottom of the energy well (r<sub>e</sub>). "
+         "These differ from one another by a few m&Aring;, so part of every error "
+         "quoted here &mdash; for every method &mdash; is a definitional gap rather "
+         "than a failure of the method."),
         ("Three molecules is a small sample.",
          "The C&ndash;F bias is consistent across all three, and the "
          "objective-choice reversal reproduces a fourth system (fluorobenzene), but "

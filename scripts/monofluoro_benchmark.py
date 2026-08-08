@@ -69,29 +69,24 @@ OBJECTIVES = (
 )
 
 
-def zero_point_scale(mol: ReferenceMolecule) -> np.ndarray:
-    """Observed B0 over the rigid constants of the published geometry.
+def build_isotopologues(mol: ReferenceMolecule, limit=None) -> list[dict]:
+    """Measured constants only, with the components that were actually observed.
 
-    Applied to each isotopologue so the derived constants carry the same
-    r_s/r_0 offset the real parent shows. Without it the data would be exactly
-    consistent with the reference structure and any fit would recover it.
+    Nothing is synthesised: a constant the original study did not determine is
+    absent rather than filled in, and the uncertainties come from the reference
+    module's model (dominated by the r_s-versus-r_0 gap, not by measurement
+    precision). alpha_constants are zero because no vibration-rotation
+    correction is applied -- that offset is carried by sigma instead.
     """
-    return mol.b0_mhz / rotational_constants_mhz(mol.geometry, mol.masses)
-
-
-def build_isotopologues(mol: ReferenceMolecule, limit=None,
-                        sigma=(2.0, 1.0, 1.0)) -> list[dict]:
-    scale = zero_point_scale(mol)
     out = []
-    for label, masses in mol.isotopologue_masses()[:limit]:
-        abc = rotational_constants_mhz(mol.geometry, masses) * scale
+    for sp in mol.species[:limit]:
         out.append({
-            "name": label,
-            "masses": masses.tolist(),
-            "obs_constants": abc.tolist(),
-            "sigma_constants": list(sigma),
-            "alpha_constants": [0.0, 0.0, 0.0],
-            "component_indices": [0, 1, 2],
+            "name": sp.label,
+            "masses": sp.masses(mol.masses).tolist(),
+            "obs_constants": sp.observed(),
+            "sigma_constants": sp.sigmas(),
+            "alpha_constants": [0.0] * len(sp.observed()),
+            "component_indices": list(sp.component_indices),
         })
     return out
 
@@ -134,8 +129,34 @@ def errors(mol, coords) -> dict:
 
 
 def consistency(mol) -> float:
-    rigid = rotational_constants_mhz(mol.geometry, mol.masses)
-    return float(np.max(np.abs(rigid / mol.b0_mhz - 1)) * 100)
+    """Worst percentage gap between the published geometry and any measured constant."""
+    worst = 0.0
+    for sp in mol.species:
+        calc = rotational_constants_mhz(mol.geometry, sp.masses(mol.masses))
+        for k, v in enumerate(sp.abc_mhz):
+            if v is not None:
+                worst = max(worst, abs(calc[k] / v - 1) * 100)
+    return float(worst)
+
+
+def effective_rank(mol, isos, h=1e-5) -> int:
+    """Independent constraints in a set of isotopologues, not the raw count."""
+    x0 = np.asarray(mol.geometry, dtype=float).ravel()
+    rows = []
+    for iso in isos:
+        masses = np.asarray(iso["masses"], dtype=float)
+        keep = iso["component_indices"]
+        block = np.zeros((len(keep), x0.size))
+        for k in range(x0.size):
+            xp, xm = x0.copy(), x0.copy()
+            xp[k] += h
+            xm[k] -= h
+            d = (rotational_constants_mhz(xp.reshape(-1, 3), masses)
+                 - rotational_constants_mhz(xm.reshape(-1, 3), masses)) / (2 * h)
+            block[:, k] = d[keep]
+        rows.append(block / np.asarray(iso["sigma_constants"])[:, None])
+    s = np.linalg.svd(np.vstack(rows), compute_uv=False)
+    return int((s > 1e-5 * s.max()).sum())
 
 
 def defect(abc) -> float:
@@ -157,21 +178,24 @@ def _row(label, e, seconds=None):
 
 def benchmark(mol: ReferenceMolecule) -> dict:
     start = start_geometry(mol)
-    n_species = len(mol.isotopologue_masses())
+    n_species = len(mol.species)
 
     print(f"\n{'=' * 82}")
     print(f"  {mol.name} ({mol.formula}) — {mol.n_atoms} atoms, "
           f"{mol.internal_dof} internal DOF")
-    print(f"  {mol.source}")
-    print(f"  Published B0 (MHz): {np.round(mol.b0_mhz, 1)}   "
+    print(f"  structure: {mol.structure_source}")
+    print(f"  constants: {mol.constants_source}")
+    print(f"  Measured parent B0 (MHz): {np.round(mol.b0_mhz, 1)}   "
           f"inertial defect {defect(mol.b0_mhz):+.3f} amu A^2")
-    print(f"  Geometry reproduces its own constants to {consistency(mol):.2f}%")
-    print(f"  {n_species} isotopologues available -> up to {3 * n_species} observables")
+    print(f"  Geometry reproduces every measured constant to {consistency(mol):.2f}%")
+    print(f"  {n_species} measured species -> {mol.n_observables} measured constants")
     print(f"{'=' * 82}")
 
     results = {"molecule": mol.name, "formula": mol.formula, "key": mol.key,
                "n_atoms": mol.n_atoms, "internal_dof": mol.internal_dof,
-               "n_isotopologues": n_species, "source": mol.source,
+               "n_isotopologues": n_species,
+               "structure_source": mol.structure_source,
+               "constants_source": mol.constants_source,
                "b0_mhz": mol.b0_mhz.tolist(),
                "inertial_defect": defect(mol.b0_mhz),
                "consistency_pct": consistency(mol),
@@ -195,7 +219,8 @@ def benchmark(mol: ReferenceMolecule) -> dict:
 
     for level_label, limit in DATA_LEVELS:
         isos = build_isotopologues(mol, limit)
-        n_obs = 3 * len(isos)
+        n_obs = sum(len(i["component_indices"]) for i in isos)
+        rank = effective_rank(mol, isos)
         geoms, times = {"theory": theory_geom}, {"theory": theory_time}
 
         t0 = time.time()
@@ -211,12 +236,14 @@ def benchmark(mol: ReferenceMolecule) -> dict:
         legs = ["theory", "experiment"] + [label for label, _ in OBJECTIVES]
 
         print("  " + "-" * 82)
-        print(f"  {level_label}: {len(isos)} isotopologue(s), {n_obs} observables "
-              f"vs {mol.internal_dof} DOF")
+        print(f"  {level_label}: {len(isos)} species, {n_obs} measured constants "
+              f"-> rank {rank} vs {mol.internal_dof} DOF "
+              f"({mol.internal_dof - rank} direction(s) undetermined)")
         for leg in legs[1:]:
             print(_row(f"  {leg}", errors(mol, geoms[leg]), times[leg]))
 
-        level = {"n_isotopologues": len(isos), "n_observables": n_obs, "legs": {}}
+        level = {"n_isotopologues": len(isos), "n_observables": n_obs,
+                 "rank": rank, "deficit": mol.internal_dof - rank, "legs": {}}
         for leg in legs:
             level["legs"][leg] = {**errors(mol, geoms[leg]), "seconds": times[leg]}
         results["levels"][level_label] = level
