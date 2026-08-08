@@ -107,6 +107,26 @@ internal_priors:
   mode: soft
   freeze_sigma_floor: 1.0e-6
 
+# How the spectral data and the quantum surface share authority.
+#
+# The default "split" objective partitions hard: whatever survives the SVD rank
+# cutoff is handed entirely to the data. But that cutoff is purely relative
+# (sv_threshold x s_max), so a direction the data pins down only loosely is
+# still treated as fully constrained and theory gets no say in it. For water's
+# bond angle that is exactly what happens, and the angle comes out worse than
+# either theory or experiment alone would give.
+#
+# "joint" instead solves (J^T J + alpha_q H + lambda I) dp = J^T r - alpha_q g,
+# leaving every direction contested and weighted by how well each source knows
+# it. quantum_prior_sigma_ang calibrates alpha_q: it is the displacement over
+# which you trust the quantum surface, i.e. roughly the geometry error of the
+# method. Scan it -- see scripts/tune_quantum_prior.py. On the water test case
+# 0.005 A beat theory alone, experiment alone and the split default on both the
+# bond length and the angle simultaneously.
+optimizer:
+  objective_mode: joint
+  quantum_prior_sigma_ang: 0.005
+
 preset: BALANCED
 rng_seed: 17
 

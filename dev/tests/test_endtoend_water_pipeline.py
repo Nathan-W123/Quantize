@@ -124,6 +124,36 @@ def test_hybrid_beats_both_theory_and_experiment_alone():
     assert r_expt > R_E
 
 
+def test_calibrated_quantum_prior_improves_the_weakly_determined_angle():
+    """The split objective gives the data unconditional authority over every
+    direction above a *relative* rank cutoff, including ones it barely resolves.
+    Water's bond angle is such a direction, and it comes out worse than either
+    theory or experiment alone. The joint objective with a calibrated prior
+    leaves the direction contested and recovers it."""
+    import scripts.tune_quantum_prior as tune
+
+    r_split, th_split = tune.run()
+    r_joint, th_joint = tune.run(objective_mode="joint", quantum_prior_sigma_ang=0.005)
+
+    assert abs(th_joint - THETA_E) < abs(th_split - THETA_E)
+    assert abs(r_joint - R_E) < abs(r_split - R_E)
+
+    # And it beats theory alone on both, which the split default does not manage
+    # for the angle.
+    assert abs(r_joint - R_E) * 1000 < tune.THEORY_DR
+    assert abs(th_joint - THETA_E) < abs(tune.THEORY_DTHETA)
+
+
+def test_absolute_singular_value_floor_returns_directions_to_theory():
+    """sv_min_abs is the blunt alternative: it drops a weakly resolved direction
+    outright, which fixes the angle at the bond length's expense."""
+    import scripts.tune_quantum_prior as tune
+
+    _, th_split = tune.run()
+    r_floor, th_floor = tune.run(sv_min_abs=1e5)
+    assert abs(th_floor - THETA_E) < 0.25 * abs(th_split - THETA_E)
+
+
 def test_run_reports_low_confidence_for_a_single_isotopologue(tmp_path):
     """One isotopologue cannot pin water's structure, and the run should say so
     rather than presenting the numbers as settled."""
