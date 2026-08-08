@@ -392,20 +392,45 @@ class TestElectronicCorrection:
         )
         assert targets_elec[0].value_mhz < targets_no_elec[0].value_mhz
 
-    def test_sigma_elec_propagated(self):
-        """sigma_elec_fraction contributes to sigma_eff in quadrature."""
+    def test_sigma_elec_propagated_with_g_tensor(self):
+        """With a g-tensor the formula is exact, so the caller's fraction stands."""
         isos = _water_isotopologues()
         elems = ["O", "H", "H"]
         frac = 0.15
         targets = resolve_corrections(
             isos, correction_elec=True, elems=elems,
             sigma_elec_fraction=frac, sigma_vib_fraction=0.0,
+            g_tensor={"A": 0.645, "B": 0.717, "C": 0.657},
         )
         for t in targets:
             elec_recs = [r for r in t.correction_records if r.method == "elec"]
             assert elec_recs[0].sigma_mhz == pytest.approx(
                 abs(elec_recs[0].delta_mhz) * frac, rel=1e-10
             )
+            assert "electronic_no_g_tensor" not in elec_recs[0].quality_flags
+
+    def test_sigma_elec_floored_without_g_tensor(self):
+        """The 1/M_total fallback is order-of-magnitude, so sigma covers its own size."""
+        isos = _water_isotopologues()
+        targets = resolve_corrections(
+            isos, correction_elec=True, elems=["O", "H", "H"],
+            sigma_elec_fraction=0.15, sigma_vib_fraction=0.0,
+        )
+        for t in targets:
+            rec = [r for r in t.correction_records if r.method == "elec"][0]
+            assert rec.sigma_mhz == pytest.approx(abs(rec.delta_mhz), rel=1e-10)
+            assert "electronic_no_g_tensor" in rec.quality_flags
+
+    def test_g_tensor_uses_standard_formula(self):
+        """delta = -(m_e/m_p) g B, which is far larger than the 1/M_total fallback
+        and flips sign with negative g (as for OCS)."""
+        from backend.spectral.correction_models import M_E_OVER_M_P, electronic_delta_b
+
+        b0, mass = 835840.29, 18.010565
+        with_g = electronic_delta_b(b0, mass, g_value=0.645)
+        assert with_g == pytest.approx(-M_E_OVER_M_P * 0.645 * b0, rel=1e-12)
+        assert abs(with_g) > 5.0 * abs(electronic_delta_b(b0, mass))
+        assert electronic_delta_b(b0, mass, g_value=-0.028) > 0.0
 
     def test_isotopologue_mass_specificity(self):
         """H2-16O and H2-18O get different electronic corrections (different masses)."""

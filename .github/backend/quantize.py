@@ -314,6 +314,7 @@ class MolecularOptimizer:
         correction_elec=False,
         correction_sigma_elec_fraction=0.1,
         correction_bob_params=None,
+        correction_g_tensor=None,
         harmonic_from_hessian=False,
         harmonic_sigma_fraction=0.02,
         anharmonic_from_hessian=False,
@@ -368,13 +369,14 @@ class MolecularOptimizer:
         self._correction_elec = bool(correction_elec)
         self._correction_sigma_elec_fraction = float(correction_sigma_elec_fraction)
         self._correction_bob_params = correction_bob_params or None
+        self._correction_g_tensor = correction_g_tensor or None
         self._raw_isotopologues = list(isotopologues)   # preserved for harmonic updates
         self._corrected_targets = None
         _ctbl = parse_correction_table(correction_table)
         _apply_corrections = bool(_ctbl) or correction_mode != "hybrid_auto"
         if _apply_corrections or (correction_table is not None):
             _ctbl = parse_correction_table(correction_table)
-        if _ctbl or correction_elec or correction_bob_params:
+        if _ctbl or correction_elec or correction_bob_params or correction_g_tensor:
             _corrected_targets = resolve_corrections(
                 isotopologues,
                 correction_table=_ctbl,
@@ -384,6 +386,7 @@ class MolecularOptimizer:
                 correction_elec=bool(correction_elec),
                 sigma_elec_fraction=float(correction_sigma_elec_fraction),
                 correction_bob_params=correction_bob_params or None,
+                g_tensor=correction_g_tensor or None,
             )
             _qc_warnings = validate_correction_quality(_corrected_targets)
             print("\nRovibrational corrections applied:")
@@ -942,6 +945,7 @@ class MolecularOptimizer:
             correction_elec=self._correction_elec,
             sigma_elec_fraction=self._correction_sigma_elec_fraction,
             correction_bob_params=self._correction_bob_params,
+            g_tensor=self._correction_g_tensor,
         )
         _qc_warnings = validate_correction_quality(corrected_targets)
         print("\n  Rovibrational corrections (harmonic from Hessian):")

@@ -1934,6 +1934,12 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
     )
     harmonic_from_hessian = bool(_rc_block.get("harmonic_from_hessian", False))
     harmonic_sigma_fraction = float(_rc_block.get("harmonic_sigma_fraction", 0.02))
+    _g_raw = _rc_block.get("g_tensor") or None
+    correction_g_tensor = (
+        {str(k).strip().upper(): float(v) for k, v in _g_raw.items()}
+        if isinstance(_g_raw, dict)
+        else None
+    )
     anharmonic_from_hessian = bool(_rc_block.get("anharmonic_from_hessian", False))
     anharmonic_fd_delta_ang = float(_rc_block.get("anharmonic_fd_delta_ang", 0.01))
     harmonic_cd_from_hessian = bool(_rc_block.get("harmonic_cd_from_hessian", False))
@@ -2046,6 +2052,7 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
         correction_elec=correction_elec,
         correction_sigma_elec_fraction=correction_sigma_elec_fraction,
         correction_bob_params=correction_bob_params,
+        correction_g_tensor=correction_g_tensor,
         harmonic_from_hessian=harmonic_from_hessian,
         harmonic_sigma_fraction=harmonic_sigma_fraction,
         anharmonic_from_hessian=anharmonic_from_hessian,

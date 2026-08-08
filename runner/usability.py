@@ -353,6 +353,26 @@ def _validate_rovibrational_corrections_block(cfg: dict[str, Any]) -> None:
             "'rovibrational_corrections.bob_params' must be a mapping of element → component → u-value."
         )
 
+    g_tensor = rc.get("g_tensor")
+    if g_tensor is not None:
+        if not isinstance(g_tensor, dict):
+            raise ConfigError(
+                "'rovibrational_corrections.g_tensor' must be a mapping of "
+                "component (A/B/C) → g-value."
+            )
+        for comp, val in g_tensor.items():
+            comp_u = str(comp).strip().upper()
+            if comp_u not in {"A", "B", "C"}:
+                raise ConfigError(
+                    f"'rovibrational_corrections.g_tensor' key '{comp}' must be A, B, or C."
+                )
+            try:
+                float(val)
+            except (TypeError, ValueError) as exc:
+                raise ConfigError(
+                    f"'rovibrational_corrections.g_tensor.{comp_u}' must be numeric."
+                ) from exc
+
     for flag_key in ("harmonic_from_hessian", "anharmonic_from_hessian",
                      "harmonic_cd_from_hessian", "fit_cd_constants"):
         v = rc.get(flag_key)
