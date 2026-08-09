@@ -587,3 +587,86 @@ WATER = ReferenceMolecule(
 
 #: Water on its own. Not monofluorinated -- included as a stress test.
 WATER_SET = [WATER]
+
+
+def _methyl(base, axis, r, ang_deg, phi0_deg):
+    """Three hydrogens on `base`, splayed about `axis` at `ang_deg`."""
+    a = np.asarray(axis, dtype=float)
+    a = a / np.linalg.norm(a)
+    p1 = np.array([0.0, 0.0, 1.0])
+    p1 = p1 - (p1 @ a) * a
+    p1 /= np.linalg.norm(p1)
+    p2 = np.cross(a, p1)
+    t = np.radians(ang_deg)
+    return [base + r * (np.cos(t) * a + np.sin(t) *
+                        (np.cos(np.radians(phi0_deg + 120 * k)) * p1 +
+                         np.sin(np.radians(phi0_deg + 120 * k)) * p2))
+            for k in range(3)]
+
+
+def _acetone_geometry(rCO=1.214, rCC=1.520, rCH=1.103,
+                      aCCO=122.0, aHCC=110.5, phi0=30.0):
+    C1 = np.zeros(3)
+    O = np.array([0.0, rCO, 0.0])
+    t = np.radians(aCCO)
+    C2 = rCC * np.array([np.sin(t), np.cos(t), 0.0])
+    C3 = rCC * np.array([-np.sin(t), np.cos(t), 0.0])
+    return np.array([C1, O, C2, C3]
+                    + _methyl(C2, C1 - C2, rCH, aHCC, phi0)
+                    + _methyl(C3, C1 - C3, rCH, aHCC, -phi0))
+
+
+# ── Acetone, (CH3)2CO ────────────────────────────────────────────────────────
+# Structure: NIST CCCBDB, from Kuchitsu's compilation of free polyatomic
+# structures (1998).
+# Constants: NBS Monograph 70 Vol. III p.203, entry 750 (ref 271).
+#
+# Two measured species -- all-H and all-D -- give six constants against 24
+# internal degrees of freedom, so this is the most undersaturated molecule in
+# the whole set. Only two of ten atoms are ever substituted, and both methyls
+# move together, so the carbonyl carbon and oxygen are never located directly.
+#
+# Two caveats worth stating. The reference is very likely a thermal-average
+# (r_g) structure rather than r_s: its C-H of 1.103 A is long, and every
+# residual against the measured constants comes out negative, meaning the
+# reference is larger than the ground state -- the opposite sign to every r_s
+# structure above. And acetone has two coupled methyl rotors, so the measured
+# constants are torsionally averaged effective values; the compilation lists
+# separate constants for the A and B torsional states, which differ from these
+# by around 20 MHz in A.
+#
+# The methyl torsional phase turns out not to matter: rotating both methyls
+# through 0, 30, 60 and 90 degrees changes the worst deviation by less than
+# 0.01%, because the three hydrogens are symmetric about the rotor axis.
+ACETONE = ReferenceMolecule(
+    key="acetone",
+    name="Acetone",
+    formula="C3H6O",
+    elems=["C", "O", "C", "C"] + ["H"] * 6,
+    geometry=_acetone_geometry(),
+    masses=np.array([M_C12, M_O16, M_C12, M_C12] + [M_H] * 6),
+    species=[
+        Isotopologue("751 (CH3)2CO", {}, (10165.20, 8515.27, 4910.15)),
+        Isotopologue("752 (CD3)2CO", {i: M_D for i in range(4, 10)},
+                     (8469.40, 6419.60, 4011.28)),
+    ],
+    structure_source="NIST CCCBDB, Kuchitsu compilation (1998)",
+    constants_source="NBS Monograph 70 Vol. III p.203 (entry 750)",
+    bonds={
+        "C1=O":  [(0, 1)],
+        "C1-C2": [(0, 2), (0, 3)],
+        "C2-H":  [(2, 4), (2, 5), (2, 6), (3, 7), (3, 8), (3, 9)],
+    },
+    angles={
+        "C2-C1-C3": [(2, 0, 3)],
+        "O=C1-C2":  [(1, 0, 2), (1, 0, 3)],
+        "C1-C2-H":  [(0, 2, 4), (0, 2, 5), (0, 2, 6),
+                     (0, 3, 7), (0, 3, 8), (0, 3, 9)],
+        "H-C2-H":   [(4, 2, 5), (4, 2, 6), (5, 2, 6),
+                     (7, 3, 8), (7, 3, 9), (8, 3, 9)],
+    },
+)
+
+#: Acetone on its own. Not monofluorinated -- a large, heavily undersaturated
+#: test with two coupled internal rotors.
+ACETONE_SET = [ACETONE]
