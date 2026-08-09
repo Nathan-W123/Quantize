@@ -73,7 +73,8 @@ for _tok in sys.argv[1:]:
 SPLIT_CUTOFFS = (1e-3, 1e-2, 3e-2, 1e-1, 3e-1)
 
 _TAG = f"{METHOD}_{BASIS}".replace("/", "-").replace("(", "").replace(")", "")
-OUT = _ROOT / "output" / f"monofluoro_tune_{_TAG}.json"
+_SUFFIX = "_warm" if "warmstart" in sys.argv else ""
+OUT = _ROOT / "output" / f"monofluoro_tune_{_TAG}{_SUFFIX}.json"
 
 
 def run(mol, isos, start, **kwargs):
@@ -107,16 +108,25 @@ def main() -> None:
     print("  Theory alone and the hybrid's quantum half use the same level, so"
           " the\n  comparison isolates whether combining the sources helps.\n")
 
-    theory = {}
-    starts = {}
+    # Warm start: begin the hybrid at theory's own optimised geometry rather than
+    # at the deliberately-wrong guess. The displaced start is right for a fair
+    # three-way comparison, but wrong for production: from theory's answer the
+    # data can only move the structure, so "no worse than theory" stops being
+    # something to tune for and becomes a property of where the fit begins.
+    warm = "warmstart" in sys.argv
+    theory, starts, theory_geom = {}, {}, {}
     for mol in MOLECULES:
         starts[mol.key] = start_geometry(mol)
         b = get_backend("pyscf_hf")(elems=list(mol.elems), method=METHOD,
                                     basis=BASIS)
         g = b.optimise(starts[mol.key])
+        theory_geom[mol.key] = g
         theory[mol.key] = errors(mol, g)
         print(f"  theory {mol.name:<18} RMS bond {theory[mol.key]['rms_bond_ma']:5.1f} mA"
               f"   C-F {theory[mol.key]['cf_err_ma']:+6.1f} mA")
+    if warm:
+        print("\n  Hybrid legs start from the theory geometry (warmstart).")
+        starts = dict(theory_geom)
 
     all_cases = list(cases())
     results = {"prior_sigmas": list(PRIOR_SIGMAS), "theory": theory, "scan": {}}
