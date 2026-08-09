@@ -19,8 +19,16 @@ constants and checked for mutual consistency: the geometry must reproduce every
 measured constant to roughly 1%, the size of the r_s-versus-r_0 difference.
 `scripts/check_monofluoro_references.py` runs that check on every species.
 
-Formyl fluoride (HCOF) was considered and rejected on that test: its CCCBDB
-geometry and constants disagree by 6.2%, far beyond any zero-point effect.
+Formyl fluoride was initially rejected on that test, its CCCBDB geometry and
+constants disagreeing by 6.2%. Against the measured constants transcribed here
+the same structure agrees to 0.54%, so the fault lay with the CCCBDB constants
+rather than the geometry, and it appears in the second set below.
+
+Three sets are defined. MOLECULES (vinyl fluoride, acetyl fluoride,
+fluoroethane) is what the hybrid's prior width was calibrated on. HELDOUT
+(fluorobenzene) and MOLECULES_SET2 (formyl fluoride, fluoroacetylene,
+chlorofluoromethane) took no part in that choice and exist to test whether the
+calibration generalises.
 
 Two transcription notes
 -----------------------
@@ -48,6 +56,7 @@ M_H, M_D = 1.00782503207, 2.01410177812
 M_C12, M_C13 = 12.0, 13.00335483507
 M_O16, M_O18 = 15.9949146196, 17.9991610
 M_F = 18.99840322
+M_CL35, M_CL37 = 34.96885268, 36.96590259
 
 #: Relative uncertainty assigned to each of A, B, C.
 #:
@@ -402,3 +411,129 @@ MOLECULES = [VINYL_FLUORIDE, ACETYL_FLUORIDE, FLUOROETHANE]
 
 #: Molecules held out of that calibration, for validation only.
 HELDOUT = [FLUOROBENZENE]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Second set: three further monofluorinated molecules, chosen after the first
+# three to test the calibrated hybrid on data it played no part in tuning.
+#
+# All constants are measured values from NBS Monograph 70. The set was picked
+# to span the regimes that matter rather than to be uniform:
+#
+#   formyl fluoride     over-determined  (12 constants, 6 parameters)
+#   fluoroacetylene     data nearly exact (6 B values, 3 bond lengths)
+#   chlorofluoromethane undersaturated   (6 constants, 9 parameters)
+#
+# Every structure below reproduces every one of its measured constants to
+# within the r_s-versus-r_0 range, checked by
+# scripts/check_monofluoro_references.py.
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _fcho_geometry(rco=1.181, rcf=1.338, rch=1.095, a_ocf=122.8, a_och=127.3):
+    C = np.zeros(3)
+    O = np.array([0.0, rco, 0.0])
+    t, u = np.radians(a_ocf), np.radians(a_och)
+    F = rcf * np.array([np.sin(t), np.cos(t), 0.0])
+    H = rch * np.array([-np.sin(u), np.cos(u), 0.0])
+    return np.array([C, O, F, H])
+
+
+# ── Formyl fluoride, FCHO ────────────────────────────────────────────────────
+# Structure: Le Blanc, Laurie & Gwinn, J. Chem. Phys. 33, 598 (1960).
+# Constants: NBS Monograph 70 Vol. IV p.62, entry 270.
+# Rejected from the first set on a CCCBDB geometry/constants mismatch of 6.2%;
+# against the measured constants here the same structure agrees to 0.54%, so it
+# was the CCCBDB constants that were wrong, not the geometry.
+FORMYL_FLUORIDE = ReferenceMolecule(
+    key="formyl_fluoride",
+    name="Formyl fluoride",
+    formula="FCHO",
+    elems=["C", "O", "F", "H"],
+    geometry=_fcho_geometry(),
+    masses=np.array([M_C12, M_O16, M_F, M_H]),
+    species=[
+        Isotopologue("271 parent", {}, (91153.57, 11760.37, 10396.79)),
+        Isotopologue("272 D", {3: M_D}, (65096.59, 11761.74, 9941.71)),
+        Isotopologue("273 13C", {0: M_C13}, (88505.1, 11755.2, 10357.3), (1, 1, 1)),
+        Isotopologue("274 18O", {1: M_O18}, (89769.5, 11102.9, 9863.4), (1, 1, 1)),
+    ],
+    structure_source="Le Blanc, Laurie & Gwinn, J. Chem. Phys. 33, 598 (1960)",
+    constants_source="NBS Monograph 70 Vol. IV p.62 (entry 270)",
+    bonds={"C=O": [(0, 1)], "C-F": [(0, 2)], "C-H": [(0, 3)]},
+    angles={"O=C-F": [(1, 0, 2)], "O=C-H": [(1, 0, 3)], "F-C-H": [(2, 0, 3)]},
+)
+
+
+# ── Fluoroacetylene, HC≡CF ───────────────────────────────────────────────────
+# Structure: Tyler & Sheridan, Trans. Faraday Soc. 59, 2661 (1963).
+# Constants: NBS Monograph 70 Vol. IV p.131, entry 620 -- B only, as a linear
+# molecule has no A and B equals C.
+# The published r_s structure was derived from these same six constants, so it
+# reproduces them to 0.06%. Spectroscopy alone should therefore do very well
+# here; the question this molecule asks is whether the hybrid stays out of the
+# way when the data is already excellent.
+FLUOROACETYLENE = ReferenceMolecule(
+    key="fluoroacetylene",
+    name="Fluoroacetylene",
+    formula="HC2F",
+    elems=["H", "C", "C", "F"],
+    geometry=np.column_stack([
+        np.zeros(4), np.zeros(4), np.cumsum([0.0, 1.0553, 1.1980, 1.2790])]),
+    masses=np.array([M_H, M_C12, M_C12, M_F]),
+    species=[
+        Isotopologue("621 parent", {}, (None, 9706.22, None)),
+        Isotopologue("622 13C (CF)", {2: M_C13}, (None, 9700.71, None)),
+        Isotopologue("623 13C (CH)", {1: M_C13}, (None, 9373.95, None)),
+        Isotopologue("624 D", {0: M_D}, (None, 8736.09, None)),
+        Isotopologue("625 D + 13C (CF)", {0: M_D, 2: M_C13}, (None, 8733.94, None)),
+        Isotopologue("626 D + 13C (CH)", {0: M_D, 1: M_C13}, (None, 8486.33, None)),
+    ],
+    structure_source="Tyler & Sheridan, Trans. Faraday Soc. 59, 2661 (1963)",
+    constants_source="NBS Monograph 70 Vol. IV p.131 (entry 620)",
+    bonds={"C-H": [(0, 1)], "C#C": [(1, 2)], "C-F": [(2, 3)]},
+    # Linear: the single angle is 180 deg and carries no structural information,
+    # but errors() needs a non-empty angle set.
+    angles={"H-C#C": [(0, 1, 2)]},
+)
+
+
+def _ch2clf_geometry(rF=1.359, rCl=1.759, rH=1.087,
+                     aFCl=110.2, aClH=108.0, aFH=109.0):
+    aFCl, aClH, aFH = np.radians([aFCl, aClH, aFH])
+    C = np.zeros(3)
+    Cl = np.array([0.0, 0.0, rCl])
+    f = np.array([np.sin(aFCl), 0.0, np.cos(aFCl)])
+    uz = np.cos(aClH)
+    ux = (np.cos(aFH) - f[2] * uz) / f[0]
+    uy = np.sqrt(max(0.0, 1 - ux ** 2 - uz ** 2))
+    return np.array([C, Cl, rF * f,
+                     rH * np.array([ux, uy, uz]), rH * np.array([ux, -uy, uz])])
+
+
+# ── Chlorofluoromethane, CH2ClF ──────────────────────────────────────────────
+# Structure: Müller, J. Am. Chem. Soc. 75, 860 (1953) / Landolt-Bornstein.
+# Constants: NBS Monograph 70 Vol. IV p.77, entry 330.
+# The two species come from chlorine's own natural isotopes, so no synthesis
+# was needed -- and equally, no other substitution is available. Six constants
+# against nine parameters makes this the undersaturated case of the set.
+CHLOROFLUOROMETHANE = ReferenceMolecule(
+    key="chlorofluoromethane",
+    name="Chlorofluoromethane",
+    formula="CH2ClF",
+    elems=["C", "Cl", "F", "H", "H"],
+    geometry=_ch2clf_geometry(),
+    masses=np.array([M_C12, M_CL35, M_F, M_H, M_H]),
+    species=[
+        Isotopologue("331 Cl-35", {}, (41810.1, 5715.7, 5194.6), (1, 1, 1)),
+        Isotopologue("332 Cl-37", {1: M_CL37}, (41738.2, 5580.5, 5081.6), (1, 1, 1)),
+    ],
+    structure_source="Muller, J. Am. Chem. Soc. 75, 860 (1953)",
+    constants_source="NBS Monograph 70 Vol. IV p.77 (entry 330)",
+    bonds={"C-Cl": [(0, 1)], "C-F": [(0, 2)], "C-H": [(0, 3), (0, 4)]},
+    angles={"F-C-Cl": [(2, 0, 1)], "Cl-C-H": [(1, 0, 3), (1, 0, 4)],
+            "F-C-H": [(2, 0, 3), (2, 0, 4)], "H-C-H": [(3, 0, 4)]},
+)
+
+
+#: The second, independent set.
+MOLECULES_SET2 = [FORMYL_FLUORIDE, FLUOROACETYLENE, CHLOROFLUOROMETHANE]

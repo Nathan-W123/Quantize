@@ -29,7 +29,15 @@ for _p in (_ROOT / ".github", _ROOT):
     sys.path.insert(0, str(_p))
 
 from backend.spectral.centrifugal_distortion import rotational_constants_mhz  # noqa: E402
-from dev.monofluoro_references import MOLECULES, ReferenceMolecule  # noqa: E402
+from dev.monofluoro_references import (  # noqa: E402
+    HELDOUT,
+    MOLECULES,
+    MOLECULES_SET2,
+    ReferenceMolecule,
+)
+
+ALL_SETS = (("calibration set", MOLECULES), ("held out", HELDOUT),
+            ("second set", MOLECULES_SET2))
 
 CONSISTENCY_WARN_PCT = 2.0
 _RANK_CUTOFFS = (1e-3, 1e-5, 1e-8)
@@ -105,8 +113,10 @@ def report(mol: ReferenceMolecule) -> bool:
 
 def main() -> None:
     all_ok = True
-    for mol in MOLECULES:
-        all_ok &= report(mol)
+    for set_name, molecules in ALL_SETS:
+        print(f"\n\n########  {set_name.upper()}  ########")
+        for mol in molecules:
+            all_ok &= report(mol)
     print(f"\n{'=' * 78}")
     print("  Every constant above is a measured literature value. Deviations are")
     print("  the r_s-versus-r_0 difference, not fit error.")
