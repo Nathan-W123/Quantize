@@ -188,13 +188,31 @@ class SubspaceOptimizer:
         """
         JTJ = J.T @ J
         rhs = J.T @ residual - alpha_q * gradient
-        A = JTJ + alpha_q * hessian
-        # lambda_damp is a dimensionless relative damping here. An absolute
-        # constant cannot regularise this matrix: ‖JᵀJ‖ carries the units of the
+        prior = alpha_q * hessian
+        A = JTJ + prior
+        n = max(A.shape[0], 1)
+        # lambda_damp is a dimensionless relative damping. An absolute constant
+        # cannot regularise this matrix: ‖JᵀJ‖ carries the units of the
         # observables over the parameters and the 1/sigma² weighting, so it
         # ranges over many orders of magnitude between problems, and a fixed
         # 1e-4 is silently negligible against it.
-        scale = np.linalg.norm(A) / max(A.shape[0], 1)
+        #
+        # It must be scaled by the PRIOR block, not by ‖A‖. ‖A‖ is dominated by
+        # the data block wherever the data is informative, and using it sets the
+        # damping from the data's magnitude everywhere -- including directions
+        # the data cannot see at all. In those directions the equation reduces to
+        # (alpha_q*H + lambda*I) dp = -alpha_q*g, so a lambda carrying the data's
+        # scale swamps the prior and the step is decided by regularisation rather
+        # than by the quantum surface. With tight sigma on the observations that
+        # factor reaches ~500, which silently disables the theory half of the
+        # hybrid exactly where it is the only source of information.
+        #
+        # Scaling by the prior is also sufficient to regularise: the six rigid
+        # modes are null in JᵀJ and in H alike, and both Jᵀr and g are orthogonal
+        # to them, so any positive lambda resolves that singularity.
+        scale = np.linalg.norm(prior) / n
+        if not np.isfinite(scale) or scale <= 0.0:
+            scale = np.linalg.norm(A) / n
         if not np.isfinite(scale) or scale <= 0.0:
             scale = 1.0
         A = A + self.lambda_damp * scale * np.eye(A.shape[0])
