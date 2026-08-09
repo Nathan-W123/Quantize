@@ -52,6 +52,18 @@ DISPLACEMENT_ANG = 0.03
 SEED = 11
 _K = 505379.0084353526
 
+#: The level of theory applies to BOTH the theory-alone leg and the hybrid's
+#: quantum half. Changing it for one and not the other would make the comparison
+#: meaningless, so there is a single setting for both.
+#:
+#:     python scripts/monofluoro_benchmark.py method=b3lyp "basis=6-31g(d)" \
+#:         sigma=0.007 objectives=joint
+for _tok in sys.argv[1:]:
+    if _tok.startswith("method="):
+        METHOD = _tok.split("=", 1)[1]
+    elif _tok.startswith("basis="):
+        BASIS = _tok.split("=", 1)[1]
+
 #: label -> how many isotopologues the fit is allowed to see. None means all.
 DATA_LEVELS = (("parent only", 1), ("all species", None))
 
@@ -78,10 +90,22 @@ DATA_LEVELS = (("parent only", 1), ("all species", None))
 #: estimates it instead from the spread between two levels of theory, which needs
 #: no experimental structure at all.
 QUANTUM_PRIOR_SIGMA_ANG = 0.030
-OBJECTIVES = (
+for _tok in sys.argv[1:]:
+    if _tok.startswith("sigma="):
+        QUANTUM_PRIOR_SIGMA_ANG = float(_tok.split("=", 1)[1])
+
+_ALL_OBJECTIVES = (
     ("hybrid, split", {}),
     ("hybrid, joint prior", {"objective_mode": "joint",
                              "quantum_prior_sigma_ang": QUANTUM_PRIOR_SIGMA_ANG}),
+)
+#: `objectives=joint` skips the split partition, which a scan over its
+#: singular-value cutoff showed reaches at most 3 of 6 cases better than theory.
+_WANT_OBJ = next((t.split("=", 1)[1].split(",") for t in sys.argv[1:]
+                  if t.startswith("objectives=")), None)
+OBJECTIVES = tuple(
+    (label, kw) for label, kw in _ALL_OBJECTIVES
+    if _WANT_OBJ is None or any(w in label for w in _WANT_OBJ)
 )
 
 
@@ -281,12 +305,15 @@ def benchmark(mol: ReferenceMolecule) -> dict:
 
 
 def main() -> None:
-    wanted = sys.argv[1:] or [m.key for m in MOLECULES]
-    print(f"  Level of theory: RHF/{BASIS} (PySCF), identical for every molecule.")
+    wanted = [t for t in sys.argv[1:] if "=" not in t] or [m.key for m in MOLECULES]
+    print(f"  Level of theory: {METHOD.upper()}/{BASIS} (PySCF) — the same for the")
+    print(f"  theory-alone leg and the hybrid's quantum half, for every molecule.")
+    print(f"  Quantum prior sigma: {QUANTUM_PRIOR_SIGMA_ANG} A.")
     print(f"  Start displaced from the published structure by "
           f"{DISPLACEMENT_ANG} A rms, seed {SEED}.")
     out = [benchmark(m) for m in MOLECULES if m.key in wanted]
-    path = _ROOT / "output" / "monofluoro_benchmark.json"
+    tag = f"{METHOD}_{BASIS}".replace("/", "-").replace("(", "").replace(")", "")
+    path = _ROOT / "output" / f"monofluoro_benchmark_{tag}.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(out, indent=2), encoding="utf-8")
     print(f"\n  summary written to {path}")
