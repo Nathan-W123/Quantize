@@ -49,6 +49,7 @@ from dev.monofluoro_references import (  # noqa: E402
     HELDOUT,
     MOLECULES,
     MOLECULES_SET2,
+    ACETONE_SET,
     WATER_SET,
     ReferenceMolecule,
 )
@@ -56,7 +57,7 @@ from dev.monofluoro_references import (  # noqa: E402
 #: Which molecule set to run. `set=2` is the independent second set, which
 #: took no part in calibrating the hybrid's prior width.
 _SETS = {"1": MOLECULES, "2": MOLECULES_SET2, "heldout": HELDOUT,
-         "water": WATER_SET}
+         "water": WATER_SET, "acetone": ACETONE_SET}
 MOLECULES = next((_SETS[t.split('=', 1)[1]] for t in sys.argv[1:]
                   if t.startswith('set=')), MOLECULES)
 
