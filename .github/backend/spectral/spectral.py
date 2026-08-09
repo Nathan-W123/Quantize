@@ -643,6 +643,20 @@ class SpectralEngine:
             calc = calc[np.asarray(component_indices, dtype=int)]
         return be_target - calc
 
+    def scale_sigma(self, factor: float) -> None:
+        """Multiply every observation sigma by `factor`.
+
+        Used for chi-square rescaling: when a converged fit cannot reach a
+        reduced chi-square near one, the stated uncertainties were optimistic,
+        and the honest response is to widen them rather than to keep chasing
+        residuals the model cannot represent.
+        """
+        f = float(factor)
+        if not np.isfinite(f) or f <= 0.0:
+            raise ValueError(f"sigma scale factor must be positive and finite, got {factor!r}")
+        for iso in self.isotopologues:
+            iso["sigma_constants"] = np.asarray(iso["sigma_constants"], dtype=float) * f
+
     def _robust_weight(self, scaled_residual):
         """
         Return diagonal robust reweighting for scaled residuals.

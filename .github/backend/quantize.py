@@ -272,6 +272,9 @@ class MolecularOptimizer:
         quantum_prior_sigma_ang=DEFAULT_QUANTUM_PRIOR_SIGMA_ANG,
         robust_loss="none",
         robust_param=1.0,
+        chi2_rescale=False,
+        chi2_rescale_threshold=4.0,
+        chi2_rescale_max_passes=1,
         sigma_floor_mhz=0.0,
         sigma_cap_mhz=None,
         max_spectral_weight=None,
@@ -380,6 +383,9 @@ class MolecularOptimizer:
         self._nonconvergent_policy = str(nonconvergent_policy or "warn").strip().lower()
         self._harmonic_cd_from_hessian = bool(harmonic_cd_from_hessian)
         self._warned_cd_unvalidated = False
+        self.chi2_rescale = bool(chi2_rescale)
+        self.chi2_rescale_threshold = float(chi2_rescale_threshold)
+        self.chi2_rescale_max_passes = int(chi2_rescale_max_passes)
         self._cd_sigma_fraction = max(float(cd_sigma_fraction), 1e-6)
         self._fit_cd_constants = bool(fit_cd_constants)
         self._cd_weight = max(float(cd_weight), 0.0)
@@ -1326,7 +1332,66 @@ class MolecularOptimizer:
 
     # â”€â”€ Optimisation loop â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+    def reduced_chi_square(self):
+        """Chi-square per degree of freedom at the current geometry.
+
+        Degrees of freedom are the number of observations less the number of
+        directions the data actually constrains, which is the SVD rank rather
+        than the full parameter count -- the unconstrained directions are fixed
+        by the prior and cost the data nothing.
+        """
+        _, rw = self.spectral.stacked(self.coords)
+        n_obs = int(rw.size)
+        if n_obs == 0:
+            return 0.0
+        try:
+            J, _ = self.spectral.stacked(self.coords)
+            s = np.linalg.svd(J, compute_uv=False)
+            rank = int(np.sum(s > 1e-5 * s[0])) if s.size and s[0] > 0 else 0
+        except np.linalg.LinAlgError:
+            rank = 0
+        nu = max(n_obs - rank, 1)
+        return float(np.sum(rw ** 2) / nu)
+
     def run(self):
+        """
+        Run the hybrid optimisation loop, then rescale sigma if the fit says so.
+
+        Off by default. It is a real capability but an unvalidated one: on the
+        end-to-end water case it left the structure worse than theory alone
+        (14.6 mA against 10.9), so it should be switched on only where it has
+        been shown to help. Enable with chi2_rescale=True.
+
+        A converged fit whose reduced chi-square is far above one is telling you
+        the stated uncertainties were optimistic: the model cannot represent the
+        data to the precision claimed. Continuing to weight the data at that
+        precision makes the fit chase residuals it cannot remove, and it removes
+        them by distorting the structure. Widening sigma by the Birge ratio,
+        sqrt(chi2/nu), and refitting is the standard response.
+
+        Returns
+        -------
+        coords : (N, 3) ndarray   Final optimised coordinates in Angstroms.
+        """
+        coords = self._optimise_once()
+        if not self.chi2_rescale:
+            return coords
+        for _pass in range(int(self.chi2_rescale_max_passes)):
+            chi2_nu = self.reduced_chi_square()
+            if not np.isfinite(chi2_nu) or chi2_nu <= self.chi2_rescale_threshold:
+                break
+            factor = float(np.sqrt(chi2_nu))
+            print(
+                f"\n  [chi2-rescale] reduced chi-square = {chi2_nu:.1f}, above the "
+                f"threshold of {self.chi2_rescale_threshold:g}.\n"
+                f"                 The stated sigmas are optimistic by about "
+                f"{factor:.1f}x; widening them and refitting."
+            )
+            self.spectral.scale_sigma(factor)
+            coords = self._optimise_once()
+        return coords
+
+    def _optimise_once(self):
         """
         Run the hybrid optimisation loop.
 
