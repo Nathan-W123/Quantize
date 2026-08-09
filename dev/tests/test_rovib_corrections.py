@@ -372,7 +372,12 @@ class TestElectronicCorrection:
         for t in targets:
             elec_recs = [r for r in t.correction_records if r.method == "elec"]
             assert len(elec_recs) == 1, f"{t.isotopologue_label}/{t.component} missing elec record"
-            assert elec_recs[0].delta_mhz < 0.0
+            # Without a g-tensor nothing is applied: a wrong-signed estimate
+            # cannot be rescued by widening its sigma, so the record carries a
+            # zero correction and a bound instead.
+            assert elec_recs[0].delta_mhz == 0.0
+            assert elec_recs[0].sigma_mhz > 0.0
+            assert "electronic_not_applied" in elec_recs[0].quality_flags
 
     def test_elec_decreases_be_se(self):
         """Electronic correction makes B_e,SE smaller than B0 + DeltaB_vib."""
@@ -387,10 +392,19 @@ class TestElectronicCorrection:
             }
         ]
         targets_no_elec = resolve_corrections(isos, correction_elec=False)
+        # With a positive g the standard formula lowers B_e,SE.
         targets_elec = resolve_corrections(
-            isos, elems=["O", "H", "H"], correction_elec=True
+            isos, elems=["O", "H", "H"], correction_elec=True,
+            g_tensor={"A": 0.645, "B": 0.717, "C": 0.657},
         )
         assert targets_elec[0].value_mhz < targets_no_elec[0].value_mhz
+        # Without one, nothing is applied, so the value is untouched.
+        targets_no_g = resolve_corrections(
+            isos, elems=["O", "H", "H"], correction_elec=True
+        )
+        assert targets_no_g[0].value_mhz == pytest.approx(
+            targets_no_elec[0].value_mhz, rel=1e-12
+        )
 
     def test_sigma_elec_propagated_with_g_tensor(self):
         """With a g-tensor the formula is exact, so the caller's fraction stands."""
@@ -409,8 +423,15 @@ class TestElectronicCorrection:
             )
             assert "electronic_no_g_tensor" not in elec_recs[0].quality_flags
 
-    def test_sigma_elec_floored_without_g_tensor(self):
-        """The 1/M_total fallback is order-of-magnitude, so sigma covers its own size."""
+    def test_sigma_bounds_the_unknown_correction_without_g_tensor(self):
+        """No g-tensor: apply nothing, but state how large the correction could be.
+
+        The bound is the real formula at the largest g a molecule plausibly
+        shows, so it covers the truth for either sign -- which a wrong-signed
+        point estimate with a 100% sigma never could.
+        """
+        from backend.spectral.rovib_corrections import _G_MAX_TYPICAL, _M_E_OVER_M_P
+
         isos = _water_isotopologues()
         targets = resolve_corrections(
             isos, correction_elec=True, elems=["O", "H", "H"],
@@ -418,7 +439,9 @@ class TestElectronicCorrection:
         )
         for t in targets:
             rec = [r for r in t.correction_records if r.method == "elec"][0]
-            assert rec.sigma_mhz == pytest.approx(abs(rec.delta_mhz), rel=1e-10)
+            assert rec.delta_mhz == 0.0
+            expected = _M_E_OVER_M_P * _G_MAX_TYPICAL * abs(t.b0_mhz)
+            assert rec.sigma_mhz == pytest.approx(expected, rel=1e-8)
             assert "electronic_no_g_tensor" in rec.quality_flags
 
     def test_g_tensor_uses_standard_formula(self):
@@ -432,16 +455,24 @@ class TestElectronicCorrection:
         assert abs(with_g) > 5.0 * abs(electronic_delta_b(b0, mass))
         assert electronic_delta_b(b0, mass, g_value=-0.028) > 0.0
 
-    def test_isotopologue_mass_specificity(self):
-        """H2-16O and H2-18O get different electronic corrections (different masses)."""
+    def test_isotopologue_specificity_with_g_tensor(self):
+        """The correction scales with each isotopologue's own B, not with 1/M.
+
+        delta = -(m_e/m_p) * g * B, so the heavier species gets the smaller
+        correction because its B is smaller -- not because of the mass prefactor
+        the discarded fallback used.
+        """
         isos = _water_isotopologues()
-        elems = ["O", "H", "H"]
-        targets = resolve_corrections(isos, correction_elec=True, elems=elems)
+        targets = resolve_corrections(
+            isos, correction_elec=True, elems=["O", "H", "H"],
+            g_tensor={"A": 0.645, "B": 0.717, "C": 0.657},
+        )
         by_iso = {t.isotopologue_label: t for t in targets if t.component == "B"}
         d16 = next(r.delta_mhz for r in by_iso["H2-16O"].correction_records if r.method == "elec")
         d18 = next(r.delta_mhz for r in by_iso["H2-18O"].correction_records if r.method == "elec")
-        # H2-18O is heavier â†’ smaller magnitude correction
+        b16, b18 = by_iso["H2-16O"].b0_mhz, by_iso["H2-18O"].b0_mhz
         assert abs(d18) < abs(d16)
+        assert d18 / d16 == pytest.approx(b18 / b16, rel=1e-8)
 
 
 # â”€â”€ Born-Oppenheimer Breakdown correction â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
