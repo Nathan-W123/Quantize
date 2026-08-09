@@ -60,6 +60,12 @@ MOLECULES = next((_SETS[t.split('=', 1)[1]] for t in sys.argv[1:]
 
 METHOD, BASIS = "hf", "6-31g"
 DISPLACEMENT_ANG = 0.03
+
+#: Start the data-using legs from theory's optimised geometry (the default) or
+#: from the displaced guess. Cold start remains available as a robustness
+#: diagnostic -- it measures whether a fit can navigate from a poor guess, which
+#: is a real property but a different one from whether the data helps.
+WARM_START = "coldstart" not in sys.argv
 SEED = 11
 _K = 505379.0084353526
 
@@ -261,6 +267,16 @@ def benchmark(mol: ReferenceMolecule) -> dict:
     backend = get_backend("pyscf_hf")(elems=list(mol.elems), method=METHOD, basis=BASIS)
     theory_geom = backend.optimise(start)
     theory_time = time.time() - t0
+
+    # The data-using legs start from theory's converged geometry, which is what
+    # a real run would do: theory's answer is already in hand, and discarding it
+    # to restart from a guess is strictly worse. It also isolates the question
+    # being asked. From a displaced start, a leg can fail for two quite different
+    # reasons -- the data misled it, or the optimiser could not navigate there
+    # from a bad guess -- and only the first is informative. Fluoroacetylene with
+    # a single observable showed the second: the cold fit never left its starting
+    # geometry, which says nothing about whether the data helps.
+    fit_start = theory_geom if WARM_START else start
     results["theory"] = {**errors(mol, theory_geom), "seconds": theory_time}
 
     print(f"\n{_HDR}")
@@ -275,12 +291,12 @@ def benchmark(mol: ReferenceMolecule) -> dict:
         geoms, times = {"theory": theory_geom}, {"theory": theory_time}
 
         t0 = time.time()
-        geoms["experiment"] = run_fit(mol, isos, "none", start, max_iter=60)
+        geoms["experiment"] = run_fit(mol, isos, "none", fit_start, max_iter=60)
         times["experiment"] = time.time() - t0
 
         for obj_label, kwargs in OBJECTIVES:
             t0 = time.time()
-            geoms[obj_label] = run_fit(mol, isos, "pyscf_hf", start,
+            geoms[obj_label] = run_fit(mol, isos, "pyscf_hf", fit_start,
                                        max_iter=40, hess_recalc_every=10, **kwargs)
             times[obj_label] = time.time() - t0
 
