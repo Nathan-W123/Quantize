@@ -57,6 +57,7 @@ M_C12, M_C13 = 12.0, 13.00335483507
 M_O16, M_O18 = 15.9949146196, 17.9991610
 M_F = 18.99840322
 M_CL35, M_CL37 = 34.96885268, 36.96590259
+M_N14 = 14.0030740048
 
 #: Relative uncertainty assigned to each of A, B, C.
 #:
@@ -670,3 +671,177 @@ ACETONE = ReferenceMolecule(
 #: Acetone on its own. Not monofluorinated -- a large, heavily undersaturated
 #: test with two coupled internal rotors.
 ACETONE_SET = [ACETONE]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Third set: three molecules chosen to probe different failure modes rather
+# than different chemistry. None is fluorinated; all are small or symmetric so
+# they run quickly.
+#
+#   ozone            no hydrogens at all, and a molecule single-reference
+#                    quantum chemistry is known to describe badly
+#   ethylene oxide   a strained three-membered ring
+#   isocyanic acid   quasi-linear, where one measured constant is unusable
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _ozone_geometry(r=1.2717, angle=116.78):
+    a = np.radians(angle) / 2
+    return np.array([[0.0, 0.0, 0.0],
+                     [r * np.sin(a), r * np.cos(a), 0.0],
+                     [-r * np.sin(a), r * np.cos(a), 0.0]])
+
+
+# ── Ozone, O3 ────────────────────────────────────────────────────────────────
+# Structure: r(O-O) = 1.2717 A, 116.78 deg (standard r_s values).
+# Constants: NBS Monograph 70 Vol. IV p.402, entry 1840.
+#
+# Fifteen measured constants for what is really two parameters, so the spectral
+# side is as well determined as it ever gets here. What makes ozone interesting
+# is the other side: its wavefunction has strong multireference character, and
+# single-determinant methods describe it poorly. If the hybrid is going to earn
+# its keep by rescuing bad theory, this is where it should show.
+#
+# It also has no hydrogens, which removes the failure mode that dominated every
+# earlier molecule -- light atoms that barely shift the moments of inertia and
+# so absorb all the fit's error.
+#
+# Atom order: central O, then the two terminal O.
+OZONE = ReferenceMolecule(
+    key="ozone",
+    name="Ozone",
+    formula="O3",
+    elems=["O", "O", "O"],
+    geometry=_ozone_geometry(),
+    masses=np.array([M_O16] * 3),
+    species=[
+        Isotopologue("1841 all-16O", {}, (106536.1, 13349.12, 11834.45), (1, 2, 2)),
+        Isotopologue("1842 18O terminal", {1: M_O18}, (104569.4, 12590.4, 11214.6),
+                     (1, 1, 1)),
+        Isotopologue("1843 18O central", {0: M_O18}, (98645.96, 13352.51, 11731.78),
+                     (2, 2, 2)),
+        Isotopologue("1844 18O central+terminal", {0: M_O18, 1: M_O18},
+                     (96676.8, 12591.4, 11115.6), (1, 1, 1)),
+        Isotopologue("1845 all-18O", {0: M_O18, 1: M_O18, 2: M_O18},
+                     (94768.2, 11886.5, 10536.9), (1, 1, 1)),
+    ],
+    structure_source="r_s structure, r(O-O) = 1.2717 A, angle 116.78 deg",
+    constants_source="NBS Monograph 70 Vol. IV p.402 (entry 1840)",
+    bonds={"O-O": [(0, 1), (0, 2)]},
+    angles={"O-O-O": [(1, 0, 2)]},
+)
+
+
+def _oxirane_geometry(cc=1.459, co=1.425, ch=1.084,
+                      a_hcc=119.078, a_hco=114.704):
+    C1 = np.array([-cc / 2, 0.0, 0.0])
+    C2 = np.array([cc / 2, 0.0, 0.0])
+    O = np.array([0.0, np.sqrt(co ** 2 - (cc / 2) ** 2), 0.0])
+    out = [C1, C2, O]
+    for C, other in ((C1, C2), (C2, C1)):
+        a = (other - C) / np.linalg.norm(other - C)
+        b = (O - C) / np.linalg.norm(O - C)
+        ux = np.cos(np.radians(a_hcc)) * np.sign(a[0])
+        uy = (np.cos(np.radians(a_hco)) - b[0] * ux) / b[1]
+        uz = np.sqrt(max(0.0, 1 - ux ** 2 - uy ** 2))
+        out += [C + ch * np.array([ux, uy, s * uz]) for s in (1, -1)]
+    return np.array(out)
+
+
+# ── Ethylene oxide (oxirane), C2H4O ──────────────────────────────────────────
+# Structure: NIST CCCBDB, Kuchitsu compilation (1995).
+# Constants: NBS Monograph 70 Vol. IV p.211, entry 840.
+#
+# A strained three-membered ring, where the bonding is unlike any of the open
+# molecules above. Fifteen measured constants against fifteen degrees of
+# freedom, so it is nominally exactly determined.
+#
+# The CH2 groups are tilted rather than symmetric about the ring bisector:
+# H-C-C is 119.08 deg while H-C-O is 114.70 deg. Building them symmetrically
+# instead costs a factor of two in the consistency check (2.3% against 1.5%),
+# and swapping the two angles costs a factor of four (5.8%), so the tilt is
+# resolved by the constants themselves and not merely asserted.
+#
+# Atom order: C1, C2, O, then the two hydrogens on C1 and the two on C2.
+ETHYLENE_OXIDE = ReferenceMolecule(
+    key="ethylene_oxide",
+    name="Ethylene oxide",
+    formula="C2H4O",
+    elems=["C", "C", "O", "H", "H", "H", "H"],
+    geometry=_oxirane_geometry(),
+    masses=np.array([M_C12, M_C12, M_O16] + [M_H] * 4),
+    species=[
+        Isotopologue("841 parent", {}, (25483.7, 22120.9, 14098.0), (1, 1, 1)),
+        Isotopologue("842 13C", {0: M_C13}, (25291.2, 21597.4, 13825.2), (1, 1, 1)),
+        Isotopologue("843 d4", {3: M_D, 4: M_D, 5: M_D, 6: M_D},
+                     (20399.0, 15457.0, 11544.0), (0, 0, 0)),
+        Isotopologue("844 trans-d2", {3: M_D, 6: M_D},
+                     (22945.1, 18198.6, 12585.5), (1, 1, 1)),
+        Isotopologue("845 cis-d2", {3: M_D, 5: M_D},
+                     (22700.3, 18318.5, 12650.3), (1, 1, 1)),
+    ],
+    structure_source="NIST CCCBDB, Kuchitsu compilation (1995)",
+    constants_source="NBS Monograph 70 Vol. IV p.211 (entry 840)",
+    bonds={
+        "C-C": [(0, 1)],
+        "C-O": [(0, 2), (1, 2)],
+        "C-H": [(0, 3), (0, 4), (1, 5), (1, 6)],
+    },
+    angles={
+        "C-O-C": [(0, 2, 1)],
+        "O-C-C": [(2, 0, 1), (2, 1, 0)],
+        "H-C-H": [(3, 0, 4), (5, 1, 6)],
+        "H-C-C": [(3, 0, 1), (4, 0, 1), (5, 1, 0), (6, 1, 0)],
+        "H-C-O": [(3, 0, 2), (4, 0, 2), (5, 1, 2), (6, 1, 2)],
+    },
+)
+
+
+def _hnco_geometry(rNH=1.0026, rNC=1.2140, rCO=1.1662,
+                   a_hnc=123.9, a_nco=172.6):
+    N = np.zeros(3)
+    C = np.array([rNC, 0.0, 0.0])
+    t = np.radians(a_hnc)
+    H = rNH * np.array([np.cos(t), np.sin(t), 0.0])
+    b = np.radians(180.0 - a_nco)
+    O = C + rCO * np.array([np.cos(b), -np.sin(b), 0.0])
+    return np.array([N, H, C, O])
+
+
+# ── Isocyanic acid, HNCO ─────────────────────────────────────────────────────
+# Structure: r_s values, r(NH) 1.0026, r(NC) 1.2140, r(CO) 1.1662 A;
+# HNC 123.9 deg, NCO 172.6 deg.
+# Constants: NBS Monograph 70 Vol. IV p.69, entry 300.
+#
+# Quasi-linear: the NCO angle is only 7 degrees from straight, so the molecule
+# executes a large-amplitude bend and its A constant is enormous (956 GHz) and
+# effectively meaningless as a rigid-rotor quantity. The published structure
+# reproduces the measured B and C to 0.26% but misses A by 11%, which is the
+# large-amplitude motion showing rather than a bad structure.
+#
+# A is therefore excluded, leaving four constants for six degrees of freedom.
+# That is the point of including it: real datasets contain constants that
+# should not be fitted, and the machinery has to be told which.
+#
+# The direction of the NCO bend is fixed by the constants: bending the oxygen
+# away from the hydrogen fits A to 11%, bending it toward gives 32%.
+#
+# Atom order: N, H, C, O.
+ISOCYANIC_ACID = ReferenceMolecule(
+    key="isocyanic_acid",
+    name="Isocyanic acid",
+    formula="HNCO",
+    elems=["N", "H", "C", "O"],
+    geometry=_hnco_geometry(),
+    masses=np.array([M_N14, M_H, M_C12, M_O16]),
+    species=[
+        Isotopologue("301 HNCO", {}, (None, 11071.02, 10910.58)),
+        Isotopologue("303 DNCO", {1: M_D}, (None, 10313.61, 10079.67)),
+    ],
+    structure_source="r_s structure (Jones, Shoolery, Shulman & Yost 1950)",
+    constants_source="NBS Monograph 70 Vol. IV p.69 (entry 300)",
+    bonds={"N-H": [(0, 1)], "N-C": [(0, 2)], "C-O": [(2, 3)]},
+    angles={"H-N-C": [(1, 0, 2)], "N-C-O": [(0, 2, 3)]},
+)
+
+#: Third set: different failure modes rather than different chemistry.
+MOLECULES_SET3 = [OZONE, ETHYLENE_OXIDE, ISOCYANIC_ACID]
