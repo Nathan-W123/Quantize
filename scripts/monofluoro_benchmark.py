@@ -61,7 +61,23 @@ DATA_LEVELS = (("parent only", 1), ("all species", None))
 #: well it knows that direction; `quantum_prior_sigma_ang` is the displacement
 #: over which the quantum surface is trusted, so it is set to the geometry error
 #: RHF/6-31G actually shows rather than tuned per molecule.
-QUANTUM_PRIOR_SIGMA_ANG = 0.005
+#: How far the quantum surface is trusted, in Angstrom.
+#:
+#: This is the single most consequential setting in the hybrid, and it must be
+#: set to the geometry error of the level of theory actually being used. RHF/6-31G
+#: is off by 15-19 mA RMS on these molecules and ~29 mA on C-F, so the 0.005 A
+#: carried over from earlier water and fluorobenzene work overstated its accuracy
+#: five-fold and left the joint hybrid barely distinguishable from plain theory.
+#:
+#: `scripts/monofluoro_tune.py` scans it: at 0.005-0.015 A the hybrid beats theory
+#: in 5 of 6 cases, and from 0.020 A to 0.080 A in all 6. The plateau is wide, so
+#: the exact value matters much less than being in the right decade.
+#:
+#: For a molecule with no accepted structure -- the case this project is aimed at
+#: -- it cannot be read off a reference. `scripts/estimate_theory_error.py`
+#: estimates it instead from the spread between two levels of theory, which needs
+#: no experimental structure at all.
+QUANTUM_PRIOR_SIGMA_ANG = 0.030
 OBJECTIVES = (
     ("hybrid, split", {}),
     ("hybrid, joint prior", {"objective_mode": "joint",
