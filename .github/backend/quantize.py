@@ -319,10 +319,10 @@ class MolecularOptimizer:
         rovib_recalc_every=1,
         rovib_source_mode="hybrid_auto",
         spectral_only=False,
-        symmetry=None,
+        symmetry="auto",
         debug_rank_diagnostics=False,
         debug_sv_count=6,
-        project_rigid_modes=False,
+        project_rigid_modes=True,
         enforce_quantum_descent=False,
         quantum_descent_tol=1e-10,
         use_autoconfig=True,
@@ -614,7 +614,24 @@ class MolecularOptimizer:
         self.rovib_source_mode = str(rovib_source_mode).strip().lower()
 
         self.spectral_only = bool(spectral_only)
+        # Symmetry constraints. "auto" (the default) detects the point group from
+        # the starting geometry and enforces it for the rest of the fit; pass
+        # None to switch the constraint off.
+        #
+        # This is on by default because the rotational constants cannot see the
+        # difference between a symmetric structure and a slightly distorted one,
+        # so an unconstrained fit spends its information breaking symmetry that
+        # physics fixes exactly. Water is the clean demonstration: its two O-H
+        # bonds are equal by C2v, and an unconstrained parent-only fit splits
+        # them by 3.9 mA -- larger than the whole remaining bond error.
+        # Constraining it cuts that fit's RMS bond error from 3.29 to 0.83 mA.
+        #
+        # Detection only ever returns a group whose every operation the geometry
+        # already satisfies, so the worst case is a subgroup of the true group,
+        # which constrains less rather than more. C1 means no constraint was
+        # found, and is dropped so the step avoids a 3N x 3N multiply by I.
         self.symmetry = symmetry
+        self.point_group = None
         if isinstance(self.symmetry, str) or self.symmetry is None:
             if self.symmetry is not None:
                 from backend.symmetry import create_symmetry  # pylint: disable=import-outside-toplevel
@@ -623,6 +640,11 @@ class MolecularOptimizer:
                     self.elems,
                     self.coords,
                 )
+                self.point_group = self.symmetry.point_group
+                if self.symmetry.point_group == "C1":
+                    self.symmetry = None
+        elif self.symmetry is not None:
+            self.point_group = getattr(self.symmetry, "point_group", None)
         self.debug_rank_diagnostics = bool(debug_rank_diagnostics)
         self.debug_sv_count = max(1, int(debug_sv_count))
         self.project_rigid_modes = bool(project_rigid_modes)
@@ -683,6 +705,10 @@ class MolecularOptimizer:
         self._backend = None
         self._orca_ref_coords = None
         self._orca_call_count = 0
+        # Quantum updates since the last full Hessian / rovib job. None means
+        # "never computed", which forces one on the next update.
+        self._since_hessian = None
+        self._since_rovib = None
         self.history = []
         self._guardrail_bonds = _detect_bonds(self.coords, self.elems) if self.enable_geometry_guardrails else []
 
@@ -1119,15 +1145,43 @@ class MolecularOptimizer:
         return (int(call_count) - 1) % n == 0
 
     def _update_orca(self):
-        """Decide whether to do a full Hessian recalculation or gradient-only update."""
+        """Decide whether to do a full Hessian recalculation or gradient-only update.
+
+        The schedule counts calls since the last full Hessian rather than
+        testing ``(call_count - 1) % period``. A modulus only describes a
+        periodic schedule while the period is constant, and this one is not:
+        the adaptive block below rewrites ``hess_recalc_every`` between calls,
+        which shifts the phase and can step the counter straight over the
+        firing residue. Measured on the benchmark molecules, a nominal period
+        of 5 produced one Hessian in 20 steps for fluoroacetylene and none at
+        all in 14 for formyl fluoride. That matters more under the joint
+        objective than it used to, because there the Hessian *is* the quantum
+        prior -- a stale one anchors the prior to a geometry the fit has left.
+        """
         self._orca_call_count += 1
-        if self.quantum is None or self._due_every(self._orca_call_count, self.hess_recalc_every):
+        # Count the call first, then test: `_since_hessian` is the number of
+        # updates that have happened since the last Hessian, so a period of 1
+        # has to fire on the very next call. Testing before incrementing makes
+        # every period one longer than asked for, which for period 1 means every
+        # other call rather than every call.
+        if self._since_hessian is not None:
+            self._since_hessian += 1
+        if self._since_rovib is not None:
+            self._since_rovib += 1
+        hess_due = (self.quantum is None
+                    or self._since_hessian is None
+                    or self._since_hessian >= self.hess_recalc_every)
+        if hess_due:
             self._run_hessian()
-            if self.use_orca_rovib and self._due_every(self._orca_call_count, self.rovib_recalc_every):
+            self._since_hessian = 0
+            rovib_due = (self._since_rovib is None
+                         or self._since_rovib >= self.rovib_recalc_every)
+            if self.use_orca_rovib and rovib_due:
                 self._run_rovib()
-            if self._harmonic_from_hessian and self._due_every(self._orca_call_count, self.hess_recalc_every):
+                self._since_rovib = 0
+            if self._harmonic_from_hessian:
                 self._apply_harmonic_alpha_corrections()
-            if self._harmonic_cd_from_hessian and self._due_every(self._orca_call_count, self.hess_recalc_every):
+            if self._harmonic_cd_from_hessian:
                 self._apply_harmonic_cd_corrections()
             elif self._fit_cd_constants and self._cd_weight > 0.0 and self.quantum is not None:
                 self.spectral.set_hessian_for_cd(self.quantum._hessian_bohr)
@@ -1135,6 +1189,10 @@ class MolecularOptimizer:
             self._run_gradient()
             if self._fit_cd_constants and self._cd_weight > 0.0 and self.quantum is not None:
                 self.spectral.set_hessian_for_cd(self.quantum._hessian_bohr)
+
+    def _force_hessian_refresh(self):
+        """Make the next quantum update recompute the Hessian rather than reuse it."""
+        self._since_hessian = None
 
     # â”€â”€ Pre-computed files â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -1158,6 +1216,18 @@ class MolecularOptimizer:
     def _rigid_mode_projector(self, coords, masses):
         """
         Build Cartesian projector that removes rigid-body translation/rotation modes.
+
+        The modes are built *unweighted*, because the gradient and Hessian this
+        projector is applied to are plain Cartesian derivatives in Angstrom, not
+        mass-weighted ones. The two differ: the null vectors of a mass-weighted
+        Hessian are sqrt(m)-scaled translations, while the null vectors of the
+        plain Cartesian Hessian are uniform ones -- displacing every atom by the
+        same amount is what leaves the energy unchanged. Weighting by sqrt(m)
+        here would project out a subspace that is not the rigid one and would
+        leave genuine rigid contamination behind.
+
+        `masses` is still used, but only to place the origin at the centre of
+        mass, which is where the rotation generators belong.
         """
         coords = np.asarray(coords, dtype=float)
         masses = np.asarray(masses, dtype=float)
@@ -1170,31 +1240,36 @@ class MolecularOptimizer:
             return np.eye(3 * n)
         com = (masses[:, None] * coords).sum(axis=0) / msum
         rel = coords - com
-        sq_m = np.sqrt(np.maximum(masses, 1e-16))
 
         modes = []
         # Translations
         for axis in range(3):
             v = np.zeros((n, 3), dtype=float)
-            v[:, axis] = sq_m
+            v[:, axis] = 1.0
             modes.append(v.reshape(-1))
         # Rotations about x/y/z: omega x r
         axes = np.eye(3)
         for omega in axes:
-            v = np.cross(np.tile(omega, (n, 1)), rel) * sq_m[:, None]
+            v = np.cross(np.tile(omega, (n, 1)), rel)
             modes.append(v.reshape(-1))
 
         if not modes:
             return np.eye(3 * n)
         M = np.column_stack(modes)  # (3N, <=6)
-        Q, _ = np.linalg.qr(M)
-        keep = []
-        for j in range(Q.shape[1]):
-            if np.linalg.norm(Q[:, j]) > 1e-12:
-                keep.append(Q[:, j])
-        if not keep:
+        # Rank has to come from the singular values, not from column norms after
+        # a QR: reduced QR returns orthonormal -- hence unit-norm -- columns even
+        # where the input was rank deficient, so a norm test never rejects
+        # anything. A linear molecule has five rigid modes, not six (rotation
+        # about the molecular axis moves no atom), and the sixth column of Q is
+        # then an arbitrary unit vector spanning a genuine vibration. Projecting
+        # it out would delete a real degree of freedom from the quantum prior.
+        U, s, _ = np.linalg.svd(M, full_matrices=False)
+        if s.size == 0 or s[0] <= 0.0:
             return np.eye(3 * n)
-        Qk = np.column_stack(keep)
+        keep = int((s > 1e-8 * s[0]).sum())
+        if keep == 0:
+            return np.eye(3 * n)
+        Qk = U[:, :keep]
         return np.eye(3 * n) - Qk @ Qk.T
 
     def _project_quantum_terms(self, gradient, hessian):
@@ -1721,7 +1796,7 @@ class MolecularOptimizer:
 
             # If we keep rejecting, force a fresh Hessian sooner to recover local model quality.
             if _reject_streak >= 5:
-                self._orca_call_count = 0
+                self._force_hessian_refresh()
 
             # Adaptive Hessian schedule (efficiency): when spectral progress is
             # smooth, increase interval between full Hessians; when rejected or
@@ -1876,9 +1951,96 @@ class MolecularOptimizer:
                 deg = float(np.degrees(np.arccos(np.clip(cos_a, -1.0, 1.0))))
                 print(f"  {self.elems[i]}{i+1}-{self.elems[j]}{j+1}-{self.elems[k]}{k+1}:{'':>5}  {deg:>10.4f}")
 
+        kr = self.kraitchman_report()
+        if kr and kr.get("rows"):
+            print()
+            print("  Kraitchman substitution coordinates vs fitted geometry (Ang)")
+            print(f"  {'species':>16}{'atom':>6}{'|a| sub':>10}{'|a| fit':>10}"
+                  f"{'d(a)':>9}{'|b| sub':>10}{'|b| fit':>10}{'d(b)':>9}")
+            print("  " + "-" * 80)
+            for r in kr["rows"]:
+                print(f"  {r['name'][:16]:>16}"
+                      f"{self.elems[int(r['atom_index'])] + str(int(r['atom_index']) + 1):>6}"
+                      f"{r['abs_a_angstrom']:>10.4f}{r.get('fit_abs_a_angstrom', float('nan')):>10.4f}"
+                      f"{r.get('delta_a_angstrom', float('nan')):>+9.4f}"
+                      f"{r['abs_b_angstrom']:>10.4f}{r.get('fit_abs_b_angstrom', float('nan')):>10.4f}"
+                      f"{r.get('delta_b_angstrom', float('nan')):>+9.4f}")
+            for w in kr.get("warnings", [])[:4]:
+                print(f"    note: {w}")
+
         print("=" * 52)
 
         return residual
+
+    def kraitchman_report(self):
+        """Substitution (r_s) coordinates from the data, next to the fitted geometry.
+
+        This is an independent check on the fit rather than an input to it.
+        Kraitchman's equations give |a|, |b|, |c| for each substituted atom
+        directly from the measured constants, using no force field, no level of
+        theory and no structural model -- so where a substitution coordinate and
+        the fitted one disagree by much more than the Costain uncertainty, the
+        disagreement is the fit's, and it localises the problem to a specific
+        atom instead of to the structure as a whole.
+
+        Returns the analysis dict (see :func:`kraitchman_analysis`) with each row
+        augmented by the fitted principal-axis coordinates, or None when the data
+        cannot support it. Only species with all three constants measured are
+        usable, since the equations need all three moments.
+        """
+        try:
+            from backend.kraitchman import (  # pylint: disable=import-outside-toplevel
+                compare_rs_to_geometry, kraitchman_analysis,
+            )
+        except ImportError:
+            return None
+        isos = []
+        for iso in self.spectral.isotopologues:
+            if len(iso["component_indices"]) != 3:
+                continue
+            const = np.asarray(iso["obs_constants"], dtype=float)
+            if const.size != 3 or not np.all(np.isfinite(const)) or np.any(const <= 0):
+                continue
+            isos.append({"name": iso["name"], "masses": np.asarray(iso["masses"], dtype=float),
+                         "obs_constants": const})
+        if len(isos) < 2:
+            return None
+        try:
+            res = kraitchman_analysis(isos)
+            res["rows"] = compare_rs_to_geometry(
+                res["rows"], self.coords,
+                np.asarray(isos[0]["masses"], dtype=float))
+        except (ValueError, IndexError, np.linalg.LinAlgError) as exc:
+            return {"rows": [], "defects": [], "skipped": [],
+                    "warnings": [f"Kraitchman analysis failed: {exc}"]}
+        return res
+
+    def fit_mass_dependent_structure(self, model="rm1", coords0=None):
+        """Fit a Watson mass-dependent (r_m) structure to the loaded constants.
+
+        This is an alternative route to a near-equilibrium structure that uses
+        no force field and no level of theory: the rovibrational offset is
+        fitted as a handful of isotope-independent coefficients rather than
+        computed from anharmonic derivatives. That matters here because the
+        computed route -- `rovib_corrections` -- needs a cubic force field, and
+        at the levels of theory that are affordable for these molecules it was
+        measured to hurt more than it helped.
+
+        It needs several isotopologues, since the structure and the coefficients
+        are separated only by how differently they respond to substitution. The
+        returned object carries the degrees of freedom and reduced chi-square so
+        that an under-determined fit is visible rather than silently reported.
+
+        Independent of the hybrid fit: it reads the same constants but does not
+        use the quantum surface, so comparing the two is a real check.
+        """
+        from backend.spectral.mass_dependent import (  # pylint: disable=import-outside-toplevel
+            fit_mass_dependent_structure,
+        )
+        start = self.coords if coords0 is None else np.asarray(coords0, dtype=float)
+        return fit_mass_dependent_structure(
+            self.spectral.isotopologues, start, model=model, symmetry=self.symmetry,
+        )
 
     def report_internal(self):
         """
@@ -2013,12 +2175,26 @@ class MolecularOptimizer:
         return log_p - (self.optimizer.alpha_quantum * energy_term)
 
     def laplace_approximation(self):
-        """Analytical estimate of the posterior covariance at the optimum."""
+        """Analytical estimate of the posterior covariance at the optimum.
+
+        The quantum block is weighted exactly as the optimiser weighted it, via
+        :meth:`SubspaceOptimizer.effective_quantum_weight`, and its Hessian gets
+        the same eigenvalue floor. Using ``alpha_quantum`` and the raw Hessian
+        instead -- as this did -- describes a different objective than the one
+        that was minimised whenever ``quantum_prior_sigma_ang`` is set, which is
+        now the default, so the reported uncertainties would not belong to the
+        reported geometry.
+        """
         J, _ = self.spectral.stacked(self.coords)
         H_total = J.T @ J
         if not self.spectral_only and self.quantum is not None:
-            H_total += self.optimizer.alpha_quantum * self.quantum.hessian
-            
+            g = self.quantum.gradient
+            H = self.quantum.hessian
+            g, H = self._project_quantum_terms(g, H)
+            rank = int(np.linalg.matrix_rank(J))
+            alpha_q = self.optimizer.effective_quantum_weight(J, rank, hessian=H)
+            H_total = H_total + alpha_q * self.optimizer._spd_hessian(H)
+
         reg = 1e-8 * np.eye(H_total.shape[0])
         try:
             cov = np.linalg.inv(H_total + reg)

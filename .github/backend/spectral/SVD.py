@@ -178,6 +178,40 @@ class SubspaceOptimizer:
         q = np.linalg.solve(BBt + reg, B @ dx)
         return B.T @ q
 
+    def _spd_hessian(self, hessian):
+        """Floor the Hessian's eigenvalues so the prior can only pull, never push.
+
+        The prior term alpha_q*H is a quadratic model of the quantum surface
+        around the current geometry. Along an eigenvector with negative
+        curvature that model is an inverted parabola, and solving with it moves
+        *away* from the quantum minimum -- the prior becomes repulsive in
+        exactly the directions where the surface is least trustworthy.
+
+        This is not hypothetical. The hybrid sits off theory's minimum by
+        construction, and the Cartesian Hessian is only free of rotational
+        curvature *at* a stationary point; away from one it is indefinite, with
+        the negative eigenvalues lying almost entirely (measured overlap 0.985)
+        in the translation/rotation block. `null_step` has always floored its
+        projected Hessian for this reason; the joint step needs it too, and now
+        more, since it is the default.
+
+        The floor is relative to the largest eigenvalue, so it carries the
+        Hessian's units and holds up across the many orders of magnitude these
+        problems span.
+        """
+        H = np.asarray(hessian, dtype=float)
+        H = 0.5 * (H + H.T)
+        evals, evecs = np.linalg.eigh(H)
+        if evals.size == 0:
+            return H
+        scale = float(np.max(np.abs(evals)))
+        if not np.isfinite(scale) or scale <= 0.0:
+            return H
+        floor = self.null_hessian_floor * scale
+        if float(evals.min()) >= floor:
+            return H
+        return evecs @ np.diag(np.maximum(evals, floor)) @ evecs.T
+
     def _joint_step(self, J, residual, gradient, hessian, alpha_q):
         """MAP step: (JᵀJ + α_q H + λI) dp = Jᵀr − α_q g.
 
@@ -188,7 +222,7 @@ class SubspaceOptimizer:
         """
         JTJ = J.T @ J
         rhs = J.T @ residual - alpha_q * gradient
-        prior = alpha_q * hessian
+        prior = alpha_q * self._spd_hessian(hessian)
         A = JTJ + prior
         n = max(A.shape[0], 1)
         # lambda_damp is a dimensionless relative damping. An absolute constant
@@ -222,6 +256,18 @@ class SubspaceOptimizer:
             # H carries six zero modes (translations/rotations), so A can still
             # be singular to working precision.
             return np.linalg.pinv(A) @ rhs
+
+    def effective_quantum_weight(self, J, rank, hessian=None):
+        """Weight the quantum block actually carries in the objective.
+
+        Public because anything that reports on the fit -- a covariance, a
+        posterior, a log-probability -- has to weight the two halves the same
+        way the step did. Reading ``alpha_quantum`` directly gives the legacy
+        heuristic, which is not what the joint objective minimises whenever
+        ``quantum_prior_sigma_ang`` is set (the default), so a covariance built
+        from it would describe a different problem than the one that was solved.
+        """
+        return self._effective_quantum_weight(J, rank, hessian=hessian)
 
     def _effective_quantum_weight(self, J, rank, hessian=None):
         """

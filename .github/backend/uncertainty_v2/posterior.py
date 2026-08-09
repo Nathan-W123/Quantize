@@ -61,7 +61,17 @@ def laplace_approximation(
     h_total = jac.T @ jac
 
     if not optimizer.spectral_only and optimizer.quantum is not None:
-        h_total = h_total + float(optimizer.optimizer.alpha_quantum) * np.asarray(optimizer.quantum.hessian, dtype=float)
+        # Weight the quantum block the way the optimiser did. `alpha_quantum` is
+        # the legacy heuristic and is not what the joint objective minimises
+        # once `quantum_prior_sigma_ang` is set (the default), so building the
+        # covariance from it would describe a different problem than the fit
+        # solved. The same eigenvalue floor is applied for the same reason.
+        grad = np.asarray(optimizer.quantum.gradient, dtype=float)
+        hess = np.asarray(optimizer.quantum.hessian, dtype=float)
+        grad, hess = optimizer._project_quantum_terms(grad, hess)
+        rank = int(np.linalg.matrix_rank(jac))
+        alpha_q = optimizer.optimizer.effective_quantum_weight(jac, rank, hessian=hess)
+        h_total = h_total + float(alpha_q) * optimizer.optimizer._spd_hessian(hess)
 
     reg = float(max(regularization, 0.0))
     h_reg = h_total + reg * np.eye(h_total.shape[0], dtype=float)
