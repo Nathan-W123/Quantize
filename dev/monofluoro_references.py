@@ -326,4 +326,79 @@ FLUOROETHANE = ReferenceMolecule(
 )
 
 
+# ── Fluorobenzene, C6H5F — HELD OUT ──────────────────────────────────────────
+# Structure: Bak, Christensen, Hansen-Nygaard & Tannenbaum, J. Chem. Phys. 26,
+# 134 (1957), Cartesians via NIST CCCBDB casno 462066.
+# Constants: NBS Monograph 70 Vol. IV p.281, entry 1280 (ref 737).
+#
+# This molecule is deliberately excluded from MOLECULES. The hybrid's prior
+# width was calibrated on the three above, so testing it here -- on a molecule
+# that took no part in that choice -- is the only way to tell whether the
+# setting generalises or was fitted to the calibration set.
+#
+# It is also a harder case than any of them: four measured species give 12
+# constants against 30 internal degrees of freedom, and the substitutions are
+# all deuterium, so no carbon is ever located directly.
+#
+# Atom order: F, C1 ipso, C2/C6 ortho, C3/C5 meta, C4 para, H on 2,6,3,5,4.
+
+FLUOROBENZENE = ReferenceMolecule(
+    key="fluorobenzene",
+    name="Fluorobenzene",
+    formula="C6H5F",
+    elems=["F", "C", "C", "C", "C", "C", "C", "H", "H", "H", "H", "H"],
+    geometry=np.array([
+        [0.0000,  0.0000, -2.2030],
+        [0.0000,  0.0000, -0.8490],
+        [0.0000, -1.2170, -0.1930],
+        [0.0000,  1.2170, -0.1930],
+        [0.0000, -1.2080,  1.2020],
+        [0.0000,  1.2080,  1.2020],
+        [0.0000,  0.0000,  1.9030],
+        [0.0000, -2.1370, -0.7610],
+        [0.0000,  2.1370, -0.7610],
+        [0.0000, -2.1470,  1.7430],
+        [0.0000,  2.1470,  1.7430],
+        [0.0000,  0.0000,  2.9830],
+    ]),
+    masses=np.array([M_F] + [M_C12] * 6 + [M_H] * 5),
+    species=[
+        Isotopologue("1281 parent", {}, (5663.54, 2570.64, 1767.94)),
+        # 3d: one meta hydrogen, which breaks C2v -- the compilation lists it
+        # as Cs, confirming a single substitution off the symmetry axis.
+        Isotopologue("1282 3d (meta)", {9: M_D}, (5394.27, 2529.99, 1722.07)),
+        # 4d: the para hydrogen lies on the symmetry axis, so C2v survives.
+        Isotopologue("1283 4d (para)", {11: M_D}, (5663.64, 2459.72, 1714.75)),
+        Isotopologue("1284 2,4,6-d3", {7: M_D, 8: M_D, 11: M_D},
+                     (5134.71, 2445.03, 1656.19)),
+    ],
+    structure_source=("Bak, Christensen, Hansen-Nygaard & Tannenbaum, "
+                      "J. Chem. Phys. 26, 134 (1957); CCCBDB"),
+    constants_source="NBS Monograph 70 Vol. IV p.281 (entry 1280)",
+    bonds={
+        "C1-F":        [(1, 0)],
+        "C1-C2":       [(1, 2), (1, 3)],
+        "C2-C3":       [(2, 4), (3, 5)],
+        "C3-C4":       [(4, 6), (5, 6)],
+        "C2-H2":       [(2, 7), (3, 8)],
+        "C3-H3":       [(4, 9), (5, 10)],
+        "C4-H4":       [(6, 11)],
+    },
+    angles={
+        "F-C1-C2":     [(0, 1, 2), (0, 1, 3)],
+        "C2-C1-C6":    [(2, 1, 3)],
+        "C1-C2-C3":    [(1, 2, 4), (1, 3, 5)],
+        "C2-C3-C4":    [(2, 4, 6), (3, 5, 6)],
+        "C3-C4-C5":    [(4, 6, 5)],
+        "C1-C2-H2":    [(1, 2, 7), (1, 3, 8)],
+        "C2-C3-H3":    [(2, 4, 9), (3, 5, 10)],
+        "C3-C4-H4":    [(4, 6, 11), (5, 6, 11)],
+    },
+)
+
+
+#: Molecules the hybrid's prior width was calibrated on.
 MOLECULES = [VINYL_FLUORIDE, ACETYL_FLUORIDE, FLUOROETHANE]
+
+#: Molecules held out of that calibration, for validation only.
+HELDOUT = [FLUOROBENZENE]
