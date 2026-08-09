@@ -37,22 +37,43 @@ from backend.quantize import MolecularOptimizer  # noqa: E402
 from backend.registry import get_backend  # noqa: E402
 from dev.monofluoro_references import MOLECULES  # noqa: E402
 from scripts.monofluoro_benchmark import (  # noqa: E402
-    BASIS,
+    BASIS as _DEFAULT_BASIS,
     DATA_LEVELS,
-    METHOD,
+    METHOD as _DEFAULT_METHOD,
     build_isotopologues,
     errors,
     start_geometry,
 )
 
+#: The level of theory is overridable, because it has to be: the hybrid must be
+#: compared against theory alone at the SAME level, or the comparison says
+#: nothing about whether combining the sources helps. RHF/6-31G is off by 16.6 mA
+#: RMS on these molecules and B3LYP/6-31G(d) by 6.8 mA, so "hybrid beats theory"
+#: at one level does not carry over to the other.
+#:
+#:     python scripts/monofluoro_tune.py method=b3lyp basis=6-31g(d)
+METHOD, BASIS = _DEFAULT_METHOD, _DEFAULT_BASIS
+for _tok in sys.argv[1:]:
+    if _tok.startswith("method="):
+        METHOD = _tok.split("=", 1)[1]
+    elif _tok.startswith("basis="):
+        BASIS = _tok.split("=", 1)[1]
+
 #: Scanned values of quantum_prior_sigma_ang, in Angstrom. The useful range is
 #: bracketed by the actual geometry error of the level of theory.
+#: Overridable, because the useful range scales with the level of theory's own
+#: error: around 0.02 A for RHF/6-31G, around 0.007 A for B3LYP/6-31G(d).
+#:     python scripts/monofluoro_tune.py sigmas=0.003,0.005,0.008,0.012,0.020
 PRIOR_SIGMAS = (0.005, 0.010, 0.015, 0.020, 0.030, 0.050, 0.080)
+for _tok in sys.argv[1:]:
+    if _tok.startswith("sigmas="):
+        PRIOR_SIGMAS = tuple(float(v) for v in _tok.split("=", 1)[1].split(","))
 
 #: Scanned relative singular-value cutoffs for the split objective.
 SPLIT_CUTOFFS = (1e-3, 1e-2, 3e-2, 1e-1, 3e-1)
 
-OUT = _ROOT / "output" / "monofluoro_tune.json"
+_TAG = f"{METHOD}_{BASIS}".replace("/", "-").replace("(", "").replace(")", "")
+OUT = _ROOT / "output" / f"monofluoro_tune_{_TAG}.json"
 
 
 def run(mol, isos, start, **kwargs):
@@ -82,7 +103,9 @@ def cases():
 
 def main() -> None:
     do_split = "--split" in sys.argv
-    print(f"  RHF/{BASIS}. Scanning the hybrid's trust in theory.\n")
+    print(f"  {METHOD.upper()}/{BASIS}. Scanning the hybrid's trust in theory.")
+    print("  Theory alone and the hybrid's quantum half use the same level, so"
+          " the\n  comparison isolates whether combining the sources helps.\n")
 
     theory = {}
     starts = {}
