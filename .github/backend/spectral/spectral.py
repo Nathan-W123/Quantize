@@ -28,6 +28,13 @@ def _inertia_tensor(coords, masses):
     return np.einsum("i,jk->jk", masses * r2, np.eye(3)) - np.einsum("i,ij,ik->jk", masses, r, r)
 
 
+def _principal_moments(coords, masses):
+    """Principal moments I_a <= I_b <= I_c in amu Ang^2, ordered to match A >= B >= C."""
+    return np.sort(np.linalg.eigvalsh(
+        _inertia_tensor(np.asarray(coords, dtype=float),
+                        np.asarray(masses, dtype=float))))
+
+
 def _rotational_constants(coords, masses):
     """
     Rotational constants A â‰¥ B â‰¥ C in MHz from Cartesian coords (Ã…) and masses (amu).
@@ -597,6 +604,105 @@ class SpectralEngine:
     def rotational_constants(self, coords, masses):
         """Computed (A, B, C) in MHz for given geometry and masses."""
         return _rotational_constants(np.asarray(coords), np.asarray(masses))
+
+    def fit_mass_dependent_correction(self, coords, frac_sigma=0.01):
+        """Fit Watson's mass-dependent offset and install it as the B0 -> Be target.
+
+        The gap between the measured B_0 and the equilibrium B_e is the largest
+        systematic in any of these fits. Computing it needs a cubic force field,
+        which at affordable levels of theory was measured to hurt more than it
+        helped. Watson's alternative is to fit it: the rovibrational contribution
+        to a moment of inertia is well described by
+
+            I_obs = I_m + c_x sqrt(I_m)
+
+        with three coefficients shared across every isotopologue.
+
+        Fitting them *here* rather than as extra optimiser parameters is exact,
+        not an approximation: the model is linear in c, so for any structure the
+        best c follows in closed form, and substituting it back gives the same
+        answer as optimising over structure and c jointly. This is variable
+        projection. It also means the parameter vector, the trust radius, the
+        symmetry projector and the SVD step are all untouched.
+
+        The reason to do it inside the hybrid at all is that spectroscopy alone
+        usually cannot afford these three parameters. A trifluorinated molecule
+        has three heavy atoms that can never be isotopically substituted, and a
+        standalone r_m fit on one comes out short by exactly three -- the c's.
+        With the quantum surface holding the structure, the data are free to
+        determine them.
+
+        Parameters
+        ----------
+        coords : (N, 3)
+            Current geometry, whose moments define I_m.
+        frac_sigma : float
+            Weak prior on the size of the correction, as a fraction of the
+            moment. Without it a single isotopologue would let three
+            coefficients absorb all three residuals exactly, driving the
+            spectral term to zero and silently handing the fit to theory.
+
+        Returns
+        -------
+        c : (3,) array in amu^(1/2) Angstrom, indexed by principal axis.
+        """
+        coords = np.asarray(coords, dtype=float)
+        num = np.zeros(3)
+        den = np.zeros(3)
+        typ_sum = np.zeros(3)
+        typ_n = np.zeros(3)
+        rows = []
+        for iso in self.isotopologues:
+            masses = np.asarray(iso["masses"], dtype=float)
+            i_m = _principal_moments(coords, masses)
+            obs = np.asarray(iso["obs_constants"], dtype=float)
+            sig = np.asarray(iso["sigma_constants"], dtype=float)
+            idx = np.asarray(iso["component_indices"], dtype=int)
+            for k, comp in enumerate(idx):
+                comp = int(comp)
+                if not (0 <= comp < 3) or obs[k] <= 0 or not np.isfinite(obs[k]):
+                    continue
+                if i_m[comp] <= 0 or not np.isfinite(i_m[comp]):
+                    continue
+                i_obs = _INERTIA_TO_MHZ / obs[k]
+                # A fractional error on the constant is the same fractional
+                # error on the moment, since I = k / B.
+                s_i = abs(i_obs) * (sig[k] / obs[k]) if sig[k] > 0 else abs(i_obs) * 1e-4
+                w = 1.0 / (s_i * s_i)
+                root = np.sqrt(i_m[comp])
+                num[comp] += w * root * (i_obs - i_m[comp])
+                den[comp] += w * i_m[comp]
+                typ_sum[comp] += i_m[comp]
+                typ_n[comp] += 1
+            rows.append((iso, i_m, idx))
+
+        c = np.zeros(3)
+        for comp in range(3):
+            if typ_n[comp] == 0 or den[comp] <= 0:
+                continue
+            i_typ = typ_sum[comp] / typ_n[comp]
+            # Prior expressed on the correction as a fraction of the moment:
+            # c*sqrt(I) ~ frac_sigma * I, so sigma_c = frac_sigma * sqrt(I).
+            sigma_c = frac_sigma * np.sqrt(max(i_typ, 1e-12))
+            ridge = 1.0 / (sigma_c * sigma_c) if sigma_c > 0 else 0.0
+            c[comp] = num[comp] / (den[comp] + ridge)
+
+        # Install as delta_total_constants: the target constant is the one the
+        # corrected moment implies, so the optimiser keeps comparing rigid
+        # predictions against a target that already carries the offset.
+        for iso, i_m, idx in rows:
+            obs = np.asarray(iso["obs_constants"], dtype=float)
+            delta = np.zeros(obs.size)
+            for k, comp in enumerate(idx):
+                comp = int(comp)
+                if not (0 <= comp < 3) or obs[k] <= 0 or i_m[comp] <= 0:
+                    continue
+                i_obs = _INERTIA_TO_MHZ / obs[k]
+                i_target = i_obs - c[comp] * np.sqrt(i_m[comp])
+                if i_target > 0:
+                    delta[k] = _INERTIA_TO_MHZ / i_target - obs[k]
+            iso["delta_total_constants"] = delta
+        return c
 
     def jacobian(self, coords, masses, component_indices=None):
         """
