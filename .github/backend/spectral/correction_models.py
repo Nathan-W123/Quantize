@@ -39,6 +39,9 @@ M_ELECTRON_AMU: float = 5.48579909070e-4
 #
 # Format: element → component → {"u": float, "sigma_u": float}
 # Components A, B, C.  A is omitted for heavy atoms (negligible for oblate tops).
+#: Elements already warned about, so the notice appears once per run.
+_warned_builtin_bob: set = set()
+
 _BOB_BUILTIN: dict = {
     # Hydrogen — large BOB due to low mass; varies 0.01-0.03 in hydrides
     "H": {
@@ -136,6 +139,10 @@ def get_builtin_bob_params(
 ) -> dict:
     """
     Return a BOB parameter dict for the given element list.
+
+    Emits a one-time warning per element when a built-in is used, because
+    the built-ins are order-of-magnitude placeholders (sigma_u = u), not
+    measured constants: they regularise a fit rather than correct it.
 
     Built-in estimates (see _BOB_BUILTIN) are used for elements not covered by
     user_params.  user_params entries take priority element-by-element.

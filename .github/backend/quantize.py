@@ -379,6 +379,7 @@ class MolecularOptimizer:
         self._anharmonic_fd_delta_ang = max(float(anharmonic_fd_delta_ang), 1e-4)
         self._nonconvergent_policy = str(nonconvergent_policy or "warn").strip().lower()
         self._harmonic_cd_from_hessian = bool(harmonic_cd_from_hessian)
+        self._warned_cd_unvalidated = False
         self._cd_sigma_fraction = max(float(cd_sigma_fraction), 1e-6)
         self._fit_cd_constants = bool(fit_cd_constants)
         self._cd_weight = max(float(cd_weight), 0.0)
@@ -1062,6 +1063,20 @@ class MolecularOptimizer:
             return
         hess_bohr = self.quantum._hessian_bohr
         print("\n  [harmonic-cd] Computing harmonic CD constants from Hessian...")
+        if not self._warned_cd_unvalidated:
+            self._warned_cd_unvalidated = True
+            print(
+                "  [harmonic-cd] WARNING: the tau' -> Watson A-reduction mapping "
+                "is not validated.\n"
+                "                Measured against water's experimental constants it "
+                "gets DJ and DK\n"
+                "                with the WRONG SIGN (-66.9 vs +37.6, -7.0 vs +973.3) "
+                "and DJK nine\n"
+                "                times too small. These are not order-of-magnitude "
+                "estimates; treat\n"
+                "                them as diagnostics only. See "
+                "dev/tests/test_cd_mapping_validation.py."
+            )
         cd_table = build_cd_table_from_hessian(
             hess_bohr,
             self.coords,
