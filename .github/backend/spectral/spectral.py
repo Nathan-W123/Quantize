@@ -1,6 +1,12 @@
 ﻿import numpy as np
 from scipy import constants
 from backend.conformers.conformer_mixture import ConformerMixture
+#: Relative floor on every observation sigma, as a fraction of the constant.
+#: Represents the irreducible error of fitting a rigid rotor to ground-state
+#: constants. Set to 0.0 to disable (only sensible for synthetic data whose
+#: generating model matches the fitted one exactly).
+DEFAULT_SIGMA_FLOOR_REL = 1.0e-3
+
 from backend.spectral.centrifugal_distortion import (
     CD_NAMES,
     CDConstants,
@@ -263,6 +269,7 @@ class SpectralEngine:
         delta=1e-3,
         robust_loss="none",
         robust_param=1.0,
+        sigma_floor_rel=DEFAULT_SIGMA_FLOOR_REL,
         sigma_floor_mhz=0.0,
         sigma_cap_mhz=None,
         max_weight=None,
@@ -336,6 +343,7 @@ class SpectralEngine:
             if len(iso["component_indices"]) != n:
                 raise ValueError("component_indices length must match obs_constants length.")
         self.delta = delta
+        self.sigma_floor_rel = max(float(sigma_floor_rel), 0.0)
         self.robust_loss = robust_loss.lower()
         self.robust_param = max(float(robust_param), 1e-12)
         self.sigma_floor_mhz = max(float(sigma_floor_mhz), 0.0)
@@ -534,6 +542,25 @@ class SpectralEngine:
             if np.any(sigma_corr > 0.0):
                 sigma_eff = np.sqrt(np.maximum(sigma_eff, 0.0) ** 2 + sigma_corr ** 2)
         sigma_eff = np.maximum(sigma_eff, 1e-12)
+        # Relative floor: no stated uncertainty can claim the model is better
+        # than the model is. These constants are fitted with a rigid rotor and
+        # no centrifugal-distortion term, so the residual model error is a
+        # fraction of each constant, not an absolute number of MHz. Measured
+        # against published structures it runs from 0.06% (fluoroacetylene) to
+        # 2.4% (water), so a floor of a tenth of a percent is conservative and
+        # does not bite on honestly-quoted data.
+        #
+        # Without it, a sigma quoted far below the model error hands the data
+        # block a weight the physics cannot support: at 0.2 MHz on water's
+        # 435 GHz B constant the observation claims 5e-7 relative precision, the
+        # data term then outweighs the quantum prior by seven orders of
+        # magnitude, and the fit follows the data into directions -- such as a
+        # soft bending angle -- where it has no business leading.
+        if self.sigma_floor_rel > 0.0 and iso is not None:
+            obs = np.asarray(iso.get("obs_constants", []), dtype=float)
+            if obs.size == sigma_eff.size:
+                sigma_eff = np.maximum(sigma_eff,
+                                       self.sigma_floor_rel * np.abs(obs))
         if self.sigma_floor_mhz > 0.0:
             sigma_eff = np.maximum(sigma_eff, self.sigma_floor_mhz)
         if self.sigma_cap_mhz is not None:

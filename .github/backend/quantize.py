@@ -34,6 +34,25 @@ from backend.spectral.rovib_corrections import (
     correction_summary,
 )
 from backend.spectral.correction_models import parse_correction_table, RovibCorrection, ParsedRovibResult
+
+
+#: Default width of the quantum prior, in Angstrom -- the displacement over
+#: which the electronic-structure surface is trusted.
+#:
+#: This must match the geometry error of the level of theory in use. Benchmarks
+#: over six molecules put RHF/6-31G at 15-19 mA RMS and B3LYP/6-31G(d) at about
+#: 7 mA, and the hybrid beats theory alone across a broad plateau either side of
+#: the right value. 0.020 A suits a Hartree-Fock or small-basis calculation; for
+#: a good DFT or post-HF surface, set it lower.
+#:
+#: The previous default of None was worse than any number. It routed the weight
+#: through a heuristic that adds a dimensionless chi-square to an energy in
+#: Hartrees, and the units alone hand the spectral side a factor of ~1e5 (for
+#: water), so no honest sigma on the data could give theory a say.
+#:
+#: `scripts/estimate_theory_error.py` estimates the right value for a molecule
+#: with no known structure, from the spread between two levels of theory.
+DEFAULT_QUANTUM_PRIOR_SIGMA_ANG = 0.020
 from backend.autoconfig import AutoConfigEngine
 from backend.autoconfig_bases import ProblemShape, count_spectral_rows, infer_optimizer_bases
 from backend.quantum import (
@@ -244,13 +263,13 @@ class MolecularOptimizer:
         hess_recalc_min=1,
         hess_recalc_max=8,
         sv_threshold=1e-3,
-        sv_min_abs=0.0,
+        sv_min_abs=None,
         trust_radius=0.1,
         null_trust_radius=None,
         lambda_damp=1e-4,
-        objective_mode="split",
+        objective_mode="joint",
         alpha_quantum=1.0,
-        quantum_prior_sigma_ang=None,
+        quantum_prior_sigma_ang=DEFAULT_QUANTUM_PRIOR_SIGMA_ANG,
         robust_loss="none",
         robust_param=1.0,
         sigma_floor_mhz=0.0,
@@ -512,6 +531,18 @@ class MolecularOptimizer:
                 sigma_angle_deg=float(prior_sigma_angle_deg),
                 sigma_dihedral_deg=float(prior_sigma_dihedral_deg),
             )
+        # An absolute floor on the singular values, in the same units as the
+        # sigma-weighted Jacobian: 1/s is the parameter uncertainty along a
+        # direction, in Angstrom. Tying the floor to the prior width states the
+        # rule plainly -- the data owns a direction only where it resolves that
+        # direction better than the quantum surface is trusted to. A floor of
+        # 0.0 (the old default) let any direction above the *relative* cutoff go
+        # to the data, including ones it barely resolves, which is how hydrogen
+        # positions ended up tens of milli-Angstrom out.
+        if sv_min_abs is None:
+            sigma_x = quantum_prior_sigma_ang or DEFAULT_QUANTUM_PRIOR_SIGMA_ANG
+            sv_min_abs = 1.0 / float(sigma_x) if sigma_x > 0.0 else 0.0
+
         self.optimizer = SubspaceOptimizer(
             sv_threshold,
             sv_min_abs,
