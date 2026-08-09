@@ -86,6 +86,9 @@ class Isotopologue:
     abc_mhz: tuple
     #: decimals quoted for each constant, used to floor the uncertainty.
     decimals: tuple = (2, 2, 2)
+    #: Per-species relative uncertainty, overriding SIGMA_REL. Needed where the
+    #: rigid-rotor model error is larger than the usual r_s-vs-r_0 gap.
+    sigma_rel: tuple | None = None
 
     def masses(self, parent: np.ndarray) -> np.ndarray:
         m = parent.copy()
@@ -104,7 +107,8 @@ class Isotopologue:
         out = []
         for k in self.component_indices:
             v = float(self.abc_mhz[k])
-            model = SIGMA_REL[k] * abs(v)
+            rel = self.sigma_rel or SIGMA_REL
+            model = rel[k] * abs(v)
             meas = _quoted_step(v, self.decimals[k])
             out.append(float(np.hypot(model, meas)))
         return out
@@ -537,3 +541,49 @@ CHLOROFLUOROMETHANE = ReferenceMolecule(
 
 #: The second, independent set.
 MOLECULES_SET2 = [FORMYL_FLUORIDE, FLUOROACETYLENE, CHLOROFLUOROMETHANE]
+
+
+# ── Water, H2O — a deliberate stress test ────────────────────────────────────
+# Structure: r_e = 0.9578 A, 104.48 deg, the accepted equilibrium geometry.
+# Constants: NIST CCCBDB experimental values for H2O and D2O.
+#
+# Water is the hardest case here and it is included to show where the approach
+# breaks down rather than where it works. Every fluorinated molecule above
+# reproduces its own measured constants to 0.06-1.4%, with the residuals all
+# one-signed -- the r_s-versus-r_0 offset. Water manages only 2.4%, and its
+# residuals change sign across A, B and C (-1.8%, +0.5%, +2.5%).
+#
+# That is not a bad reference structure, it is the rigid-rotor model failing.
+# Water is light and floppy, so zero-point averaging is both large and strongly
+# anisotropic, and no single rigid geometry can reproduce all three constants.
+# CCCBDB's own effective geometries for H2O and D2O differ (0.958 A / 104.478
+# deg against 0.956 A / 105.200 deg), which is the same effect seen directly.
+#
+# sigma is therefore set to 2.5% rather than the usual 0.5-1%, to match the
+# model error actually present. Weighting these constants as though they were
+# good to 0.5% would ask the fit to reproduce mutually inconsistent numbers.
+WATER = ReferenceMolecule(
+    key="water",
+    name="Water",
+    formula="H2O",
+    elems=["O", "H", "H"],
+    geometry=np.array([
+        [0.0000000,  0.0000000, 0.0],
+        [0.757430,  0.5865400, 0.0],
+        [-0.757430,  0.5865400, 0.0],
+    ]),
+    masses=np.array([M_O16, M_H, M_H]),
+    species=[
+        Isotopologue("H2-16O", {},
+                     (835712.5, 435059.0, 278357.3), (1, 1, 1), (0.025,)*3),
+        Isotopologue("D2-16O", {1: M_D, 2: M_D},
+                     (462278.3, 218038.5, 145258.5), (1, 1, 1), (0.025,)*3),
+    ],
+    structure_source="Accepted equilibrium structure r_e = 0.9578 A, 104.48 deg",
+    constants_source="NIST CCCBDB experimental rotational constants (H2O, D2O)",
+    bonds={"O-H": [(0, 1), (0, 2)]},
+    angles={"H-O-H": [(1, 0, 2)]},
+)
+
+#: Water on its own. Not monofluorinated -- included as a stress test.
+WATER_SET = [WATER]

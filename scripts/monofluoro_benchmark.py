@@ -49,12 +49,14 @@ from dev.monofluoro_references import (  # noqa: E402
     HELDOUT,
     MOLECULES,
     MOLECULES_SET2,
+    WATER_SET,
     ReferenceMolecule,
 )
 
 #: Which molecule set to run. `set=2` is the independent second set, which
 #: took no part in calibrating the hybrid's prior width.
-_SETS = {"1": MOLECULES, "2": MOLECULES_SET2, "heldout": HELDOUT}
+_SETS = {"1": MOLECULES, "2": MOLECULES_SET2, "heldout": HELDOUT,
+         "water": WATER_SET}
 MOLECULES = next((_SETS[t.split('=', 1)[1]] for t in sys.argv[1:]
                   if t.startswith('set=')), MOLECULES)
 
@@ -174,7 +176,9 @@ def errors(mol, coords) -> dict:
     got, ref = mol.internal_coordinates(coords), mol.internal_coordinates(mol.geometry)
     bonds = [(got[k] - ref[k]) * 1000 for k in mol.bonds]
     angles = [got[k] - ref[k] for k in mol.angles]
-    cf_key = next(k for k in mol.bonds if k.endswith("-F"))
+    # The fluorine bond is reported separately; water has none, so fall back
+    # to the first bond and let the column mean "the bond of interest".
+    cf_key = next((k for k in mol.bonds if k.endswith("-F")), next(iter(mol.bonds)))
     return {
         "rms_bond_ma": float(np.sqrt(np.mean(np.square(bonds)))),
         "max_bond_ma": float(np.max(np.abs(bonds))),
