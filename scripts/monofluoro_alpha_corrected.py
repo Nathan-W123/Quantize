@@ -82,8 +82,14 @@ def _cached_hessian_fn(backend, cache):
     return hessian_fn
 
 
-def correction_table(mol, geom, isos, backend, cache):
-    """Cubic-force-field alpha for every species."""
+def correction_table(mol, geom, isos, backend, cache, policy="warn"):
+    """Cubic-force-field alpha for every species.
+
+    ``policy`` decides what happens to a component whose cubic term exceeds its
+    harmonic one, i.e. whose perturbation series is not converging:
+    ``warn`` applies it anyway, ``inflate`` scales its sigma by the divergence
+    ratio so the fit discounts it, ``drop`` omits it entirely.
+    """
     t0 = time.time()
     hessian_fn = _cached_hessian_fn(backend, cache)
     hess = hessian_fn(geom)
@@ -92,7 +98,7 @@ def correction_table(mol, geom, isos, backend, cache):
         ctbl, info = build_correction_table_from_hessian(
             hess, np.asarray(geom, dtype=float), isos,
             hessian_fn=hessian_fn, fd_delta_cubic=0.01,
-            nonconvergent_policy="warn",
+            nonconvergent_policy=policy,
         )
     return ctbl, info, time.time() - t0
 
@@ -115,11 +121,69 @@ def run_leg(mol, isos, backend, start, ctbl, **kwargs):
         return opt.run()
 
 
+def run_level(mol, b, level_label, policy, isos, n_obs, start, theory_geom,
+              backend, hess_cache) -> dict:
+    """One data level under one nonconvergence policy, all three legs."""
+    ctbl, info, t_ff = correction_table(mol, theory_geom, isos, backend,
+                                        hess_cache, policy)
+    nonconv = info.get("nonconvergent", {}) or {}
+    dropped = info.get("dropped_components", {}) or {}
+    statuses = sorted(set(info.get("anharmonic_statuses", [])))
+    ratios = [r for comps in nonconv.values() for r in comps.values()
+              if np.isfinite(r)]
+    worst = max(ratios) if ratios else None
+
+    print(f"\n  {level_label} — policy '{policy}': {len(isos)} species, "
+          f"{n_obs} constants (force field {t_ff / 60:.1f} min)")
+    print(f"    anharmonic term: {', '.join(statuses) or 'unknown'}")
+    if nonconv:
+        comps = sorted({c for v in nonconv.values() for c in v})
+        print(f"    cubic exceeds harmonic in {len(nonconv)}/{len(isos)} species "
+              f"(components {', '.join(comps)}; worst ratio {worst:.1f})")
+    if dropped:
+        n_dropped = sum(len(v) for v in dropped.values())
+        print(f"    dropped {n_dropped} component(s) across "
+              f"{len(dropped)} species")
+
+    print(f"    {'leg':<22}{'uncorrected':>13}{'corrected':>12}"
+          f"{'change':>10}{'C-F unc':>10}{'C-F cor':>10}")
+    print("    " + "-" * 77)
+    lvl = {"level": level_label, "policy": policy, "n_observables": n_obs,
+           "rank": b["levels"][level_label]["rank"],
+           "anharmonic_statuses": statuses, "n_species": len(isos),
+           "n_nonconvergent_species": len(nonconv),
+           "worst_divergence_ratio": worst,
+           "n_dropped_components": sum(len(v) for v in dropped.values()),
+           "legs": {}}
+    for leg in LEGS:
+        kwargs = dict(OBJECTIVES).get(leg, {})
+        is_hybrid = leg != "experiment"
+        extra = dict(max_iter=40, hess_recalc_every=10) if is_hybrid \
+            else dict(max_iter=60)
+        geom = run_leg(mol, isos, "pyscf_hf" if is_hybrid else "none",
+                       start, ctbl, **extra, **kwargs)
+        e = errors(mol, geom)
+        old = b["levels"][level_label]["legs"][leg]
+        lvl["legs"][leg] = {**e,
+                            "uncorrected_rms_bond_ma": old["rms_bond_ma"],
+                            "uncorrected_cf_err_ma": old["cf_err_ma"]}
+        print(f"    {leg:<22}{old['rms_bond_ma']:>13.1f}{e['rms_bond_ma']:>12.1f}"
+              f"{e['rms_bond_ma'] - old['rms_bond_ma']:>+10.1f}"
+              f"{old['cf_err_ma']:>+10.1f}{e['cf_err_ma']:>+10.1f}")
+    print(f"    {'theory (unchanged)':<22}{b['theory']['rms_bond_ma']:>13.1f}"
+          f"{'—':>12}{'—':>10}{b['theory']['cf_err_ma']:>+10.1f}{'—':>10}")
+    return lvl
+
+
 def main() -> None:
     if not BASELINE.exists():
         sys.exit(f"missing {BASELINE} - run scripts/monofluoro_benchmark.py first")
     base = {m["key"]: m for m in json.loads(BASELINE.read_text(encoding="utf-8"))}
-    wanted = sys.argv[1:] or [m.key for m in MOLECULES]
+    argv = sys.argv[1:]
+    pol_tokens = [t.split("=", 1)[1] for t in argv if t.startswith("policy=")]
+    policies = pol_tokens[0].split(",") if pol_tokens else ["warn"]
+    wanted = [t for t in argv if not t.startswith("policy=")] \
+        or [m.key for m in MOLECULES]
 
     print(f"  RHF/{BASIS}. Vibration-rotation correction from a Cartesian cubic")
     print("  force field at the theory-optimised geometry, applied identically to")
@@ -146,54 +210,12 @@ def main() -> None:
 
         for level_label, limit in DATA_LEVELS:
             isos = build_isotopologues(mol, limit)
-            ctbl, info, t_ff = correction_table(mol, theory_geom, isos, backend,
-                                                hess_cache)
             n_obs = sum(len(i["component_indices"]) for i in isos)
-
-            nonconv = info.get("nonconvergent", {}) or {}
-            statuses = sorted(set(info.get("anharmonic_statuses", [])))
-            all_ratios = [r for comps in nonconv.values() for r in comps.values()
-                          if np.isfinite(r)]
-            print(f"\n  {level_label}: {len(isos)} species, {n_obs} constants "
-                  f"(force field {t_ff / 60:.1f} min)")
-            print(f"    anharmonic term: {', '.join(statuses) or 'unknown'}")
-            if nonconv:
-                worst = max(all_ratios) if all_ratios else float("nan")
-                comps = sorted({c for v in nonconv.values() for c in v})
-                print(f"    WARNING: cubic term exceeds harmonic in "
-                      f"{len(nonconv)}/{len(isos)} species "
-                      f"(components {', '.join(comps)}; worst ratio {worst:.1f}) "
-                      f"-> VPT2 series diverging, correction unreliable")
-
-            print(f"    {'leg':<22}{'uncorrected':>13}{'corrected':>12}"
-                  f"{'change':>10}{'C-F unc':>10}{'C-F cor':>10}")
-            print("    " + "-" * 77)
-            lvl = {"n_observables": n_obs, "rank": b["levels"][level_label]["rank"],
-                   "anharmonic_statuses": statuses,
-                   "n_species": len(isos),
-                   "n_nonconvergent_species": len(nonconv),
-                   "worst_divergence_ratio": (max(all_ratios) if all_ratios
-                                              else None),
-                   "nonconvergent": {k: v for k, v in nonconv.items()},
-                   "legs": {}}
-            for leg in LEGS:
-                kwargs = dict(OBJECTIVES).get(leg, {})
-                is_hybrid = leg != "experiment"
-                extra = dict(max_iter=40, hess_recalc_every=10) if is_hybrid \
-                    else dict(max_iter=60)
-                geom = run_leg(mol, isos, "pyscf_hf" if is_hybrid else "none",
-                               start, ctbl, **extra, **kwargs)
-                e = errors(mol, geom)
-                old = b["levels"][level_label]["legs"][leg]
-                lvl["legs"][leg] = {**e, "uncorrected_rms_bond_ma": old["rms_bond_ma"],
-                                    "uncorrected_cf_err_ma": old["cf_err_ma"]}
-                print(f"    {leg:<22}{old['rms_bond_ma']:>13.1f}"
-                      f"{e['rms_bond_ma']:>12.1f}"
-                      f"{e['rms_bond_ma'] - old['rms_bond_ma']:>+10.1f}"
-                      f"{old['cf_err_ma']:>+10.1f}{e['cf_err_ma']:>+10.1f}")
-            print(f"    {'theory (unchanged)':<22}{b['theory']['rms_bond_ma']:>13.1f}"
-                  f"{'—':>12}{'—':>10}{b['theory']['cf_err_ma']:>+10.1f}{'—':>10}")
-            rec["levels"][level_label] = lvl
+            for policy in policies:
+                key = f"{level_label} [{policy}]"
+                rec["levels"][key] = run_level(
+                    mol, b, level_label, policy, isos, n_obs, start,
+                    theory_geom, backend, hess_cache)
         out.append(rec)
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
