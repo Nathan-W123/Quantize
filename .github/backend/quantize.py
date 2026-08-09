@@ -323,6 +323,8 @@ class MolecularOptimizer:
         debug_rank_diagnostics=False,
         debug_sv_count=6,
         project_rigid_modes=True,
+        mass_dependent_model=None,
+        mass_dependent_frac_sigma=0.01,
         enforce_quantum_descent=False,
         quantum_descent_tol=1e-10,
         use_autoconfig=True,
@@ -648,6 +650,42 @@ class MolecularOptimizer:
         self.debug_rank_diagnostics = bool(debug_rank_diagnostics)
         self.debug_sv_count = max(1, int(debug_sv_count))
         self.project_rigid_modes = bool(project_rigid_modes)
+        # Watson mass-dependent B0 -> Be correction, fitted alongside the
+        # structure. None disables it; "rm1" fits the three sqrt(I) coefficients.
+        #
+        # Off by default because it was measured not to help. On four molecules
+        # at two data levels (RHF/6-31G, warm start) the mean RMS bond error
+        # went 11.49 mA with it off to 12.23 / 13.08 / 17.85 at frac_sigma
+        # 0.003 / 0.01 / 0.03 -- monotonically worse, and worse in every
+        # fluorinated case.
+        #
+        # The reason is worth recording, because the same correction fitted
+        # *standalone* does help, and markedly: 4.62 -> 2.33 mA on formyl
+        # fluoride. Inside the hybrid the residual I_obs - I_m carries two
+        # things, the rovibrational offset and the quantum method's structural
+        # error. A standalone fit separates them because the structure is free
+        # and only isotopic substitution moves it; here the quantum prior
+        # anchors the structure, so the coefficients mop up the method's error
+        # instead. The symptoms are visible in the fitted values: c comes out
+        # negative on formyl fluoride where the standalone fit gives it
+        # positive, and on water the signs disagree with the standalone fit on
+        # two of three axes.
+        #
+        # Water at frac_sigma 0.03 does reach 0.14 mA from 1.75, but that is a
+        # knife edge -- 1.05 mA by 0.05 and 5.43 mA by 0.1 -- so it is
+        # coincidental cancellation rather than the correction doing its job.
+        #
+        # Turning it on would need the coefficients fitted from isotopic
+        # differences alone, so that the method's error cancels as common mode.
+        self._mass_dependent_model = (
+            None if mass_dependent_model is None
+            else str(mass_dependent_model).strip().lower())
+        if self._mass_dependent_model not in (None, "rm1"):
+            raise ValueError(
+                f"mass_dependent_model must be None or 'rm1', got "
+                f"{mass_dependent_model!r}")
+        self._mass_dependent_frac_sigma = float(mass_dependent_frac_sigma)
+        self._mass_dependent_c = None
         self.enforce_quantum_descent = bool(enforce_quantum_descent)
         self.quantum_descent_tol = float(quantum_descent_tol)
         self.enable_geometry_guardrails = bool(enable_geometry_guardrails)
@@ -1523,6 +1561,17 @@ class MolecularOptimizer:
                 g = self.quantum.gradient
                 H = self.quantum.hessian
                 g, H = self._project_quantum_terms(g, H)
+
+            # Re-fit the mass-dependent B0 -> Be offset at the current geometry.
+            # It is linear in its coefficients, so the best ones follow in closed
+            # form and substituting them back is equivalent to carrying them as
+            # optimiser parameters (variable projection) -- but the parameter
+            # vector, trust radius and symmetry projector stay untouched. The
+            # coefficients depend on the structure, so this has to be redone as
+            # the structure moves.
+            if self._mass_dependent_model is not None:
+                self._mass_dependent_c = self.spectral.fit_mass_dependent_correction(
+                    self.coords, frac_sigma=self._mass_dependent_frac_sigma)
 
             J, residual_w = self.spectral.stacked(self.coords)
             _, residual_mhz = self.spectral.stacked_unweighted(self.coords)
