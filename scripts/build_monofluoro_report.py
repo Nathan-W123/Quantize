@@ -549,11 +549,28 @@ def section_findings(story, data):
         "(r<sub>0</sub>) constants with no vibration-rotation correction while "
         "scoring against a substitution (r<sub>s</sub>) structure. That mismatch "
         "shows up as a one-signed bias of roughly half a percent in every measured "
-        "B and C, and it is what the data-led fits spend their freedom chasing. It "
-        "is also the one limitation here with a concrete fix: the correction is "
-        "computable from a quantum force field, and this repository already "
-        "implements the machinery. Doing so is the clear next step, and would "
-        "change these numbers more than any change of objective.", BODY))
+        "B and C, and it is what the data-led fits spend their freedom chasing.",
+        BODY))
+    story.append(p(
+        "That diagnosis was tested directly, by computing the correction from a "
+        "Cartesian cubic force field and applying it identically to all three "
+        "data-using legs. The mechanism checks out where it was predicted: vinyl "
+        "fluoride on full data, the case that collapses, improves from 31.1 to "
+        "23.1 m&Aring;. But overall the correction <i>hurt</i>, in 14 of 18 cases, "
+        "and in one it was catastrophic &mdash; acetyl fluoride on full data went "
+        "from 8.8 to 67.9 m&Aring;, with the C&ndash;F bond wrong by 7%.", BODY))
+    story.append(p(
+        "The cause is not the correction in principle but the force field behind "
+        "it. Every one of those runs reported that the cubic term exceeds the "
+        "harmonic one, meaning the perturbation series the correction is built on "
+        "is not converging, and the damage tracks that divergence ratio: molecules "
+        "with a ratio near 3 lose about 1 m&Aring;, the case with a ratio of 35 "
+        "loses 40. The alpha implementation validates against experimental "
+        "constants independently, so the fault lies with RHF/6-31G cubic force "
+        "constants rather than the code. The honest conclusion is that this "
+        "correction should not be applied at this level of theory, and that a "
+        "better force field &mdash; not a different algorithm &mdash; is the "
+        "prerequisite for improving any of these results.", BODY))
 
     story.append(p("7.6 Does the hybrid beat theory?", H2))
     story.append(p(
@@ -611,16 +628,23 @@ def section_findings(story, data):
 def section_limits(story):
     story.append(p("8. Limitations", H1))
     items = [
-        ("No vibration-rotation correction is applied.",
-         "The measured constants are ground-state (r<sub>0</sub>) values and are "
-         "fitted as they stand, so the fit is pulled toward an r<sub>0</sub> "
-         "structure while being scored against an r<sub>s</sub> reference. The "
-         "residuals show this plainly: B and C sit 0.3&ndash;0.7% off in the same "
-         "direction in all three molecules, which is a real physical offset rather "
-         "than scatter. It penalises the two data-using methods and leaves theory "
-         "untouched. This repository implements the machinery to compute those "
-         "corrections from a quantum force field; applying it is the obvious next "
-         "step and would change these numbers."),
+        ("No vibration-rotation correction is applied &mdash; and applying it at "
+         "this level of theory makes things worse.",
+         "The measured constants are ground-state (r<sub>0</sub>) values fitted as "
+         "they stand, so the fit is pulled toward an r<sub>0</sub> structure while "
+         "being scored against an r<sub>s</sub> reference; B and C sit 0.3&ndash;"
+         "0.7% off in the same direction in all three molecules. That was expected "
+         "to be the binding constraint, so the correction was computed from a "
+         "Cartesian cubic force field and applied identically to every data-using "
+         "leg (<font face=\"Courier\" size=\"7.5\">scripts/"
+         "monofluoro_alpha_corrected.py</font>). It made results worse in 14 of 18 "
+         "cases, in one of them catastrophically &mdash; acetyl fluoride on full "
+         "data goes from 8.8 to 67.9 m&Aring;. The reason is visible in the "
+         "diagnostics: the cubic term exceeds the harmonic one for every species, "
+         "so the perturbation series is not converging, and the damage tracks that "
+         "divergence ratio closely. The alpha formulae themselves validate against "
+         "experiment; it is the RHF/6-31G cubic force field that is inadequate. A "
+         "better force field, not a code change, is what this needs."),
         ("Structure and constants come from different studies.",
          "For vinyl fluoride the reference structure is a 1989 determination while "
          "the constants are the 1968 compilation of earlier work. They agree to "
