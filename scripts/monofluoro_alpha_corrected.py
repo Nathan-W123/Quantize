@@ -50,9 +50,9 @@ from backend.registry import get_backend  # noqa: E402
 from backend.spectral.harmonic_alpha import (  # noqa: E402
     build_correction_table_from_hessian,
 )
-from dev.monofluoro_references import MOLECULES  # noqa: E402
 from scripts.monofluoro_benchmark import (  # noqa: E402
     BASIS,
+    MOLECULES,
     DATA_LEVELS,
     METHOD,
     OBJECTIVES,
@@ -65,7 +65,8 @@ BASELINE = _ROOT / "output" / "monofluoro_benchmark.json"
 for _tok in sys.argv[1:]:
     if _tok.startswith("baseline="):
         BASELINE = _ROOT / _tok.split("=", 1)[1]
-OUT = _ROOT / "output" / "monofluoro_alpha_corrected.json"
+_ALPHA_TAG = f"{METHOD}_{BASIS}".replace("/", "-").replace("(", "").replace(")", "")
+OUT = _ROOT / "output" / f"monofluoro_alpha_corrected_{_ALPHA_TAG}.json"
 LEGS = ["experiment"] + [label for label, _ in OBJECTIVES]
 
 
