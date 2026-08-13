@@ -765,6 +765,7 @@ class MolecularOptimizer:
         self._since_hessian = None
         self._since_rovib = None
         self._last_data_support = {}
+        self._last_sigma_split = {}
         self.history = []
         self._guardrail_bonds = _detect_bonds(self.coords, self.elems) if self.enable_geometry_guardrails else []
 
@@ -2154,6 +2155,20 @@ class MolecularOptimizer:
 
         for name, fn in coord_fns:
             sigma, g = propagate(fn)
+            # E3: the blended sigma hides which source it came from, and the two
+            # parts are calibrated against different things -- the data part
+            # against residuals and resampling, the prior part against the
+            # measured geometry error of the level of theory. Split by
+            # projecting the coordinate gradient onto the data's range and null
+            # spaces and propagating each part through the same covariance.
+            # The cross term is dropped, so the parts need not add in
+            # quadrature to the total; they are diagnostics, not a partition.
+            g_null = null_frac @ g
+            g_range = g - g_null
+            self._last_sigma_split[name] = (
+                float(np.sqrt(max(g_range @ cov @ g_range, 0.0))),
+                float(np.sqrt(max(g_null @ cov @ g_null, 0.0))),
+            )
             # How much of this coordinate the spectrum cannot see. 1.0 means the
             # value came from the quantum surface and nothing else -- which is
             # the honest caveat to attach to a structure nobody can check, and
@@ -2282,6 +2297,15 @@ class MolecularOptimizer:
             out[(f"{self.elems[i]}{i + 1}-{self.elems[j]}{j + 1}"
                  f"-{self.elems[k]}{k + 1}")] = float(np.std(vals, ddof=1))
         return out
+
+    def sigma_split(self):
+        """Per-coordinate (data_sigma, prior_sigma) from the last uncertainty call.
+
+        See the E3 comment in geometry_uncertainty: the first number is the
+        width along directions the spectrum resolves, the second along the
+        directions only the quantum prior constrains.
+        """
+        return dict(self._last_sigma_split)
 
     def data_support(self):
         """Fraction of each coordinate the spectrum actually determines.

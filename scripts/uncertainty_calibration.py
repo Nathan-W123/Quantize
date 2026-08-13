@@ -60,13 +60,35 @@ def measure(coords, elems, bonds, angles):
     return out
 
 METHOD, BASIS = "b3lyp", "6-31g(d)"
+ONLY = None
+SIGMA_X = None
 for _tok in sys.argv[1:]:
     if _tok.startswith("method="):
         METHOD = _tok.split("=", 1)[1]
     elif _tok.startswith("basis="):
         BASIS = _tok.split("=", 1)[1]
+    elif _tok.startswith("only="):
+        ONLY = _tok.split("=", 1)[1]
+    elif _tok.startswith("sigma="):
+        SIGMA_X = float(_tok.split("=", 1)[1])
 
-OUT = _ROOT / "output" / "uncertainty_calibration.json"
+#: Trust radius of the quantum surface, per level of theory, in Angstrom.
+#: This is E1 of the error-model iteration: the module default of 0.020 A was
+#: calibrated for RHF/6-31G (geometry error 16-24 mA RMS on these molecules)
+#: and the earlier calibration runs inherited it at B3LYP, whose measured error
+#: is 5.5-6.7 mA RMS -- so every theory-determined coordinate reported a sigma
+#: ~3x too wide by construction. Values here are calibrated on molecules with
+#: known structures and then frozen; sigma= overrides.
+THEORY_SIGMA_X = {
+    ("rhf", "6-31g"): 0.020,
+    ("rhf", "6-31g(d)"): 0.020,
+    ("b3lyp", "6-31g(d)"): 0.007,
+}
+if SIGMA_X is None:
+    SIGMA_X = THEORY_SIGMA_X.get((METHOD.lower(), BASIS.lower()), 0.020)
+
+_TAG = "" if ONLY is None else f"_{ONLY}"
+OUT = _ROOT / "output" / f"uncertainty_calibration{_TAG}.json"
 
 
 def run_one(mol, limit):
@@ -80,21 +102,25 @@ def run_one(mol, limit):
         hess_recalc_every=10,
         # Model error stays in the weighting sigma; two-sided rescaling sets
         # its magnitude from the residuals rather than from a guess.
-        chi2_rescale=True, chi2_rescale_max_passes=3)
+        chi2_rescale=True, chi2_rescale_max_passes=3,
+        quantum_prior_sigma_ang=SIGMA_X)
     with contextlib.redirect_stdout(io.StringIO()):
         res = opt.run()
     coords = res["coords"] if isinstance(res, dict) and "coords" in res else res
     unc = opt.geometry_uncertainty()
-    return coords, unc, opt.point_group, opt.data_support(), opt.reduced_chi_square()
+    return (coords, unc, opt.point_group, opt.data_support(),
+            opt.reduced_chi_square(), opt.sigma_split())
 
 
 def main() -> None:
-    print(f"  {METHOD.upper()}/{BASIS}. Do the quoted uncertainties cover the truth?\n")
+    print(f"  {METHOD.upper()}/{BASIS}, sigma_x = {SIGMA_X} A. "
+          f"Do the quoted uncertainties cover the truth?\n")
     rows, records = [], []
-    for mol in MOLECULES_SET2:
+    mols = [m for m in MOLECULES_SET2 if ONLY is None or m.key == ONLY]
+    for mol in mols:
         elems = list(mol.elems)
         for label, limit in (("parent only", 1), ("all species", None)):
-            coords, unc, pg, support, chi2 = run_one(mol, limit)
+            coords, unc, pg, support, chi2, split = run_one(mol, limit)
             bonds = _detect_bonds(coords, elems)
             angles = _detect_angles(bonds)
             got = measure(np.asarray(coords, float), elems, bonds, angles)
@@ -112,8 +138,10 @@ def main() -> None:
                 sig = unc[name] * scale
                 covered = abs(err) <= sig
                 rows.append((covered, abs(err), sig, is_bond))
+                d_sig, p_sig = split.get(name, (float("nan"), float("nan")))
                 records.append({"molecule": mol.name, "level": label,
                                 "coordinate": name, "error": err, "sigma": sig,
+                                "sigma_data": d_sig * scale, "sigma_prior": p_sig * scale,
                                 "covered": bool(covered), "is_bond": bool(is_bond),
                                 "data_support": float(support.get(name, float("nan"))),
                                 "chi2_nu": float(chi2)})
@@ -140,6 +168,7 @@ def main() -> None:
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps({"method": METHOD, "basis": BASIS,
+                               "sigma_x": SIGMA_X,
                                "coverage": cov / n, "n": n,
                                "records": records}, indent=2), encoding="utf-8")
     print(f"\n  written to {OUT}")
