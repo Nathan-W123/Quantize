@@ -78,10 +78,9 @@ def run_one(mol, limit):
         quantum_backend="pyscf_hf", orca_method=METHOD, orca_basis=BASIS,
         coordinate_mode="cartesian", use_autoconfig=False, max_iter=40,
         hess_recalc_every=10,
-        # The systematic now has its own channel, so the weighting sigma is
-        # measurement precision and the blanket relative floor would only put
-        # the model error back into the weights.
-        sigma_floor_rel=0.0, chi2_rescale=True)
+        # Model error stays in the weighting sigma; two-sided rescaling sets
+        # its magnitude from the residuals rather than from a guess.
+        chi2_rescale=True, chi2_rescale_max_passes=3)
     with contextlib.redirect_stdout(io.StringIO()):
         res = opt.run()
     coords = res["coords"] if isinstance(res, dict) and "coords" in res else res

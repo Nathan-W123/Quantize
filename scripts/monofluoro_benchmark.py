@@ -146,11 +146,6 @@ def build_isotopologues(mol: ReferenceMolecule, limit=None) -> list[dict]:
             "masses": sp.masses(mol.masses).tolist(),
             "obs_constants": sp.observed(),
             "sigma_constants": sp.sigmas(),
-            # Model error travels in its own channel: it is propagated into the
-            # reported uncertainty but never used to weight the fit. Folding the
-            # two together made the fit under-use its data (chi2/nu ~ 0.05) and
-            # quote intervals ~2.6x too wide at the same time.
-            "sigma_systematic_constants": sp.sigmas_systematic(),
             "alpha_constants": [0.0] * len(sp.observed()),
             "component_indices": list(sp.component_indices),
         })
