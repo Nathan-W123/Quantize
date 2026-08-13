@@ -60,6 +60,14 @@ from backend.spectral.correction_models import parse_correction_table, RovibCorr
 #: `scripts/estimate_theory_error.py` estimates the right value for a molecule
 #: with no known structure, from the spread between two levels of theory.
 DEFAULT_QUANTUM_PRIOR_SIGMA_ANG = 0.020
+
+#: Guards on chi-square rescaling. Below this many degrees of freedom the ratio
+#: is dominated by how much freedom the model has rather than by whether the
+#: sigmas are right, and the adjustment is skipped. The factor is clamped
+#: because an unbounded one drives sigma to zero on a near-perfect fit and every
+#: quantity that divides by sigma diverges with it.
+CHI2_RESCALE_MIN_DOF = 3
+CHI2_RESCALE_MAX_FACTOR = 4.0
 from backend.autoconfig import AutoConfigEngine
 from backend.autoconfig_bases import ProblemShape, count_spectral_rows, infer_optimizer_bases
 from backend.quantum import (
@@ -1455,6 +1463,16 @@ class MolecularOptimizer:
 
     # â”€â”€ Optimisation loop â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+    def _chi2_dof(self):
+        """Observations less the directions the data constrains."""
+        J, rw = self.spectral.stacked(self.coords)
+        n_obs = int(rw.size)
+        if n_obs == 0:
+            return 0
+        sv = np.linalg.svd(np.asarray(J, dtype=float), compute_uv=False)
+        rank = int((sv > 1e-8 * sv[0]).sum()) if sv.size and sv[0] > 0 else 0
+        return max(0, n_obs - rank)
+
     def reduced_chi_square(self):
         """Chi-square per degree of freedom at the current geometry.
 
@@ -1512,7 +1530,20 @@ class MolecularOptimizer:
                 break
             if lo <= chi2_nu <= self.chi2_rescale_threshold:
                 break
-            factor = float(np.sqrt(chi2_nu))
+            # A near-zero chi-square is not evidence that the sigmas are
+            # enormously too large; it is what a model with enough freedom does
+            # to a handful of observations. Rescaling on it drives sigma toward
+            # zero, and anything that divides by sigma then blows up -- measured
+            # on fluoroacetylene, whose six B-only observations gave chi2/nu of
+            # 0.00 and a reported bond uncertainty of 1e13 Angstrom.
+            #
+            # So the adjustment is clamped, and only made when there are enough
+            # degrees of freedom for the ratio to mean anything.
+            if self._chi2_dof() < CHI2_RESCALE_MIN_DOF:
+                break
+            factor = float(np.clip(np.sqrt(chi2_nu),
+                                   1.0 / CHI2_RESCALE_MAX_FACTOR,
+                                   CHI2_RESCALE_MAX_FACTOR))
             direction = "optimistic" if chi2_nu > 1.0 else "conservative"
             verb = "widening" if chi2_nu > 1.0 else "tightening"
             print(
@@ -2172,7 +2203,12 @@ class MolecularOptimizer:
             return np.zeros_like(cov)
         A = cov @ J.T                      # J already carries 1/sigma_meas
         scale = sys_sig / np.maximum(meas, 1e-30)
-        return (A * scale**2) @ A.T
+        out = (A * scale**2) @ A.T
+        # A systematic cannot be better determined than the prior allows; if the
+        # ratio above has run away, the statistical part is the honest answer.
+        if not np.all(np.isfinite(out)):
+            return np.zeros_like(cov)
+        return out
 
     def _data_null_fractions(self, J):
         """Projector onto the directions the spectrum cannot resolve."""
