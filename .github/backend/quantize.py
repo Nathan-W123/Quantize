@@ -1465,27 +1465,56 @@ class MolecularOptimizer:
     # â”€â”€ Optimisation loop â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     def _chi2_dof(self):
-        """Observations less the directions the data constrains."""
+        """Effective degrees of freedom of the regularised fit.
+
+        nu = n_obs - tr(hat matrix), with the hat built from the same
+        regularised normal matrix the fit solves: tr[(J^T J + alpha_q H)^-1
+        J^T J]. Counting a raw SVD rank instead treats every data-touched
+        direction as fully spent, which both overstates nu where the prior
+        shares a direction and understates it where the data barely grazes one.
+        For an interpolating fit the trace approaches n_obs, nu approaches 0,
+        and chi-square rescaling is correctly skipped rather than clamped
+        mid-correction.
+        """
         J, rw = self.spectral.stacked(self.coords)
         n_obs = int(rw.size)
         if n_obs == 0:
-            return 0
-        sv = np.linalg.svd(np.asarray(J, dtype=float), compute_uv=False)
-        rank = int((sv > 1e-8 * sv[0]).sum()) if sv.size and sv[0] > 0 else 0
-        return max(0, n_obs - rank)
+            return 0.0
+        J = np.asarray(J, dtype=float)
+        JTJ = J.T @ J
+        if self.spectral_only or self.quantum is None:
+            sv = np.linalg.svd(J, compute_uv=False)
+            rank = int((sv > 1e-8 * sv[0]).sum()) if sv.size and sv[0] > 0 else 0
+            return float(max(0, n_obs - rank))
+        g = self.quantum.gradient
+        H = self.quantum.hessian
+        g, H = self._project_quantum_terms(g, H)
+        rank = int(np.linalg.matrix_rank(J))
+        alpha_q = self.optimizer.effective_quantum_weight(J, rank, hessian=H)
+        H_total = JTJ + alpha_q * self.optimizer._spd_hessian(H)
+        try:
+            C = np.linalg.pinv(H_total)
+        except np.linalg.LinAlgError:
+            return float(max(0, n_obs - rank))
+        tr_hat = float(np.trace(C @ JTJ))
+        return float(max(0.0, n_obs - min(tr_hat, float(n_obs))))
 
     def reduced_chi_square(self):
-        """Chi-square per degree of freedom at the current geometry.
+        """Chi-square per effective degree of freedom at the current geometry.
 
-        Degrees of freedom are the number of observations less the number of
-        directions the data actually constrains, which is the SVD rank rather
-        than the full parameter count -- the unconstrained directions are fixed
-        by the prior and cost the data nothing.
+        nu comes from the hat-matrix trace (see _chi2_dof), so the prior's
+        share of each direction is counted fractionally. When nu_eff is
+        numerically zero -- an interpolating fit -- the rank-based count is
+        reported instead so the caller sees a finite diagnostic, but the
+        rescaling gate in run() skips such fits entirely.
         """
         _, rw = self.spectral.stacked(self.coords)
         n_obs = int(rw.size)
         if n_obs == 0:
             return 0.0
+        nu_eff = self._chi2_dof()
+        if nu_eff > 1e-9:
+            return float(np.dot(rw, rw)) / nu_eff
         try:
             J, _ = self.spectral.stacked(self.coords)
             s = np.linalg.svd(J, compute_uv=False)
@@ -2226,7 +2255,17 @@ class MolecularOptimizer:
         return out
 
     def _data_null_fractions(self, J):
-        """Projector onto the directions the spectrum cannot resolve."""
+        """Projector onto the directions the spectrum does not own.
+
+        The cutoff matches the fit's own range/null boundary -- the relative
+        sv_threshold and the absolute sv_min_abs floor from the optimiser --
+        rather than a bare numerical-rank tolerance. With a 1e-8 tolerance a
+        direction the data barely grazes is labelled "data" while its variance
+        in the very same covariance is prior-dominated, so the data/prior split
+        and the theory-determined flag disagree with the fit that produced
+        them; and the boundary would silently stand still when
+        quantum_prior_sigma_ang (which sets sv_min_abs) moves it.
+        """
         J = np.asarray(J, dtype=float)
         n = self.coords.size
         if J.size == 0 or J.shape[1] != n:
@@ -2234,11 +2273,14 @@ class MolecularOptimizer:
         _, s, Vt = np.linalg.svd(J, full_matrices=True)
         if s.size == 0 or s[0] <= 0:
             return np.eye(n)
-        rank = int((s > 1e-8 * s[0]).sum())
+        cut = max(float(self.optimizer.sv_threshold) * float(s[0]),
+                  float(getattr(self.optimizer, "sv_min_abs", 0.0) or 0.0))
+        rank = int((s > cut).sum())
         V_null = Vt[rank:]
         return V_null.T @ V_null if V_null.size else np.zeros((n, n))
 
-    def bootstrap_uncertainty(self, n_samples=32, seed=0, include_systematic=True):
+    def bootstrap_uncertainty(self, n_samples=32, seed=0, include_systematic=True,
+                              coherent=True):
         """Resampling estimate of the geometry uncertainty.
 
         The Laplace covariance assumes the objective is quadratic and the
@@ -2255,6 +2297,14 @@ class MolecularOptimizer:
         rng = np.random.default_rng(seed)
         base_obs = [np.asarray(iso["obs_constants"], dtype=float).copy()
                     for iso in self.spectral.isotopologues]
+        # Snapshot everything a fit mutates in place. chi-square rescaling
+        # multiplies iso["sigma_constants"] via scale_sigma, so without this the
+        # rescale factors compound as a random walk across replicates and later
+        # samples are fitted with weights inconsistent with the injected noise.
+        base_sig = [np.asarray(iso["sigma_constants"], dtype=float).copy()
+                    for iso in self.spectral.isotopologues]
+        base_trust = float(self.optimizer.trust_radius)
+        base_lambda = float(self.optimizer.lambda_damp)
         widths = []
         for iso in self.spectral.isotopologues:
             s = np.asarray(iso["sigma_constants"], dtype=float).copy()
@@ -2270,14 +2320,34 @@ class MolecularOptimizer:
         samples = []
         try:
             for _ in range(int(n_samples)):
-                for iso, obs, w in zip(self.spectral.isotopologues, base_obs, widths):
-                    iso["obs_constants"] = obs + rng.normal(0.0, w)
+                shared = rng.normal(0.0, 1.0, size=3)
+                for iso, obs, sig, w in zip(self.spectral.isotopologues,
+                                            base_obs, base_sig, widths):
+                    if coherent:
+                        # The model error is common mode: the B0-vs-Be offset
+                        # shifts every isotopologue's constant of a given type
+                        # nearly together. Independent draws suppress the
+                        # coherent displacement of the optimum by about
+                        # sqrt(#constants) while adding scatter the systematic
+                        # does not have, so one shared draw per component type
+                        # per replicate is the physically right perturbation.
+                        idx = np.asarray(iso["component_indices"], dtype=int)
+                        noise = w * shared[np.clip(idx, 0, 2)]
+                    else:
+                        noise = rng.normal(0.0, w)
+                    iso["obs_constants"] = obs + noise
+                    iso["sigma_constants"] = sig.copy()
+                self.optimizer.trust_radius = base_trust
+                self.optimizer.lambda_damp = base_lambda
                 self.coords = start.copy()
                 with contextlib.redirect_stdout(io.StringIO()):
                     samples.append(np.asarray(self.run(), dtype=float).copy())
         finally:
-            for iso, obs in zip(self.spectral.isotopologues, base_obs):
+            for iso, obs, sig in zip(self.spectral.isotopologues, base_obs, base_sig):
                 iso["obs_constants"] = obs
+                iso["sigma_constants"] = sig.copy()
+            self.optimizer.trust_radius = base_trust
+            self.optimizer.lambda_damp = base_lambda
             self.coords = start
         if len(samples) < 2:
             return None
