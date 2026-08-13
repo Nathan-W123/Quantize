@@ -62,6 +62,9 @@ from scripts.monofluoro_benchmark import (  # noqa: E402
 )
 
 BASELINE = _ROOT / "output" / "monofluoro_benchmark.json"
+for _tok in sys.argv[1:]:
+    if _tok.startswith("baseline="):
+        BASELINE = _ROOT / _tok.split("=", 1)[1]
 OUT = _ROOT / "output" / "monofluoro_alpha_corrected.json"
 LEGS = ["experiment"] + [label for label, _ in OBJECTIVES]
 
@@ -182,7 +185,8 @@ def main() -> None:
     argv = sys.argv[1:]
     pol_tokens = [t.split("=", 1)[1] for t in argv if t.startswith("policy=")]
     policies = pol_tokens[0].split(",") if pol_tokens else ["warn"]
-    wanted = [t for t in argv if not t.startswith("policy=")] \
+    wanted = [t for t in argv
+              if not t.startswith(("policy=", "baseline="))] \
         or [m.key for m in MOLECULES]
 
     print(f"  RHF/{BASIS}. Vibration-rotation correction from a Cartesian cubic")
