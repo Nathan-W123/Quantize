@@ -23,6 +23,9 @@ Units
 """
 
 import os
+import contextlib
+import io
+
 import numpy as np
 
 from backend.spectral.spectral import (
@@ -753,6 +756,7 @@ class MolecularOptimizer:
         # "never computed", which forces one on the next update.
         self._since_hessian = None
         self._since_rovib = None
+        self._last_data_support = {}
         self.history = []
         self._guardrail_bonds = _detect_bonds(self.coords, self.elems) if self.enable_geometry_guardrails else []
 
@@ -1495,16 +1499,27 @@ class MolecularOptimizer:
         coords = self._optimise_once()
         if not self.chi2_rescale:
             return coords
+        # Two-sided. The test used to be `chi2_nu > threshold`, which can only
+        # catch sigmas that are too small. Sigmas that are too *large* are just
+        # as wrong and are the failure this benchmark actually shows: measured
+        # chi-square per degree of freedom came out at 0.05, meaning the fit was
+        # under-using its data by a factor of about four and reporting intervals
+        # several times too wide -- and the one-sided test could never fire.
+        lo = 1.0 / float(self.chi2_rescale_threshold)
         for _pass in range(int(self.chi2_rescale_max_passes)):
             chi2_nu = self.reduced_chi_square()
-            if not np.isfinite(chi2_nu) or chi2_nu <= self.chi2_rescale_threshold:
+            if not np.isfinite(chi2_nu) or chi2_nu <= 0.0:
+                break
+            if lo <= chi2_nu <= self.chi2_rescale_threshold:
                 break
             factor = float(np.sqrt(chi2_nu))
+            direction = "optimistic" if chi2_nu > 1.0 else "conservative"
+            verb = "widening" if chi2_nu > 1.0 else "tightening"
             print(
-                f"\n  [chi2-rescale] reduced chi-square = {chi2_nu:.1f}, above the "
-                f"threshold of {self.chi2_rescale_threshold:g}.\n"
-                f"                 The stated sigmas are optimistic by about "
-                f"{factor:.1f}x; widening them and refitting."
+                f"\n  [chi2-rescale] reduced chi-square = {chi2_nu:.3g}, outside "
+                f"[{lo:.3g}, {self.chi2_rescale_threshold:g}].\n"
+                f"                 The stated sigmas are {direction} by about "
+                f"{max(factor, 1 / factor):.1f}x; {verb} them and refitting."
             )
             self.spectral.scale_sigma(factor)
             coords = self._optimise_once()
@@ -2074,6 +2089,10 @@ class MolecularOptimizer:
             if self._rigid_ref_masses is not None else np.eye(n)
         cov = P @ cov @ P
 
+        J, _ = self.spectral.stacked(self.coords)
+        cov = cov + self._systematic_covariance(J, cov)
+        null_frac = self._data_null_fractions(J)
+
         bonds = _detect_bonds(self.coords, self.elems)
         angles = _detect_angles(bonds)
         x0 = np.asarray(self.coords, dtype=float).ravel()
@@ -2086,24 +2105,155 @@ class MolecularOptimizer:
                 xm[k] -= h
                 g[k] = (fn(xp.reshape(-1, 3)) - fn(xm.reshape(-1, 3))) / (2 * h)
             var = float(g @ cov @ g)
-            return float(np.sqrt(max(var, 0.0)))
+            return float(np.sqrt(max(var, 0.0))), g
 
         out = {}
+        coord_fns = []
         for i, j in bonds:
-            name = f"{self.elems[i]}{i + 1}-{self.elems[j]}{j + 1}"
-            out[name] = propagate(
-                lambda c, i=i, j=j: float(np.linalg.norm(c[i] - c[j])))
+            coord_fns.append((f"{self.elems[i]}{i + 1}-{self.elems[j]}{j + 1}",
+                              lambda c, i=i, j=j: float(np.linalg.norm(c[i] - c[j]))))
         for i, j, k in angles:
-            name = (f"{self.elems[i]}{i + 1}-{self.elems[j]}{j + 1}"
-                    f"-{self.elems[k]}{k + 1}")
-
             def ang(c, i=i, j=j, k=k):
                 v1, v2 = c[i] - c[j], c[k] - c[j]
                 cosa = float(v1 @ v2 / (np.linalg.norm(v1) * np.linalg.norm(v2)))
                 return float(np.degrees(np.arccos(np.clip(cosa, -1.0, 1.0))))
 
-            out[name] = propagate(ang)
+            coord_fns.append((f"{self.elems[i]}{i + 1}-{self.elems[j]}{j + 1}"
+                              f"-{self.elems[k]}{k + 1}", ang))
+
+        for name, fn in coord_fns:
+            sigma, g = propagate(fn)
+            # How much of this coordinate the spectrum cannot see. 1.0 means the
+            # value came from the quantum surface and nothing else -- which is
+            # the honest caveat to attach to a structure nobody can check, and
+            # is invisible in the sigma alone, since there the prior's width is
+            # reported exactly as if it had been measured.
+            gn = float(np.linalg.norm(g))
+            blind = float(np.linalg.norm(null_frac @ g) / gn) if gn > 0 else 0.0
+            out[name] = sigma
+            self._last_data_support[name] = 1.0 - min(max(blind, 0.0), 1.0)
         return out
+
+    def _systematic_covariance(self, J, cov):
+        """Propagate model error in the constants through to the parameters.
+
+        Model error -- the r_s-versus-r_0 mismatch, and the B0-versus-Be offset
+        this engine does not correct -- is not measurement noise and must not
+        weight the fit. It does still move the answer, so it belongs in the
+        reported uncertainty, and until now it appeared nowhere at all.
+
+        A shift `d` in the constants moves the optimum by `A d` with
+        `A = C J^T Sigma^-1`. The shift's sign is unknown, so it is treated as a
+        random variable of zero mean and covariance diag(sigma_sys^2), giving
+        `C_sys = A diag(sigma_sys^2) A^T`, which is added to the statistical
+        covariance. Zero when no systematic sigmas were supplied.
+        """
+        rows = []
+        for iso in self.spectral.isotopologues:
+            sys_sig = iso.get("sigma_systematic_constants")
+            n_comp = len(iso["component_indices"])
+            if sys_sig is None:
+                rows.extend([0.0] * n_comp)
+            else:
+                s = np.asarray(sys_sig, dtype=float).ravel()
+                rows.extend([float(s[k]) if k < s.size else 0.0
+                             for k in range(n_comp)])
+        sys_sig = np.asarray(rows, dtype=float)
+        J = np.asarray(J, dtype=float)
+        if sys_sig.size != J.shape[0] or not np.any(sys_sig > 0):
+            return np.zeros_like(cov)
+        # `stacked` already divides each row by its weighting sigma, so J is
+        # d(residual)/dp and J^T is the sigma^-1-weighted design matrix.
+        meas = []
+        for iso in self.spectral.isotopologues:
+            meas.extend(np.asarray(iso["sigma_constants"], dtype=float).ravel().tolist())
+        meas = np.asarray(meas, dtype=float)
+        if meas.size != sys_sig.size:
+            return np.zeros_like(cov)
+        A = cov @ J.T                      # J already carries 1/sigma_meas
+        scale = sys_sig / np.maximum(meas, 1e-30)
+        return (A * scale**2) @ A.T
+
+    def _data_null_fractions(self, J):
+        """Projector onto the directions the spectrum cannot resolve."""
+        J = np.asarray(J, dtype=float)
+        n = self.coords.size
+        if J.size == 0 or J.shape[1] != n:
+            return np.zeros((n, n))
+        _, s, Vt = np.linalg.svd(J, full_matrices=True)
+        if s.size == 0 or s[0] <= 0:
+            return np.eye(n)
+        rank = int((s > 1e-8 * s[0]).sum())
+        V_null = Vt[rank:]
+        return V_null.T @ V_null if V_null.size else np.zeros((n, n))
+
+    def bootstrap_uncertainty(self, n_samples=32, seed=0, include_systematic=True):
+        """Resampling estimate of the geometry uncertainty.
+
+        The Laplace covariance assumes the objective is quadratic and the
+        posterior Gaussian near the optimum. Neither is guaranteed, and a
+        miscalibration in it is invisible from the inside. This perturbs the
+        observed constants within their uncertainties, refits, and takes the
+        spread of the resulting coordinates -- an estimate that shares almost
+        none of those assumptions, so agreement between the two is evidence and
+        disagreement localises the problem.
+
+        Expensive: one full fit per sample. Intended as a check on the analytic
+        covariance, not as the routine path.
+        """
+        rng = np.random.default_rng(seed)
+        base_obs = [np.asarray(iso["obs_constants"], dtype=float).copy()
+                    for iso in self.spectral.isotopologues]
+        widths = []
+        for iso in self.spectral.isotopologues:
+            s = np.asarray(iso["sigma_constants"], dtype=float).copy()
+            if include_systematic:
+                sys_s = iso.get("sigma_systematic_constants")
+                if sys_s is not None:
+                    sys_s = np.asarray(sys_s, dtype=float).ravel()
+                    if sys_s.size == s.size:
+                        s = np.hypot(s, sys_s)
+            widths.append(s)
+
+        start = np.array(self.coords, dtype=float, copy=True)
+        samples = []
+        try:
+            for _ in range(int(n_samples)):
+                for iso, obs, w in zip(self.spectral.isotopologues, base_obs, widths):
+                    iso["obs_constants"] = obs + rng.normal(0.0, w)
+                self.coords = start.copy()
+                with contextlib.redirect_stdout(io.StringIO()):
+                    samples.append(np.asarray(self.run(), dtype=float).copy())
+        finally:
+            for iso, obs in zip(self.spectral.isotopologues, base_obs):
+                iso["obs_constants"] = obs
+            self.coords = start
+        if len(samples) < 2:
+            return None
+
+        bonds = _detect_bonds(self.coords, self.elems)
+        angles = _detect_angles(bonds)
+        out = {}
+        for i, j in bonds:
+            vals = [float(np.linalg.norm(c[i] - c[j])) for c in samples]
+            out[f"{self.elems[i]}{i + 1}-{self.elems[j]}{j + 1}"] = float(np.std(vals, ddof=1))
+        for i, j, k in angles:
+            vals = []
+            for c in samples:
+                v1, v2 = c[i] - c[j], c[k] - c[j]
+                cosa = float(v1 @ v2 / (np.linalg.norm(v1) * np.linalg.norm(v2)))
+                vals.append(float(np.degrees(np.arccos(np.clip(cosa, -1.0, 1.0)))))
+            out[(f"{self.elems[i]}{i + 1}-{self.elems[j]}{j + 1}"
+                 f"-{self.elems[k]}{k + 1}")] = float(np.std(vals, ddof=1))
+        return out
+
+    def data_support(self):
+        """Fraction of each coordinate the spectrum actually determines.
+
+        Populated by :meth:`geometry_uncertainty`. 1.0 means fully constrained
+        by measurement, 0.0 means the value is the quantum surface's alone.
+        """
+        return dict(self._last_data_support)
 
     def kraitchman_report(self):
         """Substitution (r_s) coordinates from the data, next to the fitted geometry.

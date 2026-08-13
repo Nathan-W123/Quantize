@@ -77,11 +77,16 @@ def run_one(mol, limit):
         isotopologues=build_isotopologues(mol, limit),
         quantum_backend="pyscf_hf", orca_method=METHOD, orca_basis=BASIS,
         coordinate_mode="cartesian", use_autoconfig=False, max_iter=40,
-        hess_recalc_every=10)
+        hess_recalc_every=10,
+        # The systematic now has its own channel, so the weighting sigma is
+        # measurement precision and the blanket relative floor would only put
+        # the model error back into the weights.
+        sigma_floor_rel=0.0, chi2_rescale=True)
     with contextlib.redirect_stdout(io.StringIO()):
         res = opt.run()
     coords = res["coords"] if isinstance(res, dict) and "coords" in res else res
-    return coords, opt.geometry_uncertainty(), opt.point_group
+    unc = opt.geometry_uncertainty()
+    return coords, unc, opt.point_group, opt.data_support(), opt.reduced_chi_square()
 
 
 def main() -> None:
@@ -90,12 +95,13 @@ def main() -> None:
     for mol in MOLECULES_SET2:
         elems = list(mol.elems)
         for label, limit in (("parent only", 1), ("all species", None)):
-            coords, unc, pg = run_one(mol, limit)
+            coords, unc, pg, support, chi2 = run_one(mol, limit)
             bonds = _detect_bonds(coords, elems)
             angles = _detect_angles(bonds)
             got = measure(np.asarray(coords, float), elems, bonds, angles)
             ref = measure(np.asarray(mol.geometry, float), elems, bonds, angles)
-            print(f"  {mol.name} / {label}   (point group {pg or '-'})")
+            print(f"  {mol.name} / {label}   (point group {pg or '-'}, "
+                  f"chi2/nu = {chi2:.2f})")
             print(f"    {'coordinate':<14}{'accepted':>10}{'fitted':>10}"
                   f"{'error':>11}{'quoted 1σ':>12}{'':>3}")
             for name, (value, is_bond) in got.items():
@@ -109,10 +115,13 @@ def main() -> None:
                 rows.append((covered, abs(err), sig, is_bond))
                 records.append({"molecule": mol.name, "level": label,
                                 "coordinate": name, "error": err, "sigma": sig,
-                                "covered": bool(covered), "is_bond": bool(is_bond)})
+                                "covered": bool(covered), "is_bond": bool(is_bond),
+                                "data_support": float(support.get(name, float("nan"))),
+                                "chi2_nu": float(chi2)})
                 print(f"    {name:<14}{ref[name][0]:>10.4f}{value:>10.4f}"
                       f"{err:>+9.2f} {unit:<2}{sig:>10.2f} {unit:<2}"
-                      f"{'  ok' if covered else '  MISS'}")
+                      f"{'  ok' if covered else '  MISS'}"
+                      f"{'' if support.get(name, 1.0) > 0.5 else '  [theory-determined]'}")
             print()
 
     n = len(rows)

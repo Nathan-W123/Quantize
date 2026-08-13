@@ -239,6 +239,7 @@ def sanitize_isotopologues(
             "delta_bob_constants",
             "sigma_correction_constants",
             "sigma_effective_constants",
+            "sigma_systematic_constants",
         ):
             sliced = _slice_optional(key)
             if sliced is not None:
@@ -321,6 +322,12 @@ class SpectralEngine:
                 "alpha_constants": np.asarray(
                     iso.get("alpha_constants", np.zeros(len(iso["obs_constants"]))), dtype=float
                 ),
+                # Model error, carried for reporting only. Deliberately absent
+                # from every weighting path: a systematic that shifts every
+                # isotopologue the same way does not make any single constant
+                # less worth fitting, and folding it into the weights makes the
+                # fit under-use the data and over-state the answer at once.
+                "sigma_systematic_constants": _opt_arr(iso, "sigma_systematic_constants"),
                 "torsion_sensitive": bool(iso.get("torsion_sensitive", False)),
                 "rovib_table": iso.get("rovib_table", None),
             }
