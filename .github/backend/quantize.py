@@ -25,7 +25,11 @@ Units
 import os
 import numpy as np
 
-from backend.spectral.spectral import SpectralEngine, sanitize_isotopologues
+from backend.spectral.spectral import (
+    DEFAULT_SIGMA_FLOOR_REL,
+    SpectralEngine,
+    sanitize_isotopologues,
+)
 from backend.internal.internal_prior import InternalPriorEngine
 from backend.spectral.rovib_corrections import (
     resolve_corrections,
@@ -276,6 +280,7 @@ class MolecularOptimizer:
         chi2_rescale_threshold=4.0,
         chi2_rescale_max_passes=1,
         sigma_floor_mhz=0.0,
+        sigma_floor_rel=DEFAULT_SIGMA_FLOOR_REL,
         sigma_cap_mhz=None,
         max_spectral_weight=None,
         component_weight_map=None,
@@ -499,6 +504,7 @@ class MolecularOptimizer:
             robust_loss=robust_loss,
             robust_param=robust_param,
             sigma_floor_mhz=sigma_floor_mhz,
+            sigma_floor_rel=sigma_floor_rel,
             sigma_cap_mhz=sigma_cap_mhz,
             max_weight=max_spectral_weight,
             component_weight_map=component_weight_map,
@@ -2020,6 +2026,84 @@ class MolecularOptimizer:
         print("=" * 52)
 
         return residual
+
+    def geometry_uncertainty(self, rigid_tol=1e-8):
+        """Posterior standard deviation on each bond length and angle.
+
+        For a molecule that already has an accepted structure, the interesting
+        number is the error. For one that does not -- which is the case this
+        engine exists for, since fluorine has no second stable isotope and the
+        species needed to pin a structure are usually not available -- there is
+        nothing to take a difference against, and the uncertainty *is* the
+        result. A structure quoted without one cannot be used.
+
+        The posterior covariance comes from the Laplace approximation at the
+        optimum, C = (JᵀJ + alpha_q H)⁻¹, weighted exactly as the fit weighted
+        them. Bond lengths and angles are then propagated through it in the
+        usual way, sigma_q² = gᵀ C g, with g the gradient of that coordinate
+        with respect to the Cartesians.
+
+        Two properties of this number are worth stating plainly, because they
+        decide how it should be read:
+
+        * It is a *posterior* width, so it includes the prior. In a direction
+          the data cannot see, it reports the prior's width rather than
+          infinity -- which is honest only to the extent that
+          `quantum_prior_sigma_ang` is honest. It is a modelling choice, not a
+          measurement.
+        * It is a precision, not an accuracy. It propagates the stated
+          uncertainties on the constants; it knows nothing about the
+          B0-versus-Be offset left uncorrected, which is the dominant
+          systematic here. Expect it to be optimistic, and calibrate it against
+          molecules whose structures are known before trusting it on one whose
+          structure is not.
+
+        Rigid-body directions are excluded before inversion: translations and
+        rotations are null in both blocks, so leaving them in makes the
+        covariance singular and the propagated widths meaningless.
+        """
+        cov, _ = self.laplace_approximation()
+        if cov is None:
+            return None
+        n = self.coords.size
+        if cov.shape[0] != n:
+            return None
+
+        # Drop the rigid-body subspace, which no observable constrains.
+        P = self._rigid_mode_projector(self.coords, self._rigid_ref_masses) \
+            if self._rigid_ref_masses is not None else np.eye(n)
+        cov = P @ cov @ P
+
+        bonds = _detect_bonds(self.coords, self.elems)
+        angles = _detect_angles(bonds)
+        x0 = np.asarray(self.coords, dtype=float).ravel()
+
+        def propagate(fn, h=1e-5):
+            g = np.zeros(n)
+            for k in range(n):
+                xp, xm = x0.copy(), x0.copy()
+                xp[k] += h
+                xm[k] -= h
+                g[k] = (fn(xp.reshape(-1, 3)) - fn(xm.reshape(-1, 3))) / (2 * h)
+            var = float(g @ cov @ g)
+            return float(np.sqrt(max(var, 0.0)))
+
+        out = {}
+        for i, j in bonds:
+            name = f"{self.elems[i]}{i + 1}-{self.elems[j]}{j + 1}"
+            out[name] = propagate(
+                lambda c, i=i, j=j: float(np.linalg.norm(c[i] - c[j])))
+        for i, j, k in angles:
+            name = (f"{self.elems[i]}{i + 1}-{self.elems[j]}{j + 1}"
+                    f"-{self.elems[k]}{k + 1}")
+
+            def ang(c, i=i, j=j, k=k):
+                v1, v2 = c[i] - c[j], c[k] - c[j]
+                cosa = float(v1 @ v2 / (np.linalg.norm(v1) * np.linalg.norm(v2)))
+                return float(np.degrees(np.arccos(np.clip(cosa, -1.0, 1.0))))
+
+            out[name] = propagate(ang)
+        return out
 
     def kraitchman_report(self):
         """Substitution (r_s) coordinates from the data, next to the fitted geometry.
