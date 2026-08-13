@@ -66,7 +66,7 @@ DEFAULT_QUANTUM_PRIOR_SIGMA_ANG = 0.020
 #: sigmas are right, and the adjustment is skipped. The factor is clamped
 #: because an unbounded one drives sigma to zero on a near-perfect fit and every
 #: quantity that divides by sigma diverges with it.
-CHI2_RESCALE_MIN_DOF = 3
+CHI2_RESCALE_MIN_DOF = 1
 CHI2_RESCALE_MAX_FACTOR = 4.0
 from backend.autoconfig import AutoConfigEngine
 from backend.autoconfig_bases import ProblemShape, count_spectral_rows, infer_optimizer_bases

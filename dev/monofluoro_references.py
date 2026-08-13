@@ -105,19 +105,30 @@ class Isotopologue:
         return [v for v in self.abc_mhz if v is not None]
 
     def sigmas(self) -> list[float]:
-        """Measurement uncertainty only, for weighting the fit.
+        """Measurement and model error together, for weighting the fit.
 
-        Model error is deliberately *not* folded in here. The two were combined
-        until it was measured what that costs: a single sigma carrying both
-        makes the fit under-weight real data (chi-square per degree of freedom
-        came out at 0.05, where a correct weighting gives about 1) and makes the
-        reported intervals about 2.6 times too wide at once. Weighting belongs
-        to measurement precision, which says how sharply the data pins the
-        structure; model error belongs to the reported uncertainty, which says
-        how far the answer may still be from the truth. See `sigmas_systematic`.
+        Splitting these was tried and is wrong. Weighting by measurement
+        precision alone assumes the model can reproduce the constants that well,
+        and a rigid structure fitted to ground-state constants cannot: the
+        r_0-versus-r_e offset is a few tenths of a percent while the constants
+        are measured to about 1e-8 relative. Measured, that weighting gives a
+        chi-square per degree of freedom near 1e7 -- a correct statement that the
+        model is inadequate at the data's precision, and a useless one to fit
+        with, since it makes every residual look catastrophic and none of them
+        distinguishable.
+
+        Model error is the irreducible scatter here, so it belongs in the
+        weights. What the earlier chi-square of 0.05 actually showed was not that
+        the two should be separated but that this sigma was about 4.5 times too
+        large; two-sided chi-square rescaling now corrects the magnitude instead.
         """
-        return [_quoted_step(float(self.abc_mhz[k]), self.decimals[k])
-                for k in self.component_indices]
+        out = []
+        for k in self.component_indices:
+            v = float(self.abc_mhz[k])
+            rel = self.sigma_rel or SIGMA_REL
+            out.append(float(np.hypot(rel[k] * abs(v),
+                                      _quoted_step(v, self.decimals[k]))))
+        return out
 
     def sigmas_systematic(self) -> list[float]:
         """Model error: the r_s-versus-r_0 and B0-versus-Be mismatch.
