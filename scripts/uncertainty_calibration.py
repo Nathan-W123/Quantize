@@ -32,7 +32,7 @@ for _p in (_ROOT / ".github", _ROOT):
 import dev.pyscf_backend  # noqa: F401,E402  (registers "pyscf_hf")
 from backend.quantize import MolecularOptimizer  # noqa: E402
 from backend.registry import get_backend  # noqa: E402
-from dev.monofluoro_references import MOLECULES_SET2  # noqa: E402
+from dev.monofluoro_references import MOLECULES_SET2, MOLECULES_SET3  # noqa: E402
 from backend.quantum import _detect_angles, _detect_bonds  # noqa: E402
 from scripts.monofluoro_benchmark import (  # noqa: E402
     build_isotopologues,
@@ -62,6 +62,7 @@ def measure(coords, elems, bonds, angles):
 METHOD, BASIS = "b3lyp", "6-31g(d)"
 ONLY = None
 SIGMA_X = None
+MOLSET = "2"
 for _tok in sys.argv[1:]:
     if _tok.startswith("method="):
         METHOD = _tok.split("=", 1)[1]
@@ -71,6 +72,8 @@ for _tok in sys.argv[1:]:
         ONLY = _tok.split("=", 1)[1]
     elif _tok.startswith("sigma="):
         SIGMA_X = float(_tok.split("=", 1)[1])
+    elif _tok.startswith("set="):
+        MOLSET = _tok.split("=", 1)[1]
 
 #: Trust radius of the quantum surface, per level of theory, in Angstrom.
 #: This is E1 of the error-model iteration: the module default of 0.020 A was
@@ -132,7 +135,8 @@ def main() -> None:
     print(f"  {METHOD.upper()}/{BASIS}, sigma_x = {SIGMA_X} A. "
           f"Do the quoted uncertainties cover the truth?\n")
     rows, records = [], []
-    mols = [m for m in MOLECULES_SET2 if ONLY is None or m.key == ONLY]
+    pool = MOLECULES_SET3 if MOLSET == "3" else MOLECULES_SET2
+    mols = [m for m in pool if ONLY is None or m.key == ONLY]
     for mol in mols:
         elems = list(mol.elems)
         for label, limit in (("parent only", 1), ("all species", None)):
