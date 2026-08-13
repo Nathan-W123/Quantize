@@ -103,6 +103,9 @@ def correction_table(mol, geom, isos, backend, cache, policy="warn"):
             hess, np.asarray(geom, dtype=float), isos,
             hessian_fn=hessian_fn, fd_delta_cubic=0.01,
             nonconvergent_policy=policy,
+            # Corrections here are evaluated at the theory-optimised geometry,
+            # which is the stationary point the normal-mode scheme requires.
+            cubic_scheme="normal_mode",
         )
     return ctbl, info, time.time() - t0
 
