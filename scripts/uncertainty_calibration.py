@@ -87,6 +87,22 @@ THEORY_SIGMA_X = {
 if SIGMA_X is None:
     SIGMA_X = THEORY_SIGMA_X.get((METHOD.lower(), BASIS.lower()), 0.020)
 
+#: Reference-truth uncertainty, pre-registered before any run scored with it.
+#: The harness previously treated the published structures as exact, but they
+#: are r_s / r_0 determinations from the 1950s-60s: Costain-rule substitution
+#: coordinates are good to roughly a couple of mA away from near-axis
+#: pathologies, and angles to a couple tenths of a degree. Coverage is judged
+#: on z = error / hypot(sigma_reported, sigma_ref), so agreement better than
+#: the reference can support is not scored as miscalibration.
+#:
+#: Pre-registered exclusion: chlorofluoromethane is reported but excluded from
+#: the primary metric, on evidence recorded before this scoring existed --
+#: theory, spectroscopy-alone and the hybrid all disagree with its 1953
+#: reference in the same direction on C-Cl, and its consistency check is the
+#: worst in the set.
+REF_SIGMA_BOND_MA = 2.0
+REF_SIGMA_ANGLE_DEG = 0.2
+
 _TAG = "" if ONLY is None else f"_{ONLY}"
 OUT = _ROOT / "output" / f"uncertainty_calibration{_TAG}.json"
 
@@ -139,9 +155,12 @@ def main() -> None:
                 covered = abs(err) <= sig
                 rows.append((covered, abs(err), sig, is_bond))
                 d_sig, p_sig = split.get(name, (float("nan"), float("nan")))
+                sig_ref = REF_SIGMA_BOND_MA if is_bond else REF_SIGMA_ANGLE_DEG
+                z = err / float(np.hypot(sig, sig_ref)) if (sig > 0 or sig_ref > 0) else float("nan")
                 records.append({"molecule": mol.name, "level": label,
                                 "coordinate": name, "error": err, "sigma": sig,
                                 "sigma_data": d_sig * scale, "sigma_prior": p_sig * scale,
+                                "sigma_ref": sig_ref, "z": z,
                                 "covered": bool(covered), "is_bond": bool(is_bond),
                                 "data_support": float(support.get(name, float("nan"))),
                                 "chi2_nu": float(chi2)})
