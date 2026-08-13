@@ -105,14 +105,31 @@ class Isotopologue:
         return [v for v in self.abc_mhz if v is not None]
 
     def sigmas(self) -> list[float]:
-        out = []
-        for k in self.component_indices:
-            v = float(self.abc_mhz[k])
-            rel = self.sigma_rel or SIGMA_REL
-            model = rel[k] * abs(v)
-            meas = _quoted_step(v, self.decimals[k])
-            out.append(float(np.hypot(model, meas)))
-        return out
+        """Measurement uncertainty only, for weighting the fit.
+
+        Model error is deliberately *not* folded in here. The two were combined
+        until it was measured what that costs: a single sigma carrying both
+        makes the fit under-weight real data (chi-square per degree of freedom
+        came out at 0.05, where a correct weighting gives about 1) and makes the
+        reported intervals about 2.6 times too wide at once. Weighting belongs
+        to measurement precision, which says how sharply the data pins the
+        structure; model error belongs to the reported uncertainty, which says
+        how far the answer may still be from the truth. See `sigmas_systematic`.
+        """
+        return [_quoted_step(float(self.abc_mhz[k]), self.decimals[k])
+                for k in self.component_indices]
+
+    def sigmas_systematic(self) -> list[float]:
+        """Model error: the r_s-versus-r_0 and B0-versus-Be mismatch.
+
+        This does not describe the measurement; it describes the gap between
+        what was measured and what a rigid structure can reproduce. It is
+        propagated into the reported uncertainty but never used to weight the
+        fit -- an offset that biases every isotopologue the same way does not
+        make any single constant less worth fitting.
+        """
+        rel = self.sigma_rel or SIGMA_REL
+        return [rel[k] * abs(float(self.abc_mhz[k])) for k in self.component_indices]
 
 
 @dataclass

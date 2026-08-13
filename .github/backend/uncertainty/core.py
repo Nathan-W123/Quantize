@@ -82,13 +82,20 @@ def compute_uncertainty(
         cov = np.linalg.pinv(A)
 
     # ChiÂ²-scaled uncertainty inflation.
-    # sÂ² = Ï‡Â²_weighted / dof; inflate when residuals exceed nominal Ïƒ.
+    # s^2 = chi2_weighted / dof; rescale the covariance to match the residuals.
+    #
+    # Two-sided. Inflating only when chi2 > 1 assumes the stated sigmas can be
+    # optimistic but never conservative, and a sigma that is too large is just
+    # as wrong: it makes the fit under-use its data and quote intervals wider
+    # than the residuals justify. Measured on this benchmark, chi2/dof came out
+    # near 0.05, so the one-sided test never fired on the failure that was
+    # actually present.
     chi2_scale = 1.0
     if chi2_inflate and residual_w is not None:
         rw = np.asarray(residual_w, dtype=float)
         dof = max(1, int(rw.size) - n_q)
         chi2_red = float(np.dot(rw, rw)) / dof
-        if chi2_red > 1.0:
+        if np.isfinite(chi2_red) and chi2_red > 0.0:
             chi2_scale = chi2_red
             cov = cov * chi2_scale
 
