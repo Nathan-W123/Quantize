@@ -76,10 +76,10 @@ def _alpha_error(alpha):
     return float(np.abs(delta - required).sum())
 
 
-def _mode_derivs(hessian_fn):
+def _mode_derivs(hessian_fn, **kw):
     coords = h2o_coords()
     return normal_mode_hessian_derivatives(
-        hessian_fn, coords, h2o_hessian(coords), H2O_MASSES)
+        hessian_fn, coords, h2o_hessian(coords), H2O_MASSES, **kw)
 
 
 def test_clean_surface_normal_mode_matches_cartesian():
@@ -135,12 +135,20 @@ def test_noisy_surface_normal_mode_degrades_more_gracefully():
     hess = h2o_hessian(coords)
     noisy = _noisy_hessian(2e-5)
 
+    # step_scale pinned at 0.35 so both schemes see comparable displacement
+    # magnitudes: this test isolates the SCHEME advantage (rotation-free
+    # directions, per-mode steps). The shipped default of 0.175 deliberately
+    # trades some of this noise margin for a 4x smaller truncation bound,
+    # measured on the B3LYP formyl fluoride surface; noise error scales as
+    # 1/step, so at the default the margin here roughly halves.
     a_clean, _, _, _ = compute_harmonic_alpha(
-        hess, coords, H2O_MASSES, mode_derivs=_mode_derivs(h2o_hessian))
+        hess, coords, H2O_MASSES,
+        mode_derivs=_mode_derivs(h2o_hessian, step_scale=0.35))
     a_cart, _, _, _ = compute_harmonic_alpha(
         hess, coords, H2O_MASSES, hessian_fn=noisy)
     a_nm, _, _, _ = compute_harmonic_alpha(
-        hess, coords, H2O_MASSES, mode_derivs=_mode_derivs(noisy))
+        hess, coords, H2O_MASSES,
+        mode_derivs=_mode_derivs(noisy, step_scale=0.35))
 
     err_cart = sum(abs(a_cart[k] - a_clean[k]) for k in ("A", "B", "C"))
     err_nm = sum(abs(a_nm[k] - a_clean[k]) for k in ("A", "B", "C"))

@@ -63,6 +63,7 @@ METHOD, BASIS = "b3lyp", "6-31g(d)"
 ONLY = None
 SIGMA_X = None
 MOLSET = "2"
+VPT2 = False
 for _tok in sys.argv[1:]:
     if _tok.startswith("method="):
         METHOD = _tok.split("=", 1)[1]
@@ -74,6 +75,8 @@ for _tok in sys.argv[1:]:
         SIGMA_X = float(_tok.split("=", 1)[1])
     elif _tok.startswith("set="):
         MOLSET = _tok.split("=", 1)[1]
+    elif _tok.startswith("vpt2="):
+        VPT2 = _tok.split("=", 1)[1] not in ("0", "false", "")
 
 #: Trust radius of the quantum surface, per level of theory, in Angstrom.
 #: This is E1 of the error-model iteration: the module default of 0.020 A was
@@ -107,15 +110,31 @@ REF_SIGMA_BOND_MA = 2.0
 REF_SIGMA_ANGLE_DEG = 0.2
 
 _TAG = "" if ONLY is None else f"_{ONLY}"
+if VPT2:
+    _TAG += "_vpt2"
 OUT = _ROOT / "output" / f"uncertainty_calibration{_TAG}.json"
+
+
+_VPT2_CACHE: dict = {}
 
 
 def run_one(mol, limit):
     b = get_backend("pyscf_hf")(elems=list(mol.elems), method=METHOD, basis=BASIS)
     gt = b.optimise(start_geometry(mol))
+    isos = build_isotopologues(mol, limit)
+    ctbl = None
+    if VPT2:
+        # The B0 -> Be correction from the normal-mode cubic force field,
+        # evaluated at the theory-optimised geometry (the stationary point the
+        # scheme requires). Cached per molecule: the displaced Hessians do not
+        # depend on the data level.
+        from scripts.monofluoro_alpha_corrected import correction_table
+        cache = _VPT2_CACHE.setdefault(mol.key, {})
+        ctbl, _info, _t = correction_table(mol, gt, isos, b, cache)
     opt = MolecularOptimizer(
         elems=list(mol.elems), coords=np.asarray(gt, dtype=float),
-        isotopologues=build_isotopologues(mol, limit),
+        isotopologues=isos,
+        correction_table=ctbl,
         quantum_backend="pyscf_hf", orca_method=METHOD, orca_basis=BASIS,
         coordinate_mode="cartesian", use_autoconfig=False, max_iter=40,
         hess_recalc_every=10,
