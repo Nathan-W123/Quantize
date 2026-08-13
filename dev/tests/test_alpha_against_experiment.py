@@ -161,15 +161,36 @@ def test_diverging_perturbation_series_is_flagged():
 
 
 def test_correction_table_marks_unreliable_components():
+    """Flagging depends on the cubic source, and that is the point.
+
+    Under the Cartesian scheme a dominant cubic term was the only available
+    proxy for "cannot be trusted". The normal-mode scheme measures its own
+    finite-difference noise directly (permutation asymmetry of the third
+    derivative), and on a clean analytic surface that noise is tiny while the
+    cubic term still exceeds the harmonic one for water's B and C -- and the
+    corrected result is demonstrably right (see
+    test_water_be_correction_improves_with_anharmonic_term). So cubic > harmonic
+    alone must NOT condemn a component under normal_mode; the same data under
+    the Cartesian scheme keeps the old conservative flags.
+    """
     coords = h2o_coords()
+    iso = [{"name": "H2-16O", "masses": H2O_MASSES.tolist()}]
+
     table, info = build_correction_table_from_hessian(
-        h2o_hessian(coords), coords,
-        [{"name": "H2-16O", "masses": H2O_MASSES.tolist()}],
-        hessian_fn=h2o_hessian,
+        h2o_hessian(coords), coords, iso, hessian_fn=h2o_hessian,
+        cubic_scheme="cartesian",
     )
     assert set(info["nonconvergent"]["H2-16O"]) == {"B", "C"}
     assert "not converging" in table["H2-16O"]["C"]["notes"]
     assert "not converging" not in table["H2-16O"]["A"]["notes"]
+
+    table_nm, info_nm = build_correction_table_from_hessian(
+        h2o_hessian(coords), coords, iso, hessian_fn=h2o_hessian,
+        cubic_scheme="normal_mode",
+    )
+    assert info_nm["nonconvergent"] in ({}, None) or \
+        "H2-16O" not in info_nm["nonconvergent"]
+    assert "not converging" not in table_nm["H2-16O"]["C"]["notes"]
 
 
 # ── Water: symmetry and end-to-end accuracy ──────────────────────────────────

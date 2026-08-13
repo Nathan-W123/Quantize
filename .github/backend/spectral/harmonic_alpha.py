@@ -63,6 +63,8 @@ def compute_harmonic_alpha(
     hessian_fn=None,
     fd_delta_cubic: float = 0.01,
     cubic_cart=None,
+    mode_derivs=None,
+    nm_sigma_fraction: float = 0.15,
 ):
     """
     Compute summed alpha Σ_r α_r^K for each rotational component K.
@@ -89,6 +91,17 @@ def compute_harmonic_alpha(
     cubic_cart    : optional precomputed ∂³V/∂x_i∂x_j∂x_k from
                     :func:`cartesian_cubic_force_field`. Mass-independent, so
                     pass it in to avoid recomputing per isotopologue.
+    mode_derivs   : optional output of :func:`normal_mode_hessian_derivatives`.
+                    Preferred over the Cartesian tensor: rotation-free
+                    displacements with per-mode ZPE-scaled steps, which is what
+                    keeps the cubic term meaningful on a noisy DFT surface.
+                    Computed once with the reference masses and reused across
+                    isotopologues via the rigid-completed mode decomposition.
+    nm_sigma_fraction : fractional uncertainty applied to the correction when
+                    the normal-mode cubic term is present and its own noise
+                    diagnostic is clean -- the B3LYP-literature scale for VPT2
+                    alphas, in place of the 100%-of-cubic floor that the
+                    unvalidated Cartesian path earns.
 
     Returns
     -------
@@ -182,20 +195,32 @@ def compute_harmonic_alpha(
     # ── Term 3: anharmonic (cubic force constants) ──────────────────────────
     alpha_anh = np.zeros((3, n_vib))
     anh_status = "not_requested"
-    if cubic_cart is None and hessian_fn is not None:
+    nm_noise_ratio = None
+    if mode_derivs is not None:
         try:
-            cubic_cart = cartesian_cubic_force_field(hessian_fn, coords, fd_delta_cubic)
-        except Exception as exc:                      # noqa: BLE001 - degrade, don't abort
-            anh_status = f"cubic_ff_failed: {type(exc).__name__}: {exc}"
-    if cubic_cart is not None:
-        try:
+            phi = phi_semidiagonal_for_masses(mode_derivs, hess_bohr, masses, L_mw)
             alpha_anh = _anharmonic_alpha(
-                np.asarray(cubic_cart, dtype=float), masses, L_mw,
-                vib_evals, dB1_mhz_all, zpe_amp,
+                None, masses, L_mw, vib_evals, dB1_mhz_all, zpe_amp, phi=phi,
             )
-            anh_status = "cubic_fd"
+            anh_status = "cubic_nm"
+            nm_noise_ratio = float(mode_derivs.get("noise_ratio", float("nan")))
         except Exception as exc:                      # noqa: BLE001 - degrade, don't abort
             anh_status = f"failed: {type(exc).__name__}: {exc}"
+    else:
+        if cubic_cart is None and hessian_fn is not None:
+            try:
+                cubic_cart = cartesian_cubic_force_field(hessian_fn, coords, fd_delta_cubic)
+            except Exception as exc:                  # noqa: BLE001 - degrade, don't abort
+                anh_status = f"cubic_ff_failed: {type(exc).__name__}: {exc}"
+        if cubic_cart is not None:
+            try:
+                alpha_anh = _anharmonic_alpha(
+                    np.asarray(cubic_cart, dtype=float), masses, L_mw,
+                    vib_evals, dB1_mhz_all, zpe_amp,
+                )
+                anh_status = "cubic_fd"
+            except Exception as exc:                  # noqa: BLE001 - degrade, don't abort
+                anh_status = f"failed: {type(exc).__name__}: {exc}"
 
     alpha_total = alpha_cent + alpha_cor + alpha_anh
     alpha_sum = alpha_total.sum(axis=1)
@@ -226,10 +251,28 @@ def compute_harmonic_alpha(
         denom = abs(float(harm_sum[i]))
         ratio = float("inf") if denom == 0.0 else abs(float(anh_sum[i])) / denom
         anh_ratio[k] = ratio
-        if ratio > 1.0:
+        if anh_status == "cubic_nm":
+            # With a validated cubic source, cubic > harmonic is normal VPT2
+            # physics (water's B: 4.9x), not divergence. What condemns a
+            # component here is the finite-difference noise measured by the
+            # permutation asymmetry, or a ratio so large no series survives it.
+            if (nm_noise_ratio is not None and nm_noise_ratio > 0.5) or ratio > 20.0:
+                nonconvergent.append(k)
+        elif ratio > 1.0:
             nonconvergent.append(k)
 
-    if anh_status == "cubic_fd":
+    if anh_status == "cubic_nm":
+        noise = nm_noise_ratio if (nm_noise_ratio is not None
+                                   and np.isfinite(nm_noise_ratio)) else 1.0
+        sigma_vals = {
+            k: max(
+                abs(float(alpha_sum[i])) * nm_sigma_fraction,
+                abs(float(anh_sum[i])) * noise,
+                1.0,
+            )
+            for i, k in enumerate(labels)
+        }
+    elif anh_status == "cubic_fd":
         sigma_vals = {
             k: max(
                 abs(float(alpha_sum[i])) * sigma_fraction,
@@ -271,6 +314,7 @@ def compute_harmonic_alpha(
                 k: float(alpha_anh.sum(axis=1)[i]) for i, k in enumerate(labels)
             },
             "anharmonic_ratio": anh_ratio,
+            "nm_noise_ratio": nm_noise_ratio,
             "nonconvergent_components": nonconvergent,
             "frequencies_cm": omega_cm.tolist(),
         },
@@ -301,7 +345,156 @@ def cartesian_cubic_force_field(hessian_fn, coords_ang, fd_delta_ang: float = 0.
     return 0.5 * (cubic + np.swapaxes(cubic, 0, 1))
 
 
-def _anharmonic_alpha(cubic_cart, masses, L_mw, vib_evals, dB1_mhz, zpe_amp):
+def normal_mode_hessian_derivatives(
+    hessian_fn,
+    coords_ang,
+    hess_bohr,
+    masses_ref,
+    min_freq_cm: float = 50.0,
+    step_scale: float = 0.35,
+    step_max_q: float = 0.05,
+    step_min_q: float = 5e-3,
+):
+    """dH/dQ_r along each reference-mass normal mode, by central differences.
+
+    This replaces Cartesian-axis displacement as the source of the cubic force
+    field, for two measured reasons. A Cartesian step is part rigid rotation,
+    and the Hessian changes under rotation even on an exact surface, so every
+    displaced Hessian carries a large signal that is frame, not physics; normal
+    modes are orthogonal to the rigid subspace at the reference geometry, so
+    the same step size buys pure vibrational signal. And a fixed Cartesian step
+    is the wrong size for every mode at once -- far into anharmonic territory
+    for a soft torsion, down in the convergence noise for a C-H stretch. Here
+    each step is a fixed fraction of that mode's zero-point amplitude, which
+    equalises signal-to-noise across modes. On the same B3LYP surface the
+    Cartesian scheme produced cubic/harmonic ratios of 233-990 (numerical
+    garbage, correctly refused by the convergence gate); this scheme is what
+    the VPT2 literature uses.
+
+    Steps are in the same Q units as everything else here (Angstrom sqrt(amu)),
+    clamped to [step_min_q, step_max_q] so soft modes do not wander out of the
+    cubic regime and stiff modes stay above the Hessian's own noise floor.
+
+    Costs 2(3N-6) Hessian evaluations, against 6N for the Cartesian scheme.
+
+    Returns a dict with the derivative stack ``dH`` (n_vib, 3N, 3N), the
+    Cartesian displacement per unit Q ``D_ref`` (3N, n_vib), the reference
+    frequencies, the steps taken, and a permutation-asymmetry noise measure:
+    phi3[r, s, t] = D_s^T (dH/dQ_r) D_t equals the true third derivative
+    contracted three ways, which is symmetric in (r, s); the antisymmetric part
+    is pure finite-difference error, so it is a free, per-run error estimate
+    rather than an assumption.
+    """
+    coords = np.asarray(coords_ang, dtype=float)
+    masses = np.asarray(masses_ref, dtype=float)
+    omega_cm, L_mw = _normal_modes(
+        hess_bohr, masses, n_rigid=_rigid_mode_count(coords, masses)
+    )
+    keep = omega_cm >= min_freq_cm
+    omega_cm, L_mw = omega_cm[keep], L_mw[:, keep]
+    n_vib = len(omega_cm)
+    inv_sqrt_m = np.repeat(1.0 / np.sqrt(masses), 3)
+    D_ref = L_mw * inv_sqrt_m[:, None]                 # (3N, n_vib), dx per unit Q
+
+    zpe_q = np.sqrt(_ZPE_AMP / omega_cm)               # zero-point amplitude, A*sqrt(amu)
+    steps = np.clip(step_scale * zpe_q, step_min_q, step_max_q)
+
+    n_cart = coords.size
+    dH = np.zeros((n_vib, n_cart, n_cart))
+    for r in range(n_vib):
+        dx = (steps[r] * D_ref[:, r]).reshape(coords.shape)
+        h_p = np.asarray(hessian_fn(coords + dx), dtype=float)
+        h_m = np.asarray(hessian_fn(coords - dx), dtype=float)
+        dH[r] = (h_p - h_m) / (2.0 * steps[r])
+
+    phi3 = np.einsum("rij,is,jt->rst", dH, D_ref, D_ref, optimize=True)
+    asym = float(np.max(np.abs(phi3 - np.swapaxes(phi3, 0, 1))))
+    scale = float(np.median(np.abs(phi3[np.abs(phi3) > 0]))) if np.any(phi3) else 0.0
+    return {
+        "dH": dH,
+        "D_ref": D_ref,
+        "omega_cm_ref": omega_cm,
+        "steps_q": steps,
+        "coords_ang": coords,
+        "masses_ref": masses,
+        "noise_asym": asym,
+        "noise_scale": scale,
+        "noise_ratio": (asym / scale) if scale > 0 else float("inf"),
+    }
+
+
+def _rigid_directions_with_derivatives(hess_bohr, coords_ang):
+    """Unit rigid-body directions and the analytic dH along each.
+
+    Translations leave the Hessian exactly unchanged. An infinitesimal rotation
+    by angle theta about axis g conjugates it, H -> R H R^T blockwise, so the
+    derivative along the *unit-normalised* rotation displacement field w = G x
+    is [G, H] / |w|, with G = I_N (x) g. This is what lets an isotopologue's
+    normal mode -- which is never exactly inside the reference isotopologue's
+    vibrational span, because mass-weighting differs -- be completed exactly
+    instead of truncated.
+    """
+    coords = np.asarray(coords_ang, dtype=float)
+    n = coords.shape[0]
+    H = np.asarray(hess_bohr, dtype=float)
+    dirs, derivs = [], []
+    for k in range(3):                                  # translations
+        t = np.zeros((n, 3))
+        t[:, k] = 1.0
+        v = t.ravel()
+        dirs.append(v / np.linalg.norm(v))
+        derivs.append(np.zeros_like(H))
+    centered = coords - coords.mean(axis=0)
+    for k in range(3):                                  # rotations
+        g = np.zeros((3, 3))
+        a, b = [(1, 2), (2, 0), (0, 1)][k]
+        g[a, b], g[b, a] = -1.0, 1.0
+        w = (centered @ g.T).ravel()
+        nrm = float(np.linalg.norm(w))
+        if nrm < 1e-10:
+            continue
+        G = np.kron(np.eye(n), g)
+        dirs.append(w / nrm)
+        derivs.append((G @ H - H @ G) / nrm)
+    return np.column_stack(dirs), derivs
+
+
+def phi_semidiagonal_for_masses(mode_derivs, hess_bohr, masses_iso, L_mw_iso):
+    """Semi-diagonal cubic constants phi_rrs in an isotopologue's own modes.
+
+    The measured derivative field covers the reference isotopologue's
+    vibrational directions. Another isotopologue's mode is a linear combination
+    of those plus a small rigid component (mass-weighting moves the vibrational
+    subspace), and the rigid part's contribution is supplied analytically by
+    the rotation commutator rather than dropped -- dropping it is a silent
+    error of exactly the kind that produced the Cartesian scheme's garbage.
+    """
+    D_ref = mode_derivs["D_ref"]
+    dH = mode_derivs["dH"]
+    coords = mode_derivs["coords_ang"]
+    masses = np.asarray(masses_iso, dtype=float)
+    inv_sqrt_m = np.repeat(1.0 / np.sqrt(masses), 3)
+    D_iso = L_mw_iso * inv_sqrt_m[:, None]              # (3N, n_vib_iso)
+
+    R_dirs, R_derivs = _rigid_directions_with_derivatives(hess_bohr, coords)
+    basis = np.column_stack([D_ref, R_dirs])            # (3N, n_vib_ref + n_rigid)
+    coef, *_ = np.linalg.lstsq(basis, D_iso, rcond=None)
+    n_ref = D_ref.shape[1]
+
+    n_iso = D_iso.shape[1]
+    phi = np.zeros((n_iso, n_iso))
+    for r in range(n_iso):
+        dH_r = np.einsum("k,kij->ij", coef[:n_ref, r], dH, optimize=True)
+        for j, dHrig in enumerate(R_derivs):
+            c = coef[n_ref + j, r]
+            if c != 0.0:
+                dH_r = dH_r + c * dHrig
+        phi[r, :] = D_iso[:, r] @ dH_r @ D_iso
+    return phi
+
+
+def _anharmonic_alpha(cubic_cart, masses, L_mw, vib_evals, dB1_mhz, zpe_amp,
+                      phi=None):
     """Anharmonic contribution to α from semi-diagonal cubic force constants.
 
     Cubic anharmonicity displaces the vibrational average of each normal
@@ -320,17 +513,16 @@ def _anharmonic_alpha(cubic_cart, masses, L_mw, vib_evals, dB1_mhz, zpe_amp):
     For a diatomic this reduces to -6 a₁ B_e²/ω_e, which together with the
     harmonic term reproduces the Dunham result α_e = -(6B_e²/ω_e)(1 + a₁).
     """
-    N = len(masses)
-    masses = np.asarray(masses, dtype=float)
-    inv_sqrt_m = np.repeat(1.0 / np.sqrt(masses), 3)
-    D = L_mw * inv_sqrt_m[:, None]                    # (3N, n_vib)
-
     lam = np.asarray(vib_evals, dtype=float)
     if np.any(lam <= 0.0):
         raise ValueError("non-positive vibrational eigenvalue in anharmonic alpha")
 
-    # phi[r, s] = semi-diagonal cubic constant φ_rrs
-    phi = np.einsum("ijk,ir,jr,ks->rs", cubic_cart, D, D, D, optimize=True)
+    if phi is None:
+        masses = np.asarray(masses, dtype=float)
+        inv_sqrt_m = np.repeat(1.0 / np.sqrt(masses), 3)
+        D = L_mw * inv_sqrt_m[:, None]                # (3N, n_vib)
+        # phi[r, s] = semi-diagonal cubic constant φ_rrs
+        phi = np.einsum("ijk,ir,jr,ks->rs", cubic_cart, D, D, D, optimize=True)
 
     # α_anh[K, r] = zpe_amp[r] * Σ_s dB1[K, s] * φ_rrs / λ_s
     return zpe_amp[None, :] * np.einsum(
@@ -348,6 +540,7 @@ def build_correction_table_from_hessian(
     hessian_fn=None,
     fd_delta_cubic: float = 0.01,
     nonconvergent_policy: str = "warn",
+    cubic_scheme: str = "cartesian",
 ) -> tuple[dict, dict]:
     """
     Build a correction_table dict (compatible with parse_correction_table)
@@ -393,8 +586,18 @@ def build_correction_table_from_hessian(
     nonconvergent: dict = {}
     dropped: dict = {}
     cubic_cart = None
+    mode_derivs = None
     if hessian_fn is not None:
-        cubic_cart = cartesian_cubic_force_field(hessian_fn, coords_ang, fd_delta_cubic)
+        if str(cubic_scheme).lower() == "normal_mode" and isotopologues:
+            ref_masses = list(isotopologues[0].get("masses", []))
+            if ref_masses:
+                mode_derivs = normal_mode_hessian_derivatives(
+                    hessian_fn, coords_ang, hess_bohr, ref_masses,
+                    min_freq_cm=min_freq_cm,
+                )
+        if mode_derivs is None:
+            cubic_cart = cartesian_cubic_force_field(
+                hessian_fn, coords_ang, fd_delta_cubic)
     for iso in isotopologues:
         name = str(iso.get("name", "iso"))
         masses = list(iso.get("masses", []))
@@ -408,6 +611,7 @@ def build_correction_table_from_hessian(
             fd_delta=fd_delta,
             sigma_fraction=sigma_fraction,
             cubic_cart=cubic_cart,
+            mode_derivs=mode_derivs,
         )
         total_near_degen_skips += res_info.get("near_degen_skips", 0)
         statuses.append(str(res_info.get("anharmonic_status", "unknown")))
