@@ -146,6 +146,10 @@ def build_isotopologues(mol: ReferenceMolecule, limit=None) -> list[dict]:
             "masses": sp.masses(mol.masses).tolist(),
             "obs_constants": sp.observed(),
             "sigma_constants": sp.sigmas(),
+            # Floor for downward chi-square rescaling, not a weighting channel:
+            # the coherent part of the model error cannot be shrunk by a small
+            # chi-square, because it produces no scatter for chi-square to see.
+            "sigma_systematic_constants": sp.sigmas_systematic(),
             "alpha_constants": [0.0] * len(sp.observed()),
             "component_indices": list(sp.component_indices),
         })

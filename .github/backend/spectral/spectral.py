@@ -757,6 +757,17 @@ class SpectralEngine:
         return be_target - calc
 
     def scale_sigma(self, factor: float) -> None:
+        """Multiply every observation sigma by ``factor``.
+
+        Scaling down is floored at each constant's systematic sigma when one is
+        supplied. A common-mode model offset -- the B0-versus-Be gap that
+        dominates here -- produces no isotopologue-to-isotopologue scatter, so
+        a small chi-square is structurally incapable of proving the systematic
+        part of sigma too large; rescaling below that floor calibrates away an
+        error the residuals cannot see. Measured consequence before this guard:
+        ethylene oxide's ring bonds rescaled to sigma 1.7 mA against a +12 mA
+        error (z = +4.6) on a chi2/nu of 0.05.
+        """
         """Multiply every observation sigma by `factor`.
 
         Used for chi-square rescaling: when a converged fit cannot reach a
@@ -768,7 +779,14 @@ class SpectralEngine:
         if not np.isfinite(f) or f <= 0.0:
             raise ValueError(f"sigma scale factor must be positive and finite, got {factor!r}")
         for iso in self.isotopologues:
-            iso["sigma_constants"] = np.asarray(iso["sigma_constants"], dtype=float) * f
+            scaled = np.asarray(iso["sigma_constants"], dtype=float) * f
+            if f < 1.0:
+                floor = iso.get("sigma_systematic_constants")
+                if floor is not None:
+                    floor = np.asarray(floor, dtype=float).ravel()
+                    if floor.size == scaled.size:
+                        scaled = np.maximum(scaled, floor)
+            iso["sigma_constants"] = scaled
 
     def _robust_weight(self, scaled_residual):
         """
