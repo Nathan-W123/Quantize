@@ -50,6 +50,15 @@ _DEGENERACY_TOL_CM2 = 1.0
 # been computed. See the sigma block in compute_harmonic_alpha.
 _OMITTED_CUBIC_SCALE = 3.0
 
+# Half-range of the linear-molecule intra-pair (l-resonance) coefficient, in
+# units of the -2B_e^2/omega pair term. Pinned by the one-structure consistency
+# scan on fluoroacetylene's six measured B values at B3LYP/6-31G(d): c = 0
+# gives r(C-F) = 1.27641 A, ~2.5 mA below r_s -- exactly where an equilibrium
+# bond should sit -- while c = +1 lands 3 mA above it; the one-structure RMS
+# (0.039 / 0.024 / 0.067 MHz at c = 0 / +0.5 / +1) cannot separate |c| <= 0.5,
+# so c defaults to 0 and this half-range carries the ignorance as sigma.
+_LINEAR_PAIR_HALF_RANGE = 0.5
+
 _NONCONVERGENT_POLICIES = {"warn", "inflate", "drop"}
 
 
@@ -190,7 +199,7 @@ def compute_harmonic_alpha(
     # module has been bitten by.
     is_lin = _rigid_mode_count(coords, masses) == 5
     pair_partner = {}
-    if is_lin and linear_pair_coeff is not None:
+    if is_lin:
         for i in range(n_vib):
             for j in range(i + 1, n_vib):
                 if abs(omega_cm[i] - omega_cm[j]) < 2.0:
@@ -210,7 +219,8 @@ def compute_harmonic_alpha(
                     continue
                 cor += zeta[K, r, s] ** 2 * (3.0 * wr2 + ws2) / denom
             alpha_cor_cm[K, r] = -2.0 * B_e_cm[K] ** 2 / omega_cm[r] * cor
-            if r in pair_partner and K in (1, 2):
+            if (linear_pair_coeff is not None and r in pair_partner
+                    and K in (1, 2)):
                 # perpendicular components only: for a linear molecule the
                 # A-like eigenvalue is not a rotational constant at all.
                 alpha_cor_cm[K, r] += (float(linear_pair_coeff)
@@ -219,13 +229,23 @@ def compute_harmonic_alpha(
 
     # ── Term 3: anharmonic (cubic force constants) ──────────────────────────
     alpha_anh = np.zeros((3, n_vib))
+    alpha_anh_err = None
     anh_status = "not_requested"
     nm_noise_ratio = None
     if mode_derivs is not None:
         try:
-            phi = phi_semidiagonal_for_masses(mode_derivs, hess_bohr, masses, L_mw)
+            phi, phi_err = phi_semidiagonal_for_masses(
+                mode_derivs, hess_bohr, masses, L_mw)
             alpha_anh = _anharmonic_alpha(
                 None, masses, L_mw, vib_evals, dB1_mhz_all, zpe_amp, phi=phi,
+            )
+            # The finite-difference error of each phi_rrs, pushed through the
+            # SAME contraction as alpha itself. |dB1| keeps every contribution
+            # additive: errors from shared displaced Hessians are correlated,
+            # so signed cancellation cannot be counted on.
+            alpha_anh_err = zpe_amp[None, :] * np.einsum(
+                "Ks,rs,s->Kr", np.abs(dB1_mhz_all), phi_err,
+                1.0 / vib_evals, optimize=True,
             )
             anh_status = "cubic_nm"
             nm_noise_ratio = float(mode_derivs.get("noise_ratio", float("nan")))
@@ -270,6 +290,9 @@ def compute_harmonic_alpha(
     # fit drives its residual to zero and the weights drop out entirely, so no
     # sigma model can protect against a bad correction. Knowing which components
     # to distrust -- or drop -- is the only defence.
+    anh_err_sum = (np.abs(alpha_anh_err).sum(axis=1)
+                   if alpha_anh_err is not None else None)
+
     anh_ratio = {}
     nonconvergent = []
     for i, k in enumerate(labels):
@@ -279,20 +302,24 @@ def compute_harmonic_alpha(
         if anh_status == "cubic_nm":
             # With a validated cubic source, cubic > harmonic is normal VPT2
             # physics (water's B: 4.9x), not divergence. What condemns a
-            # component here is the finite-difference noise measured by the
-            # permutation asymmetry, or a ratio so large no series survives it.
-            if (nm_noise_ratio is not None and nm_noise_ratio > 0.5) or ratio > 20.0:
+            # component here is its own propagated finite-difference error
+            # exceeding the term it belongs to -- a per-component verdict, so
+            # a linear molecule's quartic-dominated bend rows (whose asymmetry
+            # once condemned every component through a global scalar) only
+            # taint the components they actually feed -- or a ratio so large
+            # no series survives it.
+            if (anh_err_sum is not None
+                    and float(anh_err_sum[i]) > max(abs(float(anh_sum[i])), 1.0)) \
+                    or ratio > 20.0:
                 nonconvergent.append(k)
         elif ratio > 1.0:
             nonconvergent.append(k)
 
     if anh_status == "cubic_nm":
-        noise = nm_noise_ratio if (nm_noise_ratio is not None
-                                   and np.isfinite(nm_noise_ratio)) else 1.0
         sigma_vals = {
             k: max(
                 abs(float(alpha_sum[i])) * nm_sigma_fraction,
-                abs(float(anh_sum[i])) * noise,
+                float(anh_err_sum[i]),
                 1.0,
             )
             for i, k in enumerate(labels)
@@ -322,6 +349,22 @@ def compute_harmonic_alpha(
             for i, k in enumerate(labels)
         }
 
+    if pair_partner and anh_status in ("cubic_nm", "cubic_fd"):
+        # A linear molecule's degenerate bends carry an intra-pair
+        # (l-resonance) alpha term of the form c * (-2 B_e^2/omega) per bend
+        # component that the generic asymmetric-top sum skips (zero
+        # denominator). Its coefficient is applied above when supplied; what
+        # cannot be removed is the ignorance about c itself, pinned empirically
+        # to a half-range of _LINEAR_PAIR_HALF_RANGE by the one-structure
+        # consistency scan on fluoroacetylene's six measured isotopologues.
+        # That ignorance is a systematic on the summed alpha, so it widens
+        # sigma in quadrature for the two real rotational constants.
+        for K in (1, 2):
+            band_cm = _LINEAR_PAIR_HALF_RANGE * sum(
+                2.0 * B_e_cm[K] ** 2 / omega_cm[r] for r in pair_partner)
+            k = labels[K]
+            sigma_vals[k] = float(np.hypot(sigma_vals[k], band_cm * _CM_TO_MHZ))
+
     return (
         {k: float(alpha_sum[i]) for i, k in enumerate(labels)},
         {k: float(B_e_mhz[i]) for i, k in enumerate(labels)},
@@ -340,6 +383,11 @@ def compute_harmonic_alpha(
             },
             "anharmonic_ratio": anh_ratio,
             "nm_noise_ratio": nm_noise_ratio,
+            "alpha_anharmonic_err_mhz": (
+                {k: float(anh_err_sum[i]) for i, k in enumerate(labels)}
+                if anh_err_sum is not None else None
+            ),
+            "is_linear": bool(is_lin),
             "nonconvergent_components": nonconvergent,
             "frequencies_cm": omega_cm.tolist(),
         },
@@ -500,6 +548,15 @@ def phi_semidiagonal_for_masses(mode_derivs, hess_bohr, masses_iso, L_mw_iso):
     subspace), and the rigid part's contribution is supplied analytically by
     the rotation commutator rather than dropped -- dropping it is a silent
     error of exactly the kind that produced the Cartesian scheme's garbage.
+
+    Returns ``(phi, phi_err)``. Every semi-diagonal constant is measured twice
+    -- phi_rrs is D_r (dH/dQ_r) D_s from the r-displacement and
+    D_r (dH/dQ_s) D_r from the s-displacement, equal in exact arithmetic -- so
+    the elementwise disagreement ``phi_err`` is a free, per-constant bound on
+    the finite-difference error of exactly the numbers the alpha formula
+    consumes. That locality matters: one bad displacement direction (a linear
+    molecule's quartic-dominated bend, say) contaminates its own entries, not
+    a global scalar that condemns the whole tensor.
     """
     D_ref = mode_derivs["D_ref"]
     dH = mode_derivs["dH"]
@@ -515,6 +572,7 @@ def phi_semidiagonal_for_masses(mode_derivs, hess_bohr, masses_iso, L_mw_iso):
 
     n_iso = D_iso.shape[1]
     phi = np.zeros((n_iso, n_iso))
+    phi_alt = np.zeros((n_iso, n_iso))
     for r in range(n_iso):
         dH_r = np.einsum("k,kij->ij", coef[:n_ref, r], dH, optimize=True)
         for j, dHrig in enumerate(R_derivs):
@@ -522,7 +580,20 @@ def phi_semidiagonal_for_masses(mode_derivs, hess_bohr, masses_iso, L_mw_iso):
             if c != 0.0:
                 dH_r = dH_r + c * dHrig
         phi[r, :] = D_iso[:, r] @ dH_r @ D_iso
-    return phi
+        # Second estimate of phi_ssr for every s, from THIS displacement:
+        # D_s (dH/dQ_r) D_s.
+        phi_alt[:, r] = np.einsum("is,ij,js->s", D_iso, dH_r, D_iso,
+                                  optimize=True)
+    err = np.abs(phi - phi_alt)
+    if n_iso > 1:
+        # The diagonal phi_rrr has no second estimate -- both contractions use
+        # the same displaced Hessians -- so stand in the demonstrated error
+        # scale of that mode's own row and column.
+        off = err.copy()
+        np.fill_diagonal(off, 0.0)
+        diag_proxy = np.maximum(off.max(axis=0), off.max(axis=1))
+        err[np.diag_indices(n_iso)] = diag_proxy
+    return phi, err
 
 
 def _anharmonic_alpha(cubic_cart, masses, L_mw, vib_evals, dB1_mhz, zpe_amp,
@@ -610,15 +681,19 @@ def build_correction_table_from_hessian(
     ref_masses_lin = list(isotopologues[0].get("masses", [])) if isotopologues else []
     if hessian_fn is not None and ref_masses_lin and linear_pair_coeff is None and \
             _rigid_mode_count(np.asarray(coords_ang, float), ref_masses_lin) == 5:
-        # Linear molecule: the bending modes are doubly degenerate and their
-        # vibration-rotation contribution follows the l-doubling formulas, not
-        # the asymmetric-top expressions implemented here. Measured on
-        # fluoroacetylene at B3LYP, applying the generic correction anyway blew
-        # the fitted structure up from 1.15 to 39 mA RMS -- so the anharmonic
-        # correction is withheld entirely rather than silently wrong, and the
-        # harmonic-only sigma floor (which knows the cubic term is missing)
-        # carries the uncertainty instead.
-        hessian_fn = None
+        # Linear molecule: the degenerate bends carry an intra-pair
+        # (l-resonance) alpha term the asymmetric-top Coriolis sum must skip.
+        # Its coefficient defaults to the empirically pinned c = 0 -- the
+        # one-structure scan over fluoroacetylene's six measured B values put
+        # the r_e-plausible answer there (see _LINEAR_PAIR_HALF_RANGE) -- and
+        # compute_harmonic_alpha widens sigma by the half-range of that scan,
+        # so the remaining coefficient ignorance is carried as uncertainty
+        # rather than either guessed at or used as a reason to withhold the
+        # entire cubic correction. (An earlier withhold-everything gate here
+        # turned out to be treating the symptom: the real 39-mA failure was a
+        # sigma explosion from a global noise scalar, fixed in the per-entry
+        # phi error propagation.)
+        linear_pair_coeff = 0.0
     table: dict = {}
     total_near_degen_skips = 0
     method = "VPT2_semidiag" if hessian_fn is not None else "harmonic_VR"
@@ -667,6 +742,12 @@ def build_correction_table_from_hessian(
             nonconvergent.setdefault(name, {})[comp] = float(ratios.get(comp, float("nan")))
         entries: dict = {}
         for comp in ("A", "B", "C"):
+            if res_info.get("is_linear") and comp == "A":
+                # A linear molecule has no A constant; the first inertia
+                # eigenvalue is ~0 and the "alpha" computed from it is
+                # meaningless at any sigma. No species should be fitting an
+                # A component here, so write nothing rather than nonsense.
+                continue
             ratio = float(ratios.get(comp, float("nan")))
             if comp in bad and policy == "drop":
                 dropped.setdefault(name, []).append(comp)
