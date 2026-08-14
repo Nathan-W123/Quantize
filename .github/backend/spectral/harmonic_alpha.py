@@ -581,6 +581,18 @@ def build_correction_table_from_hessian(
             f"Unknown nonconvergent_policy '{nonconvergent_policy}'. "
             f"Valid: {sorted(_NONCONVERGENT_POLICIES)}"
         )
+    ref_masses_lin = list(isotopologues[0].get("masses", [])) if isotopologues else []
+    if hessian_fn is not None and ref_masses_lin and \
+            _rigid_mode_count(np.asarray(coords_ang, float), ref_masses_lin) == 5:
+        # Linear molecule: the bending modes are doubly degenerate and their
+        # vibration-rotation contribution follows the l-doubling formulas, not
+        # the asymmetric-top expressions implemented here. Measured on
+        # fluoroacetylene at B3LYP, applying the generic correction anyway blew
+        # the fitted structure up from 1.15 to 39 mA RMS -- so the anharmonic
+        # correction is withheld entirely rather than silently wrong, and the
+        # harmonic-only sigma floor (which knows the cubic term is missing)
+        # carries the uncertainty instead.
+        hessian_fn = None
     table: dict = {}
     total_near_degen_skips = 0
     method = "VPT2_semidiag" if hessian_fn is not None else "harmonic_VR"
