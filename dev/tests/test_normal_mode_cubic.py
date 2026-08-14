@@ -217,3 +217,27 @@ def test_d2o_alpha_through_the_transform_is_sane():
     for k in ("A", "B", "C"):
         assert np.sign(a_d2o[k]) == np.sign(a_h2o[k])
         assert abs(a_d2o[k]) < abs(a_h2o[k])
+
+
+def test_linear_molecules_get_no_cubic_correction():
+    """Degenerate-bend (l-doubling) VPT2 is not implemented; withhold, don't guess.
+
+    Measured on fluoroacetylene at B3LYP: the generic asymmetric-top formulas
+    applied to a linear molecule blew the corrected fit up from 1.15 to 39 mA
+    RMS. The table builder must therefore fall back to the harmonic-omitted
+    path -- whose sigma model already says the correction is unknown -- for any
+    molecule with five rigid modes.
+    """
+    from backend.spectral.harmonic_alpha import build_correction_table_from_hessian
+    from reference_molecules import CO_COORDS, CO_MASSES, co_hessian
+
+    hess = co_hessian(CO_COORDS)
+    table, info = build_correction_table_from_hessian(
+        hess, CO_COORDS, [{"name": "CO", "masses": CO_MASSES.tolist()}],
+        hessian_fn=co_hessian, cubic_scheme="normal_mode",
+    )
+    entry = table["CO"]["B"]
+    assert "anharmonic term omitted" in entry["notes"]
+    assert entry["sigma_mhz"] >= abs(0.5 * entry["alpha_sum_mhz"]), (
+        "withheld correction must carry the omitted-cubic sigma floor"
+    )
