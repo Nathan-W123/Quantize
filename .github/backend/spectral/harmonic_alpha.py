@@ -65,6 +65,7 @@ def compute_harmonic_alpha(
     cubic_cart=None,
     mode_derivs=None,
     nm_sigma_fraction: float = 0.15,
+    linear_pair_coeff=None,
 ):
     """
     Compute summed alpha Σ_r α_r^K for each rotational component K.
@@ -176,6 +177,25 @@ def compute_harmonic_alpha(
     # being corrected: rotation about ξ is what couples the two modes.
     alpha_cor_cm = np.zeros((3, n_vib))
     near_degen_skips = 0
+    # Degenerate-bend pairs of a linear molecule. The generic Coriolis sum
+    # skips the intra-pair term (its denominator is zero by symmetry), but for
+    # a linear molecule that term is not negligible noise -- it is the
+    # l-resonance contribution to alpha, of order 2 B_e^2/omega per bend
+    # component, which at fluoroacetylene's scale is tens of MHz. It enters
+    # with a closed-form coefficient in the linear-molecule VPT2 literature;
+    # here the coefficient is a parameter, pinned empirically by requiring the
+    # corrected constants of all measured isotopologues to be reproducible by
+    # ONE rigid structure (see test/scan provenance at the call sites), because
+    # an unverified textbook coefficient is exactly the kind of thing this
+    # module has been bitten by.
+    is_lin = _rigid_mode_count(coords, masses) == 5
+    pair_partner = {}
+    if is_lin and linear_pair_coeff is not None:
+        for i in range(n_vib):
+            for j in range(i + 1, n_vib):
+                if abs(omega_cm[i] - omega_cm[j]) < 2.0:
+                    pair_partner[i] = j
+                    pair_partner[j] = i
     for r in range(n_vib):
         wr2 = omega_cm[r] ** 2
         for K in range(3):
@@ -190,6 +210,11 @@ def compute_harmonic_alpha(
                     continue
                 cor += zeta[K, r, s] ** 2 * (3.0 * wr2 + ws2) / denom
             alpha_cor_cm[K, r] = -2.0 * B_e_cm[K] ** 2 / omega_cm[r] * cor
+            if r in pair_partner and K in (1, 2):
+                # perpendicular components only: for a linear molecule the
+                # A-like eigenvalue is not a rotational constant at all.
+                alpha_cor_cm[K, r] += (float(linear_pair_coeff)
+                                       * -2.0 * B_e_cm[K] ** 2 / omega_cm[r])
     alpha_cor = alpha_cor_cm * _CM_TO_MHZ
 
     # ── Term 3: anharmonic (cubic force constants) ──────────────────────────
@@ -548,6 +573,7 @@ def build_correction_table_from_hessian(
     fd_delta_cubic: float = 0.01,
     nonconvergent_policy: str = "warn",
     cubic_scheme: str = "cartesian",
+    linear_pair_coeff=None,
 ) -> tuple[dict, dict]:
     """
     Build a correction_table dict (compatible with parse_correction_table)
@@ -582,7 +608,7 @@ def build_correction_table_from_hessian(
             f"Valid: {sorted(_NONCONVERGENT_POLICIES)}"
         )
     ref_masses_lin = list(isotopologues[0].get("masses", [])) if isotopologues else []
-    if hessian_fn is not None and ref_masses_lin and \
+    if hessian_fn is not None and ref_masses_lin and linear_pair_coeff is None and \
             _rigid_mode_count(np.asarray(coords_ang, float), ref_masses_lin) == 5:
         # Linear molecule: the bending modes are doubly degenerate and their
         # vibration-rotation contribution follows the l-doubling formulas, not
@@ -631,6 +657,7 @@ def build_correction_table_from_hessian(
             sigma_fraction=sigma_fraction,
             cubic_cart=cubic_cart,
             mode_derivs=mode_derivs,
+            linear_pair_coeff=linear_pair_coeff,
         )
         total_near_degen_skips += res_info.get("near_degen_skips", 0)
         statuses.append(str(res_info.get("anharmonic_status", "unknown")))
