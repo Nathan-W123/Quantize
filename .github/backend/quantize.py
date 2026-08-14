@@ -566,9 +566,22 @@ class MolecularOptimizer:
         # 0.0 (the old default) let any direction above the *relative* cutoff go
         # to the data, including ones it barely resolves, which is how hydrogen
         # positions ended up tens of milli-Angstrom out.
+        #
+        # That rule presupposes a prior standing behind the truncated
+        # directions. In spectral-only mode there is none -- whatever the data
+        # resolves, however weakly, is the entire answer -- so the floor must
+        # not apply. Measured on fluoroacetylene's six B constants: their
+        # weighted Jacobian's true rank is 3 (singular values 485 / 22.7 /
+        # 5.2), the floor of 1/sigma_x = 50 truncated it to rank 1, and the
+        # "fit" left 4 MHz cross-species residuals and C-F 22 mA wrong where
+        # a direct least-squares on the same six numbers leaves 0.04 MHz and
+        # 2.5 mA.
         if sv_min_abs is None:
-            sigma_x = quantum_prior_sigma_ang or DEFAULT_QUANTUM_PRIOR_SIGMA_ANG
-            sv_min_abs = 1.0 / float(sigma_x) if sigma_x > 0.0 else 0.0
+            if spectral_only:
+                sv_min_abs = 0.0
+            else:
+                sigma_x = quantum_prior_sigma_ang or DEFAULT_QUANTUM_PRIOR_SIGMA_ANG
+                sv_min_abs = 1.0 / float(sigma_x) if sigma_x > 0.0 else 0.0
 
         self.optimizer = SubspaceOptimizer(
             sv_threshold,

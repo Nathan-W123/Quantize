@@ -128,9 +128,20 @@ def run_leg(mol, isos, backend, start, ctbl, **kwargs):
         return opt.run()
 
 
-def run_level(mol, b, level_label, policy, isos, n_obs, start, theory_geom,
+def run_level(mol, b, level_label, policy, isos, n_obs, theory_geom,
               backend, hess_cache) -> dict:
-    """One data level under one nonconvergence policy, all three legs."""
+    """One data level under one nonconvergence policy, all three legs.
+
+    Every data-using leg warm-starts from the theory geometry, exactly as the
+    uncorrected baseline it is compared against does. This script originally
+    cold-started from the noisy reference displacement, and for
+    fluoroacetylene that alone produced a 39 mA "blowup" that was blamed on
+    the correction: a cold start leaves a linear molecule slightly bent, the
+    bend directions are invisible to the data (their singular values sit
+    below any sane cutoff), and the residual O(bend^2) contamination of the
+    constants drags the fitted bonds tens of mA off. Corrected and
+    uncorrected legs must differ by the correction, not by the start.
+    """
     ctbl, info, t_ff = correction_table(mol, theory_geom, isos, backend,
                                         hess_cache, policy)
     nonconv = info.get("nonconvergent", {}) or {}
@@ -168,7 +179,7 @@ def run_level(mol, b, level_label, policy, isos, n_obs, start, theory_geom,
         extra = dict(max_iter=40, hess_recalc_every=10) if is_hybrid \
             else dict(max_iter=60)
         geom = run_leg(mol, isos, "pyscf_hf" if is_hybrid else "none",
-                       start, ctbl, **extra, **kwargs)
+                       theory_geom, ctbl, **extra, **kwargs)
         e = errors(mol, geom)
         old = b["levels"][level_label]["legs"][leg]
         lvl["legs"][leg] = {**e,
@@ -222,7 +233,7 @@ def main() -> None:
             for policy in policies:
                 key = f"{level_label} [{policy}]"
                 rec["levels"][key] = run_level(
-                    mol, b, level_label, policy, isos, n_obs, start,
+                    mol, b, level_label, policy, isos, n_obs,
                     theory_geom, backend, hess_cache)
         out.append(rec)
 

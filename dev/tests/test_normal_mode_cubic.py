@@ -187,12 +187,12 @@ def test_isotopologue_phi_matches_direct_measurement():
         h2o_hessian, coords, hess, H2O_MASSES)
     _, L_d2o = normal_modes(
         hess, D2O_MASSES, n_rigid=rigid_mode_count(coords, D2O_MASSES))
-    phi_transformed = phi_semidiagonal_for_masses(
+    phi_transformed, _ = phi_semidiagonal_for_masses(
         md_parent, hess, D2O_MASSES, L_d2o)
 
     md_direct = normal_mode_hessian_derivatives(
         h2o_hessian, coords, hess, D2O_MASSES)
-    phi_direct = phi_semidiagonal_for_masses(
+    phi_direct, _ = phi_semidiagonal_for_masses(
         md_direct, hess, D2O_MASSES, L_d2o)
 
     scale = np.max(np.abs(phi_direct))
@@ -219,25 +219,35 @@ def test_d2o_alpha_through_the_transform_is_sane():
         assert abs(a_d2o[k]) < abs(a_h2o[k])
 
 
-def test_linear_molecules_get_no_cubic_correction():
-    """Degenerate-bend (l-doubling) VPT2 is not implemented; withhold, don't guess.
+def test_linear_molecule_recovers_the_exact_diatomic_alpha():
+    """The linear path is live, not withheld -- so it must earn that.
 
-    Measured on fluoroacetylene at B3LYP: the generic asymmetric-top formulas
-    applied to a linear molecule blew the corrected fit up from 1.15 to 39 mA
-    RMS. The table builder must therefore fall back to the harmonic-omitted
-    path -- whose sigma model already says the correction is unknown -- for any
-    molecule with five rigid modes.
+    An earlier gate withheld the cubic correction for every linear molecule,
+    diagnosing the 39-mA fluoroacetylene failure as l-doubling physics. The
+    actual failure was the sigma model: a global noise ratio whose denominator
+    (median |phi3|) collapses on a linear molecule's symmetry-zeroed cubic
+    tensor, inflating sigma 100x and making the data weightless. With the
+    per-entry phi error propagation the correction stands on CO's exact Morse
+    surface, where the right answer is Pekeris' closed form.
     """
     from backend.spectral.harmonic_alpha import build_correction_table_from_hessian
-    from reference_molecules import CO_COORDS, CO_MASSES, co_hessian
+    from reference_molecules import (
+        CO_COORDS, CO_MASSES, co_hessian, co_pekeris_alpha)
 
     hess = co_hessian(CO_COORDS)
     table, info = build_correction_table_from_hessian(
         hess, CO_COORDS, [{"name": "CO", "masses": CO_MASSES.tolist()}],
         hessian_fn=co_hessian, cubic_scheme="normal_mode",
     )
+    assert "A" not in table["CO"], "a linear molecule has no A constant"
     entry = table["CO"]["B"]
-    assert "anharmonic term omitted" in entry["notes"]
-    assert entry["sigma_mhz"] >= abs(0.5 * entry["alpha_sum_mhz"]), (
-        "withheld correction must carry the omitted-cubic sigma floor"
+    assert "omitted" not in entry["notes"]
+
+    alpha_cm = entry["alpha_sum_mhz"] / 29979.2458
+    assert alpha_cm == pytest.approx(co_pekeris_alpha(), rel=0.02), (
+        f"alpha {alpha_cm:.6f} cm-1 vs Pekeris {co_pekeris_alpha():.6f}"
     )
+    # A diatomic has no bend pair, so no coefficient-ignorance band applies and
+    # the sigma must stay proportionate -- not the 100x explosion this test
+    # exists to keep out.
+    assert entry["sigma_mhz"] <= 0.5 * abs(entry["alpha_sum_mhz"])
