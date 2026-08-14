@@ -136,3 +136,59 @@ def test_rigid_modes_do_not_leak_into_the_widths():
     assert all(s < 1.0 for s in unc.values()), (
         f"implausibly large widths suggest the rigid subspace was not removed: {unc}"
     )
+
+
+def test_class_floor_widens_only_its_own_class():
+    """The floor says: the fraction of a coordinate resting on theory cannot be
+    quoted tighter than the measured class error of the level of theory.
+
+    A single measured constant against three internal DOF leaves the angle
+    mostly theory-determined, so an "angle" floor far above the propagated
+    width must widen the angle -- and must not touch the bonds, because floors
+    are per class and "angle" is not "X-H".
+    """
+    def one_constant_opt(**kw):
+        return MolecularOptimizer(
+            elems=["O", "H", "H"], coords=_coords(),
+            isotopologues=[{"name": "H2-16O", "masses": MASSES_H2O,
+                            "obs_constants": B0_H2O[:1],
+                            "sigma_constants": [0.2],
+                            "component_indices": [0]}],
+            quantum_backend="analytic_water", use_autoconfig=False, max_iter=3,
+            quantum_prior_sigma_ang=0.02, **kw)
+
+    base = one_constant_opt()
+    u0 = _run(base)
+    blind = 1.0 - base.data_support()["H2-O1-H3"]
+    assert blind > 0.05, f"angle unexpectedly data-determined (blind={blind:.3f})"
+
+    floored = one_constant_opt(prior_class_sigma={"angle": 30.0})
+    u1 = _run(floored)
+    assert u1["H2-O1-H3"] >= blind * 30.0, (
+        f"angle floor did not bind: {u1['H2-O1-H3']:.3f} < {blind * 30.0:.3f}"
+    )
+    assert u1["O1-H2"] == pytest.approx(u0["O1-H2"], rel=1e-6), (
+        "an angle-class floor moved a bond width"
+    )
+    _, p_sig = floored.sigma_split()["H2-O1-H3"]
+    assert p_sig >= blind * 30.0 * 0.999, (
+        "sigma_split prior part does not reflect the floor"
+    )
+
+
+def test_class_floor_defers_to_data():
+    """Where the data determines a coordinate, the theory floor has no claim:
+    the widths must be unchanged up to the coordinate's tiny blind fraction."""
+    base = _opt(species=2)
+    u0 = _run(base)
+    support = base.data_support()
+    floored = _opt(species=2,
+                   prior_class_sigma={"X-H": 0.5, "angle": 30.0})
+    u1 = _run(floored)
+    for name in u0:
+        blind = 1.0 - support[name]
+        cap = np.hypot(u0[name], blind * (30.0 if name.count("-") == 2 else 0.5))
+        assert u0[name] <= u1[name] <= cap * 1.01, (
+            f"{name}: base {u0[name]:.4g}, floored {u1[name]:.4g}, "
+            f"cap {cap:.4g} (blind {blind:.3f})"
+        )

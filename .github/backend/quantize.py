@@ -285,6 +285,7 @@ class MolecularOptimizer:
         objective_mode="joint",
         alpha_quantum=1.0,
         quantum_prior_sigma_ang=DEFAULT_QUANTUM_PRIOR_SIGMA_ANG,
+        prior_class_sigma=None,
         robust_loss="none",
         robust_param=1.0,
         chi2_rescale=False,
@@ -766,6 +767,7 @@ class MolecularOptimizer:
         self._since_rovib = None
         self._last_data_support = {}
         self._last_sigma_split = {}
+        self._prior_class_sigma = dict(prior_class_sigma) if prior_class_sigma else None
         self.history = []
         self._guardrail_bonds = _detect_bonds(self.coords, self.elems) if self.enable_geometry_guardrails else []
 
@@ -2103,6 +2105,24 @@ class MolecularOptimizer:
 
         return residual
 
+    @staticmethod
+    def _coordinate_class(elem_i, elem_j):
+        """Bond class for the per-class prior widths.
+
+        The priority (hydrogen, then chlorine, then fluorine, else skeleton)
+        matches the classification under which the class widths were measured;
+        a coordinate must land in the same bin here that its calibration error
+        landed in there, or the floor is calibrated against nothing.
+        """
+        pair = {str(elem_i).strip().capitalize(), str(elem_j).strip().capitalize()}
+        if pair & {"H", "D", "T"}:
+            return "X-H"
+        if "Cl" in pair:
+            return "X-Cl"
+        if "F" in pair:
+            return "C-F"
+        return "skeleton"
+
     def geometry_uncertainty(self, rigid_tol=1e-8):
         """Posterior standard deviation on each bond length and angle.
 
@@ -2126,7 +2146,12 @@ class MolecularOptimizer:
           the data cannot see, it reports the prior's width rather than
           infinity -- which is honest only to the extent that
           `quantum_prior_sigma_ang` is honest. It is a modelling choice, not a
-          measurement.
+          measurement. When ``prior_class_sigma`` is supplied (a dict of
+          measured per-class theory errors: "X-H", "C-F", "X-Cl", "skeleton"
+          in Angstrom and "angle" in degrees), the prior-side width of each
+          coordinate is floored at its class error scaled by the fraction of
+          the coordinate the data cannot see, replacing the isotropic
+          assumption with the measured anisotropy of the level of theory.
         * It is a precision, not an accuracy. It propagates the stated
           uncertainties on the constants; it knows nothing about the
           B0-versus-Be offset left uncorrected, which is the dominant
@@ -2172,7 +2197,8 @@ class MolecularOptimizer:
         coord_fns = []
         for i, j in bonds:
             coord_fns.append((f"{self.elems[i]}{i + 1}-{self.elems[j]}{j + 1}",
-                              lambda c, i=i, j=j: float(np.linalg.norm(c[i] - c[j]))))
+                              lambda c, i=i, j=j: float(np.linalg.norm(c[i] - c[j])),
+                              self._coordinate_class(self.elems[i], self.elems[j])))
         for i, j, k in angles:
             def ang(c, i=i, j=j, k=k):
                 v1, v2 = c[i] - c[j], c[k] - c[j]
@@ -2180,9 +2206,9 @@ class MolecularOptimizer:
                 return float(np.degrees(np.arccos(np.clip(cosa, -1.0, 1.0))))
 
             coord_fns.append((f"{self.elems[i]}{i + 1}-{self.elems[j]}{j + 1}"
-                              f"-{self.elems[k]}{k + 1}", ang))
+                              f"-{self.elems[k]}{k + 1}", ang, "angle"))
 
-        for name, fn in coord_fns:
+        for name, fn, cls in coord_fns:
             sigma, g = propagate(fn)
             # E3: the blended sigma hides which source it came from, and the two
             # parts are calibrated against different things -- the data part
@@ -2205,8 +2231,24 @@ class MolecularOptimizer:
             # reported exactly as if it had been measured.
             gn = float(np.linalg.norm(g))
             blind = float(np.linalg.norm(null_frac @ g) / gn) if gn > 0 else 0.0
+            blind = min(max(blind, 0.0), 1.0)
+            # Per-class prior floor. The isotropic quantum_prior_sigma_ang says
+            # every theory-determined coordinate is equally trustworthy; the
+            # measured geometry error of a level of theory says otherwise (at
+            # B3LYP/6-31G(d), C-Cl errs several times worse than C-F). Where a
+            # coordinate rests on the prior -- and only to that fraction -- its
+            # prior-side width must not be quoted below the measured class
+            # error. The total is topped up by the variance deficit, so a
+            # coordinate the data determines is untouched, and no interval ever
+            # narrows.
+            if self._prior_class_sigma:
+                d_sig, p_sig = self._last_sigma_split[name]
+                floor = blind * float(self._prior_class_sigma.get(cls, 0.0))
+                if floor > p_sig:
+                    sigma = float(np.sqrt(sigma * sigma + floor * floor - p_sig * p_sig))
+                    self._last_sigma_split[name] = (d_sig, floor)
             out[name] = sigma
-            self._last_data_support[name] = 1.0 - min(max(blind, 0.0), 1.0)
+            self._last_data_support[name] = 1.0 - blind
         return out
 
     def _systematic_covariance(self, J, cov):

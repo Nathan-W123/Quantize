@@ -93,6 +93,22 @@ THEORY_SIGMA_X = {
 if SIGMA_X is None:
     SIGMA_X = THEORY_SIGMA_X.get((METHOD.lower(), BASIS.lower()), 0.020)
 
+#: Per-class prior widths: the measured RMS geometry error of the level of
+#: theory itself, by bond class, over the 10-molecule reference set
+#: (output/theory_class_errors_b3lyp.json). The isotropic sigma_x above sets
+#: the fit's regularisation; these set what is *reported* for the fraction of
+#: a coordinate the data cannot see, because "theory-determined" is not one
+#: number: at B3LYP/6-31G(d) a C-Cl bond errs 6x worse than a C-F bond.
+#: X-Cl rests on a single molecule (n=1) whose 1953 reference is itself the
+#: pre-registered exclusion above -- treat that entry as provisional.
+#: Bond classes in Angstrom, "angle" in degrees.
+PRIOR_CLASS_SIGMA = {
+    ("b3lyp", "6-31g(d)"): {"X-H": 0.00593, "C-F": 0.00520,
+                            "skeleton": 0.00716, "X-Cl": 0.0432,
+                            "angle": 1.25},
+}
+CLASS_SIGMA = PRIOR_CLASS_SIGMA.get((METHOD.lower(), BASIS.lower()))
+
 #: Reference-truth uncertainty, pre-registered before any run scored with it.
 #: The harness previously treated the published structures as exact, but they
 #: are r_s / r_0 determinations from the 1950s-60s: Costain-rule substitution
@@ -141,7 +157,8 @@ def run_one(mol, limit):
         # Model error stays in the weighting sigma; two-sided rescaling sets
         # its magnitude from the residuals rather than from a guess.
         chi2_rescale=True, chi2_rescale_max_passes=3,
-        quantum_prior_sigma_ang=SIGMA_X)
+        quantum_prior_sigma_ang=SIGMA_X,
+        prior_class_sigma=CLASS_SIGMA)
     with contextlib.redirect_stdout(io.StringIO()):
         res = opt.run()
     coords = res["coords"] if isinstance(res, dict) and "coords" in res else res
