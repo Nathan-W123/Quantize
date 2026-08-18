@@ -39,6 +39,9 @@ M_ELECTRON_AMU: float = 5.48579909070e-4
 #
 # Format: element → component → {"u": float, "sigma_u": float}
 # Components A, B, C.  A is omitted for heavy atoms (negligible for oblate tops).
+#: Elements already warned about, so the notice appears once per run.
+_warned_builtin_bob: set = set()
+
 _BOB_BUILTIN: dict = {
     # Hydrogen — large BOB due to low mass; varies 0.01-0.03 in hydrides
     "H": {
@@ -136,6 +139,10 @@ def get_builtin_bob_params(
 ) -> dict:
     """
     Return a BOB parameter dict for the given element list.
+
+    Emits a one-time warning per element when a built-in is used, because
+    the built-ins are order-of-magnitude placeholders (sigma_u = u), not
+    measured constants: they regularise a fit rather than correct it.
 
     Built-in estimates (see _BOB_BUILTIN) are used for elements not covered by
     user_params.  user_params entries take priority element-by-element.
@@ -271,20 +278,40 @@ def vpt2_delta_b(alpha_sum_mhz: float) -> float:
 
 # ── Electronic mass correction ────────────────────────────────────────────────
 
-def electronic_delta_b(b_obs_mhz: float, total_mass_amu: float) -> float:
-    """
-    Electronic mass correction to a rotational constant (Gordy-Cook approximation).
+# CODATA 2018 electron-to-proton mass ratio
+M_E_OVER_M_P: float = 5.44617021487e-4
 
-    Returns the signed delta_mhz to ADD to B0 when building B_e,SE.
-    The correction is negative because DeltaB_elec is subtracted:
+
+def electronic_delta_b(
+    b_obs_mhz: float,
+    total_mass_amu: float,
+    g_value: Optional[float] = None,
+) -> float:
+    """
+    Electronic correction to a rotational constant.
+
+    Returns the signed delta_mhz to ADD to B0 when building B_e,SE:
         B_e,SE = B0 + DeltaB_vib - DeltaB_elec - DeltaB_BOB
+
+    With ``g_value`` (the rotational g-tensor component g_alpha_alpha for this
+    axis) the standard relation is used:
+
+        delta_elec = -(m_e / m_p) * g_alpha * B_obs
+
+    This is the physically correct form. Note that g can be negative — for OCS
+    g_bb is about -0.028 — in which case the correction is *positive*.
+
+    Without a g_value it falls back to the crude 1/M_total estimate
+
         delta_elec = -(m_e / M_total) * B_obs
 
-    The approximation treats total molecular mass M_total as the effective
-    rotational mass and ignores the electronic g-tensor (typically valid to
-    ~10-30% of the correction itself — sufficient for most semi-experimental
-    structure work). Uncertainty from this approximation should be captured
-    via sigma_elec_fraction in resolve_corrections().
+    which is NOT the standard formula and should be treated as an
+    order-of-magnitude placeholder only. It scales as 1/M_total, whereas the
+    real correction scales with g and is roughly mass-independent, so it
+    understates the correction by about (M_total * g): ~12x for water, ~4x for
+    benzene, and it gets the sign wrong whenever g is negative. Supply
+    ``g_tensor`` in the config for anything beyond a rough estimate; the
+    fallback's uncertainty is widened accordingly in resolve_corrections().
 
     Parameters
     ----------
@@ -292,12 +319,16 @@ def electronic_delta_b(b_obs_mhz: float, total_mass_amu: float) -> float:
         Observed rotational constant B0 in MHz.
     total_mass_amu : float
         Total molecular mass (sum of all atomic masses) in amu.
+    g_value : float or None
+        Rotational g-tensor component for this axis, dimensionless.
 
     Returns
     -------
     float
-        delta_mhz — negative value representing -DeltaB_elec.
+        delta_mhz — the signed additive correction.
     """
+    if g_value is not None:
+        return -M_E_OVER_M_P * float(g_value) * float(b_obs_mhz)
     return -(M_ELECTRON_AMU / float(total_mass_amu)) * float(b_obs_mhz)
 
 

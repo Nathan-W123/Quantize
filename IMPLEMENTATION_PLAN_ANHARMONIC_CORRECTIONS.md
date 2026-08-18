@@ -1,5 +1,30 @@
 # Anharmonic Corrections Implementation Plan
 
+> **Status: implemented.** The anharmonic term now ships in
+> `.github/backend/spectral/harmonic_alpha.py`. The rest of this document is
+> kept as background; where it says a term is missing, read it as historical.
+>
+> What was actually built differs from the plan below in two ways:
+>
+> - **No ORCA VPT2 parser.** Rather than parse cubic/quartic force constants out
+>   of ORCA output, `cartesian_cubic_force_field()` builds ∂³V/∂xᵢ∂xⱼ∂x_k by
+>   central differences of the Hessian (6N evaluations). That works with any
+>   backend, needs no output-format handling, and stays valid if the backend
+>   changes. Quartic constants are not used; the α expression only needs the
+>   semi-diagonal cubic constants φ_rrs.
+> - **Derived from first-order perturbation theory**, not transcribed from a
+>   reference formula: cubic anharmonicity shifts ⟨Q_s⟩ away from zero, and
+>   propagating that through B(Q) gives
+>   α_r^anh,K = ⟨Q_r²⟩₀ Σ_s (∂B_K/∂Q_s) φ_rrs / λ_s.
+>   For a diatomic this reduces analytically to the Dunham result
+>   α_e = −(6B_e²/ω_e)(1 + a₁), which is what the test suite checks.
+>
+> Three further defects were found and fixed while implementing this — the
+> harmonic term was too small by a factor of BOHR_TO_ANG², the Coriolis term
+> used the wrong ζ axis, and linear molecules silently lost a vibration. See
+> `dev/tests/test_alpha_against_experiment.py` and the README section
+> "Ground state to equilibrium".
+
 ## Current Implementation vs. Target Formula
 
 ### **TARGET FORMULA (What we want to implement):**

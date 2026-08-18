@@ -1,0 +1,135 @@
+# Water — semi-experimental (r_e^SE) structure with the full correction chain.
+#
+#   python -m cli validate configs/example_water_semi_experimental.yaml
+#   python -m cli run      configs/example_water_semi_experimental.yaml
+#
+# Maps observed ground-state constants B_0 to equilibrium B_e via
+#     B_e = B_0 + Delta_vib + Delta_elec + Delta_BOB
+# and fits the geometry to B_e rather than to B_0.
+
+name: water_semi_experimental
+coordinate_mode: internal
+
+elements: [O, H, H]
+
+geometry:
+  method: coords
+  coords_angstrom:
+    - [0.000000, 0.000000, 0.000000]
+    - [0.000000, 0.757165, 0.586264]
+    - [0.000000, -0.757165, 0.586264]
+
+symmetry: C2v
+
+# Ground-state constants for H2-16O and its D/18O isotopologues.
+# alpha_mhz is left at zero: with harmonic_from_hessian the vibrational
+# correction is computed from the Hessian and overwrites these.
+isotopologues:
+  - name: H2-16O
+    masses: [15.99491461956, 1.00782503207, 1.00782503207]
+    components: [A, B, C]
+    obs_b0_mhz: [835840.29, 435351.72, 278138.70]
+    alpha_mhz: [0.0, 0.0, 0.0]
+    sigma_mhz: [0.20, 0.20, 0.20]
+
+  - name: D2-16O
+    masses: [15.99491461956, 2.01410177812, 2.01410177812]
+    components: [A, B, C]
+    obs_b0_mhz: [462278.85, 218038.23, 145258.00]
+    alpha_mhz: [0.0, 0.0, 0.0]
+    sigma_mhz: [0.20, 0.20, 0.20]
+
+  - name: H2-18O
+    masses: [17.99915961286, 1.00782503207, 1.00782503207]
+    components: [A, B, C]
+    obs_b0_mhz: [833931.00, 411705.00, 272914.00]
+    alpha_mhz: [0.0, 0.0, 0.0]
+    sigma_mhz: [0.50, 0.50, 0.50]
+
+quantum:
+  backend: orca
+  method: wB97X-D4
+  basis: def2-TZVPP
+  executable: null
+
+rovibrational_corrections:
+  mode: user_only
+
+  # Vibrational correction from the Cartesian Hessian: Delta_vib = 0.5 * sum_r alpha_r.
+  harmonic_from_hessian: true
+  harmonic_sigma_fraction: 0.02
+
+  # Include the cubic (anharmonic) term in alpha. This is the dominant
+  # contribution and carries the opposite sign to the harmonic one, so leaving
+  # it off biases B_e systematically -- for CO the harmonic term alone gives
+  # alpha with the wrong sign entirely.
+  #
+  # Costs 6N extra Hessian evaluations (18 for water). Turn it off for a quick
+  # run; when off, the reported alpha uncertainty is widened to 100% to reflect
+  # the omitted term.
+  anharmonic_from_hessian: true
+  anharmonic_fd_delta_ang: 0.01
+
+  # What to do with a component whose cubic term exceeds its harmonic one, i.e.
+  # whose perturbation series is not converging and whose correction therefore
+  # cannot be trusted at any stated uncertainty.
+  #   warn    keep it, annotate the notes, print a warning (default)
+  #   inflate also scale its sigma by the divergence ratio -- only bites when the
+  #           spectral block is over-determined
+  #   drop    leave it out of the correction table entirely
+  nonconvergent_policy: warn
+
+  # Electronic correction: -(m_e/m_p) * g_alpha * B_obs.
+  # g values below are for H2O. Without a g_tensor the code falls back to a
+  # crude 1/M_total estimate that is roughly an order of magnitude too small
+  # and can have the wrong sign, so it reports 100% uncertainty.
+  electronic_correction: true
+  sigma_elec_fraction: 0.1
+  g_tensor:
+    A: 0.645
+    B: 0.717
+    C: 0.657
+
+  # Born-Oppenheimer breakdown. Built-in u-parameters are order-of-magnitude
+  # estimates carrying 100% uncertainty; supply molecule-specific values for
+  # sub-milliangstrom work.
+  bob_params:
+    H: {A: 0.015, B: 0.015, C: 0.015}
+    O: {B: 0.002, C: 0.002}
+
+internal_coordinates:
+  use_dihedrals: false
+  damping: 1.0e-6
+  prior_sigma_bond: 0.12
+  prior_sigma_angle_deg: 5.0
+
+internal_priors:
+  mode: soft
+  freeze_sigma_floor: 1.0e-6
+
+# How the spectral data and the quantum surface share authority.
+#
+# The default "split" objective partitions hard: whatever survives the SVD rank
+# cutoff is handed entirely to the data. But that cutoff is purely relative
+# (sv_threshold x s_max), so a direction the data pins down only loosely is
+# still treated as fully constrained and theory gets no say in it. For water's
+# bond angle that is exactly what happens, and the angle comes out worse than
+# either theory or experiment alone would give.
+#
+# "joint" instead solves (J^T J + alpha_q H + lambda I) dp = J^T r - alpha_q g,
+# leaving every direction contested and weighted by how well each source knows
+# it. quantum_prior_sigma_ang calibrates alpha_q: it is the displacement over
+# which you trust the quantum surface, i.e. roughly the geometry error of the
+# method. Scan it -- see scripts/tune_quantum_prior.py. On the water test case
+# 0.005 A beat theory alone, experiment alone and the split default on both the
+# bond length and the angle simultaneously.
+optimizer:
+  objective_mode: joint
+  quantum_prior_sigma_ang: 0.005
+
+preset: BALANCED
+rng_seed: 17
+
+output:
+  root: output/runs
+  artifacts: true

@@ -58,8 +58,38 @@ def inertia_paf(coords_ang, masses_amu):
     return eigvals, V, r @ V
 
 
+def is_linear(coords_ang, masses_amu, rel_tol: float = 1e-6) -> bool:
+    """True when the smallest principal moment of inertia is negligible.
+
+    Compared against the largest moment so the test is scale-free; a genuine
+    linear molecule has I_a exactly zero up to rounding, while the smallest
+    moment of any bent molecule is a finite fraction of the largest.
+    """
+    coords = np.asarray(coords_ang, dtype=float)
+    if coords.shape[0] < 3:
+        return True
+    eigvals = np.sort(np.abs(inertia_paf(coords, masses_amu)[0]))
+    if eigvals[-1] <= 0.0:
+        return True
+    return bool(eigvals[0] / eigvals[-1] < rel_tol)
+
+
+def rigid_mode_count(coords_ang, masses_amu) -> int:
+    """Number of zero-frequency translation+rotation modes: 5 if linear else 6."""
+    n_atoms = np.asarray(coords_ang, dtype=float).shape[0]
+    if n_atoms < 2:
+        return 3
+    return 5 if is_linear(coords_ang, masses_amu) else 6
+
+
 def normal_modes(hess_bohr, masses_amu, n_rigid=6, min_eigval=1e-6):
-    """Vibrational frequencies (cm⁻¹) and mass-weighted eigenvectors."""
+    """Vibrational frequencies (cm⁻¹) and mass-weighted eigenvectors.
+
+    ``n_rigid`` is the number of translation/rotation modes to discard. Pass 5
+    for linear molecules (3N-5 vibrations); :func:`rigid_mode_count` derives it
+    from the geometry. Leaving it at 6 for a linear molecule silently discards a
+    real vibration -- for a diatomic, the only one.
+    """
     masses = np.asarray(masses_amu, dtype=float)
     M_inv_sqrt = np.repeat(1.0 / np.sqrt(masses), 3)
     F_mw = hess_bohr * M_inv_sqrt[:, None] * M_inv_sqrt[None, :]
@@ -80,10 +110,14 @@ def bk_mode_derivatives(coords, masses, L_mw, omega_cm, fd_delta, B0_ref=None):
     """
     First and second derivatives of B_K w.r.t. each normal coordinate Q_r.
 
+    Q_r is the mass-weighted normal coordinate in Å·√amu, which is the unit
+    ``_ZPE_AMP`` is expressed in, so ⟨Q_r²⟩ = _ZPE_AMP / ω̃_r combines with these
+    derivatives directly.
+
     Returns
     -------
-    dB1 : (3, n_vib)  ∂B_K/∂Q_r  [MHz / (Å/√amu)]
-    d2B : (3, n_vib)  ∂²B_K/∂Q_r²  [MHz / (Å/√amu)²]
+    dB1 : (3, n_vib)  ∂B_K/∂Q_r  [MHz / (Å·√amu)]
+    d2B : (3, n_vib)  ∂²B_K/∂Q_r²  [MHz / (Å·√amu)²]
     """
     N = coords.shape[0]
     n_vib = L_mw.shape[1]
@@ -93,23 +127,57 @@ def bk_mode_derivatives(coords, masses, L_mw, omega_cm, fd_delta, B0_ref=None):
     dB1 = np.zeros((3, n_vib))
     d2B = np.zeros((3, n_vib))
     for r in range(n_vib):
-        d_r = (L_mw[:, r].reshape(N, 3) / np.sqrt(masses[:, None])) * _BOHR_TO_ANG
-        B_plus = rotational_constants_mhz(coords + fd_delta * d_r, masses)
-        B_minus = rotational_constants_mhz(coords - fd_delta * d_r, masses)
-        dB1[:, r] = (B_plus - B_minus) / (2.0 * fd_delta)
-        d2B[:, r] = (B_plus + B_minus - 2.0 * B0_ref) / (fd_delta ** 2)
+        # L_mw is the orthonormal mass-weighted eigenvector, so the Cartesian
+        # displacement per unit Q_r is L/√m with coords already in Å. Scaling by
+        # a Bohr→Å factor here would put Q in Bohr·√amu and break the pairing
+        # with _ZPE_AMP.
+        d_r = L_mw[:, r].reshape(N, 3) / np.sqrt(masses[:, None])
+
+        def _diffs(h):
+            B_plus = rotational_constants_mhz(coords + h * d_r, masses)
+            B_minus = rotational_constants_mhz(coords - h * d_r, masses)
+            return (
+                (B_plus - B_minus) / (2.0 * h),
+                (B_plus + B_minus - 2.0 * B0_ref) / (h * h),
+            )
+
+        # These are closed-form functions of geometry alone -- no quantum
+        # chemistry, so no numerical noise -- which makes Richardson
+        # extrapolation safe and removes the O(h^2) truncation error.
+        d1_h, d2_h = _diffs(fd_delta)
+        d1_half, d2_half = _diffs(0.5 * fd_delta)
+        dB1[:, r] = (4.0 * d1_half - d1_h) / 3.0
+        d2B[:, r] = (4.0 * d2_half - d2_h) / 3.0
     return dB1, d2B
 
 
-def tau_prime_from_dB1_cm(dB1_cm: np.ndarray) -> np.ndarray:
-    """τ′_αβ [cm⁻¹] = −½ Σ_r (∂B_α/∂Q_r)(∂B_β/∂Q_r) with B derivatives in cm⁻¹."""
-    n_vib = dB1_cm.shape[1]
-    tau = np.zeros((3, 3))
-    for r in range(n_vib):
-        for K in range(3):
-            for J in range(3):
-                tau[K, J] -= 0.5 * dB1_cm[K, r] * dB1_cm[J, r]
-    return tau
+def tau_prime_from_dB1_cm(dB1_cm: np.ndarray, omega_cm: np.ndarray = None) -> np.ndarray:
+    """τ′_αβ [cm⁻¹] = −2 Σ_r (∂B_α/∂Q_r)(∂B_β/∂Q_r) / λ_r.
+
+    From the Kivelson-Wilson result τ_αβγδ = −(ħ⁴/2) Σ_r a_r^αβ a_r^γδ /
+    (I_α I_β I_γ I_δ λ_r); substituting a_r^αα = −I_α (∂B_α/∂Q_r)/B_α and
+    B_α I_α = ħ²/2 collapses it to the form above.
+
+    The 1/λ_r weighting is what makes τ an energy. ∂B/∂Q_r is cm⁻¹ per Å·√amu,
+    so Σ_r (∂B/∂Q_r)² alone is cm⁻²/(Å²·amu) — not an energy — and dividing by
+    λ_r [cm⁻¹/(Å²·amu)] restores cm⁻¹. Omitting it inflates τ by ~10⁵.
+
+    Parameters
+    ----------
+    dB1_cm   : (3, n_vib)  ∂B_K/∂Q_r in cm⁻¹ per Å·√amu
+    omega_cm : (n_vib,)    harmonic frequencies in cm⁻¹. Required; the default
+                           of None is rejected rather than silently reproducing
+                           the unweighted (dimensionally invalid) sum.
+    """
+    if omega_cm is None:
+        raise TypeError(
+            "tau_prime_from_dB1_cm requires omega_cm: without the 1/lambda_r "
+            "weighting the result is not an energy and is wrong by ~1e5."
+        )
+    omega = np.asarray(omega_cm, dtype=float)
+    # λ_r in cm⁻¹/(Å²·amu): for V = ½λQ², ⟨V⟩₀ = ¼ω̃ and ⟨Q²⟩₀ = _ZPE_AMP/ω̃.
+    lam = omega ** 2 / (2.0 * _ZPE_AMP)
+    return -2.0 * np.einsum("Kr,Jr,r->KJ", dB1_cm, dB1_cm, 1.0 / lam, optimize=True)
 
 
 def watson_a_reduction_cd_from_tau_cm(tau_cm: np.ndarray) -> dict[str, float]:
@@ -117,6 +185,17 @@ def watson_a_reduction_cd_from_tau_cm(tau_cm: np.ndarray) -> dict[str, float]:
     Watson A-reduction quartic CD constants in cm⁻¹ (x,y,z = A,B,C principal axes).
 
     Maps to standard NIST labels: DJ=Δ_J, DJK=Δ_JK, DK=Δ_K, delta_J=δ_J, delta_K=δ_K.
+
+    .. warning::
+       This mapping does not reproduce published constants and should be treated
+       as unvalidated. Checked against H2-16O with τ′ computed from the
+       Hoy/Mills/Strey force field, it gives Δ_J with the wrong sign (τ′ is
+       negative-definite by construction, so a positive-coefficient mapping
+       cannot produce the positive Δ_J that essentially every molecule has) and
+       δ_K roughly 40x the observed 41.05 MHz. Compare against the standard
+       Watson (1977) / Gordy & Cook §8 relations before relying on these values.
+       ``compute_cd_constants`` therefore reports 100% uncertainty, and
+       ``fit_cd_constants`` defaults to off.
     """
     t = tau_cm
     DJ = (1.0 / 32.0) * (
@@ -186,7 +265,9 @@ def compute_cd_constants(
     """
     masses = np.asarray(masses_amu, dtype=float)
     coords = np.asarray(coords_ang, dtype=float)
-    omega_cm, L_mw = normal_modes(hess_bohr, masses)
+    omega_cm, L_mw = normal_modes(
+        hess_bohr, masses, n_rigid=rigid_mode_count(coords, masses)
+    )
     mask = omega_cm >= min_freq_cm
     omega_cm = omega_cm[mask]
     L_mw = L_mw[:, mask]
@@ -199,11 +280,14 @@ def compute_cd_constants(
     B0_ref = rotational_constants_mhz(coords, masses)
     dB1_mhz, _ = bk_mode_derivatives(coords, masses, L_mw, omega_cm, fd_delta, B0_ref)
     dB1_cm = dB1_mhz * _MHZ_TO_CM
-    tau_cm = tau_prime_from_dB1_cm(dB1_cm)
+    tau_cm = tau_prime_from_dB1_cm(dB1_cm, omega_cm)
     cd_cm = watson_a_reduction_cd_from_tau_cm(tau_cm)
     cd_mhz = {k: v * _CM_TO_MHZ for k, v in cd_cm.items()}
+    # The tau -> A-reduction mapping below is not validated against experiment
+    # (see watson_a_reduction_cd_from_tau_cm), so the per-constant sigma is
+    # floored at 100% rather than the caller's nominal fraction.
     sigma = {
-        k: max(abs(cd_mhz[k]) * sigma_fraction, 0.01) for k in CD_NAMES
+        k: max(abs(cd_mhz[k]) * max(sigma_fraction, 1.0), 0.01) for k in CD_NAMES
     }
     return CDConstants(
         DJ=cd_mhz["DJ"],
@@ -214,7 +298,10 @@ def compute_cd_constants(
         source="harmonic_hessian",
         method="harmonic_VR",
         sigma=sigma,
-        notes="Harmonic τ′ → Watson A-reduction CD",
+        notes=(
+            "Harmonic τ′ → Watson A-reduction CD. "
+            "A-reduction mapping UNVALIDATED — treat as order-of-magnitude."
+        ),
     )
 
 

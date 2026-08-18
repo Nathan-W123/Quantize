@@ -1881,6 +1881,10 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
     orca_method = str(qsec.get("method", "wB97X-D4")).strip()
     orca_basis = str(qsec.get("basis", "def2-TZVPP")).strip()
     orca_exe = qsec.get("executable") or BASE_SETTINGS["orca_exe"]
+    # method_preset overrides method/basis inside MolecularOptimizer, so applying
+    # it unconditionally silently discarded whatever the config asked for. Only
+    # fall back to the preset when the config did not name a method.
+    method_preset = None if str(qsec.get("method", "")).strip() else "fast"
 
     # â”€â”€ Rovibrational corrections (optional) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     # Canonical key: rovibrational_corrections: {mode, correction_table, ...}
@@ -1934,6 +1938,15 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
     )
     harmonic_from_hessian = bool(_rc_block.get("harmonic_from_hessian", False))
     harmonic_sigma_fraction = float(_rc_block.get("harmonic_sigma_fraction", 0.02))
+    _g_raw = _rc_block.get("g_tensor") or None
+    correction_g_tensor = (
+        {str(k).strip().upper(): float(v) for k, v in _g_raw.items()}
+        if isinstance(_g_raw, dict)
+        else None
+    )
+    anharmonic_from_hessian = bool(_rc_block.get("anharmonic_from_hessian", False))
+    anharmonic_fd_delta_ang = float(_rc_block.get("anharmonic_fd_delta_ang", 0.01))
+    nonconvergent_policy = str(_rc_block.get("nonconvergent_policy", "warn")).strip().lower()
     harmonic_cd_from_hessian = bool(_rc_block.get("harmonic_cd_from_hessian", False))
     cd_sigma_fraction = float(_rc_block.get("cd_sigma_fraction", 0.05))
     fit_cd_constants = bool(_rc_block.get("fit_cd_constants", False))
@@ -1982,7 +1995,7 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
     optimizer_kwargs = dict(
         quantum_backend=backend if not spectral_only else "orca",
         orca_executable=orca_exe,
-        method_preset="fast",
+        method_preset=method_preset,
         orca_method=orca_method,
         orca_basis=orca_basis,
         spectral_only=spectral_only,
@@ -2006,6 +2019,7 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
         lambda_damp=0.00016370045068111915,
         objective_mode="split",
         alpha_quantum=0.2778639378704326,
+        quantum_prior_sigma_ang=None,
         robust_loss="none",
         robust_param=1.0,
         torsion_aware_weighting=False,
@@ -2044,8 +2058,12 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
         correction_elec=correction_elec,
         correction_sigma_elec_fraction=correction_sigma_elec_fraction,
         correction_bob_params=correction_bob_params,
+        correction_g_tensor=correction_g_tensor,
         harmonic_from_hessian=harmonic_from_hessian,
         harmonic_sigma_fraction=harmonic_sigma_fraction,
+        anharmonic_from_hessian=anharmonic_from_hessian,
+        anharmonic_fd_delta_ang=anharmonic_fd_delta_ang,
+        nonconvergent_policy=nonconvergent_policy,
         harmonic_cd_from_hessian=harmonic_cd_from_hessian,
         cd_sigma_fraction=cd_sigma_fraction,
         fit_cd_constants=fit_cd_constants,
@@ -2098,6 +2116,7 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
         "quantum_weight_beta",
         "quantum_weight_min",
         "quantum_weight_max",
+        "quantum_prior_sigma_ang",
     }
     for key, value in opt_cfg.items():
         if key in _optimizer_overrides:

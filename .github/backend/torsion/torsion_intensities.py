@@ -41,6 +41,17 @@ from backend.torsion.torsion_hamiltonian import (
 )
 from backend.torsion.torsion_symmetry import nuclear_spin_weight, symmetry_selection_rules
 
+
+#: Warnings already emitted, so an unsupported rotor is reported once per run
+#: rather than once per transition.
+_WARNED: set = set()
+
+
+def _warn_once(message: str) -> None:
+    if message not in _WARNED:
+        _WARNED.add(message)
+        print(f"  [torsion-warning] {message}")
+
 _MHZ_PER_CM1 = 29979.2458
 
 
@@ -302,7 +313,22 @@ def compute_torsion_line_list(
                         continue
 
                     sel = symmetry_selection_rules(s_lo, s_hi, rotor_fold=int(rotor_fold))
-                    allowed = sel.get("allowed") is not False
+                    verdict = sel.get("allowed")
+                    # `None` means the rules are not implemented for this rotor,
+                    # not that the transition is permitted. Treating it as
+                    # allowed (which `is not False` does) silently emits
+                    # forbidden lines at full strength. Keep that behaviour --
+                    # dropping them would be a different guess -- but record it
+                    # and say so once, so an intensity list can be trusted or
+                    # discounted on its merits.
+                    allowed = verdict is not False
+                    rules_known = verdict is not None
+                    if not rules_known:
+                        _warn_once(
+                            f"selection rules not implemented for rotor_fold="
+                            f"{int(rotor_fold)}; transitions are being treated as "
+                            f"allowed and intensities are upper bounds"
+                        )
 
                     ls = float(ME2[vt_hi, vt_lo])
                     if ls < float(min_line_strength):
@@ -310,8 +336,19 @@ def compute_torsion_line_list(
 
                     try:
                         nsw = nuclear_spin_weight(s_lo, rotor_fold=int(rotor_fold))
+                        weight_known = True
                     except ValueError:
+                        # Only C2 and C3 rotors have spin-weight tables. A
+                        # default of 1 for everything makes every species
+                        # equally abundant, which is wrong for any other fold.
                         nsw = 1
+                        weight_known = False
+                        _warn_once(
+                            f"nuclear spin weights not implemented for "
+                            f"rotor_fold={int(rotor_fold)} (symmetry {s_lo!r}); "
+                            f"defaulting every species to weight 1, so relative "
+                            f"intensities between symmetry species are wrong"
+                        )
 
                     rel_int = float(nsw) * ls * float(HL) if allowed else 0.0
 
@@ -322,6 +359,8 @@ def compute_torsion_line_list(
                         "K_lo": K_lo,
                         "vt_lo": vt_lo,
                         "symmetry_lo": s_lo,
+                        "selection_rules_known": rules_known,
+                        "spin_weight_known": weight_known,
                         "J_hi": J_hi,
                         "K_hi": K_hi,
                         "vt_hi": vt_hi,

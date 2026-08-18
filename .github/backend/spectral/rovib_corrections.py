@@ -276,6 +276,15 @@ def _propagate_sigma(sigma_exp: float, correction_sigmas: list) -> float:
 
 # â”€â”€ Correction resolution â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+#: Electron-to-proton mass ratio, and the largest rotational g-tensor
+#: component a molecule plausibly shows. Together these bound the electronic
+#: correction when no g-tensor is supplied: |delta| <= (m_e/m_p) * g_max * B.
+#: Typical |g| runs from about 0.01 for heavy molecules to a few tenths for
+#: light hydrides, so 0.7 is a conservative ceiling.
+_M_E_OVER_M_P = 5.446170214e-4
+_G_MAX_TYPICAL = 0.7
+
+
 def resolve_corrections(
     isotopologues: list,
     correction_table: Optional[dict] = None,
@@ -285,6 +294,7 @@ def resolve_corrections(
     correction_elec: bool = False,
     sigma_elec_fraction: float = 0.1,
     correction_bob_params: Optional[dict] = None,
+    g_tensor: Optional[dict] = None,
 ) -> list:
     """
     For each isotopologue Ã— component pair, resolve all corrections and return
@@ -323,7 +333,12 @@ def resolve_corrections(
         This requires elems to be supplied.
     sigma_elec_fraction : float
         Fractional uncertainty on the electronic correction (default 0.1 = 10%).
-        Reflects the approximation error from ignoring the electronic g-tensor.
+        Floored at 100% when no g_tensor is supplied, since the fallback formula
+        is only order-of-magnitude.
+    g_tensor : dict or None
+        Rotational g-tensor components, ``{"A": g_aa, "B": g_bb, "C": g_cc}``.
+        When given, the standard delta_elec = -(m_e/m_p) * g * B_obs is used
+        instead of the crude 1/M_total fallback. Components may be negative.
     correction_bob_params : dict or None
         Per-element BOB u-parameters. When supplied, computes:
             delta_bob = -Î£_a (m_e / m_a) * u_a^X
@@ -418,10 +433,40 @@ def resolve_corrections(
                     quality_flags=["no_correction"],
                 ))
 
-            # â”€â”€ Electronic mass correction â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            # â”€â”€ Electronic correction â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             if correction_elec and total_mass > 0.0:
-                delta_e = electronic_delta_b(b0, total_mass)
-                sig_e = abs(delta_e) * sigma_elec_fraction if sigma_elec_fraction > 0.0 else None
+                g_val = (g_tensor or {}).get(comp_label)
+                g_val = _finite_or_none(g_val)
+                delta_e = electronic_delta_b(b0, total_mass, g_value=g_val)
+                if g_val is not None:
+                    notes_e = f"-(m_e/m_p)*g*B_obs with g_{comp_label}={g_val:g}"
+                    frac = sigma_elec_fraction
+                    flags: list = []
+                else:
+                    # No g-tensor: apply nothing, and say how much is unknown.
+                    #
+                    # The old fallback, -(m_e/M_total)*B_obs, is not the standard
+                    # formula. It is off by roughly (M_total * g) and takes the
+                    # wrong sign whenever g is negative, which is common. A
+                    # wrong-signed point estimate cannot be rescued by widening
+                    # its sigma: a value -x with sigma x spans [-2x, 0] and never
+                    # reaches a true value of +y. Reporting zero with an honest
+                    # bound is unbiased and strictly better.
+                    #
+                    # The bound comes from the real formula, delta = -(m_e/m_p)*g*B,
+                    # evaluated at the largest g a molecule plausibly shows.
+                    delta_e = 0.0
+                    notes_e = (
+                        "no g_tensor supplied: electronic correction not applied; "
+                        f"sigma covers |g| up to {_G_MAX_TYPICAL:g}. Supply "
+                        "g_tensor for the standard -(m_e/m_p)*g*B_obs correction."
+                    )
+                    frac = 0.0
+                    flags = ["electronic_no_g_tensor", "electronic_not_applied"]
+                if g_val is not None:
+                    sig_e = abs(delta_e) * frac if frac > 0.0 else None
+                else:
+                    sig_e = _M_E_OVER_M_P * _G_MAX_TYPICAL * abs(float(b0))
                 records.append(CorrectionRecord(
                     isotopologue_label=name,
                     component=comp_label,
@@ -429,7 +474,8 @@ def resolve_corrections(
                     sigma_mhz=sig_e,
                     source="computed",
                     method="elec",
-                    notes="Gordy-Cook: -(m_e/M_total)*B_obs",
+                    notes=notes_e,
+                    quality_flags=flags,
                 ))
 
             # â”€â”€ Born-Oppenheimer Breakdown correction â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

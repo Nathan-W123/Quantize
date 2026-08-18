@@ -1,5 +1,27 @@
 # Anharmonic Corrections: What You Have vs. What You Need
 
+> **Status: superseded.** The anharmonic term described here as missing has been
+> implemented, and several of the "complete" items below turned out to be wrong.
+> Current state:
+>
+> | Term | Status |
+> |------|--------|
+> | Harmonic Δ_cent | Fixed — was too small by BOHR_TO_ANG² (3.57×) |
+> | Coriolis Δ_Cor | Fixed — used ζ^(3−K−J), which never selects the ζ of the axis being corrected |
+> | Electronic Δ_elec | Fixed — now uses the standard −(m_e/m_p)·g·B; the old 1/M_total form is an order of magnitude off |
+> | BOB Δ_BOB | Unchanged |
+> | Anharmonic Δ_anh | Implemented via a finite-difference Cartesian cubic force field |
+> | Linear molecules | Fixed — all of the above silently returned zero for diatomics |
+>
+> The Coriolis formula quoted below (`α_r,Coriolis^K = −4 B_e^K Σ_{J≠K} …`) is
+> the one that was wrong; see `harmonic_alpha.py` for the Mills/Papoušek–Aliev
+> form actually used. Impact estimates in the table near the end were also
+> optimistic: for CO the anharmonic term is 2.7× the harmonic one and flips its
+> sign, not a 5–50% refinement.
+>
+> See the README section "Ground state to equilibrium" for current behaviour and
+> `dev/tests/test_alpha_against_experiment.py` for the validation suite.
+
 ## Quick Answer: What You're Missing
 
 Your system currently computes:
