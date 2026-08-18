@@ -363,7 +363,18 @@ def resolve_corrections(
         name = str(iso.get("name", "iso"))
         obs = np.asarray(iso["obs_constants"], dtype=float)
         alpha = np.asarray(iso.get("alpha_constants", np.zeros(len(obs))), dtype=float)
-        sigma = np.asarray(iso.get("sigma_constants", np.ones(len(obs))), dtype=float)
+        if iso.get("sigma_constants") is not None:
+            sigma = np.asarray(iso["sigma_constants"], dtype=float)
+        else:
+            from backend.spectral.spectral import default_sigma_constants
+            sigma = default_sigma_constants(
+                obs, iso.get("component_indices", list(range(len(obs)))))
+        # The coherent model error -- the B0-versus-Be gap -- as distinct from
+        # measurement precision. This is the part a vibrational correction
+        # supersedes; see the sigma_exp adjustment below.
+        sys_sig_in = iso.get("sigma_systematic_constants")
+        sigma_sys = (np.asarray(sys_sig_in, dtype=float).ravel()
+                     if sys_sig_in is not None else None)
         idx = np.asarray(
             iso.get("component_indices", list(range(len(obs)))), dtype=int
         )
@@ -494,7 +505,51 @@ def resolve_corrections(
 
             total_delta = sum(r.delta_mhz for r in records)
             b_e_se = b0 + total_delta
-            sigma_eff = _propagate_sigma(sigma_exp, [r.sigma_mhz for r in records])
+
+            # Do not charge for an error that has just been removed.
+            #
+            # sigma_exp is dominated by the r_0-versus-r_e model gap: the
+            # measured constant is a ground-state one, the fitted structure is
+            # rigid, and that mismatch is a few tenths of a percent while the
+            # frequency itself is measured to about one part in 1e7. Applying a
+            # vibrational correction is precisely the act of removing that gap
+            # -- so continuing to carry it in the weighting sigma double-counts
+            # it, and what remains is only how well the correction is known.
+            #
+            # Measured on formyl fluoride's B at B3LYP/6-31G(d): sigma_exp 58.8
+            # MHz against a correction sigma of 11.7, so the corrected target
+            # was weighted 5x too loosely -- and weight goes as 1/sigma^2, so
+            # the data carried 25x less influence than it had earned. The
+            # engine was paying for the correction and then discarding it.
+            #
+            # Only the coherent (systematic) part is removed, and only when a
+            # real vibrational correction was applied. Whatever the caller did
+            # not declare systematic stays, and the relative sigma floor in
+            # SpectralEngine still applies downstream, so no weight can run
+            # away.
+            sigma_exp_eff = sigma_exp
+            # Vibrational records are whatever is neither the electronic nor
+            # the BOB term nor the explicit no-correction placeholder. Matching
+            # on a list of method names instead silently missed
+            # "VPT2_semidiag", which is what the Hessian-built table stamps --
+            # i.e. every correction this engine generates itself.
+            corrected_vib = any(
+                r.method not in ("elec", "BOB", "none") and r.source != "none"
+                and r.delta_mhz != 0.0
+                for r in records
+            )
+            if corrected_vib:
+                s_sys = None
+                if sigma_sys is not None and k < sigma_sys.size:
+                    s_sys = float(sigma_sys[k])
+                elif iso.get("sigma_constants") is None:
+                    # Auto-derived sigma is model gap end to end.
+                    s_sys = sigma_exp
+                if s_sys is not None and s_sys > 0.0:
+                    sigma_exp_eff = float(
+                        max(sigma_exp ** 2 - min(s_sys, sigma_exp) ** 2, 0.0) ** 0.5
+                    )
+            sigma_eff = _propagate_sigma(sigma_exp_eff, [r.sigma_mhz for r in records])
 
             targets.append(CorrectedSpectralTarget(
                 isotopologue_label=name,
