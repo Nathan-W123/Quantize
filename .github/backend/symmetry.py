@@ -20,6 +20,8 @@ Standard orientation expected (auto_orient=True will try to fix it automatically
   Dinf_h     : molecular axis along +z, inversion centre at origin
 """
 
+import re
+
 import numpy as np
 from typing import List, Optional, Tuple
 
@@ -301,42 +303,232 @@ def _equiv_groups(n: int, perms: List[List[int]]) -> List[List[int]]:
     return list(groups.values())
 
 
-def infer_point_group(elements: List[str], coords, linear_tol_deg: float = 2.0) -> str:
-    """
-    Lightweight point-group inference for common molecular topologies.
+# ── symmetry detection ────────────────────────────────────────────────────────
 
-    This intentionally favors robust defaults over exhaustive classification.
-    Returns a supported label usable by PointGroupSymmetry.
+#: Displacement below which an operation counts as mapping the molecule onto
+#: itself. Geometries out of a quantum-chemistry optimiser are symmetric to far
+#: better than this; the tolerance is set by how distorted a *starting* geometry
+#: may be and still be recognised.
+DETECT_TOL_ANG = 0.05
+
+
+def _rotation_matrix(axis, angle: float) -> np.ndarray:
+    """Rotation by `angle` about `axis` (Rodrigues)."""
+    a = np.asarray(axis, dtype=float)
+    a = a / np.linalg.norm(a)
+    K = np.array([[0., -a[2], a[1]], [a[2], 0., -a[0]], [-a[1], a[0], 0.]])
+    return np.eye(3) + np.sin(angle) * K + (1.0 - np.cos(angle)) * (K @ K)
+
+
+def _atom_permutation(coords_c, elements, R, tol) -> Optional[np.ndarray]:
+    """Permutation induced by `R`, or None if it is not a symmetry of the molecule.
+
+    `coords_c` must already be centred on the centroid: every symmetry operation
+    fixes that point, because it permutes the atoms among themselves.
+    """
+    moved = coords_c @ R.T
+    n = len(elements)
+    perm = np.empty(n, dtype=int)
+    for i in range(n):
+        best_d, best_j = np.inf, -1
+        for j in range(n):
+            if elements[j] != elements[i]:
+                continue
+            d = float(np.linalg.norm(moved[i] - coords_c[j]))
+            if d < best_d:
+                best_d, best_j = d, j
+        if best_j < 0 or best_d > tol:
+            return None
+        perm[i] = best_j
+    # Nearest-match must be a bijection, or the "operation" merges two atoms.
+    return perm if len(set(perm.tolist())) == n else None
+
+
+def _unique_directions(vectors, tol: float = 1e-4) -> List[np.ndarray]:
+    """Deduplicate to unit vectors, treating v and -v as one direction."""
+    out: List[np.ndarray] = []
+    for v in vectors:
+        nrm = float(np.linalg.norm(v))
+        if nrm < 1e-8:
+            continue
+        u = np.asarray(v, dtype=float) / nrm
+        if u[int(np.argmax(np.abs(u)))] < 0:      # canonical sign
+            u = -u
+        if not any(float(np.linalg.norm(u - w)) < tol for w in out):
+            out.append(u)
+    return out
+
+
+def _candidate_axes(elements: List[str], coords_c: np.ndarray) -> List[np.ndarray]:
+    """Directions that could be a symmetry axis or a mirror normal.
+
+    Every symmetry axis of a molecule is a principal axis of its inertia tensor,
+    so those three are always included. When two moments are degenerate the
+    eigenvectors are arbitrary within that plane, so atom positions, midpoints
+    of like-atom pairs, their separations, and normals to the planes they span
+    are added -- between them these cover the axes of the common point groups.
+    """
+    n = len(elements)
+    r2 = (coords_c * coords_c).sum(axis=1)
+    inertia = np.eye(3) * r2.sum() - coords_c.T @ coords_c
+    _, evecs = np.linalg.eigh(inertia)
+    cands = [evecs[:, k] for k in range(3)]
+    for i in range(n):
+        cands.append(coords_c[i])
+        for j in range(i + 1, n):
+            if elements[i] != elements[j]:
+                continue
+            cands.append(0.5 * (coords_c[i] + coords_c[j]))
+            cands.append(coords_c[i] - coords_c[j])
+    dirs = _unique_directions([coords_c[i] for i in range(n)])
+    for i in range(len(dirs)):
+        for j in range(i + 1, len(dirs)):
+            cands.append(np.cross(dirs[i], dirs[j]))
+    return _unique_directions(cands)
+
+
+def _frame_from_z(z_axis) -> np.ndarray:
+    """Any right-handed frame whose third row is `z_axis`."""
+    z = np.asarray(z_axis, dtype=float)
+    z = z / np.linalg.norm(z)
+    ref = np.array([1., 0., 0.]) if abs(z[0]) < 0.9 else np.array([0., 1., 0.])
+    x = ref - float(ref @ z) * z
+    x /= np.linalg.norm(x)
+    y = np.cross(z, x)
+    R = np.vstack([x, y, z])
+    if np.linalg.det(R) < 0:
+        R[1] = -R[1]
+    return R
+
+
+def _candidate_frames(z_axis, coords_c: np.ndarray) -> List[np.ndarray]:
+    """Rotations taking `z_axis` to +z, spanning plausible choices of +x.
+
+    The operation tables put sigma_v in the xz plane and the reference C2' along
+    x, so a group depends on the rotation about z as well as on the axis itself.
+    Rather than deriving the correct one per group, offer the geometrically
+    distinguished choices -- atom projections and their bisectors -- and let
+    validation pick the one that works.
+    """
+    z = np.asarray(z_axis, dtype=float)
+    z = z / np.linalg.norm(z)
+    perp = coords_c - np.outer(coords_c @ z, z)
+    m = perp.shape[0]
+    seeds = [perp[i] for i in range(m)]
+    seeds += [perp[i] + perp[j] for i in range(m) for j in range(i + 1, m)]
+    xs = _unique_directions(seeds)
+    if not xs:
+        return [_frame_from_z(z)]
+    frames = []
+    for x in xs:
+        for xx in (x, np.cross(z, x)):
+            nx = float(np.linalg.norm(xx))
+            if nx < 1e-8:
+                continue
+            xh = xx / nx
+            y = np.cross(z, xh)
+            ny = float(np.linalg.norm(y))
+            if ny < 1e-8:
+                continue
+            R = np.vstack([xh, y / ny, z])
+            if np.linalg.det(R) < 0:
+                R[1] = -R[1]
+            frames.append(R)
+    return frames
+
+
+def _principal_order(pg: str) -> int:
+    """Order of the principal rotation axis implied by a group label."""
+    if pg in ("C1", "Ci", "Cs"):
+        return 1
+    m = re.match(r"^[CD](\d+)", pg)
+    return int(m.group(1)) if m else 1
+
+
+def detect_symmetry(elements: List[str], coords,
+                    tol: float = DETECT_TOL_ANG) -> Tuple[str, np.ndarray]:
+    """Largest supported point group the geometry actually satisfies.
+
+    Returns ``(label, R)``, where ``R`` rotates centred lab coordinates into the
+    standard orientation that the operation table for ``label`` is written in::
+
+        coords_std = (coords - centroid) @ R.T
+
+    The orientation is returned with the label because the caller must not
+    re-derive it: a different choice of axes would make the very operations
+    validated here fail, and the projector would then enforce a symmetry the
+    molecule does not have.
+
+    A label is only returned when *every* operation in its table maps the
+    molecule onto itself within `tol`, so the result is always a genuine
+    symmetry of the input -- at worst a subgroup of the true point group, when
+    the true group is outside the supported table (methane's Td is reported as
+    C3v, for instance). That direction is the safe one: enforcing a subgroup
+    constrains less than it could, whereas enforcing a supergroup would impose
+    symmetry the molecule does not have.
     """
     elems = list(elements)
     xyz = np.asarray(coords, dtype=float)
     n = len(elems)
     if n < 2:
-        return "C1"
+        return "C1", np.eye(3)
+    c = xyz - xyz.mean(axis=0)
 
-    if n == 2:
-        return "Dinf_h" if elems[0] == elems[1] else "Cinf_v"
+    # Linear molecules: the moment about the molecular axis vanishes. Their
+    # groups are continuous, so they are built by a separate code path and only
+    # the axis matters.
+    r2 = (c * c).sum(axis=1)
+    inertia = np.eye(3) * r2.sum() - c.T @ c
+    evals, evecs = np.linalg.eigh(inertia)
+    if evals[0] <= 1e-6 * max(float(evals[2]), 1.0):
+        R = _frame_from_z(evecs[:, 0])
+        apolar = _atom_permutation(c @ R.T, elems, _INV, tol) is not None
+        return ("Dinf_h" if apolar else "Cinf_v"), R
 
-    if n == 3:
-        # Treat index 1 as central for triatomic driver conventions.
-        v1 = xyz[0] - xyz[1]
-        v2 = xyz[2] - xyz[1]
-        n1 = float(np.linalg.norm(v1))
-        n2 = float(np.linalg.norm(v2))
-        if n1 > 1e-12 and n2 > 1e-12:
-            ang = float(np.degrees(np.arccos(np.clip(np.dot(v1, v2) / (n1 * n2), -1.0, 1.0))))
-            if abs(180.0 - ang) <= float(linear_tol_deg):
-                return "Dinf_h" if elems[0] == elems[2] else "Cinf_v"
-        return "C2v" if elems[0] == elems[2] else "Cs"
+    axes = _candidate_axes(elems, c)
 
-    # Simple tetra-like pyramidal detector (e.g., NH3)
-    unique = {}
-    for e in elems:
-        unique[e] = unique.get(e, 0) + 1
-    if sorted(unique.values()) == [1, 3]:
-        return "C3v"
+    # Which proper rotations each candidate axis supports. Computing this once
+    # prunes the group search: a group needing C4 can only sit on an axis that
+    # has one.
+    axis_orders = {}
+    for k, ax in enumerate(axes):
+        got = {o for o in (2, 3, 4, 5, 6)
+               if _atom_permutation(c, elems, _rotation_matrix(ax, 2 * np.pi / o),
+                                    tol) is not None}
+        if got:
+            axis_orders[k] = got
 
-    return "C1"
+    supported = [k for k, v in _GROUP_OPS.items() if v is not None and k != "C1"]
+    supported.sort(key=lambda k: (-len(_GROUP_OPS[k]), k))
+
+    for pg in supported:
+        ops = _GROUP_OPS[pg]
+        order = _principal_order(pg)
+        if order == 1:
+            # Cs and Ci: the tables involve z only, so one frame per axis is
+            # enough and the choice of x cannot matter.
+            zs = [(ax, True) for ax in axes]
+        else:
+            zs = [(axes[k], False) for k, s in axis_orders.items() if order in s]
+        for z, single in zs:
+            frames = _candidate_frames(z, c)
+            for R in (frames[:1] if single else frames):
+                cs = c @ R.T
+                if all(_atom_permutation(cs, elems, op, tol) is not None
+                       for op in ops):
+                    return pg, R
+    return "C1", np.eye(3)
+
+
+def infer_point_group(elements: List[str], coords, linear_tol_deg: float = 2.0) -> str:
+    """Point-group label for a geometry. See :func:`detect_symmetry`.
+
+    `linear_tol_deg` is accepted for backwards compatibility and ignored:
+    linearity is now decided from the inertia tensor, which does not depend on
+    any particular atom being the central one. The previous implementation read
+    the bend angle at index 1 and so returned Cs for water ordered O,H,H.
+    """
+    return detect_symmetry(elements, coords)[0]
 
 
 def create_symmetry(
@@ -350,12 +542,18 @@ def create_symmetry(
     Create a PointGroupSymmetry instance from explicit or inferred group.
 
     point_group:
-      - None, "", or "auto" => infer a supported point-group label.
+      - None, "", or "auto" => detect the group from the geometry.
       - otherwise            => use the provided group label directly.
+
+    When the group is detected, the orientation found during detection is passed
+    straight through rather than re-derived by the PCA heuristics in
+    ``_orient_to_standard``. Detection validated every operation of the group in
+    that specific frame; a different frame would not satisfy them.
     """
     pg = point_group
     if pg is None or str(pg).strip() == "" or str(pg).strip().lower() == "auto":
-        pg = infer_point_group(elements, coords)
+        pg, R = detect_symmetry(elements, coords)
+        return PointGroupSymmetry(pg, elements, coords, tol=tol, orientation=R)
     return PointGroupSymmetry(str(pg), elements, coords, tol=tol, auto_orient=auto_orient)
 
 
@@ -409,6 +607,7 @@ class PointGroupSymmetry:
         coords,
         tol: float = 0.5,
         auto_orient: bool = True,
+        orientation: Optional[np.ndarray] = None,
     ):
         self.point_group: str = _normalize_pg(point_group)
         self.elements: List[str] = list(elements)
@@ -416,17 +615,19 @@ class PointGroupSymmetry:
         self.tol: float = float(tol)
         self._projection: Optional[np.ndarray] = None
         self._equiv: Optional[List[List[int]]] = None
-        self._setup(np.asarray(coords, dtype=float), auto_orient=auto_orient)
+        self._setup(np.asarray(coords, dtype=float), auto_orient=auto_orient,
+                    orientation=orientation)
 
     # ── internal setup ────────────────────────────────────────────────────────
 
-    def _setup(self, coords: np.ndarray, auto_orient: bool) -> None:
+    def _setup(self, coords: np.ndarray, auto_orient: bool,
+               orientation: Optional[np.ndarray] = None) -> None:
         pg = self.point_group
         if pg == "Cinf_v":
-            self._setup_linear(coords, apolar=False)
+            self._setup_linear(coords, apolar=False, orientation=orientation)
             return
         if pg == "Dinf_h":
-            self._setup_linear(coords, apolar=True)
+            self._setup_linear(coords, apolar=True, orientation=orientation)
             return
 
         raw_ops = _GROUP_OPS.get(pg)
@@ -437,7 +638,10 @@ class PointGroupSymmetry:
                 f"Supported: {supported + ['Cinf_v', 'Dinf_h']}"
             )
 
-        if auto_orient:
+        if orientation is not None:
+            R_orient = np.asarray(orientation, dtype=float)
+            coords_std = (coords - coords.mean(axis=0)) @ R_orient.T
+        elif auto_orient:
             coords_std, R_orient = _orient_to_standard(self.elements, coords, pg)
         else:
             coords_std = coords - coords.mean(axis=0)
@@ -454,21 +658,25 @@ class PointGroupSymmetry:
         self._projection = T.T @ P_std @ T
         self._equiv = _equiv_groups(self.n_atoms, perms)
 
-    def _setup_linear(self, coords: np.ndarray, apolar: bool) -> None:
+    def _setup_linear(self, coords: np.ndarray, apolar: bool,
+                      orientation: Optional[np.ndarray] = None) -> None:
         """C∞v or D∞h: project all atoms onto the molecular axis (z after orient)."""
         n, N = self.n_atoms, 3 * self.n_atoms
 
         centroid = coords.mean(axis=0)
         c = coords - centroid
-        _, evecs = np.linalg.eigh(c.T @ c)
-        z_vec = evecs[:, 2]   # largest spread = molecular axis
-        ref = np.array([1., 0., 0.]) if abs(z_vec[0]) < 0.9 else np.array([0., 1., 0.])
-        x_vec = ref - np.dot(ref, z_vec) * z_vec
-        x_vec /= np.linalg.norm(x_vec)
-        y_vec = np.cross(z_vec, x_vec)
-        R = np.vstack([x_vec, y_vec, z_vec])
-        if np.linalg.det(R) < 0:
-            R[0] = -R[0]
+        if orientation is not None:
+            R = np.asarray(orientation, dtype=float)
+        else:
+            _, evecs = np.linalg.eigh(c.T @ c)
+            z_vec = evecs[:, 2]   # largest spread = molecular axis
+            ref = np.array([1., 0., 0.]) if abs(z_vec[0]) < 0.9 else np.array([0., 1., 0.])
+            x_vec = ref - np.dot(ref, z_vec) * z_vec
+            x_vec /= np.linalg.norm(x_vec)
+            y_vec = np.cross(z_vec, x_vec)
+            R = np.vstack([x_vec, y_vec, z_vec])
+            if np.linalg.det(R) < 0:
+                R[0] = -R[0]
         coords_std = c @ R.T
 
         P_std = np.zeros((N, N))
@@ -549,6 +757,15 @@ class PointGroupSymmetry:
         """
         Return the nearest point in the symmetric subspace.
 
+        The projection is applied about the molecule's own centroid, and the
+        centroid is restored afterwards. The projector is built in a frame
+        centred on the origin, so applying it to coordinates carrying an
+        arbitrary offset would drag the molecule bodily until its symmetry
+        elements passed through the origin -- the projector removes exactly
+        those translations that are not along a symmetry axis. That shift is
+        physically empty, since rotational constants do not depend on where the
+        molecule sits, but it would show up as a large spurious step.
+
         Parameters
         ----------
         coords : (N, 3) or (3N,) array
@@ -558,7 +775,10 @@ class PointGroupSymmetry:
         Array of the same shape as input.
         """
         arr = np.asarray(coords, dtype=float)
-        return (self._projection @ arr.ravel()).reshape(arr.shape)
+        xyz = arr.reshape(-1, 3)
+        com = xyz.mean(axis=0)
+        out = (self._projection @ (xyz - com).ravel()).reshape(-1, 3) + com
+        return out.reshape(arr.shape)
 
     def summary(self) -> str:
         """Short human-readable description of the symmetry constraints."""

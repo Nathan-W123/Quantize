@@ -23,9 +23,16 @@ Units
 """
 
 import os
+import contextlib
+import io
+
 import numpy as np
 
-from backend.spectral.spectral import SpectralEngine, sanitize_isotopologues
+from backend.spectral.spectral import (
+    DEFAULT_SIGMA_FLOOR_REL,
+    SpectralEngine,
+    sanitize_isotopologues,
+)
 from backend.internal.internal_prior import InternalPriorEngine
 from backend.spectral.rovib_corrections import (
     resolve_corrections,
@@ -34,6 +41,33 @@ from backend.spectral.rovib_corrections import (
     correction_summary,
 )
 from backend.spectral.correction_models import parse_correction_table, RovibCorrection, ParsedRovibResult
+
+
+#: Default width of the quantum prior, in Angstrom -- the displacement over
+#: which the electronic-structure surface is trusted.
+#:
+#: This must match the geometry error of the level of theory in use. Benchmarks
+#: over six molecules put RHF/6-31G at 15-19 mA RMS and B3LYP/6-31G(d) at about
+#: 7 mA, and the hybrid beats theory alone across a broad plateau either side of
+#: the right value. 0.020 A suits a Hartree-Fock or small-basis calculation; for
+#: a good DFT or post-HF surface, set it lower.
+#:
+#: The previous default of None was worse than any number. It routed the weight
+#: through a heuristic that adds a dimensionless chi-square to an energy in
+#: Hartrees, and the units alone hand the spectral side a factor of ~1e5 (for
+#: water), so no honest sigma on the data could give theory a say.
+#:
+#: `scripts/estimate_theory_error.py` estimates the right value for a molecule
+#: with no known structure, from the spread between two levels of theory.
+DEFAULT_QUANTUM_PRIOR_SIGMA_ANG = 0.020
+
+#: Guards on chi-square rescaling. Below this many degrees of freedom the ratio
+#: is dominated by how much freedom the model has rather than by whether the
+#: sigmas are right, and the adjustment is skipped. The factor is clamped
+#: because an unbounded one drives sigma to zero on a near-perfect fit and every
+#: quantity that divides by sigma diverges with it.
+CHI2_RESCALE_MIN_DOF = 1
+CHI2_RESCALE_MAX_FACTOR = 4.0
 from backend.autoconfig import AutoConfigEngine
 from backend.autoconfig_bases import ProblemShape, count_spectral_rows, infer_optimizer_bases
 from backend.quantum import (
@@ -244,15 +278,21 @@ class MolecularOptimizer:
         hess_recalc_min=1,
         hess_recalc_max=8,
         sv_threshold=1e-3,
-        sv_min_abs=0.0,
+        sv_min_abs=None,
         trust_radius=0.1,
         null_trust_radius=None,
         lambda_damp=1e-4,
-        objective_mode="split",
+        objective_mode="joint",
         alpha_quantum=1.0,
+        quantum_prior_sigma_ang=DEFAULT_QUANTUM_PRIOR_SIGMA_ANG,
+        prior_class_sigma=None,
         robust_loss="none",
         robust_param=1.0,
+        chi2_rescale=False,
+        chi2_rescale_threshold=4.0,
+        chi2_rescale_max_passes=1,
         sigma_floor_mhz=0.0,
+        sigma_floor_rel=DEFAULT_SIGMA_FLOOR_REL,
         sigma_cap_mhz=None,
         max_spectral_weight=None,
         component_weight_map=None,
@@ -296,10 +336,12 @@ class MolecularOptimizer:
         rovib_recalc_every=1,
         rovib_source_mode="hybrid_auto",
         spectral_only=False,
-        symmetry=None,
+        symmetry="auto",
         debug_rank_diagnostics=False,
         debug_sv_count=6,
-        project_rigid_modes=False,
+        project_rigid_modes=True,
+        mass_dependent_model=None,
+        mass_dependent_frac_sigma=0.01,
         enforce_quantum_descent=False,
         quantum_descent_tol=1e-10,
         use_autoconfig=True,
@@ -314,8 +356,12 @@ class MolecularOptimizer:
         correction_elec=False,
         correction_sigma_elec_fraction=0.1,
         correction_bob_params=None,
+        correction_g_tensor=None,
         harmonic_from_hessian=False,
         harmonic_sigma_fraction=0.02,
+        anharmonic_from_hessian=False,
+        anharmonic_fd_delta_ang=0.01,
+        nonconvergent_policy="warn",
         harmonic_cd_from_hessian=False,
         cd_sigma_fraction=0.05,
         fit_cd_constants=False,
@@ -351,7 +397,14 @@ class MolecularOptimizer:
         # â”€â”€ Rovibrational corrections (M1-M4) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         self._harmonic_from_hessian = bool(harmonic_from_hessian)
         self._harmonic_sigma_fraction = max(float(harmonic_sigma_fraction), 1e-6)
+        self._anharmonic_from_hessian = bool(anharmonic_from_hessian)
+        self._anharmonic_fd_delta_ang = max(float(anharmonic_fd_delta_ang), 1e-4)
+        self._nonconvergent_policy = str(nonconvergent_policy or "warn").strip().lower()
         self._harmonic_cd_from_hessian = bool(harmonic_cd_from_hessian)
+        self._warned_cd_unvalidated = False
+        self.chi2_rescale = bool(chi2_rescale)
+        self.chi2_rescale_threshold = float(chi2_rescale_threshold)
+        self.chi2_rescale_max_passes = int(chi2_rescale_max_passes)
         self._cd_sigma_fraction = max(float(cd_sigma_fraction), 1e-6)
         self._fit_cd_constants = bool(fit_cd_constants)
         self._cd_weight = max(float(cd_weight), 0.0)
@@ -364,13 +417,14 @@ class MolecularOptimizer:
         self._correction_elec = bool(correction_elec)
         self._correction_sigma_elec_fraction = float(correction_sigma_elec_fraction)
         self._correction_bob_params = correction_bob_params or None
+        self._correction_g_tensor = correction_g_tensor or None
         self._raw_isotopologues = list(isotopologues)   # preserved for harmonic updates
         self._corrected_targets = None
         _ctbl = parse_correction_table(correction_table)
         _apply_corrections = bool(_ctbl) or correction_mode != "hybrid_auto"
         if _apply_corrections or (correction_table is not None):
             _ctbl = parse_correction_table(correction_table)
-        if _ctbl or correction_elec or correction_bob_params:
+        if _ctbl or correction_elec or correction_bob_params or correction_g_tensor:
             _corrected_targets = resolve_corrections(
                 isotopologues,
                 correction_table=_ctbl,
@@ -380,6 +434,7 @@ class MolecularOptimizer:
                 correction_elec=bool(correction_elec),
                 sigma_elec_fraction=float(correction_sigma_elec_fraction),
                 correction_bob_params=correction_bob_params or None,
+                g_tensor=correction_g_tensor or None,
             )
             _qc_warnings = validate_correction_quality(_corrected_targets)
             print("\nRovibrational corrections applied:")
@@ -461,6 +516,7 @@ class MolecularOptimizer:
             robust_loss=robust_loss,
             robust_param=robust_param,
             sigma_floor_mhz=sigma_floor_mhz,
+            sigma_floor_rel=sigma_floor_rel,
             sigma_cap_mhz=sigma_cap_mhz,
             max_weight=max_spectral_weight,
             component_weight_map=component_weight_map,
@@ -502,6 +558,31 @@ class MolecularOptimizer:
                 sigma_angle_deg=float(prior_sigma_angle_deg),
                 sigma_dihedral_deg=float(prior_sigma_dihedral_deg),
             )
+        # An absolute floor on the singular values, in the same units as the
+        # sigma-weighted Jacobian: 1/s is the parameter uncertainty along a
+        # direction, in Angstrom. Tying the floor to the prior width states the
+        # rule plainly -- the data owns a direction only where it resolves that
+        # direction better than the quantum surface is trusted to. A floor of
+        # 0.0 (the old default) let any direction above the *relative* cutoff go
+        # to the data, including ones it barely resolves, which is how hydrogen
+        # positions ended up tens of milli-Angstrom out.
+        #
+        # That rule presupposes a prior standing behind the truncated
+        # directions. In spectral-only mode there is none -- whatever the data
+        # resolves, however weakly, is the entire answer -- so the floor must
+        # not apply. Measured on fluoroacetylene's six B constants: their
+        # weighted Jacobian's true rank is 3 (singular values 485 / 22.7 /
+        # 5.2), the floor of 1/sigma_x = 50 truncated it to rank 1, and the
+        # "fit" left 4 MHz cross-species residuals and C-F 22 mA wrong where
+        # a direct least-squares on the same six numbers leaves 0.04 MHz and
+        # 2.5 mA.
+        if sv_min_abs is None:
+            if spectral_only:
+                sv_min_abs = 0.0
+            else:
+                sigma_x = quantum_prior_sigma_ang or DEFAULT_QUANTUM_PRIOR_SIGMA_ANG
+                sv_min_abs = 1.0 / float(sigma_x) if sigma_x > 0.0 else 0.0
+
         self.optimizer = SubspaceOptimizer(
             sv_threshold,
             sv_min_abs,
@@ -510,6 +591,7 @@ class MolecularOptimizer:
             lambda_damp,
             objective_mode=objective_mode,
             alpha_quantum=alpha_quantum,
+            quantum_prior_sigma_ang=quantum_prior_sigma_ang,
             dynamic_quantum_weight=dynamic_quantum_weight,
             quantum_weight_beta=quantum_weight_beta,
             quantum_weight_min=quantum_weight_min,
@@ -526,6 +608,11 @@ class MolecularOptimizer:
         self.use_autoconfig_heuristic_bases = bool(use_autoconfig_heuristic_bases)
         self.autoconfig_tune_sv_threshold = bool(autoconfig_tune_sv_threshold)
         self.autoconfig_tune_alpha_quantum = bool(autoconfig_tune_alpha_quantum)
+        # Declared before the heuristic-bases call below, which reads it. The
+        # AutoConfigEngine itself is built further down, once every base value
+        # it seeds from is final; the reseed inside the call is therefore a
+        # no-op here and the engine picks up these bases directly.
+        self.autoconfig = None
         if self.use_autoconfig and self.use_autoconfig_heuristic_bases:
             self._apply_heuristic_optimizer_bases(isotopologues)
 
@@ -560,7 +647,24 @@ class MolecularOptimizer:
         self.rovib_source_mode = str(rovib_source_mode).strip().lower()
 
         self.spectral_only = bool(spectral_only)
+        # Symmetry constraints. "auto" (the default) detects the point group from
+        # the starting geometry and enforces it for the rest of the fit; pass
+        # None to switch the constraint off.
+        #
+        # This is on by default because the rotational constants cannot see the
+        # difference between a symmetric structure and a slightly distorted one,
+        # so an unconstrained fit spends its information breaking symmetry that
+        # physics fixes exactly. Water is the clean demonstration: its two O-H
+        # bonds are equal by C2v, and an unconstrained parent-only fit splits
+        # them by 3.9 mA -- larger than the whole remaining bond error.
+        # Constraining it cuts that fit's RMS bond error from 3.29 to 0.83 mA.
+        #
+        # Detection only ever returns a group whose every operation the geometry
+        # already satisfies, so the worst case is a subgroup of the true group,
+        # which constrains less rather than more. C1 means no constraint was
+        # found, and is dropped so the step avoids a 3N x 3N multiply by I.
         self.symmetry = symmetry
+        self.point_group = None
         if isinstance(self.symmetry, str) or self.symmetry is None:
             if self.symmetry is not None:
                 from backend.symmetry import create_symmetry  # pylint: disable=import-outside-toplevel
@@ -569,9 +673,50 @@ class MolecularOptimizer:
                     self.elems,
                     self.coords,
                 )
+                self.point_group = self.symmetry.point_group
+                if self.symmetry.point_group == "C1":
+                    self.symmetry = None
+        elif self.symmetry is not None:
+            self.point_group = getattr(self.symmetry, "point_group", None)
         self.debug_rank_diagnostics = bool(debug_rank_diagnostics)
         self.debug_sv_count = max(1, int(debug_sv_count))
         self.project_rigid_modes = bool(project_rigid_modes)
+        # Watson mass-dependent B0 -> Be correction, fitted alongside the
+        # structure. None disables it; "rm1" fits the three sqrt(I) coefficients.
+        #
+        # Off by default because it was measured not to help. On four molecules
+        # at two data levels (RHF/6-31G, warm start) the mean RMS bond error
+        # went 11.49 mA with it off to 12.23 / 13.08 / 17.85 at frac_sigma
+        # 0.003 / 0.01 / 0.03 -- monotonically worse, and worse in every
+        # fluorinated case.
+        #
+        # The reason is worth recording, because the same correction fitted
+        # *standalone* does help, and markedly: 4.62 -> 2.33 mA on formyl
+        # fluoride. Inside the hybrid the residual I_obs - I_m carries two
+        # things, the rovibrational offset and the quantum method's structural
+        # error. A standalone fit separates them because the structure is free
+        # and only isotopic substitution moves it; here the quantum prior
+        # anchors the structure, so the coefficients mop up the method's error
+        # instead. The symptoms are visible in the fitted values: c comes out
+        # negative on formyl fluoride where the standalone fit gives it
+        # positive, and on water the signs disagree with the standalone fit on
+        # two of three axes.
+        #
+        # Water at frac_sigma 0.03 does reach 0.14 mA from 1.75, but that is a
+        # knife edge -- 1.05 mA by 0.05 and 5.43 mA by 0.1 -- so it is
+        # coincidental cancellation rather than the correction doing its job.
+        #
+        # Turning it on would need the coefficients fitted from isotopic
+        # differences alone, so that the method's error cancels as common mode.
+        self._mass_dependent_model = (
+            None if mass_dependent_model is None
+            else str(mass_dependent_model).strip().lower())
+        if self._mass_dependent_model not in (None, "rm1"):
+            raise ValueError(
+                f"mass_dependent_model must be None or 'rm1', got "
+                f"{mass_dependent_model!r}")
+        self._mass_dependent_frac_sigma = float(mass_dependent_frac_sigma)
+        self._mass_dependent_c = None
         self.enforce_quantum_descent = bool(enforce_quantum_descent)
         self.quantum_descent_tol = float(quantum_descent_tol)
         self.enable_geometry_guardrails = bool(enable_geometry_guardrails)
@@ -583,7 +728,6 @@ class MolecularOptimizer:
         self.guardrail_lambda_boost = max(1.0, float(guardrail_lambda_boost))
         self.guardrail_trust_shrink = min(1.0, max(0.1, float(guardrail_trust_shrink)))
         self.autoconfig_update_every = max(1, int(autoconfig_update_every))
-        self.autoconfig = None
         if self.use_autoconfig:
             self.autoconfig = AutoConfigEngine(
                 n_params=3 * len(self.elems),
@@ -630,6 +774,13 @@ class MolecularOptimizer:
         self._backend = None
         self._orca_ref_coords = None
         self._orca_call_count = 0
+        # Quantum updates since the last full Hessian / rovib job. None means
+        # "never computed", which forces one on the next update.
+        self._since_hessian = None
+        self._since_rovib = None
+        self._last_data_support = {}
+        self._last_sigma_split = {}
+        self._prior_class_sigma = dict(prior_class_sigma) if prior_class_sigma else None
         self.history = []
         self._guardrail_bonds = _detect_bonds(self.coords, self.elems) if self.enable_geometry_guardrails else []
 
@@ -665,8 +816,17 @@ class MolecularOptimizer:
                     self._backend = None
                     print(f"Note: Could not initialize Psi4 backend: {e}")
             else:
-                # Generic path for future backends â€” they declare their own kwargs
-                self._backend = backend_cls(elems=self.elems)
+                # Generic path for registered third-party backends. Pass the
+                # method/basis/charge the config actually specified; constructing
+                # with elems alone silently discarded them, so a new backend could
+                # only ever run at its own defaults.
+                self._backend = backend_cls(
+                    elems=self.elems,
+                    method=self.orca_method,
+                    basis=self.orca_basis,
+                    charge=self.charge,
+                    multiplicity=self.multiplicity,
+                )
 
     @staticmethod
     def _covalent_radius(elem):
@@ -860,13 +1020,79 @@ class MolecularOptimizer:
         if self.quantum is None:
             return
         hess_bohr = self.quantum._hessian_bohr
-        print("\n  [harmonic-alpha] Computing harmonic alpha from Hessian...")
+
+        # The anharmonic (cubic) term is the dominant contribution to alpha and
+        # carries the opposite sign to the harmonic one, so omitting it biases
+        # B_e systematically. It costs 6N extra Hessians, hence opt-in.
+        hessian_fn = None
+        if self._anharmonic_from_hessian:
+            if self._backend is None:
+                print(
+                    "  [anharmonic] Requested but no quantum backend is available; "
+                    "falling back to harmonic+Coriolis alpha only."
+                )
+            else:
+                n_hess = 6 * len(self.elems)
+                print(
+                    f"  [anharmonic] Building Cartesian cubic force field "
+                    f"({n_hess} Hessian evaluations)..."
+                )
+
+                def hessian_fn(coords_ang):
+                    return self._backend.run_hessian(coords_ang).hessian_bohr
+
+        label = "alpha (harmonic+Coriolis+anharmonic)" if hessian_fn else "harmonic alpha"
+        print(f"\n  [harmonic-alpha] Computing {label} from Hessian...")
         ctbl_raw, _res_info = build_correction_table_from_hessian(
             hess_bohr,
             self.coords,
             self._raw_isotopologues,
             sigma_fraction=self._harmonic_sigma_fraction,
+            hessian_fn=hessian_fn,
+            fd_delta_cubic=self._anharmonic_fd_delta_ang,
+            nonconvergent_policy=self._nonconvergent_policy,
         )
+        for status in dict.fromkeys(_res_info.get("anharmonic_statuses", [])):
+            if status not in ("cubic_fd", "not_requested"):
+                print(f"  [anharmonic] WARNING: {status}")
+
+        # A component whose cubic term exceeds its harmonic one has a diverging
+        # perturbation series, and its correction is unreliable no matter how
+        # small the formal sigma is. Worth saying loudly: when the spectral block
+        # is exactly determined the fit reproduces its targets exactly, weights
+        # never enter, and a bad correction goes straight into the geometry.
+        _nonconv = _res_info.get("nonconvergent", {})
+        if _nonconv:
+            for _iso_name, _comps in _nonconv.items():
+                _detail = ", ".join(
+                    f"{c} (cubic/harmonic = {r:.1f})" for c, r in sorted(_comps.items())
+                )
+                print(
+                    f"  [anharmonic] WARNING: {_iso_name}: perturbation series not "
+                    f"converging for {_detail}."
+                )
+            _policy = _res_info.get("nonconvergent_policy", "warn")
+            _dropped = _res_info.get("dropped_components", {})
+            if _policy == "drop" and _dropped:
+                for _iso_name, _comps in _dropped.items():
+                    print(
+                        f"  [anharmonic] {_iso_name}: dropped {', '.join(sorted(_comps))} "
+                        "from the correction table (nonconvergent_policy=drop)."
+                    )
+            elif _policy == "inflate":
+                print(
+                    "  [anharmonic] Their sigma has been inflated by the divergence "
+                    "ratio. Note this only\n  [anharmonic] changes the fit where the "
+                    "spectral block is over-determined."
+                )
+            else:
+                print(
+                    "  [anharmonic] These corrections are unreliable. Prefer components "
+                    "with a converging\n  [anharmonic] series, or improve the Hessian; "
+                    "reweighting cannot compensate for a biased target. Set\n"
+                    "  [anharmonic] rovibrational_corrections.nonconvergent_policy: drop "
+                    "to exclude them."
+                )
         _near_degen = _res_info.get("total_near_degen_skips", 0)
         if _near_degen > 0:
             print(
@@ -911,6 +1137,7 @@ class MolecularOptimizer:
             correction_elec=self._correction_elec,
             sigma_elec_fraction=self._correction_sigma_elec_fraction,
             correction_bob_params=self._correction_bob_params,
+            g_tensor=self._correction_g_tensor,
         )
         _qc_warnings = validate_correction_quality(corrected_targets)
         print("\n  Rovibrational corrections (harmonic from Hessian):")
@@ -940,6 +1167,20 @@ class MolecularOptimizer:
             return
         hess_bohr = self.quantum._hessian_bohr
         print("\n  [harmonic-cd] Computing harmonic CD constants from Hessian...")
+        if not self._warned_cd_unvalidated:
+            self._warned_cd_unvalidated = True
+            print(
+                "  [harmonic-cd] WARNING: the tau' -> Watson A-reduction mapping "
+                "is not validated.\n"
+                "                Measured against water's experimental constants it "
+                "gets DJ and DK\n"
+                "                with the WRONG SIGN (-66.9 vs +37.6, -7.0 vs +973.3) "
+                "and DJK nine\n"
+                "                times too small. These are not order-of-magnitude "
+                "estimates; treat\n"
+                "                them as diagnostics only. See "
+                "dev/tests/test_cd_mapping_validation.py."
+            )
         cd_table = build_cd_table_from_hessian(
             hess_bohr,
             self.coords,
@@ -964,16 +1205,55 @@ class MolecularOptimizer:
                 old_iso["pred_cd"] = cd
         self.spectral.set_hessian_for_cd(hess_bohr)
 
+    @staticmethod
+    def _due_every(call_count: int, period: int) -> bool:
+        """True on call 1, 1+period, 1+2*period, ...
+
+        ``call_count % period == 1`` looks equivalent but silently fails for
+        period 1: every integer mod 1 is 0, never 1, so a period of "every call"
+        fired on no call at all.
+        """
+        n = max(1, int(period))
+        return (int(call_count) - 1) % n == 0
+
     def _update_orca(self):
-        """Decide whether to do a full Hessian recalculation or gradient-only update."""
+        """Decide whether to do a full Hessian recalculation or gradient-only update.
+
+        The schedule counts calls since the last full Hessian rather than
+        testing ``(call_count - 1) % period``. A modulus only describes a
+        periodic schedule while the period is constant, and this one is not:
+        the adaptive block below rewrites ``hess_recalc_every`` between calls,
+        which shifts the phase and can step the counter straight over the
+        firing residue. Measured on the benchmark molecules, a nominal period
+        of 5 produced one Hessian in 20 steps for fluoroacetylene and none at
+        all in 14 for formyl fluoride. That matters more under the joint
+        objective than it used to, because there the Hessian *is* the quantum
+        prior -- a stale one anchors the prior to a geometry the fit has left.
+        """
         self._orca_call_count += 1
-        if self.quantum is None or self._orca_call_count % self.hess_recalc_every == 1:
+        # Count the call first, then test: `_since_hessian` is the number of
+        # updates that have happened since the last Hessian, so a period of 1
+        # has to fire on the very next call. Testing before incrementing makes
+        # every period one longer than asked for, which for period 1 means every
+        # other call rather than every call.
+        if self._since_hessian is not None:
+            self._since_hessian += 1
+        if self._since_rovib is not None:
+            self._since_rovib += 1
+        hess_due = (self.quantum is None
+                    or self._since_hessian is None
+                    or self._since_hessian >= self.hess_recalc_every)
+        if hess_due:
             self._run_hessian()
-            if self.use_orca_rovib and self._orca_call_count % self.rovib_recalc_every == 1:
+            self._since_hessian = 0
+            rovib_due = (self._since_rovib is None
+                         or self._since_rovib >= self.rovib_recalc_every)
+            if self.use_orca_rovib and rovib_due:
                 self._run_rovib()
-            if self._harmonic_from_hessian and self._orca_call_count % self.hess_recalc_every == 1:
+                self._since_rovib = 0
+            if self._harmonic_from_hessian:
                 self._apply_harmonic_alpha_corrections()
-            if self._harmonic_cd_from_hessian and self._orca_call_count % self.hess_recalc_every == 1:
+            if self._harmonic_cd_from_hessian:
                 self._apply_harmonic_cd_corrections()
             elif self._fit_cd_constants and self._cd_weight > 0.0 and self.quantum is not None:
                 self.spectral.set_hessian_for_cd(self.quantum._hessian_bohr)
@@ -981,6 +1261,10 @@ class MolecularOptimizer:
             self._run_gradient()
             if self._fit_cd_constants and self._cd_weight > 0.0 and self.quantum is not None:
                 self.spectral.set_hessian_for_cd(self.quantum._hessian_bohr)
+
+    def _force_hessian_refresh(self):
+        """Make the next quantum update recompute the Hessian rather than reuse it."""
+        self._since_hessian = None
 
     # â”€â”€ Pre-computed files â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -1004,6 +1288,18 @@ class MolecularOptimizer:
     def _rigid_mode_projector(self, coords, masses):
         """
         Build Cartesian projector that removes rigid-body translation/rotation modes.
+
+        The modes are built *unweighted*, because the gradient and Hessian this
+        projector is applied to are plain Cartesian derivatives in Angstrom, not
+        mass-weighted ones. The two differ: the null vectors of a mass-weighted
+        Hessian are sqrt(m)-scaled translations, while the null vectors of the
+        plain Cartesian Hessian are uniform ones -- displacing every atom by the
+        same amount is what leaves the energy unchanged. Weighting by sqrt(m)
+        here would project out a subspace that is not the rigid one and would
+        leave genuine rigid contamination behind.
+
+        `masses` is still used, but only to place the origin at the centre of
+        mass, which is where the rotation generators belong.
         """
         coords = np.asarray(coords, dtype=float)
         masses = np.asarray(masses, dtype=float)
@@ -1016,31 +1312,36 @@ class MolecularOptimizer:
             return np.eye(3 * n)
         com = (masses[:, None] * coords).sum(axis=0) / msum
         rel = coords - com
-        sq_m = np.sqrt(np.maximum(masses, 1e-16))
 
         modes = []
         # Translations
         for axis in range(3):
             v = np.zeros((n, 3), dtype=float)
-            v[:, axis] = sq_m
+            v[:, axis] = 1.0
             modes.append(v.reshape(-1))
         # Rotations about x/y/z: omega x r
         axes = np.eye(3)
         for omega in axes:
-            v = np.cross(np.tile(omega, (n, 1)), rel) * sq_m[:, None]
+            v = np.cross(np.tile(omega, (n, 1)), rel)
             modes.append(v.reshape(-1))
 
         if not modes:
             return np.eye(3 * n)
         M = np.column_stack(modes)  # (3N, <=6)
-        Q, _ = np.linalg.qr(M)
-        keep = []
-        for j in range(Q.shape[1]):
-            if np.linalg.norm(Q[:, j]) > 1e-12:
-                keep.append(Q[:, j])
-        if not keep:
+        # Rank has to come from the singular values, not from column norms after
+        # a QR: reduced QR returns orthonormal -- hence unit-norm -- columns even
+        # where the input was rank deficient, so a norm test never rejects
+        # anything. A linear molecule has five rigid modes, not six (rotation
+        # about the molecular axis moves no atom), and the sixth column of Q is
+        # then an arbitrary unit vector spanning a genuine vibration. Projecting
+        # it out would delete a real degree of freedom from the quantum prior.
+        U, s, _ = np.linalg.svd(M, full_matrices=False)
+        if s.size == 0 or s[0] <= 0.0:
             return np.eye(3 * n)
-        Qk = np.column_stack(keep)
+        keep = int((s > 1e-8 * s[0]).sum())
+        if keep == 0:
+            return np.eye(3 * n)
+        Qk = U[:, :keep]
         return np.eye(3 * n) - Qk @ Qk.T
 
     def _project_quantum_terms(self, gradient, hessian):
@@ -1178,7 +1479,129 @@ class MolecularOptimizer:
 
     # â”€â”€ Optimisation loop â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+    def _chi2_dof(self):
+        """Effective degrees of freedom of the regularised fit.
+
+        nu = n_obs - tr(hat matrix), with the hat built from the same
+        regularised normal matrix the fit solves: tr[(J^T J + alpha_q H)^-1
+        J^T J]. Counting a raw SVD rank instead treats every data-touched
+        direction as fully spent, which both overstates nu where the prior
+        shares a direction and understates it where the data barely grazes one.
+        For an interpolating fit the trace approaches n_obs, nu approaches 0,
+        and chi-square rescaling is correctly skipped rather than clamped
+        mid-correction.
+        """
+        J, rw = self.spectral.stacked(self.coords)
+        n_obs = int(rw.size)
+        if n_obs == 0:
+            return 0.0
+        J = np.asarray(J, dtype=float)
+        JTJ = J.T @ J
+        if self.spectral_only or self.quantum is None:
+            sv = np.linalg.svd(J, compute_uv=False)
+            rank = int((sv > 1e-8 * sv[0]).sum()) if sv.size and sv[0] > 0 else 0
+            return float(max(0, n_obs - rank))
+        g = self.quantum.gradient
+        H = self.quantum.hessian
+        g, H = self._project_quantum_terms(g, H)
+        rank = int(np.linalg.matrix_rank(J))
+        alpha_q = self.optimizer.effective_quantum_weight(J, rank, hessian=H)
+        H_total = JTJ + alpha_q * self.optimizer._spd_hessian(H)
+        try:
+            C = np.linalg.pinv(H_total)
+        except np.linalg.LinAlgError:
+            return float(max(0, n_obs - rank))
+        tr_hat = float(np.trace(C @ JTJ))
+        return float(max(0.0, n_obs - min(tr_hat, float(n_obs))))
+
+    def reduced_chi_square(self):
+        """Chi-square per effective degree of freedom at the current geometry.
+
+        nu comes from the hat-matrix trace (see _chi2_dof), so the prior's
+        share of each direction is counted fractionally. When nu_eff is
+        numerically zero -- an interpolating fit -- the rank-based count is
+        reported instead so the caller sees a finite diagnostic, but the
+        rescaling gate in run() skips such fits entirely.
+        """
+        _, rw = self.spectral.stacked(self.coords)
+        n_obs = int(rw.size)
+        if n_obs == 0:
+            return 0.0
+        nu_eff = self._chi2_dof()
+        if nu_eff > 1e-9:
+            return float(np.dot(rw, rw)) / nu_eff
+        try:
+            J, _ = self.spectral.stacked(self.coords)
+            s = np.linalg.svd(J, compute_uv=False)
+            rank = int(np.sum(s > 1e-5 * s[0])) if s.size and s[0] > 0 else 0
+        except np.linalg.LinAlgError:
+            rank = 0
+        nu = max(n_obs - rank, 1)
+        return float(np.sum(rw ** 2) / nu)
+
     def run(self):
+        """
+        Run the hybrid optimisation loop, then rescale sigma if the fit says so.
+
+        Off by default. It is a real capability but an unvalidated one: on the
+        end-to-end water case it left the structure worse than theory alone
+        (14.6 mA against 10.9), so it should be switched on only where it has
+        been shown to help. Enable with chi2_rescale=True.
+
+        A converged fit whose reduced chi-square is far above one is telling you
+        the stated uncertainties were optimistic: the model cannot represent the
+        data to the precision claimed. Continuing to weight the data at that
+        precision makes the fit chase residuals it cannot remove, and it removes
+        them by distorting the structure. Widening sigma by the Birge ratio,
+        sqrt(chi2/nu), and refitting is the standard response.
+
+        Returns
+        -------
+        coords : (N, 3) ndarray   Final optimised coordinates in Angstroms.
+        """
+        coords = self._optimise_once()
+        if not self.chi2_rescale:
+            return coords
+        # Two-sided. The test used to be `chi2_nu > threshold`, which can only
+        # catch sigmas that are too small. Sigmas that are too *large* are just
+        # as wrong and are the failure this benchmark actually shows: measured
+        # chi-square per degree of freedom came out at 0.05, meaning the fit was
+        # under-using its data by a factor of about four and reporting intervals
+        # several times too wide -- and the one-sided test could never fire.
+        lo = 1.0 / float(self.chi2_rescale_threshold)
+        for _pass in range(int(self.chi2_rescale_max_passes)):
+            chi2_nu = self.reduced_chi_square()
+            if not np.isfinite(chi2_nu) or chi2_nu <= 0.0:
+                break
+            if lo <= chi2_nu <= self.chi2_rescale_threshold:
+                break
+            # A near-zero chi-square is not evidence that the sigmas are
+            # enormously too large; it is what a model with enough freedom does
+            # to a handful of observations. Rescaling on it drives sigma toward
+            # zero, and anything that divides by sigma then blows up -- measured
+            # on fluoroacetylene, whose six B-only observations gave chi2/nu of
+            # 0.00 and a reported bond uncertainty of 1e13 Angstrom.
+            #
+            # So the adjustment is clamped, and only made when there are enough
+            # degrees of freedom for the ratio to mean anything.
+            if self._chi2_dof() < CHI2_RESCALE_MIN_DOF:
+                break
+            factor = float(np.clip(np.sqrt(chi2_nu),
+                                   1.0 / CHI2_RESCALE_MAX_FACTOR,
+                                   CHI2_RESCALE_MAX_FACTOR))
+            direction = "optimistic" if chi2_nu > 1.0 else "conservative"
+            verb = "widening" if chi2_nu > 1.0 else "tightening"
+            print(
+                f"\n  [chi2-rescale] reduced chi-square = {chi2_nu:.3g}, outside "
+                f"[{lo:.3g}, {self.chi2_rescale_threshold:g}].\n"
+                f"                 The stated sigmas are {direction} by about "
+                f"{max(factor, 1 / factor):.1f}x; {verb} them and refitting."
+            )
+            self.spectral.scale_sigma(factor)
+            coords = self._optimise_once()
+        return coords
+
+    def _optimise_once(self):
         """
         Run the hybrid optimisation loop.
 
@@ -1235,6 +1658,17 @@ class MolecularOptimizer:
                 g = self.quantum.gradient
                 H = self.quantum.hessian
                 g, H = self._project_quantum_terms(g, H)
+
+            # Re-fit the mass-dependent B0 -> Be offset at the current geometry.
+            # It is linear in its coefficients, so the best ones follow in closed
+            # form and substituting them back is equivalent to carrying them as
+            # optimiser parameters (variable projection) -- but the parameter
+            # vector, trust radius and symmetry projector stay untouched. The
+            # coefficients depend on the structure, so this has to be redone as
+            # the structure moves.
+            if self._mass_dependent_model is not None:
+                self._mass_dependent_c = self.spectral.fit_mass_dependent_correction(
+                    self.coords, frac_sigma=self._mass_dependent_frac_sigma)
 
             J, residual_w = self.spectral.stacked(self.coords)
             _, residual_mhz = self.spectral.stacked_unweighted(self.coords)
@@ -1508,7 +1942,7 @@ class MolecularOptimizer:
 
             # If we keep rejecting, force a fresh Hessian sooner to recover local model quality.
             if _reject_streak >= 5:
-                self._orca_call_count = 0
+                self._force_hessian_refresh()
 
             # Adaptive Hessian schedule (efficiency): when spectral progress is
             # smooth, increase interval between full Hessians; when rejected or
@@ -1663,9 +2097,418 @@ class MolecularOptimizer:
                 deg = float(np.degrees(np.arccos(np.clip(cos_a, -1.0, 1.0))))
                 print(f"  {self.elems[i]}{i+1}-{self.elems[j]}{j+1}-{self.elems[k]}{k+1}:{'':>5}  {deg:>10.4f}")
 
+        kr = self.kraitchman_report()
+        if kr and kr.get("rows"):
+            print()
+            print("  Kraitchman substitution coordinates vs fitted geometry (Ang)")
+            print(f"  {'species':>16}{'atom':>6}{'|a| sub':>10}{'|a| fit':>10}"
+                  f"{'d(a)':>9}{'|b| sub':>10}{'|b| fit':>10}{'d(b)':>9}")
+            print("  " + "-" * 80)
+            for r in kr["rows"]:
+                print(f"  {r['name'][:16]:>16}"
+                      f"{self.elems[int(r['atom_index'])] + str(int(r['atom_index']) + 1):>6}"
+                      f"{r['abs_a_angstrom']:>10.4f}{r.get('fit_abs_a_angstrom', float('nan')):>10.4f}"
+                      f"{r.get('delta_a_angstrom', float('nan')):>+9.4f}"
+                      f"{r['abs_b_angstrom']:>10.4f}{r.get('fit_abs_b_angstrom', float('nan')):>10.4f}"
+                      f"{r.get('delta_b_angstrom', float('nan')):>+9.4f}")
+            for w in kr.get("warnings", [])[:4]:
+                print(f"    note: {w}")
+
         print("=" * 52)
 
         return residual
+
+    @staticmethod
+    def _coordinate_class(elem_i, elem_j):
+        """Bond class for the per-class prior widths.
+
+        The priority (hydrogen, then chlorine, then fluorine, else skeleton)
+        matches the classification under which the class widths were measured;
+        a coordinate must land in the same bin here that its calibration error
+        landed in there, or the floor is calibrated against nothing.
+        """
+        pair = {str(elem_i).strip().capitalize(), str(elem_j).strip().capitalize()}
+        if pair & {"H", "D", "T"}:
+            return "X-H"
+        if "Cl" in pair:
+            return "X-Cl"
+        if "F" in pair:
+            return "C-F"
+        return "skeleton"
+
+    def geometry_uncertainty(self, rigid_tol=1e-8):
+        """Posterior standard deviation on each bond length and angle.
+
+        For a molecule that already has an accepted structure, the interesting
+        number is the error. For one that does not -- which is the case this
+        engine exists for, since fluorine has no second stable isotope and the
+        species needed to pin a structure are usually not available -- there is
+        nothing to take a difference against, and the uncertainty *is* the
+        result. A structure quoted without one cannot be used.
+
+        The posterior covariance comes from the Laplace approximation at the
+        optimum, C = (JᵀJ + alpha_q H)⁻¹, weighted exactly as the fit weighted
+        them. Bond lengths and angles are then propagated through it in the
+        usual way, sigma_q² = gᵀ C g, with g the gradient of that coordinate
+        with respect to the Cartesians.
+
+        Two properties of this number are worth stating plainly, because they
+        decide how it should be read:
+
+        * It is a *posterior* width, so it includes the prior. In a direction
+          the data cannot see, it reports the prior's width rather than
+          infinity -- which is honest only to the extent that
+          `quantum_prior_sigma_ang` is honest. It is a modelling choice, not a
+          measurement. When ``prior_class_sigma`` is supplied (a dict of
+          measured per-class theory errors: "X-H", "C-F", "X-Cl", "skeleton"
+          in Angstrom and "angle" in degrees), the prior-side width of each
+          coordinate is floored at its class error scaled by the fraction of
+          the coordinate the data cannot see, replacing the isotropic
+          assumption with the measured anisotropy of the level of theory.
+        * It is a precision, not an accuracy. It propagates the stated
+          uncertainties on the constants; it knows nothing about the
+          B0-versus-Be offset left uncorrected, which is the dominant
+          systematic here. Expect it to be optimistic, and calibrate it against
+          molecules whose structures are known before trusting it on one whose
+          structure is not.
+
+        Rigid-body directions are excluded before inversion: translations and
+        rotations are null in both blocks, so leaving them in makes the
+        covariance singular and the propagated widths meaningless.
+        """
+        cov, _ = self.laplace_approximation()
+        if cov is None:
+            return None
+        n = self.coords.size
+        if cov.shape[0] != n:
+            return None
+
+        # Drop the rigid-body subspace, which no observable constrains.
+        P = self._rigid_mode_projector(self.coords, self._rigid_ref_masses) \
+            if self._rigid_ref_masses is not None else np.eye(n)
+        cov = P @ cov @ P
+
+        J, _ = self.spectral.stacked(self.coords)
+        cov = cov + self._systematic_covariance(J, cov)
+        null_frac = self._data_null_fractions(J)
+
+        bonds = _detect_bonds(self.coords, self.elems)
+        angles = _detect_angles(bonds)
+        x0 = np.asarray(self.coords, dtype=float).ravel()
+
+        def propagate(fn, h=1e-5):
+            g = np.zeros(n)
+            for k in range(n):
+                xp, xm = x0.copy(), x0.copy()
+                xp[k] += h
+                xm[k] -= h
+                g[k] = (fn(xp.reshape(-1, 3)) - fn(xm.reshape(-1, 3))) / (2 * h)
+            var = float(g @ cov @ g)
+            return float(np.sqrt(max(var, 0.0))), g
+
+        out = {}
+        coord_fns = []
+        for i, j in bonds:
+            coord_fns.append((f"{self.elems[i]}{i + 1}-{self.elems[j]}{j + 1}",
+                              lambda c, i=i, j=j: float(np.linalg.norm(c[i] - c[j])),
+                              self._coordinate_class(self.elems[i], self.elems[j])))
+        for i, j, k in angles:
+            def ang(c, i=i, j=j, k=k):
+                v1, v2 = c[i] - c[j], c[k] - c[j]
+                cosa = float(v1 @ v2 / (np.linalg.norm(v1) * np.linalg.norm(v2)))
+                return float(np.degrees(np.arccos(np.clip(cosa, -1.0, 1.0))))
+
+            coord_fns.append((f"{self.elems[i]}{i + 1}-{self.elems[j]}{j + 1}"
+                              f"-{self.elems[k]}{k + 1}", ang, "angle"))
+
+        for name, fn, cls in coord_fns:
+            sigma, g = propagate(fn)
+            # E3: the blended sigma hides which source it came from, and the two
+            # parts are calibrated against different things -- the data part
+            # against residuals and resampling, the prior part against the
+            # measured geometry error of the level of theory. Split by
+            # projecting the coordinate gradient onto the data's range and null
+            # spaces and propagating each part through the same covariance.
+            # The cross term is dropped, so the parts need not add in
+            # quadrature to the total; they are diagnostics, not a partition.
+            g_null = null_frac @ g
+            g_range = g - g_null
+            self._last_sigma_split[name] = (
+                float(np.sqrt(max(g_range @ cov @ g_range, 0.0))),
+                float(np.sqrt(max(g_null @ cov @ g_null, 0.0))),
+            )
+            # How much of this coordinate the spectrum cannot see. 1.0 means the
+            # value came from the quantum surface and nothing else -- which is
+            # the honest caveat to attach to a structure nobody can check, and
+            # is invisible in the sigma alone, since there the prior's width is
+            # reported exactly as if it had been measured.
+            gn = float(np.linalg.norm(g))
+            blind = float(np.linalg.norm(null_frac @ g) / gn) if gn > 0 else 0.0
+            blind = min(max(blind, 0.0), 1.0)
+            # Per-class prior floor. The isotropic quantum_prior_sigma_ang says
+            # every theory-determined coordinate is equally trustworthy; the
+            # measured geometry error of a level of theory says otherwise (at
+            # B3LYP/6-31G(d), C-Cl errs several times worse than C-F). Where a
+            # coordinate rests on the prior -- and only to that fraction -- its
+            # prior-side width must not be quoted below the measured class
+            # error. The total is topped up by the variance deficit, so a
+            # coordinate the data determines is untouched, and no interval ever
+            # narrows.
+            if self._prior_class_sigma:
+                d_sig, p_sig = self._last_sigma_split[name]
+                floor = blind * float(self._prior_class_sigma.get(cls, 0.0))
+                if floor > p_sig:
+                    sigma = float(np.sqrt(sigma * sigma + floor * floor - p_sig * p_sig))
+                    self._last_sigma_split[name] = (d_sig, floor)
+            out[name] = sigma
+            self._last_data_support[name] = 1.0 - blind
+        return out
+
+    def _systematic_covariance(self, J, cov):
+        """Propagate model error in the constants through to the parameters.
+
+        Model error -- the r_s-versus-r_0 mismatch, and the B0-versus-Be offset
+        this engine does not correct -- is not measurement noise and must not
+        weight the fit. It does still move the answer, so it belongs in the
+        reported uncertainty, and until now it appeared nowhere at all.
+
+        A shift `d` in the constants moves the optimum by `A d` with
+        `A = C J^T Sigma^-1`. The shift's sign is unknown, so it is treated as a
+        random variable of zero mean and covariance diag(sigma_sys^2), giving
+        `C_sys = A diag(sigma_sys^2) A^T`, which is added to the statistical
+        covariance. Zero when no systematic sigmas were supplied.
+        """
+        rows = []
+        for iso in self.spectral.isotopologues:
+            sys_sig = iso.get("sigma_systematic_constants")
+            n_comp = len(iso["component_indices"])
+            if sys_sig is None:
+                rows.extend([0.0] * n_comp)
+            else:
+                s = np.asarray(sys_sig, dtype=float).ravel()
+                rows.extend([float(s[k]) if k < s.size else 0.0
+                             for k in range(n_comp)])
+        sys_sig = np.asarray(rows, dtype=float)
+        J = np.asarray(J, dtype=float)
+        if sys_sig.size != J.shape[0] or not np.any(sys_sig > 0):
+            return np.zeros_like(cov)
+        # `stacked` already divides each row by its weighting sigma, so J is
+        # d(residual)/dp and J^T is the sigma^-1-weighted design matrix.
+        meas = []
+        for iso in self.spectral.isotopologues:
+            meas.extend(np.asarray(iso["sigma_constants"], dtype=float).ravel().tolist())
+        meas = np.asarray(meas, dtype=float)
+        if meas.size != sys_sig.size:
+            return np.zeros_like(cov)
+        A = cov @ J.T                      # J already carries 1/sigma_meas
+        scale = sys_sig / np.maximum(meas, 1e-30)
+        out = (A * scale**2) @ A.T
+        # A systematic cannot be better determined than the prior allows; if the
+        # ratio above has run away, the statistical part is the honest answer.
+        if not np.all(np.isfinite(out)):
+            return np.zeros_like(cov)
+        return out
+
+    def _data_null_fractions(self, J):
+        """Projector onto the directions the spectrum does not own.
+
+        The cutoff matches the fit's own range/null boundary -- the relative
+        sv_threshold and the absolute sv_min_abs floor from the optimiser --
+        rather than a bare numerical-rank tolerance. With a 1e-8 tolerance a
+        direction the data barely grazes is labelled "data" while its variance
+        in the very same covariance is prior-dominated, so the data/prior split
+        and the theory-determined flag disagree with the fit that produced
+        them; and the boundary would silently stand still when
+        quantum_prior_sigma_ang (which sets sv_min_abs) moves it.
+        """
+        J = np.asarray(J, dtype=float)
+        n = self.coords.size
+        if J.size == 0 or J.shape[1] != n:
+            return np.zeros((n, n))
+        _, s, Vt = np.linalg.svd(J, full_matrices=True)
+        if s.size == 0 or s[0] <= 0:
+            return np.eye(n)
+        cut = max(float(self.optimizer.sv_threshold) * float(s[0]),
+                  float(getattr(self.optimizer, "sv_min_abs", 0.0) or 0.0))
+        rank = int((s > cut).sum())
+        V_null = Vt[rank:]
+        return V_null.T @ V_null if V_null.size else np.zeros((n, n))
+
+    def bootstrap_uncertainty(self, n_samples=32, seed=0, include_systematic=True,
+                              coherent=True):
+        """Resampling estimate of the geometry uncertainty.
+
+        The Laplace covariance assumes the objective is quadratic and the
+        posterior Gaussian near the optimum. Neither is guaranteed, and a
+        miscalibration in it is invisible from the inside. This perturbs the
+        observed constants within their uncertainties, refits, and takes the
+        spread of the resulting coordinates -- an estimate that shares almost
+        none of those assumptions, so agreement between the two is evidence and
+        disagreement localises the problem.
+
+        Expensive: one full fit per sample. Intended as a check on the analytic
+        covariance, not as the routine path.
+        """
+        rng = np.random.default_rng(seed)
+        base_obs = [np.asarray(iso["obs_constants"], dtype=float).copy()
+                    for iso in self.spectral.isotopologues]
+        # Snapshot everything a fit mutates in place. chi-square rescaling
+        # multiplies iso["sigma_constants"] via scale_sigma, so without this the
+        # rescale factors compound as a random walk across replicates and later
+        # samples are fitted with weights inconsistent with the injected noise.
+        base_sig = [np.asarray(iso["sigma_constants"], dtype=float).copy()
+                    for iso in self.spectral.isotopologues]
+        base_trust = float(self.optimizer.trust_radius)
+        base_lambda = float(self.optimizer.lambda_damp)
+        widths = []
+        for iso in self.spectral.isotopologues:
+            s = np.asarray(iso["sigma_constants"], dtype=float).copy()
+            if include_systematic:
+                sys_s = iso.get("sigma_systematic_constants")
+                if sys_s is not None:
+                    sys_s = np.asarray(sys_s, dtype=float).ravel()
+                    if sys_s.size == s.size:
+                        s = np.hypot(s, sys_s)
+            widths.append(s)
+
+        start = np.array(self.coords, dtype=float, copy=True)
+        samples = []
+        try:
+            for _ in range(int(n_samples)):
+                shared = rng.normal(0.0, 1.0, size=3)
+                for iso, obs, sig, w in zip(self.spectral.isotopologues,
+                                            base_obs, base_sig, widths):
+                    if coherent:
+                        # The model error is common mode: the B0-vs-Be offset
+                        # shifts every isotopologue's constant of a given type
+                        # nearly together. Independent draws suppress the
+                        # coherent displacement of the optimum by about
+                        # sqrt(#constants) while adding scatter the systematic
+                        # does not have, so one shared draw per component type
+                        # per replicate is the physically right perturbation.
+                        idx = np.asarray(iso["component_indices"], dtype=int)
+                        noise = w * shared[np.clip(idx, 0, 2)]
+                    else:
+                        noise = rng.normal(0.0, w)
+                    iso["obs_constants"] = obs + noise
+                    iso["sigma_constants"] = sig.copy()
+                self.optimizer.trust_radius = base_trust
+                self.optimizer.lambda_damp = base_lambda
+                self.coords = start.copy()
+                with contextlib.redirect_stdout(io.StringIO()):
+                    samples.append(np.asarray(self.run(), dtype=float).copy())
+        finally:
+            for iso, obs, sig in zip(self.spectral.isotopologues, base_obs, base_sig):
+                iso["obs_constants"] = obs
+                iso["sigma_constants"] = sig.copy()
+            self.optimizer.trust_radius = base_trust
+            self.optimizer.lambda_damp = base_lambda
+            self.coords = start
+        if len(samples) < 2:
+            return None
+
+        bonds = _detect_bonds(self.coords, self.elems)
+        angles = _detect_angles(bonds)
+        out = {}
+        for i, j in bonds:
+            vals = [float(np.linalg.norm(c[i] - c[j])) for c in samples]
+            out[f"{self.elems[i]}{i + 1}-{self.elems[j]}{j + 1}"] = float(np.std(vals, ddof=1))
+        for i, j, k in angles:
+            vals = []
+            for c in samples:
+                v1, v2 = c[i] - c[j], c[k] - c[j]
+                cosa = float(v1 @ v2 / (np.linalg.norm(v1) * np.linalg.norm(v2)))
+                vals.append(float(np.degrees(np.arccos(np.clip(cosa, -1.0, 1.0)))))
+            out[(f"{self.elems[i]}{i + 1}-{self.elems[j]}{j + 1}"
+                 f"-{self.elems[k]}{k + 1}")] = float(np.std(vals, ddof=1))
+        return out
+
+    def sigma_split(self):
+        """Per-coordinate (data_sigma, prior_sigma) from the last uncertainty call.
+
+        See the E3 comment in geometry_uncertainty: the first number is the
+        width along directions the spectrum resolves, the second along the
+        directions only the quantum prior constrains.
+        """
+        return dict(self._last_sigma_split)
+
+    def data_support(self):
+        """Fraction of each coordinate the spectrum actually determines.
+
+        Populated by :meth:`geometry_uncertainty`. 1.0 means fully constrained
+        by measurement, 0.0 means the value is the quantum surface's alone.
+        """
+        return dict(self._last_data_support)
+
+    def kraitchman_report(self):
+        """Substitution (r_s) coordinates from the data, next to the fitted geometry.
+
+        This is an independent check on the fit rather than an input to it.
+        Kraitchman's equations give |a|, |b|, |c| for each substituted atom
+        directly from the measured constants, using no force field, no level of
+        theory and no structural model -- so where a substitution coordinate and
+        the fitted one disagree by much more than the Costain uncertainty, the
+        disagreement is the fit's, and it localises the problem to a specific
+        atom instead of to the structure as a whole.
+
+        Returns the analysis dict (see :func:`kraitchman_analysis`) with each row
+        augmented by the fitted principal-axis coordinates, or None when the data
+        cannot support it. Only species with all three constants measured are
+        usable, since the equations need all three moments.
+        """
+        try:
+            from backend.kraitchman import (  # pylint: disable=import-outside-toplevel
+                compare_rs_to_geometry, kraitchman_analysis,
+            )
+        except ImportError:
+            return None
+        isos = []
+        for iso in self.spectral.isotopologues:
+            if len(iso["component_indices"]) != 3:
+                continue
+            const = np.asarray(iso["obs_constants"], dtype=float)
+            if const.size != 3 or not np.all(np.isfinite(const)) or np.any(const <= 0):
+                continue
+            isos.append({"name": iso["name"], "masses": np.asarray(iso["masses"], dtype=float),
+                         "obs_constants": const})
+        if len(isos) < 2:
+            return None
+        try:
+            res = kraitchman_analysis(isos)
+            res["rows"] = compare_rs_to_geometry(
+                res["rows"], self.coords,
+                np.asarray(isos[0]["masses"], dtype=float))
+        except (ValueError, IndexError, np.linalg.LinAlgError) as exc:
+            return {"rows": [], "defects": [], "skipped": [],
+                    "warnings": [f"Kraitchman analysis failed: {exc}"]}
+        return res
+
+    def fit_mass_dependent_structure(self, model="rm1", coords0=None):
+        """Fit a Watson mass-dependent (r_m) structure to the loaded constants.
+
+        This is an alternative route to a near-equilibrium structure that uses
+        no force field and no level of theory: the rovibrational offset is
+        fitted as a handful of isotope-independent coefficients rather than
+        computed from anharmonic derivatives. That matters here because the
+        computed route -- `rovib_corrections` -- needs a cubic force field, and
+        at the levels of theory that are affordable for these molecules it was
+        measured to hurt more than it helped.
+
+        It needs several isotopologues, since the structure and the coefficients
+        are separated only by how differently they respond to substitution. The
+        returned object carries the degrees of freedom and reduced chi-square so
+        that an under-determined fit is visible rather than silently reported.
+
+        Independent of the hybrid fit: it reads the same constants but does not
+        use the quantum surface, so comparing the two is a real check.
+        """
+        from backend.spectral.mass_dependent import (  # pylint: disable=import-outside-toplevel
+            fit_mass_dependent_structure,
+        )
+        start = self.coords if coords0 is None else np.asarray(coords0, dtype=float)
+        return fit_mass_dependent_structure(
+            self.spectral.isotopologues, start, model=model, symmetry=self.symmetry,
+        )
 
     def report_internal(self):
         """
@@ -1800,12 +2643,26 @@ class MolecularOptimizer:
         return log_p - (self.optimizer.alpha_quantum * energy_term)
 
     def laplace_approximation(self):
-        """Analytical estimate of the posterior covariance at the optimum."""
+        """Analytical estimate of the posterior covariance at the optimum.
+
+        The quantum block is weighted exactly as the optimiser weighted it, via
+        :meth:`SubspaceOptimizer.effective_quantum_weight`, and its Hessian gets
+        the same eigenvalue floor. Using ``alpha_quantum`` and the raw Hessian
+        instead -- as this did -- describes a different objective than the one
+        that was minimised whenever ``quantum_prior_sigma_ang`` is set, which is
+        now the default, so the reported uncertainties would not belong to the
+        reported geometry.
+        """
         J, _ = self.spectral.stacked(self.coords)
         H_total = J.T @ J
         if not self.spectral_only and self.quantum is not None:
-            H_total += self.optimizer.alpha_quantum * self.quantum.hessian
-            
+            g = self.quantum.gradient
+            H = self.quantum.hessian
+            g, H = self._project_quantum_terms(g, H)
+            rank = int(np.linalg.matrix_rank(J))
+            alpha_q = self.optimizer.effective_quantum_weight(J, rank, hessian=H)
+            H_total = H_total + alpha_q * self.optimizer._spd_hessian(H)
+
         reg = 1e-8 * np.eye(H_total.shape[0])
         try:
             cov = np.linalg.inv(H_total + reg)

@@ -208,12 +208,12 @@ def _make_c2_spec(V2=600.0, n_basis=20):
 
 class TestC2SymmetryMode:
     def test_c2_labels_are_A_or_B(self):
-        from backend.torsion_hamiltonian import solve_ram_lite_levels
+        from backend.torsion.torsion_hamiltonian import solve_ram_lite_levels
         res = solve_ram_lite_levels(_make_c2_spec(), J=0, K=0, symmetry_mode="c2", n_levels=6)
         assert set(res["symmetry_labels"]) <= {"A", "B"}
 
     def test_c2_blocks_A_and_B(self):
-        from backend.torsion_hamiltonian import solve_ram_lite_levels
+        from backend.torsion.torsion_hamiltonian import solve_ram_lite_levels
         res = solve_ram_lite_levels(
             _make_c2_spec(), J=0, K=0, symmetry_mode="c2", return_blocks=True
         )
@@ -221,7 +221,7 @@ class TestC2SymmetryMode:
 
     def test_c2_ground_pair_nearly_degenerate_below_barrier(self):
         """Deep below a high V2 barrier the A/B tunneling pair is nearly degenerate."""
-        from backend.torsion_hamiltonian import solve_ram_lite_levels
+        from backend.torsion.torsion_hamiltonian import solve_ram_lite_levels
         res = solve_ram_lite_levels(
             _make_c2_spec(V2=2000.0), J=0, K=0, symmetry_mode="c2", n_levels=2
         )
@@ -230,7 +230,7 @@ class TestC2SymmetryMode:
         assert set(res["symmetry_labels"][:2]) == {"A", "B"}
 
     def test_c2_line_list_enforces_selection_rules(self):
-        from backend.torsion_intensities import compute_torsion_line_list
+        from backend.torsion.torsion_intensities import compute_torsion_line_list
         lines = compute_torsion_line_list(
             _make_c2_spec(), J_values=[0, 1], K_values=[0],
             n_levels=4, symmetry_mode="c2", rotor_fold=2,
@@ -243,7 +243,7 @@ class TestC2SymmetryMode:
             assert row["relative_intensity"] == 0.0
 
     def test_c2_mismatched_potential_warns(self):
-        from backend.torsion_hamiltonian import solve_ram_lite_levels
+        from backend.torsion.torsion_hamiltonian import solve_ram_lite_levels
         pot = TorsionFourierPotential(v0=100.0, vcos={3: -100.0}, units="cm-1")
         spec = TorsionHamiltonianSpec(F=10.0, n_basis=15, potential=pot, units="cm-1")
         res = solve_ram_lite_levels(spec, J=0, K=0, symmetry_mode="c2")

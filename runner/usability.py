@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from backend.spectral_model import normalize_spectral_model
+from backend.spectral.spectral_model import normalize_spectral_model
 from runner.config_schema import CONFIG_SCHEMA_VERSION, normalize_config
 
 try:
@@ -21,6 +21,20 @@ except ModuleNotFoundError:  # pragma: no cover - handled by load_config error p
 
 COMPONENT_LABELS = ("A", "B", "C")
 VALID_PRESETS = {"FAST_DEBUG", "BALANCED", "STRICT"}
+def valid_backends() -> set[str]:
+    """Backend names accepted in a config: whatever is registered, plus "none".
+
+    Consulting the registry rather than a hardcoded list is what makes
+    ``@register_backend`` actually usable — base_backend.py tells you to add a
+    backend by registering it and importing it from backend/__init__.py, but a
+    hardcoded validator rejected the new name before the runner ever saw it.
+    """
+    from backend.registry import list_backends
+
+    return set(list_backends()) | {"none"}
+
+
+# Retained as a module-level name for callers that imported it.
 VALID_BACKENDS = {"orca", "psi4", "none"}
 VALID_GEOMETRY_METHODS = {"bonds", "pubchem", "coords"}
 _ELEMENT_RE = re.compile(r"^[A-Z][a-z]?$")
@@ -204,9 +218,13 @@ def validate_config(cfg: dict[str, Any]) -> None:
 
     quantum = _expect_mapping(cfg, "quantum")
     backend = str(quantum.get("backend", "orca")).strip().lower()
-    if backend not in VALID_BACKENDS:
-        raise ConfigError("'quantum.backend' must be one of orca, psi4, or none.")
+    allowed = valid_backends()
+    if backend not in allowed:
+        raise ConfigError(
+            f"'quantum.backend' must be one of {', '.join(sorted(allowed))}."
+        )
 
+    _check_inertial_defects(cfg)
     _validate_rovibrational_corrections_block(cfg)
     _validate_conformer_mixture_block(cfg, n_atoms=n_atoms)
     _validate_torsion_block(cfg)
@@ -299,6 +317,57 @@ def _validate_internal_priors_block(cfg: dict[str, Any], n_atoms: int) -> None:
             raise ConfigError(f"'{path}.units' must be angstrom, radian, or degree variants.")
 
 
+#: |I_c - I_a - I_b| beyond this (amu*A^2) is reported as suspect.
+#:
+#: The defect equals -2 P_c, where P_c = sum(m z^2) is the out-of-plane second
+#: moment and cannot be negative for real atoms. Zero-point motion makes it
+#: slightly negative in practice, so a planar molecule shows a small positive
+#: defect -- about +0.05 for water, +0.16 for fluorobenzene -- and a floppy
+#: out-of-plane mode can push it to order 1. Several amu*A^2 implies a strongly
+#: negative P_c, which no structure can produce.
+_INERTIAL_DEFECT_WARN = 1.0
+_INERTIA_TO_MHZ = 505379.0084353526
+
+
+def inertial_defect_mhz(a_mhz: float, b_mhz: float, c_mhz: float) -> float:
+    """I_c - I_a - I_b in amu*A^2 from rotational constants in MHz."""
+    moments = [_INERTIA_TO_MHZ / float(v) for v in (a_mhz, b_mhz, c_mhz)]
+    return moments[2] - moments[0] - moments[1]
+
+
+def _check_inertial_defects(cfg: dict[str, Any]) -> None:
+    """Warn when supplied constants cannot come from any real structure.
+
+    This is nearly free and catches transcription errors before a run burns
+    hours converging on impossible data. It only warns: the check needs all
+    three of A, B and C, and a very floppy molecule can legitimately sit near
+    the threshold.
+    """
+    suspect: list[str] = []
+    for i, iso in enumerate(_as_list(cfg.get("isotopologues"), "isotopologues"), start=1):
+        if not isinstance(iso, dict):
+            continue
+        comps = [str(c).strip().upper() for c in (iso.get("components") or [])]
+        obs = iso.get("obs_b0_mhz")
+        if sorted(comps) != ["A", "B", "C"] or not isinstance(obs, list) or len(obs) != 3:
+            continue
+        try:
+            values = {c: float(v) for c, v in zip(comps, obs)}
+            defect = inertial_defect_mhz(values["A"], values["B"], values["C"])
+        except (TypeError, ValueError, ZeroDivisionError):
+            continue
+        if abs(defect) > _INERTIAL_DEFECT_WARN:
+            suspect.append(f"{iso.get('name', f'iso_{i}')}: {defect:+.3f}")
+
+    if suspect:
+        print(
+            "[config-warning] Inertial defect I_c - I_a - I_b is implausible for:\n"
+            + "".join(f"  - {s} amu*A^2\n" for s in suspect)
+            + "[config-warning] A real structure gives roughly +0.1 to +0.4 for a planar\n"
+            "[config-warning] molecule. Check the constants before trusting a fit to them."
+        )
+
+
 def _validate_rovibrational_corrections_block(cfg: dict[str, Any]) -> None:
     """Validate the optional rovibrational_corrections: block."""
     rc = cfg.get("rovibrational_corrections")
@@ -353,6 +422,65 @@ def _validate_rovibrational_corrections_block(cfg: dict[str, Any]) -> None:
             "'rovibrational_corrections.bob_params' must be a mapping of element → component → u-value."
         )
 
+    g_tensor = rc.get("g_tensor")
+    if g_tensor is not None:
+        if not isinstance(g_tensor, dict):
+            raise ConfigError(
+                "'rovibrational_corrections.g_tensor' must be a mapping of "
+                "component (A/B/C) → g-value."
+            )
+        for comp, val in g_tensor.items():
+            comp_u = str(comp).strip().upper()
+            if comp_u not in {"A", "B", "C"}:
+                raise ConfigError(
+                    f"'rovibrational_corrections.g_tensor' key '{comp}' must be A, B, or C."
+                )
+            try:
+                float(val)
+            except (TypeError, ValueError) as exc:
+                raise ConfigError(
+                    f"'rovibrational_corrections.g_tensor.{comp_u}' must be numeric."
+                ) from exc
+
+    for flag_key in ("harmonic_from_hessian", "anharmonic_from_hessian",
+                     "harmonic_cd_from_hessian", "fit_cd_constants"):
+        v = rc.get(flag_key)
+        if v is not None and not isinstance(v, bool):
+            raise ConfigError(
+                f"'rovibrational_corrections.{flag_key}' must be true or false."
+            )
+
+    if rc.get("anharmonic_from_hessian") and not rc.get("harmonic_from_hessian"):
+        raise ConfigError(
+            "'rovibrational_corrections.anharmonic_from_hessian' requires "
+            "'harmonic_from_hessian: true' — the anharmonic term is added to the "
+            "Hessian-derived alpha, which is only computed in that mode."
+        )
+
+    policy = rc.get("nonconvergent_policy")
+    if policy is not None:
+        valid_policies = {"warn", "inflate", "drop"}
+        if str(policy).strip().lower() not in valid_policies:
+            raise ConfigError(
+                f"'rovibrational_corrections.nonconvergent_policy' must be one of "
+                f"{sorted(valid_policies)}, got '{policy}'."
+            )
+
+    step = rc.get("anharmonic_fd_delta_ang")
+    if step is not None:
+        try:
+            sv = float(step)
+        except (TypeError, ValueError) as exc:
+            raise ConfigError(
+                "'rovibrational_corrections.anharmonic_fd_delta_ang' must be numeric."
+            ) from exc
+        if not 1e-4 <= sv <= 0.1:
+            raise ConfigError(
+                "'rovibrational_corrections.anharmonic_fd_delta_ang' must be between "
+                "1e-4 and 0.1 Angstrom; smaller amplifies Hessian noise, larger "
+                "loses the third-derivative signal to truncation error."
+            )
+
 
 _VALID_TORSION_SYMMETRY_MODES = {"c3", "3fold", "threefold", "c2", "2fold", "twofold", "none", "off", "null", ""}
 _VALID_SCAN_ANGLE_UNITS = {"degrees", "deg", "degree", "radians", "rad", "radian"}
@@ -360,30 +488,41 @@ _VALID_SCAN_ENERGY_UNITS = {"cm-1", "cm_1", "hartree", "ha", "kcal/mol", "kcal",
 
 
 def _validate_conformer_mixture_block(cfg: dict[str, Any], n_atoms: int) -> None:
-    cm = cfg.get("conformer_mixture")
+    """Validate both explicit-conformer blocks.
+
+    ``conformer_mixture`` (fixed/Boltzmann mixture) and ``conformers`` (the
+    generation workflow) are parsed by the same ``_explicit_conformer_defs``
+    reader, so both accept a ``conformers:`` list of ``coords_angstrom`` /
+    ``offset_angstrom`` entries and both need the same shape checks.
+    """
+    for key in ("conformer_mixture", "conformers"):
+        _validate_conformer_block(cfg.get(key), key, n_atoms)
+
+
+def _validate_conformer_block(cm: Any, key: str, n_atoms: int) -> None:
     if cm is None:
         return
     if not isinstance(cm, dict):
-        raise ConfigError("'conformer_mixture' must be a mapping/object.")
+        raise ConfigError(f"'{key}' must be a mapping/object.")
     if "enabled" in cm and not isinstance(cm["enabled"], bool):
-        raise ConfigError("'conformer_mixture.enabled' must be true or false.")
+        raise ConfigError(f"'{key}.enabled' must be true or false.")
     mode = str(cm.get("weight_mode", "fixed")).strip().lower()
     if mode not in {"fixed", "boltzmann"}:
-        raise ConfigError("'conformer_mixture.weight_mode' must be fixed or boltzmann.")
+        raise ConfigError(f"'{key}.weight_mode' must be fixed or boltzmann.")
     if "temperature_k" in cm:
         try:
             t = float(cm["temperature_k"])
         except (TypeError, ValueError) as exc:
-            raise ConfigError("'conformer_mixture.temperature_k' must be numeric.") from exc
+            raise ConfigError(f"'{key}.temperature_k' must be numeric.") from exc
         if t <= 0.0:
-            raise ConfigError("'conformer_mixture.temperature_k' must be > 0.")
+            raise ConfigError(f"'{key}.temperature_k' must be > 0.")
     conformers = cm.get("conformers")
     if conformers is None:
         return
     if not isinstance(conformers, list):
-        raise ConfigError("'conformer_mixture.conformers' must be a list.")
+        raise ConfigError(f"'{key}.conformers' must be a list.")
     for i, c in enumerate(conformers):
-        p = f"conformer_mixture.conformers[{i}]"
+        p = f"{key}.conformers[{i}]"
         if not isinstance(c, dict):
             raise ConfigError(f"'{p}' must be a mapping/object.")
         if "weight" in c and c["weight"] is not None:
@@ -1098,7 +1237,7 @@ def write_final_geometry_csv(path: Path, elems: list[str], coords: np.ndarray) -
 
 
 def residual_rows(coords: np.ndarray, spectral_isotopologues: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    from backend.spectral import SpectralEngine
+    from backend.spectral.spectral import SpectralEngine
 
     engine = SpectralEngine(spectral_isotopologues)
     rows: list[dict[str, Any]] = []
@@ -1131,7 +1270,7 @@ def write_residuals_csv(path: Path, rows: list[dict[str, Any]]) -> None:
 
 
 def singular_values(coords: np.ndarray, spectral_isotopologues: list[dict[str, Any]]) -> np.ndarray:
-    from backend.spectral import SpectralEngine
+    from backend.spectral.spectral import SpectralEngine
 
     engine = SpectralEngine(spectral_isotopologues)
     J, _ = engine.stacked_unweighted(coords)
@@ -1230,7 +1369,11 @@ def generate_kraitchman_report_section(kr: dict[str, Any]) -> str:
 
 
 def write_markdown_report(path: Path, result: dict[str, Any], artifacts: dict[str, Any] | None = None) -> None:
-    from runner.reporting import generate_lam_report_section, generate_rovib_report_section
+    from runner.reporting import (
+        generate_conformer_report_section,
+        generate_lam_report_section,
+        generate_rovib_report_section,
+    )
 
     best = result["best"]
     score = result.get("score", {})
@@ -1260,6 +1403,10 @@ def write_markdown_report(path: Path, result: dict[str, Any], artifacts: dict[st
     torsion_summary = result.get("torsion_summary") or {}
     if torsion_summary:
         lines.extend(["", generate_lam_report_section(torsion_summary)])
+
+    conformer_summary = best.get("conformer_summary") or {}
+    if conformer_summary:
+        lines.extend(["", generate_conformer_report_section(conformer_summary)])
 
     lines.extend(["", "## Final Geometry", "", "| atom | element | x (Ang) | y (Ang) | z (Ang) |", "|---:|---|---:|---:|---:|"])
     for i, (elem, xyz) in enumerate(zip(result["elems"], np.asarray(best["coords"], dtype=float))):
@@ -1517,6 +1664,7 @@ def write_plots(run_dir: Path, result: dict[str, Any]) -> list[Path]:
 def write_outputs(result: dict[str, Any]) -> dict[str, Path | list[Path]]:
     """Write CSV, Markdown, and plot artifacts for a completed generic run."""
     from runner.reporting import (
+        export_conformer_summary_json,
         export_rovib_corrections_csv,
         export_rovib_warnings_json,
         export_semi_experimental_targets_csv,
@@ -1585,23 +1733,25 @@ def write_outputs(result: dict[str, Any]) -> dict[str, Path | list[Path]]:
             for r in conformer_rows:
                 writer.writerow(r)
         artifacts["conformer_weights_history_csv"] = conf_csv
-        final = [r for r in conformer_rows if r["iteration"] == max(x["iteration"] for x in conformer_rows)]
-        conf_json = exports_dir / "conformer_summary.json"
-        conf_json.write_text(
-            json.dumps(
-                {
-                    "n_iterations_with_conformer_data": len({r["iteration"] for r in conformer_rows}),
-                    "n_conformers": len(final),
-                    "final_weights": [
-                        {"conformer_index": int(r["conformer_index"]), "weight": float(r["weight"])}
-                        for r in final
-                    ],
-                },
-                indent=2,
-            ),
-            encoding="utf-8",
+
+    # Ensemble summary (names, sources, energies, generation diagnostics) as built
+    # by run_generic. Written independently of the per-iteration weight history,
+    # which is only populated when the optimizer refits weights each iteration.
+    conformer_summary = dict(result.get("best", {}).get("conformer_summary") or {})
+    if conformer_rows:
+        final_iter = max(x["iteration"] for x in conformer_rows)
+        final = [r for r in conformer_rows if r["iteration"] == final_iter]
+        conformer_summary["n_iterations_with_conformer_data"] = len(
+            {r["iteration"] for r in conformer_rows}
         )
-        artifacts["conformer_summary_json"] = conf_json
+        conformer_summary["final_weights"] = [
+            {"conformer_index": int(r["conformer_index"]), "weight": float(r["weight"])}
+            for r in final
+        ]
+    if conformer_summary:
+        artifacts["conformer_summary_json"] = export_conformer_summary_json(
+            conformer_summary, exports_dir / "conformer_summary.json"
+        )
 
     # Rovib correction exports (written whenever isotopologue data exists).
     if iso_snapshot:
@@ -1616,11 +1766,11 @@ def write_outputs(result: dict[str, Any]) -> dict[str, Path | list[Path]]:
     cfg = result.get("cfg", {}) or {}
     coord_mode = str(cfg.get("coordinate_mode", "cartesian")).strip().lower()
     if coord_mode == "internal" and iso_snapshot:
-        from backend.internal_fit import InternalCoordinateSet, spectral_jacobian_q, build_internal_priors
-        from backend.spectral import SpectralEngine
+        from backend.internal.internal_fit import InternalCoordinateSet, spectral_jacobian_q, build_internal_priors
+        from backend.spectral.spectral import SpectralEngine
         from backend.uncertainty import uncertainty_table, compute_uncertainty
-        from backend.identifiability import identifiability_table
-        from backend.prior_sensitivity import classify_prior_dominance, prior_sensitivity_analysis
+        from backend.internal.identifiability import identifiability_table
+        from backend.priors.prior_sensitivity import classify_prior_dominance, prior_sensitivity_analysis
 
         ic_cfg = cfg.get("internal_coordinates", {}) or {}
         use_dihedrals = bool(ic_cfg.get("use_dihedrals", False))
@@ -1678,6 +1828,7 @@ def write_outputs(result: dict[str, Any]) -> dict[str, Path | list[Path]]:
                 lambda_reg=damping,
                 dominance_labels=dominance,
                 sensitivity_rows=sensitivity_rows,
+                residual_w=residual_w,
             )
             unc_csv = exports_dir / "internal_uncertainty.csv"
             with unc_csv.open("w", newline="", encoding="utf-8") as fh:
@@ -1706,6 +1857,7 @@ def write_outputs(result: dict[str, Any]) -> dict[str, Path | list[Path]]:
                         "prior_notes",
                         "prior_identifiability_score",
                         "prior_sigma_scale",
+                        "chi2_scale",
                     ],
                 )
                 writer.writeheader()
@@ -1815,10 +1967,13 @@ def write_outputs(result: dict[str, Any]) -> dict[str, Path | list[Path]]:
                     writer.writerow(r)
             artifacts["internal_prior_sensitivity_csv"] = sens_csv
 
-            cov, _, _ = compute_uncertainty(
+            # Same chi2 inflation as the uncertainty table above, so the exported
+            # covariance and the exported std_errs describe the same posterior.
+            cov, _, _, _ = compute_uncertainty(
                 Jq,
                 sigma_prior=sigma_prior,
                 lambda_reg=damping,
+                residual_w=residual_w,
             )
             cov_csv = exports_dir / "internal_covariance.csv"
             with cov_csv.open("w", newline="", encoding="utf-8") as fh:

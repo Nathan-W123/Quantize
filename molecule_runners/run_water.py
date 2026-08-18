@@ -1,9 +1,9 @@
 import numpy as np
 from multiprocessing import freeze_support
-from backend.geometryguess import guess_bent_triatomic
+from backend.conformers.geometryguess import guess_bent_triatomic
 from backend.multistart import run_multistart, select_best_result, underconstrained_success_score
 from runner.run_settings import get_run_settings
-from backend.spectral import sanitize_isotopologues
+from backend.spectral.spectral import sanitize_isotopologues
 from backend.symmetry import PointGroupSymmetry
 
 # ── Water inversion from observed isotopologue constants (unknown geometry) ───

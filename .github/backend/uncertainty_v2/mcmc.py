@@ -131,6 +131,10 @@ class AdaptiveMetropolisV2:
 
         scale = float(self.config.proposal_scale)
         accepted = 0
+        # Proposals whose log-probability could not be evaluated. Kept apart
+        # from rejections so they never enter the acceptance rate.
+        failed = 0
+        first_failure: str | None = None
         kept_samples: list[np.ndarray] = []
         kept_lp: list[float] = []
 
@@ -143,11 +147,19 @@ class AdaptiveMetropolisV2:
                     x_curr = proposal
                     lp_curr = lp_prop
                     accepted += 1
-            except Exception:
-                pass
+            except Exception as exc:
+                # A proposal that raises is NOT a rejection. Counting it as one
+                # depresses the measured acceptance rate, which drives the
+                # adaptation below to shrink the step scale, which biases the
+                # sampled width and so the reported uncertainties. Track them
+                # separately and exclude them from the rate.
+                failed += 1
+                if first_failure is None:
+                    first_failure = repr(exc)
 
             if step % self.config.adapt_every == 0 and step <= self.config.burn_in:
-                acc_rate = accepted / step
+                evaluated = max(step - failed, 1)
+                acc_rate = accepted / evaluated
                 if acc_rate < self.config.target_accept_low:
                     scale *= 0.85
                 elif acc_rate > self.config.target_accept_high:
@@ -158,16 +170,25 @@ class AdaptiveMetropolisV2:
                 kept_lp.append(lp_curr)
 
             if step % self.config.checkpoint_every == 0:
-                self._write_chain_checkpoint(out_dir, chain_idx, step, accepted / step, scale, len(kept_samples))
+                self._write_chain_checkpoint(out_dir, chain_idx, step,
+                                             accepted / max(step - failed, 1),
+                                             scale, len(kept_samples))
 
         samples = np.array(kept_samples, dtype=float)
         lp = np.array(kept_lp, dtype=float)
-        n_props = self.config.n_steps
+        n_props = self.config.n_steps - failed
         acc_rate = accepted / max(n_props, 1)
         print(
             f"  [chain {chain_idx:02d}] acceptance={acc_rate:.1%} "
             f"final_scale={scale:.2e} kept={samples.shape[0]}"
         )
+        if failed:
+            print(
+                f"  [chain {chain_idx:02d}] WARNING: {failed} of "
+                f"{self.config.n_steps} proposals could not be evaluated and "
+                f"were excluded from the acceptance rate. First failure: "
+                f"{first_failure}"
+            )
         if self.config.persist_chain_samples:
             np.save(os.path.join(out_dir, f"chain_{chain_idx:02d}_samples.npy"), samples)
             np.save(os.path.join(out_dir, f"chain_{chain_idx:02d}_logp.npy"), lp)

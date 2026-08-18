@@ -1,6 +1,12 @@
 ﻿import numpy as np
 from scipy import constants
 from backend.conformers.conformer_mixture import ConformerMixture
+#: Relative floor on every observation sigma, as a fraction of the constant.
+#: Represents the irreducible error of fitting a rigid rotor to ground-state
+#: constants. Set to 0.0 to disable (only sensible for synthetic data whose
+#: generating model matches the fitted one exactly).
+DEFAULT_SIGMA_FLOOR_REL = 1.0e-3
+
 from backend.spectral.centrifugal_distortion import (
     CD_NAMES,
     CDConstants,
@@ -20,6 +26,13 @@ def _inertia_tensor(coords, masses):
     r = coords - cm
     r2 = np.einsum("ij,ij->i", r, r)
     return np.einsum("i,jk->jk", masses * r2, np.eye(3)) - np.einsum("i,ij,ik->jk", masses, r, r)
+
+
+def _principal_moments(coords, masses):
+    """Principal moments I_a <= I_b <= I_c in amu Ang^2, ordered to match A >= B >= C."""
+    return np.sort(np.linalg.eigvalsh(
+        _inertia_tensor(np.asarray(coords, dtype=float),
+                        np.asarray(masses, dtype=float))))
 
 
 def _rotational_constants(coords, masses):
@@ -226,6 +239,7 @@ def sanitize_isotopologues(
             "delta_bob_constants",
             "sigma_correction_constants",
             "sigma_effective_constants",
+            "sigma_systematic_constants",
         ):
             sliced = _slice_optional(key)
             if sliced is not None:
@@ -263,6 +277,7 @@ class SpectralEngine:
         delta=1e-3,
         robust_loss="none",
         robust_param=1.0,
+        sigma_floor_rel=DEFAULT_SIGMA_FLOOR_REL,
         sigma_floor_mhz=0.0,
         sigma_cap_mhz=None,
         max_weight=None,
@@ -307,6 +322,12 @@ class SpectralEngine:
                 "alpha_constants": np.asarray(
                     iso.get("alpha_constants", np.zeros(len(iso["obs_constants"]))), dtype=float
                 ),
+                # Model error, carried for reporting only. Deliberately absent
+                # from every weighting path: a systematic that shifts every
+                # isotopologue the same way does not make any single constant
+                # less worth fitting, and folding it into the weights makes the
+                # fit under-use the data and over-state the answer at once.
+                "sigma_systematic_constants": _opt_arr(iso, "sigma_systematic_constants"),
                 "torsion_sensitive": bool(iso.get("torsion_sensitive", False)),
                 "rovib_table": iso.get("rovib_table", None),
             }
@@ -336,6 +357,7 @@ class SpectralEngine:
             if len(iso["component_indices"]) != n:
                 raise ValueError("component_indices length must match obs_constants length.")
         self.delta = delta
+        self.sigma_floor_rel = max(float(sigma_floor_rel), 0.0)
         self.robust_loss = robust_loss.lower()
         self.robust_param = max(float(robust_param), 1e-12)
         self.sigma_floor_mhz = max(float(sigma_floor_mhz), 0.0)
@@ -534,6 +556,25 @@ class SpectralEngine:
             if np.any(sigma_corr > 0.0):
                 sigma_eff = np.sqrt(np.maximum(sigma_eff, 0.0) ** 2 + sigma_corr ** 2)
         sigma_eff = np.maximum(sigma_eff, 1e-12)
+        # Relative floor: no stated uncertainty can claim the model is better
+        # than the model is. These constants are fitted with a rigid rotor and
+        # no centrifugal-distortion term, so the residual model error is a
+        # fraction of each constant, not an absolute number of MHz. Measured
+        # against published structures it runs from 0.06% (fluoroacetylene) to
+        # 2.4% (water), so a floor of a tenth of a percent is conservative and
+        # does not bite on honestly-quoted data.
+        #
+        # Without it, a sigma quoted far below the model error hands the data
+        # block a weight the physics cannot support: at 0.2 MHz on water's
+        # 435 GHz B constant the observation claims 5e-7 relative precision, the
+        # data term then outweighs the quantum prior by seven orders of
+        # magnitude, and the fit follows the data into directions -- such as a
+        # soft bending angle -- where it has no business leading.
+        if self.sigma_floor_rel > 0.0 and iso is not None:
+            obs = np.asarray(iso.get("obs_constants", []), dtype=float)
+            if obs.size == sigma_eff.size:
+                sigma_eff = np.maximum(sigma_eff,
+                                       self.sigma_floor_rel * np.abs(obs))
         if self.sigma_floor_mhz > 0.0:
             sigma_eff = np.maximum(sigma_eff, self.sigma_floor_mhz)
         if self.sigma_cap_mhz is not None:
@@ -570,6 +611,105 @@ class SpectralEngine:
     def rotational_constants(self, coords, masses):
         """Computed (A, B, C) in MHz for given geometry and masses."""
         return _rotational_constants(np.asarray(coords), np.asarray(masses))
+
+    def fit_mass_dependent_correction(self, coords, frac_sigma=0.01):
+        """Fit Watson's mass-dependent offset and install it as the B0 -> Be target.
+
+        The gap between the measured B_0 and the equilibrium B_e is the largest
+        systematic in any of these fits. Computing it needs a cubic force field,
+        which at affordable levels of theory was measured to hurt more than it
+        helped. Watson's alternative is to fit it: the rovibrational contribution
+        to a moment of inertia is well described by
+
+            I_obs = I_m + c_x sqrt(I_m)
+
+        with three coefficients shared across every isotopologue.
+
+        Fitting them *here* rather than as extra optimiser parameters is exact,
+        not an approximation: the model is linear in c, so for any structure the
+        best c follows in closed form, and substituting it back gives the same
+        answer as optimising over structure and c jointly. This is variable
+        projection. It also means the parameter vector, the trust radius, the
+        symmetry projector and the SVD step are all untouched.
+
+        The reason to do it inside the hybrid at all is that spectroscopy alone
+        usually cannot afford these three parameters. A trifluorinated molecule
+        has three heavy atoms that can never be isotopically substituted, and a
+        standalone r_m fit on one comes out short by exactly three -- the c's.
+        With the quantum surface holding the structure, the data are free to
+        determine them.
+
+        Parameters
+        ----------
+        coords : (N, 3)
+            Current geometry, whose moments define I_m.
+        frac_sigma : float
+            Weak prior on the size of the correction, as a fraction of the
+            moment. Without it a single isotopologue would let three
+            coefficients absorb all three residuals exactly, driving the
+            spectral term to zero and silently handing the fit to theory.
+
+        Returns
+        -------
+        c : (3,) array in amu^(1/2) Angstrom, indexed by principal axis.
+        """
+        coords = np.asarray(coords, dtype=float)
+        num = np.zeros(3)
+        den = np.zeros(3)
+        typ_sum = np.zeros(3)
+        typ_n = np.zeros(3)
+        rows = []
+        for iso in self.isotopologues:
+            masses = np.asarray(iso["masses"], dtype=float)
+            i_m = _principal_moments(coords, masses)
+            obs = np.asarray(iso["obs_constants"], dtype=float)
+            sig = np.asarray(iso["sigma_constants"], dtype=float)
+            idx = np.asarray(iso["component_indices"], dtype=int)
+            for k, comp in enumerate(idx):
+                comp = int(comp)
+                if not (0 <= comp < 3) or obs[k] <= 0 or not np.isfinite(obs[k]):
+                    continue
+                if i_m[comp] <= 0 or not np.isfinite(i_m[comp]):
+                    continue
+                i_obs = _INERTIA_TO_MHZ / obs[k]
+                # A fractional error on the constant is the same fractional
+                # error on the moment, since I = k / B.
+                s_i = abs(i_obs) * (sig[k] / obs[k]) if sig[k] > 0 else abs(i_obs) * 1e-4
+                w = 1.0 / (s_i * s_i)
+                root = np.sqrt(i_m[comp])
+                num[comp] += w * root * (i_obs - i_m[comp])
+                den[comp] += w * i_m[comp]
+                typ_sum[comp] += i_m[comp]
+                typ_n[comp] += 1
+            rows.append((iso, i_m, idx))
+
+        c = np.zeros(3)
+        for comp in range(3):
+            if typ_n[comp] == 0 or den[comp] <= 0:
+                continue
+            i_typ = typ_sum[comp] / typ_n[comp]
+            # Prior expressed on the correction as a fraction of the moment:
+            # c*sqrt(I) ~ frac_sigma * I, so sigma_c = frac_sigma * sqrt(I).
+            sigma_c = frac_sigma * np.sqrt(max(i_typ, 1e-12))
+            ridge = 1.0 / (sigma_c * sigma_c) if sigma_c > 0 else 0.0
+            c[comp] = num[comp] / (den[comp] + ridge)
+
+        # Install as delta_total_constants: the target constant is the one the
+        # corrected moment implies, so the optimiser keeps comparing rigid
+        # predictions against a target that already carries the offset.
+        for iso, i_m, idx in rows:
+            obs = np.asarray(iso["obs_constants"], dtype=float)
+            delta = np.zeros(obs.size)
+            for k, comp in enumerate(idx):
+                comp = int(comp)
+                if not (0 <= comp < 3) or obs[k] <= 0 or i_m[comp] <= 0:
+                    continue
+                i_obs = _INERTIA_TO_MHZ / obs[k]
+                i_target = i_obs - c[comp] * np.sqrt(i_m[comp])
+                if i_target > 0:
+                    delta[k] = _INERTIA_TO_MHZ / i_target - obs[k]
+            iso["delta_total_constants"] = delta
+        return c
 
     def jacobian(self, coords, masses, component_indices=None):
         """
@@ -615,6 +755,38 @@ class SpectralEngine:
         if component_indices is not None:
             calc = calc[np.asarray(component_indices, dtype=int)]
         return be_target - calc
+
+    def scale_sigma(self, factor: float) -> None:
+        """Multiply every observation sigma by ``factor``.
+
+        Scaling down is floored at each constant's systematic sigma when one is
+        supplied. A common-mode model offset -- the B0-versus-Be gap that
+        dominates here -- produces no isotopologue-to-isotopologue scatter, so
+        a small chi-square is structurally incapable of proving the systematic
+        part of sigma too large; rescaling below that floor calibrates away an
+        error the residuals cannot see. Measured consequence before this guard:
+        ethylene oxide's ring bonds rescaled to sigma 1.7 mA against a +12 mA
+        error (z = +4.6) on a chi2/nu of 0.05.
+        """
+        """Multiply every observation sigma by `factor`.
+
+        Used for chi-square rescaling: when a converged fit cannot reach a
+        reduced chi-square near one, the stated uncertainties were optimistic,
+        and the honest response is to widen them rather than to keep chasing
+        residuals the model cannot represent.
+        """
+        f = float(factor)
+        if not np.isfinite(f) or f <= 0.0:
+            raise ValueError(f"sigma scale factor must be positive and finite, got {factor!r}")
+        for iso in self.isotopologues:
+            scaled = np.asarray(iso["sigma_constants"], dtype=float) * f
+            if f < 1.0:
+                floor = iso.get("sigma_systematic_constants")
+                if floor is not None:
+                    floor = np.asarray(floor, dtype=float).ravel()
+                    if floor.size == scaled.size:
+                        scaled = np.maximum(scaled, floor)
+            iso["sigma_constants"] = scaled
 
     def _robust_weight(self, scaled_residual):
         """

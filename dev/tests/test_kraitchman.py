@@ -15,7 +15,7 @@ from backend.kraitchman import (
     planar_moments,
     principal_axis_coords,
 )
-from backend.spectral import _rotational_constants
+from backend.spectral.spectral import _rotational_constants
 
 _M_S32, _M_S34 = 31.9720711744, 33.967867004
 _M_O16, _M_O18 = 15.99491461956, 17.99915961286

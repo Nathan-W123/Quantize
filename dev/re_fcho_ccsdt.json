@@ -1,0 +1,51 @@
+{
+ "method": "CCSD(T)/cc-pVTZ (all-electron, valence basis)",
+ "converged": false,
+ "localization_note": "BFGS over the 5 planar internals, tight CC thresholds (conv_tol 1e-10, normt 1e-8). Optimization was noise-limited at |g_int| ~ 4.9e-3 Ha/A; steps 10-17 bounced inside a < 0.5 mA basin and this is the lowest-energy point measured (E = -213.5133837733 Ha). Numerical localization ~0.5 mA; the method's own bias (no core correlation, triple-zeta basis) dominates at ~2-3 mA.",
+ "energy_hartree": -213.5133837733,
+ "grad_norm_int": 0.00493,
+ "elems": [
+  "C",
+  "O",
+  "F",
+  "H"
+ ],
+ "coords_ang": [
+  [
+   0.0,
+   0.0,
+   0.0
+  ],
+  [
+   1.177959,
+   0.0,
+   0.0
+  ],
+  [
+   -0.7236642737141884,
+   1.1203031045099876,
+   0.0
+  ],
+  [
+   -0.6598487072503515,
+   -0.8648686170864567,
+   0.0
+  ]
+ ],
+ "params": [
+  1.177959,
+  1.333705,
+  1.087841,
+  2.144322,
+  2.222532
+ ],
+ "bonds": {
+  "C-O": 1.177959,
+  "C-F": 1.333705,
+  "C-H": 1.087841
+ },
+ "angles_deg": {
+  "O-C-F": 122.86060051705171,
+  "O-C-H": 127.34170343276989
+ }
+}

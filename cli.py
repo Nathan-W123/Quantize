@@ -296,12 +296,18 @@ def _cmd_lam_diagnose(args) -> int:
 
 # â”€â”€ uncertainty subcommand â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+#: The legacy sampling stack duplicated the v2 one -- both implemented bootstrap
+#: resampling and adaptive Metropolis, reachable from the same command, and could
+#: return different answers for the same fit. v2 is kept; v1 is gone.
+_V1_REMOVED = (
+    "--uncertainty-engine v1 has been removed: it duplicated the v2 sampler and "
+    "could give a different answer for the same fit. Use v2, which is the default."
+)
+
+
 def _cmd_uncertainty(args) -> int:
     """Run Bayesian/Bootstrap uncertainty analysis from config."""
     from runner.run_from_config import build_optimizer_from_config
-    from backend.uncertainty.sampling import (
-        BootstrapRunner, AdaptiveMetropolisSampler, calculate_convergence_diagnostics
-    )
     from backend.uncertainty_v2 import (
         AdaptiveMetropolisV2,
         BootstrapConfig,
@@ -317,7 +323,7 @@ def _cmd_uncertainty(args) -> int:
         format_posterior_state,
     )
     from backend.uncertainty.analysis import analyze_coordinate_distribution, print_distribution_summary, posterior_predictive_check, print_ppc_summary
-    from backend.uncertainty.plots import plot_coordinate_distributions, plot_mcmc_traces, plot_parameter_corner, plot_autocorrelations
+    from scripts.uncertainty_plots import plot_coordinate_distributions, plot_mcmc_traces, plot_parameter_corner, plot_autocorrelations
     import numpy as np
 
     if args.samples < 1:
@@ -392,14 +398,7 @@ def _cmd_uncertainty(args) -> int:
             summary_bundle["bootstrap"] = summary.to_dict()
             successes = [r for r in summary.sample_results if r.success and r.coords is not None]
         else:
-            runner = BootstrapRunner(opt, n_samples=args.samples, max_workers=args.workers)
-            boot_results = runner.run(base_workdir=opt.workdir)
-            summary_bundle["bootstrap"] = {
-                "total_samples": len(boot_results),
-                "successful_samples": int(sum(1 for r in boot_results if r.get("success"))),
-                "failed_samples": int(sum(1 for r in boot_results if not r.get("success"))),
-            }
-            successes = [res for res in boot_results if res["success"]]
+            raise SystemExit(_V1_REMOVED)
         
         # Warning for high bootstrap failure rate
         if len(successes) < args.samples:
@@ -459,40 +458,7 @@ def _cmd_uncertainty(args) -> int:
                 print("\n[mcmc] v2 convergence diagnostics unavailable (too few chains/samples).")
                 summary_bundle["warnings"].append("MCMC convergence diagnostics unavailable (too few chains/samples).")
         else:
-            # Execute chains sequentially in CLI; process pool recommended for production
-            for c in range(args.chains):
-                print(f"  Chain {c+1}/{args.chains}:")
-                sampler = AdaptiveMetropolisSampler(opt)
-                mcmc_samples = sampler.run(n_steps=args.mcmc_steps, burn_in=args.burn_in)
-                all_chains.append(mcmc_samples)
-                for s in mcmc_samples:
-                    cloud.append(s)
-
-            # --- Convergence Validation ---
-            if args.chains > 1:
-                from backend.internal.internal_fit import InternalCoordinateSet
-
-                ic_set = InternalCoordinateSet(opt.coords, opt.elems)
-                q_chains = np.array([[ic_set.active_values(xyz) for xyz in chain] for chain in all_chains])
-
-                r_hat, ess, diag_error = calculate_convergence_diagnostics(q_chains)
-                ic_names = ic_set.active_names()
-
-                print("\n" + "="*60)
-                print("  MCMC CONVERGENCE DIAGNOSTICS")
-                print("="*60)
-                if diag_error is not None:
-                    print(f"  Skipped: {diag_error}")
-                    summary_bundle["warnings"].append(f"MCMC diagnostics skipped: {diag_error}")
-                else:
-                    print(f"{'Parameter':<30} {'R-hat':>10} {'ESS':>10}")
-                    print("-" * 60)
-                    for name, r, e in zip(ic_names, r_hat, ess):
-                        mark = "(!)" if r > 1.1 else "   "
-                        print(f"{mark}{name:<30} {r:10.3f} {e:10.1f}")
-                    print("\n  (Target: R-hat < 1.1 for convergence; ESS > 100 per chain)")
-                print("="*60)
-
+            raise SystemExit(_V1_REMOVED)
     if not cloud:
         print("Error: No uncertainty samples were generated.")
         return 1

@@ -1,0 +1,59 @@
+# End-to-end water run on the analytic PES -- exercises the full CLI pipeline
+# (validation, run directory, internal coordinates, autoconfig, multistart,
+# the B_0 -> B_e correction chain, reporting) without Psi4 or ORCA.
+#
+#   python scripts/run_water_endtoend.py
+#
+# quantum.backend names a backend registered by dev/analytic_water_backend.py,
+# so it must be imported before the runner resolves the name -- which is what
+# the driver script does. Not a substitute for a real Hessian; see that module.
+
+name: water_analytic_endtoend
+coordinate_mode: internal
+
+elements: [O, H, H]
+
+geometry:
+  method: coords
+  coords_angstrom:
+    - [0.000000, 0.000000, 0.000000]
+    - [0.000000, 0.780000, 0.600000]
+    - [0.000000, -0.780000, 0.600000]
+
+symmetry: C2v
+
+isotopologues:
+  - name: H2-16O
+    masses: [15.99491461956, 1.00782503207, 1.00782503207]
+    components: [A, B, C]
+    obs_b0_mhz: [835840.29, 435351.72, 278138.70]
+    alpha_mhz: [0.0, 0.0, 0.0]
+    sigma_mhz: [0.20, 0.20, 0.20]
+
+quantum:
+  backend: analytic_water
+
+rovibrational_corrections:
+  mode: user_only
+  harmonic_from_hessian: true
+  harmonic_sigma_fraction: 0.02
+  anharmonic_from_hessian: true
+  anharmonic_fd_delta_ang: 0.01
+  nonconvergent_policy: warn
+
+internal_coordinates:
+  use_dihedrals: false
+  damping: 1.0e-6
+  prior_sigma_bond: 0.12
+  prior_sigma_angle_deg: 5.0
+
+internal_priors:
+  mode: soft
+  freeze_sigma_floor: 1.0e-6
+
+preset: BALANCED
+rng_seed: 17
+
+output:
+  root: output/runs
+  artifacts: true

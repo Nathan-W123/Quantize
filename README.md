@@ -7,28 +7,165 @@ This project estimates molecular structure (bond lengths and angles) from isotop
 ## Core idea
 
 - Use observed rotational constants (`A`, `B`, `C`) from one or more isotopologues.
-- Map ground-state constants toward equilibrium targets using \(B_e \approx B_0 + \tfrac{1}{2}\alpha\) (per component).
+- Map ground-state constants onto equilibrium targets via \(B_e = B_0 + \Delta_\mathrm{vib} + \Delta_\mathrm{elec} + \Delta_\mathrm{BOB}\) (see [Ground state to equilibrium](#ground-state-to-equilibrium-b_0--b_e)).
 - Stack spectral Jacobians across isotopologues, apply **SVD** to split **range space** (spectroscopy-sensitive directions) from **null space** (directions invisible to the stacked Jacobian).
 - Use electronic-energy **gradient and Hessian** (Psi4 or ORCA) for a damped-Newton step in the null space so the structure is stabilized where data are silent.
 
-Key formulas are documented in module docstrings (see `backend/spectral.py`, `backend/SVD.py`, `backend/kraitchman.py`, and `backend/torsion/`); primary literature references are cited inline (Gordy & Cook 1984 for spectroscopic relations).
+Key formulas are documented in module docstrings (see `.github/backend/spectral/`, `.github/backend/kraitchman.py`, and `.github/backend/torsion/`); primary literature references are cited inline (Gordy & Cook 1984 for spectroscopic relations).
 
-## Main modules (`backend/`)
+## Main modules (`.github/backend/`)
+
+The library lives under `.github/backend/`; `paths.ensure_repo_paths` puts
+`.github` on `sys.path` so it imports as `backend.*`.
 
 | Module | Role |
 |--------|------|
-| [`backend/quantize.py`](backend/quantize.py) | `MolecularOptimizer`: spectral + quantum hybrid loop |
-| [`backend/spectral.py`](backend/spectral.py) | Inertia tensor, \(A,B,C\), Jacobians, residuals, weighting, optional conformer mixtures |
-| [`backend/SVD.py`](backend/SVD.py) | `SubspaceOptimizer`: SVD split, range/null steps, joint objective option |
-| [`backend/quantum.py`](backend/quantum.py) | ORCA parsers; Wilson **B**-matrix; primitive internal-coordinate derivatives |
-| [`backend/Psi4.py`](backend/Psi4.py) | Psi4 energy / gradient / Hessian with unit conversion to Å |
-| [`backend/internal_prior.py`](backend/internal_prior.py) | Optional internal-coordinate priors stacked with the spectral block |
-| [`backend/geometryguess.py`](backend/geometryguess.py) | Template guesses and spring-style relaxation |
-| [`backend/multistart.py`](backend/multistart.py) | Parallel multi-start runs and best-run selection |
-| [`backend/bayes_tune.py`](backend/bayes_tune.py) | Optional Bayesian hyperparameter search (`scikit-optimize`) |
-| [`backend/symmetry.py`](backend/symmetry.py) | Optional point-group projection of steps and coordinates |
-| [`backend/autoconfig.py`](backend/autoconfig.py) | Adaptive trust region / damping / weight policy from diagnostics |
-| [`backend/kraitchman.py`](backend/kraitchman.py) | Kraitchman single-substitution rs coordinates, planar moments, inertial defects (auto-run; see `exports/kraitchman_rs.csv` and the report section) |
+| [`backend/quantize.py`](.github/backend/quantize.py) | `MolecularOptimizer`: spectral + quantum hybrid loop |
+| [`backend/spectral/spectral.py`](.github/backend/spectral/spectral.py) | Inertia tensor, \(A,B,C\), Jacobians, residuals, weighting, optional conformer mixtures |
+| [`backend/spectral/SVD.py`](.github/backend/spectral/SVD.py) | `SubspaceOptimizer`: SVD split, range/null steps, joint objective option |
+| [`backend/spectral/harmonic_alpha.py`](.github/backend/spectral/harmonic_alpha.py) | Vibration-rotation \(\alpha_r\): harmonic, Coriolis, and cubic anharmonic terms |
+| [`backend/spectral/centrifugal_distortion.py`](.github/backend/spectral/centrifugal_distortion.py) | Normal modes, \(\partial B/\partial Q\), \(\tau'\), Watson CD constants |
+| [`backend/spectral/correction_models.py`](.github/backend/spectral/correction_models.py) | Vibrational, electronic (g-tensor), and BOB corrections |
+| [`backend/spectral/rovib_corrections.py`](.github/backend/spectral/rovib_corrections.py) | Resolves all corrections into \(B_e^{SE}\) targets with provenance |
+| [`backend/quantum.py`](.github/backend/quantum.py) | ORCA parsers; Wilson **B**-matrix; primitive internal-coordinate derivatives |
+| [`backend/psi4/Psi4.py`](.github/backend/psi4/Psi4.py) | Psi4 energy / gradient / Hessian with unit conversion to Å |
+| [`backend/internal/internal_prior.py`](.github/backend/internal/internal_prior.py) | Optional internal-coordinate priors stacked with the spectral block |
+| [`backend/conformers/geometryguess.py`](.github/backend/conformers/geometryguess.py) | Template guesses and spring-style relaxation |
+| [`backend/multistart.py`](.github/backend/multistart.py) | Parallel multi-start runs and best-run selection |
+| [`backend/priors/bayes_tune.py`](.github/backend/priors/bayes_tune.py) | Optional Bayesian hyperparameter search (`scikit-optimize`) |
+| [`backend/symmetry.py`](.github/backend/symmetry.py) | Optional point-group projection of steps and coordinates |
+| [`backend/autoconfig.py`](.github/backend/autoconfig.py) | Adaptive trust region / damping / weight policy from diagnostics |
+| [`backend/kraitchman.py`](.github/backend/kraitchman.py) | Kraitchman single-substitution rs coordinates, planar moments, inertial defects (auto-run; see `exports/kraitchman_rs.csv` and the report section) |
+
+## Ground state to equilibrium (\(B_0 \to B_e\))
+
+Fitting a geometry to observed \(B_0\) directly conflates structure with
+zero-point motion. The correction chain maps the observed constants onto
+semi-experimental equilibrium targets:
+
+\[ B_e = B_0 + \Delta_\mathrm{vib} + \Delta_\mathrm{elec} + \Delta_\mathrm{BOB} \]
+
+**\(\Delta_\mathrm{vib} = \tfrac12 \sum_r \alpha_r\)**, with \(\alpha_r\) built from three terms
+(Mills 1972; Papoušek & Aliev 1982):
+
+| Term | Source | Enabled by |
+|------|--------|-----------|
+| Harmonic \(\langle Q_r^2\rangle\,\partial^2 B/\partial Q_r^2\) | Cartesian Hessian | `harmonic_from_hessian` |
+| Coriolis \(\zeta^{(\xi)}_{rs}\) coupling | Normal-mode eigenvectors | `harmonic_from_hessian` |
+| Anharmonic \(\phi_{rrs}\) (cubic) | Finite-difference cubic force field | `anharmonic_from_hessian` |
+
+The anharmonic term is **not** a small refinement — it is usually the largest of
+the three and carries the opposite sign to the harmonic term. For CO the
+harmonic term alone gives \(\alpha = -0.0103\ \mathrm{cm^{-1}}\) against an observed
+\(+0.0175\); adding the cubic term reproduces the Dunham/Pekeris value to 0.1%.
+It costs \(6N\) extra Hessian evaluations, so it is opt-in; when it is off, the
+reported \(\alpha\) uncertainty is widened to 100%.
+
+**\(\Delta_\mathrm{elec} = -(m_e/m_p)\, g_\alpha B_0\)** requires the rotational
+g-tensor via `g_tensor`. Without it the code falls back to a crude \(1/M_\mathrm{total}\)
+estimate that is roughly an order of magnitude too small and has the wrong sign
+whenever \(g < 0\) (as for OCS), so that path reports 100% uncertainty.
+
+**\(\Delta_\mathrm{BOB}\)** uses per-element Watson u-parameters. The built-ins are
+order-of-magnitude estimates; supply `bob_params` for sub-milliångström work.
+
+See [`configs/example_water_semi_experimental.yaml`](configs/example_water_semi_experimental.yaml)
+for a complete worked example, and `dev/tests/test_alpha_against_experiment.py`
+for the validation suite (closed-form Dunham/Pekeris results, C₂ᵥ symmetry
+constraints, and published CO/H₂O constants — no Psi4 or ORCA needed).
+
+> **Known limitation.** The \(\tau' \to\) Watson A-reduction mapping in
+> `centrifugal_distortion.py` is unvalidated and does not reproduce published
+> constants. `compute_cd_constants` reports 100% uncertainty accordingly, and
+> `fit_cd_constants` defaults to off.
+
+## How data and theory share authority
+
+The default `split` objective partitions the parameter space hard: whatever
+survives the SVD rank cutoff is handed **entirely** to the spectral data, and the
+quantum surface governs only the null space. That works when the retained
+directions are well determined — but the cutoff is *relative*
+(`sv_threshold × s_max`, with `sv_min_abs` defaulting to 0), so a direction the
+data resolves only loosely is still treated as fully constrained and theory gets
+no vote in it. Water's bond angle is such a direction, and it comes out worse
+than either theory or experiment alone would give.
+
+Two ways to hand authority back:
+
+| Control | Effect |
+|---------|--------|
+| `optimizer.sv_min_abs` | Absolute floor on the singular value. The Jacobian is σ-weighted, so \(1/s\) is the parameter uncertainty along a direction — the floor means "only trust what the data resolves this well". All-or-nothing per direction. |
+| `optimizer.objective_mode: joint` with `optimizer.quantum_prior_sigma_ang` | Solves \((J^TJ + \alpha_q H + \lambda I)\,\Delta p = J^T r - \alpha_q g\), leaving every direction contested and weighted by how well each source knows it. `quantum_prior_sigma_ang` is the displacement over which the quantum surface is trusted, roughly the geometry error of the method, which is what makes \(\alpha_q\) interpretable rather than an arbitrary knob. |
+
+### Which objective to use depends on how much data you have
+
+This is the single most consequential setting, and it flips with the size of the
+dataset. Two measured cases:
+
+| Case | Observables | Internal DOF | Best objective |
+|------|-------------|--------------|----------------|
+| Water, one isotopologue (`scripts/theory_vs_experiment_vs_hybrid.py`) | 3 | 3 | `joint`, `quantum_prior_sigma_ang: 0.005` |
+| Fluorobenzene, one isotopologue (`scripts/fluorobenzene_vs_published.py`) | 3 | 30 | `joint`, `quantum_prior_sigma_ang: 0.005` |
+| Fluorobenzene, eight isotopologues (`scripts/fluorobenzene_full_data.py`) | 24 | 30 | `split` (the default) |
+| Vinyl / acetyl fluoride, fluoroethane — parent only (`scripts/monofluoro_benchmark.py`) | 3 | 12–18 | `joint`, `quantum_prior_sigma_ang: 0.005` |
+| Vinyl / acetyl fluoride, fluoroethane — all species (same script) | 18 | 12–18 | `split` (the default) |
+
+With few observables the split partition hands whole directions to data that
+barely resolves them, drives the residual below what the physics justifies, and
+distorts the structure doing it — on water the angle error trebles, on
+fluorobenzene the C–H angles do. A calibrated prior keeps those directions
+contested and fixes most of it.
+
+With a full isotopologue set the position reverses. Against the published
+fluorobenzene structure, 24 observables give RMS bond errors of 11.4 mÅ from
+theory alone, 8.2 mÅ from spectroscopy alone, and **4.0 mÅ** from the split
+hybrid — better than either input on bond lengths, angles and the C–F distance
+at once. Forcing `quantum_prior_sigma_ang: 0.005` there costs more than half the
+gain (8.9 mÅ), because the prior now over-constrains directions the data
+determines perfectly well.
+
+Rule of thumb: reach for the calibrated prior when the fit is undersaturated,
+and leave the default alone when it is not. `python scripts/tune_quantum_prior.py`
+scans the value; 0.005 Å is a sparse-data result, not a validated default.
+
+### Monofluorinated benchmark — and a caveat on the two rows above
+
+`scripts/monofluoro_benchmark.py` runs theory, spectroscopy-only, and both
+hybrids over three published structures (vinyl fluoride, acetyl fluoride,
+fluoroethane) at RHF/6-31G, at two data levels each. Every rotational constant
+is a **measured** literature value transcribed from *NBS Monograph 70,
+Microwave Spectral Tables* — nothing is back-calculated from a geometry.
+`scripts/check_monofluoro_references.py` validates each species before use, and
+`scripts/build_monofluoro_report.py` turns the run's JSON into
+[`reports/monofluoro_benchmark_report.pdf`](reports/monofluoro_benchmark_report.pdf).
+
+**The objective-choice rule above does not survive measured data.** The water
+and fluorobenzene rows use isotopologue constants *derived* from their reference
+structures, which are mutually consistent by construction. That removes the
+systematic r_s-vs-r_0 offset which turns out to drive the behaviour. Re-run on
+measured constants, `split` wins at rank deficits of 15, 3 and 1 while `joint`
+wins at 12, 10 and 3 — no ordering at all. Treat those rows as describing
+self-consistent synthetic data, not experiment.
+
+What does hold up:
+
+- **RHF/6-31G has a systematic C–F bias**, +27 to +31 mÅ, same sign in all three
+  molecules. A method bias, not scatter, and what the spectral data is good at
+  removing: some combination of data and theory beats theory alone on C–F in 6
+  of 6 cases.
+- **Everything is undersaturated.** Counting constants overstates the
+  information badly. Vinyl fluoride's 22 measured constants carry rank **9**
+  against 12 internal DOF; acetyl fluoride 30 → rank 14 of 15; fluoroethane
+  18 → rank 15 of 18. All published data still leaves every molecule
+  underdetermined, so `sv_min_abs` / `objective_mode` matter in every real case.
+- **On overall bond error the hybrid is not dependably better than theory** —
+  5 of 6 even choosing the objective with hindsight. The binding constraint is
+  no longer the objective but the missing vibration-rotation correction: fitting
+  r_0 constants uncorrected against an r_s reference leaves a one-signed ~0.5%
+  residual that the fit removes by distorting the structure. In vinyl fluoride
+  that makes the spectroscopy-only fit *worse* with 22 constants (31.1 mÅ) than
+  with 3 (21.0 mÅ). Applying `anharmonic_from_hessian` here is the obvious next
+  step.
 
 ## Torsion / Large-Amplitude Motion (LAM) pipeline
 
@@ -38,15 +175,15 @@ A self-contained torsion-rotation pipeline handles molecules with an internal me
 
 | Module | Role |
 |--------|------|
-| [`backend/torsion_hamiltonian.py`](backend/torsion_hamiltonian.py) | `TorsionHamiltonianSpec`, Fourier potential matrix, `solve_ram_lite_levels`, `torsion_probability_density` |
-| [`backend/torsion_rot_hamiltonian.py`](backend/torsion_rot_hamiltonian.py) | Full J-block torsion-rotation Hamiltonian with centrifugal distortion |
-| [`backend/torsion_symmetry.py`](backend/torsion_symmetry.py) | C3 block decomposition (A/E1/E2), tunneling splittings, selection rules, nuclear-spin weights |
-| [`backend/torsion_average.py`](backend/torsion_average.py) | Quantum and Boltzmann torsion-scan averaging of A/B/C constants; rigorous uncertainty propagation |
-| [`backend/torsion_intensities.py`](backend/torsion_intensities.py) | `⟨ψ\|cos(α)\|ψ⟩` matrix elements, Hönl-London factors, complete line-list generation |
-| [`backend/torsion_fitter.py`](backend/torsion_fitter.py) | Damped Gauss-Newton fitting to levels, transitions, or joint levels + rotational constants |
-| [`backend/torsion_uncertainty.py`](backend/torsion_uncertainty.py) | Jacobian, covariance, Fisher information, identifiability |
-| [`backend/torsion_lam_integration.py`](backend/torsion_lam_integration.py) | LAM correction report with uncertainty propagation into the main spectral fit |
-| [`backend/hindered_rotor.py`](backend/hindered_rotor.py) | Independent 1D hindered-rotor solver (legacy; used for Boltzmann weight helper only) |
+| [`backend/torsion/torsion_hamiltonian.py`](.github/backend/torsion/torsion_hamiltonian.py) | `TorsionHamiltonianSpec`, Fourier potential matrix, `solve_ram_lite_levels`, `torsion_probability_density` |
+| [`backend/torsion/torsion_rot_hamiltonian.py`](.github/backend/torsion/torsion_rot_hamiltonian.py) | Full J-block torsion-rotation Hamiltonian with centrifugal distortion |
+| [`backend/torsion/torsion_symmetry.py`](.github/backend/torsion/torsion_symmetry.py) | C3 block decomposition (A/E1/E2), tunneling splittings, selection rules, nuclear-spin weights |
+| [`backend/torsion/torsion_average.py`](.github/backend/torsion/torsion_average.py) | Quantum and Boltzmann torsion-scan averaging of A/B/C constants; rigorous uncertainty propagation |
+| [`backend/torsion/torsion_intensities.py`](.github/backend/torsion/torsion_intensities.py) | `⟨ψ\|cos(α)\|ψ⟩` matrix elements, Hönl-London factors, complete line-list generation |
+| [`backend/torsion/torsion_fitter.py`](.github/backend/torsion/torsion_fitter.py) | Damped Gauss-Newton fitting to levels, transitions, or joint levels + rotational constants |
+| [`backend/torsion/torsion_uncertainty.py`](.github/backend/torsion/torsion_uncertainty.py) | Jacobian, covariance, Fisher information, identifiability |
+| [`backend/torsion/torsion_lam_integration.py`](.github/backend/torsion/torsion_lam_integration.py) | LAM correction report with uncertainty propagation into the main spectral fit |
+| [`backend/torsion/hindered_rotor.py`](.github/backend/torsion/hindered_rotor.py) | Independent 1D hindered-rotor solver (legacy; used for Boltzmann weight helper only) |
 
 ### What the torsion pipeline provides
 
@@ -91,12 +228,15 @@ See [`configs/example_methanol_lam.yaml`](configs/example_methanol_lam.yaml) for
 
 ## Repository layout
 
-- **`backend/`** — core library (spectral, quantum, optimizer, priors, symmetry).
-- **`runs/`** — per-molecule driver scripts (e.g. `run_water.py`, `run_OCS.py`, `run_n.py`, `run_SO2.py`, `run_CO2.py`).
-- **`run_molecule.py`** — small CLI that dispatches to a named driver in `runs/`.
-- **`run_settings.py`** — optional shared presets for drivers.
+- **`.github/backend/`** — core library (spectral, quantum, optimizer, priors, symmetry, torsion).
+- **`cli.py`** — main entry point (`python -m cli <command>`).
+- **`runner/`** — config loading/validation (`usability.py`), the generic run driver
+  (`run_generic.py`), report and export generation (`reporting.py`), presets (`run_settings.py`).
+- **`configs/`** — example run configs.
+- **`molecule_runners/`** — per-molecule driver scripts.
+- **`dev/tests/`** — test suite; **`dev/benchmarks/`** — LAM and conformer benchmark suites.
+- **`output/`** — all generated artifacts (gitignored); runs land in `output/runs/`.
 - **`requirements.txt`** — Python dependencies.
-- **`Geometric/`**, **`runs/`** outputs, tuning JSON files at repo root as applicable.
 
 ## Requirements
 
@@ -121,44 +261,39 @@ On Windows, activate with `.venv\Scripts\activate` or `Activate.ps1`.
 From the project root, the config-first interface is:
 
 ```bash
-python -m cli validate configs/example_water_spectral_only.yaml
-python -m cli run configs/example_water_spectral_only.yaml
-python -m cli run configs/example_water_legacy.json
-python -m cli report runs/<timestamped_run_dir>
+python -m cli validate configs/example_water_semi_experimental.yaml
+python -m cli run      configs/example_water_semi_experimental.yaml
+python -m cli report   output/runs/<timestamped_run_dir>
 ```
 
-`run` creates a timestamped directory under `runs/` by default, copies the input
-config, and writes `report.md`, `exports/residuals.csv`,
+`run` creates a timestamped directory under `output/runs/` by default, copies the
+input config, and writes `report.md`, `exports/residuals.csv`,
 `exports/final_geometry.csv`, and diagnostic plots under `plots/`.
 `report` rebuilds `report.md`, `report.html`, and plots from an existing run.
 
+Other commands: `lam-scan`, `lam-fit`, `lam-diagnose`, `uncertainty`, `benchmark`.
+Run `python -m cli --help` for the full list.
+
 Ready-to-run config examples:
 
-- `configs/example_water_spectral_only.yaml`
+- `configs/example_water_semi_experimental.yaml` — full \(B_0 \to B_e\) correction chain
+- `configs/example_water.yaml`
 - `configs/example_OCS.yaml`
 - `configs/example_CO2.yaml`
 - `configs/example_SO2.yaml`
 - `configs/example_formaldehyde.yaml`
-- `configs/example_methanol.yaml`
+- `configs/example_propyne.yaml`
+- `configs/example_acetaldehyde.yaml`
 - `configs/example_methanol_lam.yaml`
 - `configs/example_acetaldehyde_lam.yaml`
-- `configs/example_partial_isotopologue.yaml`
-
-### Lightweight GUI
-
-You can use a simple Streamlit dashboard to validate configs, launch runs,
-and inspect run reports/plots:
-
-```bash
-streamlit run streamlit_app.py
-```
+- `configs/benzene.yaml`, `configs/fluorobenzene.yaml`
 
 ### Bayesian / Bootstrap Uncertainty (v2)
 
 Run uncertainty with the greenfield v2 engine:
 
 ```bash
-python -m cli uncertainty configs/example_water_spectral_only.yaml \
+python -m cli uncertainty configs/example_water_semi_experimental.yaml \
   --uncertainty-engine v2 \
   --mode both \
   --samples 20 \
@@ -179,36 +314,29 @@ Outputs are written under the run workdir, including:
 The lower-level runner remains available for compatibility:
 
 ```bash
-python runner/run_from_config.py configs/template.yaml
-python runner/run_from_config.py configs/example_water_spectral_only.yaml --no-run-dir
+python runner/run_from_config.py configs/example_water_semi_experimental.yaml
+python runner/run_from_config.py configs/example_water.yaml --no-run-dir
 ```
 
-You can also use the molecule dispatchers:
+You can also call a molecule driver module directly:
 
 ```bash
-python run_molecule.py water
-python run_molecule.py ocs --preset BALANCED
+python -m molecule_runners.run_water
 ```
 
-or call a driver module directly:
+Drivers build isotopologue inputs, generate a starting geometry, run multistart
+optimization, and print a summary. Presets live in `runner/run_settings.py`.
 
-```bash
-python -m runs.run_water
-python -m runs.run_OCS
-```
+### ORCA and `runner/run_settings.py`
 
-Drivers typically build isotopologue inputs, generate a starting geometry, run multistart optimization, and print a summary. Defaults and presets can be adjusted in `run_molecule.py`, `run_settings.py`, or each `runs/run_*.py` file.
-
-### ORCA and `run_settings.py`
-
-Drivers read `run_settings.py`, which defaults to `quantum_backend="orca"` and `orca_exe=None`. The optimizer then searches for ORCA in this order: **`orca` on your PATH**, a **full path** if you set one, then an **`orca` or `orca.exe` file in the current working directory** (so you can drop or symlink the binary into the project folder). You can also set the path before running:
+Drivers read `runner/run_settings.py`, which defaults to `quantum_backend="orca"` and `orca_exe=None`. The optimizer then searches for ORCA in this order: **`orca` on your PATH**, a **full path** if you set one, then an **`orca` or `orca.exe` file in the current working directory** (so you can drop or symlink the binary into the project folder). You can also set the path before running:
 
 ```bash
 export ORCA_EXE="/full/path/to/orca"
-python3 run_molecule.py water
+python -m cli run configs/example_water.yaml
 ```
 
-On Windows, you can instead set `orca_exe` in `BASE_SETTINGS` to your `orca.exe` path. If you do not have ORCA, either install it, point `ORCA_EXE` at it, or switch a runner to **Psi4** (`quantum_backend="psi4"` in `run_settings.py` and a Conda environment with `psi4` installed), or use spectral-only mode where the script supports it (`USE_QUANTUM_PRIOR = False` in e.g. `runs/run_water.py`).
+On Windows, you can instead set `orca_exe` in `BASE_SETTINGS` to your `orca.exe` path. If you do not have ORCA, either install it, point `ORCA_EXE` at it, or switch to **Psi4** (`quantum.backend: psi4` in the config and a Conda environment with `psi4` installed), or set `quantum.backend: none` for spectral-only mode.
 
 **Parallel multistart + ORCA:** many licenses allow only one ORCA job at a time. `run_multistart` therefore defaults to **`max_workers=1`** when `quantum_backend="orca"`. If your license allows multiple processes, set **`QUANTIZE_ALLOW_PARALLEL_ORCA=1`** before running to use the preset worker count.
 
