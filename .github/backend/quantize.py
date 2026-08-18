@@ -41,6 +41,7 @@ from backend.spectral.rovib_corrections import (
     correction_summary,
 )
 from backend.spectral.correction_models import parse_correction_table, RovibCorrection, ParsedRovibResult
+from backend.spectral.spectral import default_sigma_constants, defect_model_sigma
 
 
 #: Default width of the quantum prior, in Angstrom -- the displacement over
@@ -418,6 +419,37 @@ class MolecularOptimizer:
         self._correction_sigma_elec_fraction = float(correction_sigma_elec_fraction)
         self._correction_bob_params = correction_bob_params or None
         self._correction_g_tensor = correction_g_tensor or None
+        # Fill in a missing observation sigma before anything reads it.
+        #
+        # Preference order is most-informed first: the inertial defect measures
+        # this species' own vibrational contamination from its own constants,
+        # so it beats a fraction that is the same for every molecule. It needs
+        # all three constants, and falls back to the calibrated flat default
+        # when it cannot be formed (linear species, partial measurements).
+        #
+        # sigma_systematic_constants is filled from the same estimate: it is
+        # the coherent, common-mode part, which for this error source is all of
+        # it, and the post-correction sigma logic in resolve_corrections needs
+        # to know how much of sigma the vibrational correction supersedes.
+        _filled = []
+        for _iso in isotopologues:
+            if _iso.get("sigma_constants") is not None:
+                continue
+            _obs = np.asarray(_iso["obs_constants"], dtype=float)
+            _ci = _iso.get("component_indices", list(range(len(_obs))))
+            _sig = defect_model_sigma(_obs, self.coords, _iso["masses"], _ci)
+            _how = "inertial defect"
+            if _sig is None:
+                _sig = default_sigma_constants(_obs, _ci)
+                _how = "flat model default"
+            _iso["sigma_constants"] = np.asarray(_sig, dtype=float)
+            if _iso.get("sigma_systematic_constants") is None:
+                _iso["sigma_systematic_constants"] = np.asarray(_sig, dtype=float)
+            _filled.append(f"{_iso.get('name', 'iso')} [{_how}]")
+        if _filled:
+            print(f"  [sigma] derived for {len(_filled)} species: "
+                  f"{', '.join(_filled[:3])}{' ...' if len(_filled) > 3 else ''}")
+
         self._raw_isotopologues = list(isotopologues)   # preserved for harmonic updates
         self._corrected_targets = None
         _ctbl = parse_correction_table(correction_table)
