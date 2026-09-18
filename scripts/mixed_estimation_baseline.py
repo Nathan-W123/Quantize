@@ -81,18 +81,34 @@ from scripts.monofluoro_benchmark import (  # noqa: E402
 )
 
 METHOD, BASIS = "hf", "6-31g"
+for _tok in sys.argv[1:]:
+    if _tok.startswith("method="):
+        METHOD = _tok.split("=", 1)[1]
+    elif _tok.startswith("basis="):
+        BASIS = _tok.split("=", 1)[1]
+
+#: Level-of-theory trust widths, in Angstrom, measured on these molecules.
+#: The comparison hinges on this number being right for the level in use:
+#: hand mixed estimation a sigma_p calibrated for RHF while the geometry came
+#: from a triple-zeta functional and the baseline is being sandbagged.
+_SIGMA_X_BY_LEVEL = {
+    ("hf", "6-31g"): 0.020,
+    ("b3lyp", "6-31g(d)"): 0.007,
+    ("b3lyp", "cc-pvtz"): 0.004,
+}
 
 #: How far the quantum surface is trusted, in Angstrom. The hybrid derives its
 #: alpha_q from exactly this number, so handing the same value to mixed
 #: estimation as its predicate sigma is what makes the comparison about
 #: mechanism rather than about who was given the more generous prior.
-SIGMA_X_ANG = 0.020
+SIGMA_X_ANG = _SIGMA_X_BY_LEVEL.get((METHOD.lower(), BASIS.lower()), 0.020)
 
 #: Predicate sigmas to scan. Mixed estimation leaves this to the practitioner,
 #: so reporting one value would be a strawman: too tight and theory dominates,
 #: too loose and the method degenerates to a spectroscopy-only fit. The scan
 #: shows the whole curve and lets the best case stand as the baseline.
-SIGMA_P_SCAN_ANG = (0.002, 0.005, 0.010, 0.020, 0.050)
+SIGMA_P_SCAN_ANG = tuple(sorted({
+    round(SIGMA_X_ANG * f, 5) for f in (0.1, 0.25, 0.5, 1.0, 2.5, 5.0)}))
 
 #: Angle predicate sigma, in degrees, paired with each bond sigma above by the
 #: same ratio the reference module uses between its bond and angle widths.
@@ -182,8 +198,11 @@ def rms_bond_error(mol, coords):
 def main() -> None:
     pool = (list(MOLECULES) + list(MOLECULES_SET2)
             + [WATER_SET[0], OZONE, ISOCYANIC_ACID])
-    wanted = sys.argv[1:] or [m.key for m in pool]
-    out_path = _ROOT / "output" / "mixed_estimation_baseline.json"
+    args = [a for a in sys.argv[1:]
+            if not a.startswith(("method=", "basis="))]
+    wanted = args or [m.key for m in pool]
+    _tag = f"{METHOD}_{BASIS}".replace("/", "-").replace("(", "").replace(")", "")
+    out_path = _ROOT / "output" / f"mixed_estimation_baseline_{_tag}.json"
     out = json.loads(out_path.read_text(encoding="utf-8")) \
         if out_path.exists() else {}
 

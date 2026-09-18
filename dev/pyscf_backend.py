@@ -41,6 +41,10 @@ class PySCFBackend(QuantumBackend):
         self.charge = int(charge)
         self.spin = int(multiplicity) - 1
         self._cache: dict[bytes, object] = {}
+        #: Converged density from the last geometry, reused as the SCF guess
+        #: at the next one. Kept outside _cache because the cache holds a
+        #: single geometry while this is deliberately carried across them.
+        self._last_dm = None
 
     # ── internals ────────────────────────────────────────────────────────────
 
@@ -63,9 +67,41 @@ class PySCFBackend(QuantumBackend):
         else:
             mf = dft.RKS(mol)
             mf.xc = self.method
-        mf.kernel()
+        # Larger bases need more cycles than the default, and an optimiser
+        # visits distorted geometries where the default DIIS path stalls.
+        mf.max_cycle = max(int(getattr(mf, "max_cycle", 50)), 200)
+        if self._last_dm is not None:
+            # Chain the density from the previous geometry. Successive points
+            # in an optimisation or a finite-difference Hessian are close, so
+            # the converged density is a far better guess than the default
+            # superposition of atomic densities.
+            try:
+                mf.kernel(dm0=self._last_dm)
+            except Exception:  # noqa: BLE001 - fall back to the plain guess
+                mf.kernel()
+        else:
+            mf.kernel()
         if not mf.converged:
-            raise RuntimeError(f"PySCF SCF did not converge ({self.method}/{self.basis})")
+            # Second-order (Newton) SCF. Slower per iteration and needs a
+            # starting density, but it converges cases where DIIS oscillates,
+            # which is what a triple-zeta basis at a displaced geometry does.
+            # Measured: b3lyp/cc-pvtz on water aborted the whole benchmark here
+            # before this fallback existed.
+            try:
+                mf = mf.newton()
+                mf.max_cycle = 100
+                mf.kernel()
+            except Exception as exc:  # noqa: BLE001
+                raise RuntimeError(
+                    f"PySCF SCF did not converge ({self.method}/{self.basis}); "
+                    f"second-order fallback also failed: {exc}"
+                ) from exc
+        if not mf.converged:
+            raise RuntimeError(
+                f"PySCF SCF did not converge ({self.method}/{self.basis}) "
+                "even with the second-order solver"
+            )
+        self._last_dm = mf.make_rdm1()
         # One geometry at a time; the optimizer revisits the current point for
         # gradient and Hessian, and holding every past geometry would grow
         # without bound over a long run.
