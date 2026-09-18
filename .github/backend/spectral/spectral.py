@@ -7,6 +7,103 @@ from backend.conformers.conformer_mixture import ConformerMixture
 #: generating model matches the fitted one exactly).
 DEFAULT_SIGMA_FLOOR_REL = 1.0e-3
 
+#: Auto-derived observation sigma, as a fraction of the constant, per component
+#: (A, B, C). Used when an isotopologue supplies no ``sigma_constants``.
+#:
+#: These are model error, not measurement error, and that is why they can be
+#: defaulted at all. A spectrometer determines a rotational constant to roughly
+#: one part in 1e7; what limits the fit is that the measured quantity is a
+#: ground-state constant while the fitted structure is a rigid one, and the
+#: r_0-versus-r_e gap is a few tenths of a percent. That gap is a property of
+#: the physics, not of the molecule at hand, so a single calibrated fraction
+#: transfers across molecules -- which is exactly the argument that lets the
+#: quantum prior width be looked up from the level of theory instead of typed
+#: in. A is given twice the fraction of B and C: it is the least well
+#: determined by a rigid-rotor model, being most sensitive to the light-atom
+#: positions that zero-point motion displaces most.
+#:
+#: Calibrated on the reference molecules (see dev/monofluoro_references.py,
+#: whose SIGMA_REL carries the same values) and validated by the coverage runs
+#: in scripts/uncertainty_calibration.py. Supplying sigma_constants explicitly
+#: always wins; do so whenever the source paper quotes a real uncertainty.
+DEFAULT_SIGMA_REL_ABC = (0.010, 0.005, 0.005)
+
+#: Absolute floor so a pathological (zero or near-zero) constant cannot produce
+#: a zero sigma and a division by zero downstream.
+_SIGMA_ABS_FLOOR_MHZ = 1.0e-6
+
+
+def defect_model_sigma(obs_constants, coords, masses, component_indices=None):
+    """Model sigma measured from the data itself, via the inertial defect.
+
+    The defect I_c - I_a - I_b is zero for a rigid planar molecule and a fixed
+    negative number for a rigid non-planar one, so the difference between the
+    defect of the *measured* constants and the defect of a *structure* is
+    vibrational contamination and nothing else -- a per-species, data-driven
+    measurement of exactly the quantity the flat fraction in
+    DEFAULT_SIGMA_REL_ABC guesses at.
+
+    The structural part must be subtracted, not ignored: measured defects on
+    this reference set run from +0.09 to -6.35 amu.A^2, which looks like a 70x
+    spread in non-rigidity but is almost entirely non-planarity. Subtracting
+    the structure's own defect collapses the range to 0.022-0.092 -- and that
+    residue is the real signal.
+
+    Converted to a relative sigma by dividing the defect through by the moment
+    of inertia it perturbs, since B = K / I gives dB/B = dI/I. Measured on
+    formyl fluoride this returns 0.21% against the flat 0.5% guess, agreeing
+    with the independent VPT2 estimate of the same gap (0.23% on
+    fluoroacetylene) -- two unrelated routes to the same correction factor.
+
+    Needs all three constants (the defect is otherwise undefined), so linear
+    molecules and partially-measured species get None and the caller falls
+    back to the flat default.
+    """
+    obs = np.asarray(obs_constants, dtype=float).ravel()
+    idx = (list(range(obs.size)) if component_indices is None
+           else [int(c) for c in np.asarray(component_indices).ravel()])
+    if sorted(idx) != [0, 1, 2] or np.any(obs <= 0):
+        return None
+    order = [idx.index(c) for c in (0, 1, 2)]
+    abc = obs[order]
+    inertia = _INERTIA_TO_MHZ / abc
+    d_meas = float(inertia[2] - inertia[1] - inertia[0])
+    calc = _rotational_constants(np.asarray(coords, dtype=float),
+                                 np.asarray(masses, dtype=float))
+    if np.any(~np.isfinite(calc)) or np.any(calc <= 0):
+        return None
+    i_calc = _INERTIA_TO_MHZ / calc
+    d_struct = float(i_calc[2] - i_calc[1] - i_calc[0])
+    d_vib = abs(d_meas - d_struct)
+    rel = d_vib / np.maximum(inertia, 1e-12)
+    out = np.empty(obs.size, dtype=float)
+    for k, c in enumerate(idx):
+        out[k] = max(float(rel[c]) * abs(float(obs[k])), _SIGMA_ABS_FLOOR_MHZ)
+    return out
+
+
+def default_sigma_constants(obs_constants, component_indices=None):
+    """Model-error sigma for constants supplied without one, in MHz.
+
+    Returns ``DEFAULT_SIGMA_REL_ABC[component] * |constant|``, aligned to the
+    isotopologue's ``component_indices`` so a B-only species is weighted as a B
+    and not as an A. The previous fallback was a flat 1 MHz for every
+    component, which is not a calibrated statement about anything: on a 90 GHz
+    A constant it claims one part in 90,000, and on a 500 MHz C constant one
+    part in 500 -- a 180-fold difference in implied confidence created purely
+    by the size of the number.
+    """
+    obs = np.asarray(obs_constants, dtype=float).ravel()
+    idx = (np.arange(obs.size) if component_indices is None
+           else np.asarray(component_indices, dtype=int).ravel())
+    out = np.empty(obs.size, dtype=float)
+    for k in range(obs.size):
+        comp = int(idx[k]) if k < idx.size else k
+        rel = (DEFAULT_SIGMA_REL_ABC[comp] if 0 <= comp < 3
+               else DEFAULT_SIGMA_REL_ABC[1])
+        out[k] = max(rel * abs(float(obs[k])), _SIGMA_ABS_FLOOR_MHZ)
+    return out
+
 from backend.spectral.centrifugal_distortion import (
     CD_NAMES,
     CDConstants,
@@ -139,7 +236,17 @@ def sanitize_isotopologues(
         masses = np.asarray(iso["masses"], dtype=float)
         obs = np.asarray(iso["obs_constants"], dtype=float)
         idx = np.asarray(iso.get("component_indices", list(range(len(obs)))), dtype=int)
-        sig = np.asarray(iso.get("sigma_constants", np.ones(len(obs))), dtype=float)
+        if iso.get("sigma_constants") is not None:
+            sig = np.asarray(iso["sigma_constants"], dtype=float)
+        else:
+            sig = default_sigma_constants(obs, idx)
+            rel = ", ".join(f"{100 * r:g}%" for r in DEFAULT_SIGMA_REL_ABC)
+            notes.append(
+                f"{iso.get('name', f'iso_{iso_idx}')}: no sigma_constants given; "
+                f"using the calibrated model-error default ({rel} of |A|,|B|,|C|) "
+                f"-- the r_0-vs-r_e gap, not measurement precision. "
+                f"Supply sigma_constants to override."
+            )
         alpha = np.asarray(iso.get("alpha_constants", np.zeros(len(obs))), dtype=float)
         delta_total_in = iso.get("delta_total_constants")
         delta_total = (
@@ -307,7 +414,10 @@ class SpectralEngine:
             return np.asarray(v, dtype=float)
 
         self.isotopologues = []
+        _auto_sigma = []
         for k, iso in enumerate(isotopologues):
+            if iso.get("sigma_constants") is None:
+                _auto_sigma.append(str(iso.get("name", f"iso_{k+1}")))
             entry = {
                 "name": str(iso.get("name", f"iso_{k+1}")),
                 "masses": np.asarray(iso["masses"], dtype=float),
@@ -317,7 +427,12 @@ class SpectralEngine:
                     dtype=int,
                 ),
                 "sigma_constants": np.asarray(
-                    iso.get("sigma_constants", np.ones(len(iso["obs_constants"]))), dtype=float
+                    iso["sigma_constants"] if iso.get("sigma_constants") is not None
+                    else default_sigma_constants(
+                        iso["obs_constants"],
+                        iso.get("component_indices",
+                                list(range(len(iso["obs_constants"]))))),
+                    dtype=float,
                 ),
                 "alpha_constants": np.asarray(
                     iso.get("alpha_constants", np.zeros(len(iso["obs_constants"]))), dtype=float
@@ -356,6 +471,17 @@ class SpectralEngine:
                 raise ValueError("obs_constants, sigma_constants, and alpha_constants must match in length.")
             if len(iso["component_indices"]) != n:
                 raise ValueError("component_indices length must match obs_constants length.")
+        if _auto_sigma:
+            rel = ", ".join(f"{100 * r:g}%" for r in DEFAULT_SIGMA_REL_ABC)
+            print(
+                f"  [sigma] No sigma_constants given for {len(_auto_sigma)} "
+                f"isotopologue(s): {', '.join(_auto_sigma[:4])}"
+                f"{' ...' if len(_auto_sigma) > 4 else ''}.\n"
+                f"  [sigma] Using the calibrated model-error default "
+                f"({rel} of |A|, |B|, |C|). This is the r_0-vs-r_e modelling\n"
+                f"  [sigma] gap, not measurement precision; supply "
+                f"sigma_constants to override."
+            )
         self.delta = delta
         self.sigma_floor_rel = max(float(sigma_floor_rel), 0.0)
         self.robust_loss = robust_loss.lower()
