@@ -1,0 +1,250 @@
+"""The field-standard baseline this engine had never been measured against.
+
+"Mixed estimation" (Demaison, Vogt and co-workers) is the established way to
+combine spectroscopy with quantum chemistry for equilibrium structures, and it
+is what every comparison in this repository was missing. Until now the hybrid
+was scored against pure theory and pure spectroscopy -- two baselines nobody in
+the field actually uses on their own -- so a win proved only that combining
+beats not combining, which was never in doubt.
+
+What mixed estimation does
+--------------------------
+One weighted least-squares fit over the structural parameters, with two blocks
+of observations:
+
+    chi^2 = sum_i [(B_calc - B_e,obs) / sigma_B]^2        <- corrected spectra
+          + sum_j [(p_j - p_j,ab-initio) / sigma_p]^2      <- "predicate" values
+
+The second block is the entire quantum-chemical contribution: the ab initio
+geometry enters as a set of *point values* with an assigned uncertainty. That
+is the distinction this script exists to measure. The hybrid engine instead
+carries the local quadratic energy model -- gradient and Hessian -- so the
+prior knows the curvature of the surface in every direction rather than one
+number per coordinate with a width someone had to choose.
+
+Fairness
+--------
+Both methods get identical inputs: the same VPT2-corrected constants, the same
+observation sigmas, and the same statement about how far the level of theory
+may be trusted (sigma_x, the value the hybrid's alpha_q is calibrated from).
+Only the mechanism differs. sigma_p is scanned as well, because the choice is
+free in mixed estimation and a single value would be a strawman.
+
+Parameterisation
+----------------
+The fit runs over Cartesian coordinates with the predicate residuals evaluated
+on the internal coordinates derived from them. This is the same objective as
+fitting internal coordinates directly -- identical residuals, identical
+minimum -- and avoids writing a per-topology internal-to-Cartesian embedder.
+The six rigid-body directions are flat in both observation blocks; they leave
+the internal coordinates untouched, and the trust-region solver handles the
+rank deficiency without special casing.
+
+    python scripts/mixed_estimation_baseline.py [molecule_key ...]
+"""
+
+from __future__ import annotations
+
+import contextlib
+import io
+import json
+import sys
+import time
+from pathlib import Path
+
+import numpy as np
+from scipy.optimize import least_squares
+
+_ROOT = Path(__file__).resolve().parent.parent
+for _p in (_ROOT / ".github", _ROOT):
+    sys.path.insert(0, str(_p))
+
+import dev.pyscf_backend  # noqa: F401,E402  (registers "pyscf_hf")
+from backend.quantize import MolecularOptimizer  # noqa: E402
+from backend.registry import get_backend  # noqa: E402
+from backend.spectral.centrifugal_distortion import (  # noqa: E402
+    rotational_constants_mhz,
+)
+from backend.spectral.harmonic_alpha import (  # noqa: E402
+    build_correction_table_from_hessian,
+)
+from dev.monofluoro_references import (  # noqa: E402
+    ISOCYANIC_ACID,
+    MOLECULES,
+    MOLECULES_SET2,
+    OZONE,
+    WATER_SET,
+)
+from scripts.monofluoro_benchmark import (  # noqa: E402
+    build_isotopologues,
+    start_geometry,
+)
+
+METHOD, BASIS = "hf", "6-31g"
+
+#: How far the quantum surface is trusted, in Angstrom. The hybrid derives its
+#: alpha_q from exactly this number, so handing the same value to mixed
+#: estimation as its predicate sigma is what makes the comparison about
+#: mechanism rather than about who was given the more generous prior.
+SIGMA_X_ANG = 0.020
+
+#: Predicate sigmas to scan. Mixed estimation leaves this to the practitioner,
+#: so reporting one value would be a strawman: too tight and theory dominates,
+#: too loose and the method degenerates to a spectroscopy-only fit. The scan
+#: shows the whole curve and lets the best case stand as the baseline.
+SIGMA_P_SCAN_ANG = (0.002, 0.005, 0.010, 0.020, 0.050)
+
+#: Angle predicate sigma, in degrees, paired with each bond sigma above by the
+#: same ratio the reference module uses between its bond and angle widths.
+_ANGLE_SIGMA_PER_ANG = 1.5 / 0.020
+
+
+def corrected_targets(mol, isos, ctbl):
+    """B_e per species and component, from B_0 plus the VPT2 correction.
+
+    Both methods fit these same numbers; the correction is computed once and
+    shared so that no part of the comparison turns on one method seeing a
+    better-corrected constant than the other.
+    """
+    out = []
+    for iso in isos:
+        entry = ctbl.get(iso["name"], {})
+        obs = np.asarray(iso["obs_constants"], dtype=float)
+        idx = np.asarray(iso["component_indices"], dtype=int)
+        sig = np.asarray(iso["sigma_constants"], dtype=float)
+        for k, comp in enumerate(idx):
+            label = "ABC"[int(comp)]
+            spec = entry.get(label)
+            delta = 0.0
+            if spec is not None:
+                delta = 0.5 * float(spec.get("alpha_sum_mhz", 0.0))
+            out.append({
+                "masses": np.asarray(iso["masses"], dtype=float),
+                "component": int(comp),
+                "value": float(obs[k]) + delta,
+                "sigma": float(sig[k]) if sig[k] > 0 else 1.0,
+            })
+    return out
+
+
+def mixed_estimation_fit(mol, targets, theory_coords, sigma_p_ang):
+    """One weighted least-squares fit: corrected constants plus predicates.
+
+    Returns the fitted Cartesian geometry. The starting point is the theory
+    geometry, which is also where the predicates are centred -- the standard
+    choice, and the same warm start the hybrid uses, so neither method gets an
+    initialisation advantage.
+    """
+    x0 = np.asarray(theory_coords, dtype=float).ravel()
+    ref_int = mol.internal_coordinates(np.asarray(theory_coords, dtype=float))
+    bond_names = list(mol.bonds.keys())
+    angle_names = list(mol.angles.keys())
+    sigma_a = sigma_p_ang * _ANGLE_SIGMA_PER_ANG
+
+    def residuals(flat):
+        coords = flat.reshape(-1, 3)
+        res = []
+        for t in targets:
+            calc = rotational_constants_mhz(coords, t["masses"])
+            res.append((float(calc[t["component"]]) - t["value"]) / t["sigma"])
+        got = mol.internal_coordinates(coords)
+        for name in bond_names:
+            res.append((got[name] - ref_int[name]) / sigma_p_ang)
+        for name in angle_names:
+            res.append((got[name] - ref_int[name]) / sigma_a)
+        return np.asarray(res, dtype=float)
+
+    sol = least_squares(residuals, x0, method="trf", xtol=1e-12, ftol=1e-12,
+                        max_nfev=2000)
+    return sol.x.reshape(-1, 3), float(np.sum(sol.fun ** 2))
+
+
+def hybrid_fit(mol, isos, theory_coords, ctbl):
+    """The engine's own answer on identical inputs."""
+    opt = MolecularOptimizer(
+        elems=list(mol.elems), coords=np.asarray(theory_coords, dtype=float),
+        isotopologues=isos, quantum_backend="pyscf_hf",
+        orca_method=METHOD, orca_basis=BASIS, coordinate_mode="cartesian",
+        use_autoconfig=False, max_iter=40, hess_recalc_every=10,
+        correction_table=ctbl, quantum_prior_sigma_ang=SIGMA_X_ANG,
+        chi2_rescale=True, chi2_rescale_max_passes=3)
+    with contextlib.redirect_stdout(io.StringIO()):
+        return opt.run()
+
+
+def rms_bond_error(mol, coords):
+    ref = mol.internal_coordinates(np.asarray(mol.geometry, dtype=float))
+    got = mol.internal_coordinates(np.asarray(coords, dtype=float))
+    errs = [(got[k] - ref[k]) * 1000.0 for k in mol.bonds]
+    return float(np.sqrt(np.mean(np.square(errs)))), errs
+
+
+def main() -> None:
+    pool = (list(MOLECULES) + list(MOLECULES_SET2)
+            + [WATER_SET[0], OZONE, ISOCYANIC_ACID])
+    wanted = sys.argv[1:] or [m.key for m in pool]
+    out_path = _ROOT / "output" / "mixed_estimation_baseline.json"
+    out = json.loads(out_path.read_text(encoding="utf-8")) \
+        if out_path.exists() else {}
+
+    print(f"  {METHOD.upper()}/{BASIS}, VPT2-corrected constants, "
+          f"sigma_x = {SIGMA_X_ANG} A.")
+    print("  Mixed estimation (ab initio as point predicates) vs the hybrid "
+          "(ab initio as an energy model).\n")
+
+    for mol in pool:
+        if mol.key not in wanted or mol.key in out:
+            continue
+        t0 = time.time()
+        backend = get_backend("pyscf_hf")(elems=list(mol.elems),
+                                          method=METHOD, basis=BASIS)
+        with contextlib.redirect_stdout(io.StringIO()):
+            theory = backend.optimise(start_geometry(mol))
+        cache: dict = {}
+
+        def hessian_fn(coords_ang):
+            key = np.asarray(coords_ang, dtype=float).round(9).tobytes()
+            if key not in cache:
+                cache[key] = backend.run_hessian(coords_ang).hessian_bohr
+            return cache[key]
+
+        # Sigmas come from the reference module's own model (published
+        # precision combined with the r_0-vs-r_e model gap). Both methods are
+        # handed exactly these, so neither is advantaged by its weighting.
+        isos = build_isotopologues(mol, None)
+        with contextlib.redirect_stdout(io.StringIO()):
+            ctbl, _info = build_correction_table_from_hessian(
+                hessian_fn(theory), np.asarray(theory, dtype=float), isos,
+                hessian_fn=hessian_fn, cubic_scheme="normal_mode")
+
+        targets = corrected_targets(mol, isos, ctbl)
+        rec = {"n_species": len(isos), "n_targets": len(targets),
+               "theory_rms_ma": rms_bond_error(mol, theory)[0],
+               "mixed_estimation": {}}
+
+        for sig_p in SIGMA_P_SCAN_ANG:
+            geom, chi2 = mixed_estimation_fit(mol, targets, theory, sig_p)
+            rms, _ = rms_bond_error(mol, geom)
+            rec["mixed_estimation"][f"{sig_p}"] = {"rms_bond_ma": rms,
+                                                   "chi2": chi2}
+
+        hyb = hybrid_fit(mol, isos, theory, ctbl)
+        rec["hybrid_rms_ma"] = rms_bond_error(mol, hyb)[0]
+        best_sig = min(rec["mixed_estimation"],
+                       key=lambda s: rec["mixed_estimation"][s]["rms_bond_ma"])
+        rec["me_best_sigma_p"] = best_sig
+        rec["me_best_rms_ma"] = rec["mixed_estimation"][best_sig]["rms_bond_ma"]
+
+        print(f"  {mol.name:<22} theory {rec['theory_rms_ma']:6.2f}   "
+              f"ME(best sig_p={best_sig}) {rec['me_best_rms_ma']:6.2f}   "
+              f"hybrid {rec['hybrid_rms_ma']:6.2f} mA"
+              f"   ({(time.time() - t0) / 60:.1f} min)", flush=True)
+        out[mol.key] = rec
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json.dumps(out, indent=2), encoding="utf-8")
+
+    print(f"\n  written to {out_path}")
+
+
+if __name__ == "__main__":
+    main()
