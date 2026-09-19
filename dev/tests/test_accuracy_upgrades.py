@@ -437,3 +437,84 @@ def test_freq_scale_is_reported_so_a_table_cannot_be_read_without_it():
             h2o_hessian(coords), coords, iso, hessian_fn=h2o_hessian,
             cubic_scheme="normal_mode", freq_scale=0.95)
     assert info["freq_scale"] == pytest.approx(0.95)
+
+
+# ── defect bias floor ──────────────────────────────────────────────────────
+
+def _water_isos_for_floor():
+    from dev.monofluoro_references import WATER_SET
+    from scripts.monofluoro_benchmark import build_isotopologues
+    mol = WATER_SET[0]
+    return mol, build_isotopologues(mol, None)
+
+
+def test_defect_floor_is_off_by_default():
+    """Every existing corrected target must be reproducible."""
+    import inspect
+
+    from backend.spectral.rovib_corrections import resolve_corrections
+    sig = inspect.signature(resolve_corrections)
+    assert sig.parameters["defect_bias_floor"].default is False
+
+
+def test_defect_floor_needs_coords_and_declines_quietly_without_them():
+    """Asking for the floor with nothing to compute a structural defect from
+    must leave the sigmas alone rather than invent a bound."""
+    from backend.spectral.rovib_corrections import resolve_corrections
+
+    mol, isos = _water_isos_for_floor()
+    a = resolve_corrections(isos, correction_table=None, elems=list(mol.elems))
+    b = resolve_corrections(isos, correction_table=None, elems=list(mol.elems),
+                            defect_bias_floor=True, coords_ang=None)
+    assert [t.sigma_mhz for t in a] == [t.sigma_mhz for t in b]
+
+
+def test_defect_floor_only_ever_raises_a_sigma():
+    """It is a lower bound on correction error, so it must never tighten
+    anything -- a floor that could shrink a sigma would let a bad correction
+    gain influence."""
+    from backend.spectral.rovib_corrections import resolve_corrections
+
+    mol, isos = _water_isos_for_floor()
+    coords = np.asarray(mol.geometry, dtype=float)
+    base = resolve_corrections(isos, correction_table=None,
+                               elems=list(mol.elems))
+    floored = resolve_corrections(isos, correction_table=None,
+                                  elems=list(mol.elems),
+                                  defect_bias_floor=True, coords_ang=coords)
+    by_key = {(t.isotopologue_label, t.component_index): t.sigma_mhz
+              for t in base}
+    for t in floored:
+        was = by_key[(t.isotopologue_label, t.component_index)]
+        assert t.sigma_mhz >= was - 1e-9, (t.isotopologue_label, t.component)
+
+
+def test_defect_floor_is_zero_for_a_structure_that_reproduces_its_constants():
+    """The probe's own null case.
+
+    Feed constants computed *from* the structure: the corrected defect equals
+    the structural defect exactly, so there is no residual and nothing to
+    floor. If this raised a sigma, the probe would be measuring its own
+    arithmetic rather than correction error.
+    """
+    from backend.spectral.centrifugal_distortion import rotational_constants_mhz
+    from backend.spectral.rovib_corrections import resolve_corrections
+
+    mol, isos = _water_isos_for_floor()
+    coords = np.asarray(mol.geometry, dtype=float)
+    exact = []
+    for iso in isos:
+        abc = rotational_constants_mhz(coords, np.asarray(iso["masses"], float))
+        new = dict(iso)
+        idx = list(iso["component_indices"])
+        new["obs_constants"] = np.array([abc[int(c)] for c in idx], dtype=float)
+        new["sigma_constants"] = np.full(len(idx), 5.0)
+        new["sigma_systematic_constants"] = np.zeros(len(idx))
+        new["alpha_constants"] = [0.0] * len(idx)
+        exact.append(new)
+
+    floored = resolve_corrections(exact, correction_table=None,
+                                  elems=list(mol.elems),
+                                  defect_bias_floor=True, coords_ang=coords)
+    for t in floored:
+        assert t.sigma_mhz == pytest.approx(5.0, rel=1e-6), t.sigma_mhz

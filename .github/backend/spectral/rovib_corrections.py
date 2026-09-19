@@ -6,6 +6,7 @@ from typing import Optional
 import numpy as np
 
 from backend.spectral.correction_models import COMPONENTS, RovibCorrection
+from backend.spectral.spectral import defect_model_sigma
 
 
 # ---------------------------------------------------------------------------
@@ -295,6 +296,8 @@ def resolve_corrections(
     sigma_elec_fraction: float = 0.1,
     correction_bob_params: Optional[dict] = None,
     g_tensor: Optional[dict] = None,
+    defect_bias_floor: bool = False,
+    coords_ang=None,
 ) -> list:
     """
     For each isotopologue Ã— component pair, resolve all corrections and return
@@ -563,6 +566,76 @@ def resolve_corrections(
                 correction_records=records,
             ))
 
+    if defect_bias_floor and coords_ang is not None:
+        targets = _apply_defect_bias_floor(targets, isotopologues, coords_ang)
+    return targets
+
+
+def _apply_defect_bias_floor(targets, isotopologues, coords_ang):
+    """Raise each sigma to the residual inertial defect left after correcting.
+
+    The inertial defect I_c - I_a - I_b is zero for a rigid planar molecule and
+    a fixed negative number for a rigid non-planar one, so once a structure's
+    own defect is subtracted what remains is vibrational contamination and
+    nothing else. Applying the vibrational correction is meant to remove it.
+    Whatever survives is therefore correction error, measured without reference
+    to any published structure -- which is what makes this a bias detector
+    rather than another opinion about the force field.
+
+    Measured across the reference set at RHF/6-31G, as the ratio of the
+    residual defect after correcting to the one before:
+
+        water                0.06 - 0.10     correction works
+        ozone                0.04 - 0.09     works
+        fluoroethane         0.09 - 0.36     works
+        chlorofluoromethane  0.31            works
+        formyl fluoride      0.54 - 0.62     modest
+        vinyl fluoride       1.66            makes it worse
+        acetyl fluoride      2.2  - 64       makes it much worse
+
+    The last two are exactly the molecules where the fit degrades a good
+    quantum prior -- theory alone beats the hybrid on vinyl fluoride and acetyl
+    fluoride and on nothing else in the set -- so a probe that never sees a
+    reference structure picks out the biased targets on its own.
+
+    It also catches sigmas that are absurd on their face. Acetyl fluoride's A
+    constants leave the correction chain with sigma of 0.5 to 2.8 MHz while the
+    defect says its corrected constants are mutually inconsistent at about
+    33 MHz: the fit was being told to match them ten to sixty times more
+    tightly than they deserve.
+
+    Applied as a floor rather than in quadrature, because this is a lower bound
+    on the correction error, not an independent contribution to it.
+    """
+    by_species: dict = {}
+    for t in targets:
+        by_species.setdefault(t.isotopologue_label, []).append(t)
+    masses_of = {str(iso.get("name", "iso")): iso.get("masses")
+                 for iso in isotopologues}
+
+    for label, group in by_species.items():
+        if len(group) != 3:
+            continue                      # the defect needs all three
+        masses = masses_of.get(label)
+        if masses is None:
+            continue
+        vals = np.empty(3, dtype=float)
+        seen = set()
+        for t in group:
+            c = int(t.component_index)
+            if c not in (0, 1, 2):
+                break
+            vals[c] = float(t.value_mhz)
+            seen.add(c)
+        if seen != {0, 1, 2}:
+            continue
+        floors = defect_model_sigma(vals, coords_ang, masses, [0, 1, 2])
+        if floors is None:
+            continue
+        for t in group:
+            floor = float(floors[int(t.component_index)])
+            if np.isfinite(floor) and floor > float(t.sigma_mhz):
+                t.sigma_mhz = floor
     return targets
 
 

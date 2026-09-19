@@ -111,6 +111,10 @@ SIGMA_X_ANG = _SIGMA_X_BY_LEVEL.get((METHOD.lower(), BASIS.lower()), 0.020)
 SIGMA_P_SCAN_ANG = tuple(sorted({
     round(SIGMA_X_ANG * f, 5) for f in (0.1, 0.25, 0.5, 1.0, 2.5, 5.0)}))
 
+#: Raise every corrected target's sigma to the residual inertial defect left
+#: after correcting it. Off by default so existing numbers stay reproducible.
+DEFECT_BIAS_FLOOR = any(a == "defect_floor=on" for a in sys.argv[1:])
+
 #: Angle predicate sigma, in degrees, paired with each bond sigma above by the
 #: same ratio the reference module uses between its bond and angle widths.
 _ANGLE_SIGMA_PER_ANG = 1.5 / 0.020
@@ -147,8 +151,14 @@ def corrected_targets(mol, isos, ctbl):
     artefact: the hybrid has always used these sigmas, which is why it too
     sits near 20 mA on acetyl fluoride whatever prior it is handed.
     """
-    resolved = resolve_corrections(isos, correction_table=ctbl,
-                                   mode="hybrid_auto", elems=list(mol.elems))
+    resolved = resolve_corrections(
+        isos, correction_table=ctbl, mode="hybrid_auto",
+        elems=list(mol.elems),
+        # Model-free bias floor: whatever inertial defect survives the
+        # vibrational correction is correction error, and no sigma should claim
+        # to be tighter than that.
+        defect_bias_floor=DEFECT_BIAS_FLOOR,
+        coords_ang=np.asarray(mol.geometry, dtype=float))
     by_species = {iso["name"]: np.asarray(iso["masses"], dtype=float)
                   for iso in isos}
     out = []
