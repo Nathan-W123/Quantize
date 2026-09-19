@@ -379,3 +379,61 @@ def test_uncorrected_bias_is_the_typical_class_bias_not_zero():
     got = uncorrected_class_bias(per_mol, "zzz")
     assert got == pytest.approx(
         float(np.sqrt(np.mean(np.square([0.029, -0.011])))), rel=1e-9)
+
+
+# ── frequency scaling ──────────────────────────────────────────────────────
+
+def test_freq_scale_of_one_is_exactly_the_old_behaviour():
+    """Default off, bit for bit, or every existing correction moves."""
+    coords = h2o_coords()
+    a0, _, s0, _ = compute_harmonic_alpha(h2o_hessian(coords), coords, H2O_MASSES)
+    a1, _, s1, i1 = compute_harmonic_alpha(h2o_hessian(coords), coords,
+                                           H2O_MASSES, freq_scale=1.0)
+    for k in ("A", "B", "C"):
+        assert a1[k] == pytest.approx(a0[k], rel=1e-14)
+        assert s1[k] == pytest.approx(s0[k], rel=1e-14)
+
+
+def test_freq_scale_scales_the_frequencies_exactly():
+    """The one thing it must do, and the only thing.
+
+    Mode vectors are invariant under a uniform scaling of the Hessian, and the
+    cubic constants are left as computed -- that combination is what "scaled
+    harmonic frequencies" means in the literature, as opposed to scaling the
+    whole surface.
+    """
+    coords = h2o_coords()
+    _, _, _, base = compute_harmonic_alpha(h2o_hessian(coords), coords, H2O_MASSES)
+    _, _, _, scaled = compute_harmonic_alpha(h2o_hessian(coords), coords,
+                                             H2O_MASSES, freq_scale=0.9)
+    w0 = np.asarray(base["frequencies_cm"], dtype=float)
+    w1 = np.asarray(scaled["frequencies_cm"], dtype=float)
+    assert w1 == pytest.approx(0.9 * w0, rel=1e-12)
+
+
+def test_alpha_is_strongly_sensitive_to_the_frequency_scale():
+    """Why this hook exists: alpha carries 1/omega, so a systematic frequency
+    error is a systematic bias in the correction rather than noise in it.
+    Measured on water, alpha_B moves from 12675 to 18939 MHz between scales of
+    1.00 and 0.89 -- a 49% change from an 11% one.
+    """
+    coords = h2o_coords()
+    a10, *_ = compute_harmonic_alpha(h2o_hessian(coords), coords, H2O_MASSES,
+                                     hessian_fn=h2o_hessian, freq_scale=1.0)
+    a89, *_ = compute_harmonic_alpha(h2o_hessian(coords), coords, H2O_MASSES,
+                                     hessian_fn=h2o_hessian, freq_scale=0.89)
+    assert abs(a89["B"]) > 1.4 * abs(a10["B"])
+
+
+def test_freq_scale_is_reported_so_a_table_cannot_be_read_without_it():
+    """Two correction tables that differ only by the scale must be
+    distinguishable after the fact."""
+    coords = h2o_coords()
+    iso = [{"name": "H2-16O", "masses": H2O_MASSES.tolist()}]
+    from backend.spectral.harmonic_alpha import build_correction_table_from_hessian
+    import contextlib, io as _io
+    with contextlib.redirect_stdout(_io.StringIO()):
+        _, info = build_correction_table_from_hessian(
+            h2o_hessian(coords), coords, iso, hessian_fn=h2o_hessian,
+            cubic_scheme="normal_mode", freq_scale=0.95)
+    assert info["freq_scale"] == pytest.approx(0.95)

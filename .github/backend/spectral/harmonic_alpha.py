@@ -76,6 +76,7 @@ def compute_harmonic_alpha(
     nm_sigma_fraction: float = 0.15,
     linear_pair_coeff=None,
     lam_freq_cm: float = 0.0,
+    freq_scale: float = 1.0,
 ):
     """
     Compute summed alpha Σ_r α_r^K for each rotational component K.
@@ -108,6 +109,17 @@ def compute_harmonic_alpha(
                     keeps the cubic term meaningful on a noisy DFT surface.
                     Computed once with the reference masses and reused across
                     isotopologues via the rigid-completed mode decomposition.
+    freq_scale    : multiply the harmonic frequencies by this before forming α.
+                    A computed force field is systematically stiff -- RHF/6-31G
+                    puts water's bend at 1829 cm⁻¹ against an experimental
+                    harmonic 1649, 11% high -- and α carries 1/ω through both
+                    the zero-point amplitude and the Coriolis sum, so a
+                    systematic frequency error is a systematic bias in the
+                    correction rather than noise in it. Scaling ω is the
+                    standard mitigation; it leaves the normal-mode vectors and
+                    the cubic force constants untouched, which is what
+                    "scaled harmonic frequencies" means in the literature.
+                    1.0 disables it.
     lam_freq_cm   : modes below this frequency are treated as large-amplitude:
                     their whole contribution to α is added to sigma rather than
                     trusted. VPT2 expands in the vibrational coordinate and a
@@ -140,6 +152,12 @@ def compute_harmonic_alpha(
     omega_cm, L_mw = _normal_modes(
         hess_bohr, masses, n_rigid=_rigid_mode_count(coords, masses)
     )
+    # Frequency scaling, applied before the cutoff so the cutoff means the same
+    # thing in scaled units. Only omega moves: the mode vectors are invariant
+    # under a uniform scaling of the Hessian, and the cubic constants are left
+    # as computed.
+    if float(freq_scale) != 1.0:
+        omega_cm = omega_cm * float(freq_scale)
     real_mask = omega_cm >= min_freq_cm
     omega_cm = omega_cm[real_mask]
     L_mw = L_mw[:, real_mask]
@@ -683,6 +701,7 @@ def build_correction_table_from_hessian(
     cubic_scheme: str = "cartesian",
     linear_pair_coeff=None,
     lam_freq_cm: float = 0.0,
+    freq_scale: float = 1.0,
 ) -> tuple[dict, dict]:
     """
     Build a correction_table dict (compatible with parse_correction_table)
@@ -778,6 +797,7 @@ def build_correction_table_from_hessian(
             mode_derivs=mode_derivs,
             linear_pair_coeff=linear_pair_coeff,
             lam_freq_cm=lam_freq_cm,
+            freq_scale=freq_scale,
         )
         total_near_degen_skips += res_info.get("near_degen_skips", 0)
         lam_here = list(res_info.get("lam_modes_cm", []))
@@ -839,4 +859,5 @@ def build_correction_table_from_hessian(
         "dropped_components": dropped,
         "lam": lam_report,
         "lam_freq_cm": float(lam_freq_cm),
+        "freq_scale": float(freq_scale),
     }

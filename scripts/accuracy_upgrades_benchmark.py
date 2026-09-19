@@ -98,6 +98,16 @@ SIGMA_X_ANG = _SIGMA_X_BY_LEVEL.get((METHOD.lower(), BASIS.lower()), 0.020)
 #: above 400, so the threshold is not sitting on top of a cluster.
 LAM_FREQ_CM = 350.0
 
+#: Harmonic frequency scale factor. 1.0 disables it. Left off by default:
+#: measured against water's experimental harmonic frequencies, RHF/6-31G is
+#: 11% stiff on the bend (1829.4 against 1649) but only 1.5% on the stretches
+#: (3903.5 against 3832), so a single factor cannot fit both and tuning one on
+#: this set would be fitting the answer. The hook is here because alpha is very
+#: sensitive to it -- water's alpha_B moves from 12675 to 18939 MHz at 0.89 --
+#: so it belongs to any serious attempt at the correction bias, with per-mode
+#: factors from an external frequency set rather than a scalar guessed here.
+FREQ_SCALE = 1.0
+
 #: Fractional uncertainty on a computed g value. The OCS cross-check puts
 #: RHF/6-31G at -0.0345 against an experimental -0.028 and RHF/cc-pVTZ at
 #: -0.0272, so a small basis is good to roughly 25% on g. The electronic
@@ -265,10 +275,26 @@ def main() -> None:
         # cheap thing and the correction is the one worth improving.
         corr_backend = None
         corr_cache: dict = {}
+        corr_geom = None
         if CORR_METHOD or CORR_BASIS:
             corr_backend = get_backend("pyscf_hf")(
                 elems=list(mol.elems), method=CORR_METHOD or METHOD,
                 basis=CORR_BASIS or BASIS)
+            # VPT2 expands about a stationary point. A force field from one
+            # level evaluated at another level's geometry is not at one: there
+            # is a residual gradient, the normal-mode analysis is contaminated
+            # by it, and alpha is computed from frequencies that are not the
+            # force field's own. An earlier version of this script did exactly
+            # that -- B3LYP/6-31G(d) Hessians at the RHF/6-31G geometry -- and
+            # reported that the correction level does not matter, which was an
+            # artefact of the protocol rather than a result.
+            #
+            # So the correction level gets its own minimum. alpha is a property
+            # of a force field and the masses, not of whatever geometry the fit
+            # is being started from, and it is applied to the observed B_0
+            # either way.
+            with contextlib.redirect_stdout(io.StringIO()):
+                corr_geom = corr_backend.optimise(start_geometry(mol))
 
         def corr_hessian_fn(coords_ang, _b=corr_backend, _c=corr_cache):
             key = np.asarray(coords_ang, dtype=float).round(9).tobytes()
@@ -294,17 +320,19 @@ def main() -> None:
         tables: dict = {}
 
         def table_for(coords, lam, corr, _tabs=tables):
-            key = (np.asarray(coords, dtype=float).round(8).tobytes(),
-                   bool(lam), bool(corr))
+            # When the corrections come from another level they are evaluated
+            # at that level's own equilibrium, not at `coords`.
+            at = np.asarray(corr_geom if corr else coords, dtype=float)
+            key = (at.round(8).tobytes(), bool(lam), bool(corr))
             if key not in _tabs:
                 hfn = corr_hessian_fn if corr else hessian_fn
                 isos_local = build_isotopologues(mol, None)
                 with contextlib.redirect_stdout(io.StringIO()):
                     _tabs[key] = build_correction_table_from_hessian(
-                        hfn(coords), np.asarray(coords, dtype=float),
-                        isos_local, hessian_fn=hfn,
+                        hfn(at), at, isos_local, hessian_fn=hfn,
                         cubic_scheme="normal_mode",
-                        lam_freq_cm=LAM_FREQ_CM if lam else 0.0)
+                        lam_freq_cm=LAM_FREQ_CM if lam else 0.0,
+                        freq_scale=FREQ_SCALE)
             return _tabs[key]
 
         g_tensor = None
