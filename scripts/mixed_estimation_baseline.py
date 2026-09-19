@@ -68,6 +68,7 @@ from backend.spectral.centrifugal_distortion import (  # noqa: E402
 from backend.spectral.harmonic_alpha import (  # noqa: E402
     build_correction_table_from_hessian,
 )
+from backend.spectral.rovib_corrections import resolve_corrections  # noqa: E402
 from dev.monofluoro_references import (  # noqa: E402
     ISOCYANIC_ACID,
     MOLECULES,
@@ -116,30 +117,41 @@ _ANGLE_SIGMA_PER_ANG = 1.5 / 0.020
 
 
 def corrected_targets(mol, isos, ctbl):
-    """B_e per species and component, from B_0 plus the VPT2 correction.
+    """B_e per species and component, resolved exactly as the hybrid resolves them.
 
-    Both methods fit these same numbers; the correction is computed once and
-    shared so that no part of the comparison turns on one method seeing a
-    better-corrected constant than the other.
+    Both methods must fit the same numbers *and* weight them the same way, and
+    that is why this goes through ``resolve_corrections`` rather than applying
+    the correction by hand. An earlier version added the VPT2 delta itself and
+    then took sigma from the observed constants alone, which quietly skipped
+    two things resolve_corrections does: it carries the correction's own
+    uncertainty into sigma, and it removes the systematic part of the
+    experimental sigma once a real vibrational correction has been applied
+    (that part was standing in for the missing correction, so keeping it would
+    double-count it).
+
+    The effect was not cosmetic. It left mixed estimation with tighter sigmas
+    than the hybrid on identical data -- on water's B the correction sigma is
+    950 MHz against an observed 1456 -- and switching on the large-amplitude
+    treatment moves that correction sigma to 6764 MHz, a change mixed
+    estimation could not see at all. A comparison built on that is measuring a
+    weighting difference and calling it a mechanism difference.
     """
+    resolved = resolve_corrections(isos, correction_table=ctbl,
+                                   mode="hybrid_auto", elems=list(mol.elems))
+    by_species = {iso["name"]: np.asarray(iso["masses"], dtype=float)
+                  for iso in isos}
     out = []
-    for iso in isos:
-        entry = ctbl.get(iso["name"], {})
-        obs = np.asarray(iso["obs_constants"], dtype=float)
-        idx = np.asarray(iso["component_indices"], dtype=int)
-        sig = np.asarray(iso["sigma_constants"], dtype=float)
-        for k, comp in enumerate(idx):
-            label = "ABC"[int(comp)]
-            spec = entry.get(label)
-            delta = 0.0
-            if spec is not None:
-                delta = 0.5 * float(spec.get("alpha_sum_mhz", 0.0))
-            out.append({
-                "masses": np.asarray(iso["masses"], dtype=float),
-                "component": int(comp),
-                "value": float(obs[k]) + delta,
-                "sigma": float(sig[k]) if sig[k] > 0 else 1.0,
-            })
+    for t in resolved:
+        masses = by_species.get(t.isotopologue_label)
+        if masses is None:
+            continue
+        sigma = float(t.sigma_mhz)
+        out.append({
+            "masses": masses,
+            "component": int(t.component_index),
+            "value": float(t.value_mhz),
+            "sigma": sigma if sigma > 0 else 1.0,
+        })
     return out
 
 
