@@ -173,3 +173,58 @@ def residual_sigma_after_offsets(per_molecule: dict[str, dict[str, list[float]]]
     if not resid:
         return float(floor_ang)
     return float(max(np.sqrt(np.mean(np.square(resid))), floor_ang))
+
+
+def uncorrected_class_bias(per_molecule: dict[str, dict[str, list[float]]],
+                           exclude_key: str) -> float:
+    """Typical size of a bond-class bias, for a class nothing calibrated.
+
+    A class seen only in the molecule being scored gets no offset, and the
+    honest statement about its error is not "small" -- it is "the size a bond
+    class bias usually has". That is measurable: the RMS of the per-class mean
+    offsets over the calibration molecules.
+    """
+    pooled: dict[str, list[float]] = defaultdict(list)
+    for key, by_class in per_molecule.items():
+        if key == exclude_key:
+            continue
+        for cls, errs in by_class.items():
+            pooled[cls].extend(errs)
+    means = [float(np.mean(v)) for v in pooled.values() if v]
+    if not means:
+        return 0.0
+    return float(np.sqrt(np.mean(np.square(means))))
+
+
+def prior_sigma_for_molecule(mol, per_molecule: dict[str, dict[str, list[float]]],
+                             exclude_key: str, floor_ang: float = 0.002) -> float:
+    """Prior width for *this* molecule, bond by bond, in Angstrom.
+
+    :func:`residual_sigma_after_offsets` returns one number for the whole
+    calibration set: the spread left once class offsets are removed. That is
+    right only if every class in the molecule actually got an offset. Where one
+    did not, the residual error is the full uncorrected bias, and quoting the
+    corrected spread instead tells the optimiser the prior is far better than
+    it is.
+
+    The cost of getting this wrong is not subtle. Chlorofluoromethane's C-Cl is
+    +78 mA and the only member of its class, so leave-one-out declines to
+    correct it and the "corrected" prior is still 45 mA out -- while sigma_x
+    claimed 5-6. Centring the prior there and asserting that precision moved
+    the hybrid from 13.16 mA to 19.71. The same mechanism, milder, cost formyl
+    fluoride 5.24 -> 6.45.
+
+    So sigma_x becomes the RMS over the molecule's own bonds of what is
+    actually left for each: the within-class spread where a class was
+    calibrated, and :func:`uncorrected_class_bias` where it was not.
+    """
+    corrected = leave_one_out_offsets(per_molecule, exclude_key)
+    spread = residual_sigma_after_offsets(per_molecule, exclude_key,
+                                          floor_ang=floor_ang)
+    unknown = uncorrected_class_bias(per_molecule, exclude_key)
+    classes = bond_classes_of(mol)
+    per_bond = [spread if classes[name] in corrected else unknown
+                for name in mol.bonds]
+    if not per_bond:
+        return float(max(spread, floor_ang))
+    return float(max(np.sqrt(np.mean(np.square(per_bond))), floor_ang))
