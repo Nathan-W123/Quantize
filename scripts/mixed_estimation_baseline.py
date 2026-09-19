@@ -120,7 +120,7 @@ DEFECT_BIAS_FLOOR = any(a == "defect_floor=on" for a in sys.argv[1:])
 _ANGLE_SIGMA_PER_ANG = 1.5 / 0.020
 
 
-def corrected_targets(mol, isos, ctbl):
+def corrected_targets(mol, isos, ctbl, bob_params=None):
     """B_e per species and component, resolved exactly as the hybrid resolves them.
 
     Both methods must fit the same numbers *and* weight them the same way, and
@@ -158,7 +158,8 @@ def corrected_targets(mol, isos, ctbl):
         # vibrational correction is correction error, and no sigma should claim
         # to be tighter than that.
         defect_bias_floor=DEFECT_BIAS_FLOOR,
-        coords_ang=np.asarray(mol.geometry, dtype=float))
+        coords_ang=np.asarray(mol.geometry, dtype=float),
+        correction_bob_params=bob_params)
     by_species = {iso["name"]: np.asarray(iso["masses"], dtype=float)
                   for iso in isos}
     out = []
