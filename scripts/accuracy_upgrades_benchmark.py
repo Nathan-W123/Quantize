@@ -113,6 +113,10 @@ CONFIGS = {
     "corr":    {"offsets": False, "elec": False, "lam": False, "corr": True},
     "all":     {"offsets": True,  "elec": True,  "lam": True,  "corr": False},
     "all+corr": {"offsets": True, "elec": True,  "lam": True,  "corr": True},
+    # Measured best pairing: offsets carry the gain, while elec and lam each
+    # cost more than they return on this set (ozone 2.32 -> 3.23 to the RHF
+    # g-tensor, isocyanic acid 18.73 -> 29.12 to the large-amplitude widening).
+    "offsets+corr": {"offsets": True, "elec": False, "lam": False, "corr": True},
 }
 
 
