@@ -227,6 +227,24 @@ def main() -> None:
                 _c[key] = _b.run_hessian(coords_ang).hessian_bohr
             return _c[key]
 
+        # The correction level, when it is allowed to differ from the geometry
+        # level. Corrections converge with basis and correlation treatment far
+        # faster than geometries do, so the usual practice is to compute alpha
+        # somewhere cheaper than the structure -- here the structure is the
+        # cheap thing and the correction is the one worth improving.
+        corr_backend = None
+        corr_cache: dict = {}
+        if CORR_METHOD or CORR_BASIS:
+            corr_backend = get_backend("pyscf_hf")(
+                elems=list(mol.elems), method=CORR_METHOD or METHOD,
+                basis=CORR_BASIS or BASIS)
+
+        def corr_hessian_fn(coords_ang, _b=corr_backend, _c=corr_cache):
+            key = np.asarray(coords_ang, dtype=float).round(9).tobytes()
+            if key not in _c:
+                _c[key] = _b.run_hessian(coords_ang).hessian_bohr
+            return _c[key]
+
         # Offsets, leave-one-out, and the geometry they produce.
         loo = leave_one_out_offsets(per_molecule_offsets, mol.key)
         offset_coords = offset_corrected_geometry(mol, theory_coords, loo)
@@ -240,14 +258,16 @@ def main() -> None:
         # Hessian cache is shared, so the second lam variant is nearly free.
         tables: dict = {}
 
-        def table_for(coords, lam, _tabs=tables):
-            key = (np.asarray(coords, dtype=float).round(8).tobytes(), bool(lam))
+        def table_for(coords, lam, corr, _tabs=tables):
+            key = (np.asarray(coords, dtype=float).round(8).tobytes(),
+                   bool(lam), bool(corr))
             if key not in _tabs:
+                hfn = corr_hessian_fn if corr else hessian_fn
                 isos_local = build_isotopologues(mol, None)
                 with contextlib.redirect_stdout(io.StringIO()):
                     _tabs[key] = build_correction_table_from_hessian(
-                        hessian_fn(coords), np.asarray(coords, dtype=float),
-                        isos_local, hessian_fn=hessian_fn,
+                        hfn(coords), np.asarray(coords, dtype=float),
+                        isos_local, hessian_fn=hfn,
                         cubic_scheme="normal_mode",
                         lam_freq_cm=LAM_FREQ_CM if lam else 0.0)
             return _tabs[key]
@@ -267,7 +287,11 @@ def main() -> None:
                 isos = electronic_shifted_isotopologues(
                     isos, g_tensor, float(np.sum(np.asarray(mol.masses))))
 
-            ctbl, info = table_for(prior, cfg["lam"])
+            if cfg["corr"] and corr_backend is None:
+                raise SystemExit(
+                    "configs including 'corr' need corr_method=/corr_basis= "
+                    "so the correction level differs from the geometry level")
+            ctbl, info = table_for(prior, cfg["lam"], cfg["corr"])
             targets = corrected_targets(mol, isos, ctbl)
 
             # Both methods get the same prior centre and the same width; the
@@ -282,6 +306,8 @@ def main() -> None:
                 "hybrid_rms_ma": rms_bond_error(mol, hyb)[0],
                 "n_species": len(isos),
                 "sigma_x_ang": float(sigma_x),
+                "corr_level": (f"{CORR_METHOD or METHOD}/{CORR_BASIS or BASIS}"
+                               if cfg["corr"] else f"{METHOD}/{BASIS}"),
                 "lam_modes_cm": sorted({round(w, 1) for v in info.get("lam", {}).values()
                                         for w in v.get("modes_cm", [])}),
                 "g_tensor": g_tensor if cfg["elec"] else None,
