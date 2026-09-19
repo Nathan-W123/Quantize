@@ -606,6 +606,36 @@ def _apply_defect_bias_floor(targets, isotopologues, coords_ang):
 
     Applied as a floor rather than in quadrature, because this is a lower bound
     on the correction error, not an independent contribution to it.
+
+    MEASURED, AND IT DOES NOT HELP -- keep it off unless you want calibration
+    rather than accuracy. Against the hybrid fit, with the offset-corrected
+    prior:
+
+        molecule          probe ratio   floor off   floor on
+        vinyl fluoride       1.66 flag      7.95       6.39   better
+        acetyl fluoride      2.2  flag      8.55       9.43   worse
+        formyl fluoride      0.54 ctrl      6.45       7.78   worse
+
+    It helped one flagged molecule, hurt the other, and damaged the control by
+    20%, which is the part that settles it: formyl fluoride's correction
+    demonstrably works, and the floor still loosened its sigmas enough to pull
+    the fit from 6.45 back toward its 9.38 prior.
+
+    The fault is a conflation. The probe's *ratio* is what detects bias; this
+    uses the *absolute* residual as a sigma, and formyl fluoride's is 287 MHz
+    -- large in absolute terms even while being a 1.8x improvement on the raw
+    defect -- so it swamps the data.
+
+    Underneath that is a real and awkward result: the honest sigma makes the
+    answer worse here. Those corrected constants genuinely are inconsistent at
+    ~287 MHz, so 287 MHz is the defensible weight, and at that weight the fit
+    correctly defers to a prior that happens to be worse than the inconsistent
+    data. Calibration cost 1.3 mA.
+
+    So the defect probe is a good diagnostic and a bad sigma floor. It picked
+    out, with no reference structure, exactly the two molecules in the set
+    where theory alone beats the hybrid. That is worth keeping. Flooring sigma
+    at its absolute residual is not.
     """
     by_species: dict = {}
     for t in targets:
