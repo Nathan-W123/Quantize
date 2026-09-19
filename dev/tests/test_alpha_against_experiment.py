@@ -271,11 +271,26 @@ def test_cd_constants_land_in_the_physical_range():
         assert value < 1.0e5, f"{name} = {value:.3g} MHz is unphysically large"
 
 
-def test_cd_constants_report_full_uncertainty_while_mapping_is_unvalidated():
+def test_cd_constants_claim_the_precision_the_reduction_was_measured_to_have():
+    """Sigma was floored at 100% while the tau -> A-reduction mapping was
+    unvalidated. It is validated now (backend.spectral.cd_reduction: DJ within
+    1.6% and DK within 7.6% of H2-16O's measured constants, correct signs
+    throughout), so the floor comes down to the worst measured disagreement
+    rather than staying at a value-sized bound -- but it must still dominate a
+    caller's optimistic request, since the residual error is force-field error
+    the caller cannot see.
+    """
     coords = h2o_coords()
-    cd = compute_cd_constants(h2o_hessian(coords), coords, H2O_MASSES, sigma_fraction=0.05)
+    cd = compute_cd_constants(h2o_hessian(coords), coords, H2O_MASSES,
+                              sigma_fraction=0.05)
     for name in CD_NAMES:
-        assert cd.sigma[name] >= abs(getattr(cd, name))
+        value = abs(getattr(cd, name))
+        if value < 1.0:
+            continue            # sigma has an absolute floor down here
+        assert cd.sigma[name] == pytest.approx(0.40 * value, rel=1e-9), (
+            f"{name}: sigma should track the measured 40% reduction accuracy, "
+            f"not the caller's 5%"
+        )
 
 
 def test_corrected_targets_recover_the_equilibrium_structure():
