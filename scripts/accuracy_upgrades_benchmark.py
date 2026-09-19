@@ -94,7 +94,10 @@ from backend.spectral.bond_offsets import (  # noqa: E402
     offset_corrected_geometry,
     prior_sigma_for_molecule,
 )
-from backend.spectral.correction_models import electronic_delta_b  # noqa: E402
+from backend.spectral.correction_models import (  # noqa: E402
+    electronic_delta_b,
+    get_builtin_bob_params,
+)
 from backend.spectral.electronic_g import rotational_g_tensor  # noqa: E402
 from backend.spectral.harmonic_alpha import (  # noqa: E402
     build_correction_table_from_hessian,
@@ -181,7 +184,18 @@ CONFIGS = {
     # itself -- two isotopologues, measured in 1950 -- and the r_s reference
     # the fit is scored against while the engine targets r_e.
     "offsets+corr": {"offsets": True, "elec": False, "lam": False, "corr": True},
+    # Born-Oppenheimer breakdown, with the module's built-in u-parameters.
+    # Small in absolute terms -- about -13.6/-7.1/-4.6 MHz on water's A/B/C
+    # against correction sigmas of 950-1500 -- but isotope-dependent, and
+    # isotopic differences are where the structural information is, so the
+    # effect on geometry need not track the sigma ratio.
+    "bob": {"offsets": False, "elec": False, "lam": False, "corr": False,
+            "bob": True},
+    "offsets+bob": {"offsets": True, "elec": False, "lam": False,
+                    "corr": False, "bob": True},
 }
+for _cfg in CONFIGS.values():
+    _cfg.setdefault("bob", False)
 
 
 def electronic_shifted_isotopologues(isos, g_tensor, total_mass_amu):
@@ -383,6 +397,10 @@ def main() -> None:
             sigma_x = sigma_x_offset if cfg["offsets"] else SIGMA_X_ANG
             isos = build_isotopologues(mol, None)
 
+            bob_params = None
+            if cfg["bob"]:
+                with contextlib.redirect_stdout(io.StringIO()):
+                    bob_params = get_builtin_bob_params(list(mol.elems), None)
             if cfg["elec"]:
                 if g_tensor is None:
                     g_tensor = rotational_g_tensor(
@@ -396,7 +414,8 @@ def main() -> None:
                     "configs including 'corr' need corr_method=/corr_basis= "
                     "so the correction level differs from the geometry level")
             ctbl, info = table_for(prior, cfg["lam"], cfg["corr"])
-            targets = corrected_targets(mol, isos, ctbl)
+            targets = corrected_targets(mol, isos, ctbl,
+                                        bob_params=bob_params)
 
             # Both methods get the same prior centre and the same width; the
             # comparison is about mechanism, not about who was told to trust
@@ -412,6 +431,7 @@ def main() -> None:
                 "sigma_x_ang": float(sigma_x),
                 "corr_level": (f"{CORR_METHOD or METHOD}/{CORR_BASIS or BASIS}"
                                if cfg["corr"] else f"{METHOD}/{BASIS}"),
+                "bob": bool(cfg["bob"]),
                 "lam_modes_cm": sorted({round(w, 1) for v in info.get("lam", {}).values()
                                         for w in v.get("modes_cm", [])}),
                 "g_tensor": g_tensor if cfg["elec"] else None,
