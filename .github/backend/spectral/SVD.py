@@ -256,6 +256,26 @@ class SubspaceOptimizer:
         # of freedom is 0.83, so nothing internal flags it -- the data is
         # self-consistent and simply wrong about that bond.
         #
+        # MEASURED, AND IT DOES NOT WORK ON THIS SET. On acetyl fluoride,
+        # switching it on moved C1-C2 from -18.49 to -19.51 mA and the other
+        # four bonds from 2.46 to 4.12: worse in both places. Two reasons, and
+        # together they close the idea off rather than invite tuning.
+        #
+        # The prior's own C1-C2 is -8.11 mA out, so a perfect pin caps the bond
+        # at 8 mA of error, not zero -- the offsets never corrected it because
+        # C-C was the one bond class whose calibration had mixed signs (mean
+        # -11.75 mA over -18.8 to +4.1, where every other class was unanimous).
+        # And it cannot reach even that: acetyl fluoride's A constants carry
+        # sigma_eff of 0.5-2.8 MHz, putting the data's precision along C1-C2 at
+        # 1e4-1e5 per Angstrom squared against this term's 2.7e4. Tightening
+        # sigma_x enough to win would assert the prior is good to about 2 mA
+        # when it measurably is not.
+        #
+        # Left in, off by default, because the formulation is right even though
+        # the numbers here are not: that bond is an information limit, and a
+        # calibration set large enough to give C-C a trustworthy offset would
+        # change the first reason.
+        #
         # A genuine Gaussian prior of width sigma_x per coordinate has
         # precision 1/sigma_x^2 and is added directly, not through alpha_q:
         # J is already sigma-normalised, so a displacement of sigma_x costs
