@@ -269,3 +269,59 @@ def test_singleton_classes_contribute_no_width():
 def test_a_floor_prevents_an_implausibly_tight_prior():
     per_mol = {"a": {"C-F": [0.02800, 0.02801]}, "b": {"C-F": [0.028005]}}
     assert residual_sigma_after_offsets(per_mol, "zzz", floor_ang=0.003) >= 0.003
+
+
+# ── rigid modes must not dilute the prior's curvature scale ────────────────
+
+def test_rigid_modes_are_excluded_from_the_curvature_scale():
+    """alpha_q is calibrated from the *typical vibrational* curvature.
+
+    Translations and rotations emerge from a numerical Hessian at ~1e-8
+    Hartree/Ang^2, which cleared the old absolute `> 1e-8` cut and was then
+    averaged in as though it were a vibration. Measured on water that put
+    lam_bar 1.67x too low, so the prior came out 1.29x looser than the sigma_x
+    the caller asked for -- silently, since nothing about the result looks
+    wrong. The cut has to scale with the Hessian.
+    """
+    from backend.spectral.SVD import SubspaceOptimizer
+
+    hess = h2o_hessian(h2o_coords()) * (1.8897261254578281 ** 2)
+    evals = np.linalg.eigvalsh(0.5 * (hess + hess.T))
+    vibrational = evals[evals > 1e-3]
+    assert vibrational.size == 3, "water has three vibrations"
+
+    opt = SubspaceOptimizer(1e-3, 0.0, 0.1, None, 1e-4, objective_mode="joint",
+                            alpha_quantum=1.0, quantum_prior_sigma_ang=0.02)
+    alpha_q = opt._calibrated_alpha_q(hess)
+    expected = 1.0 / (0.5 * float(vibrational.mean()) * 0.02 ** 2)
+    assert alpha_q == pytest.approx(expected, rel=1e-9)
+
+
+def test_the_curvature_cut_is_scale_free():
+    """Scaling a Hessian must scale alpha_q exactly, with no mode reclassified.
+
+    An absolute threshold fails this: shrink the Hessian far enough and real
+    vibrations drop below the cut, at which point lam_bar jumps.
+    """
+    from backend.spectral.SVD import SubspaceOptimizer
+
+    hess = h2o_hessian(h2o_coords()) * (1.8897261254578281 ** 2)
+    opt = SubspaceOptimizer(1e-3, 0.0, 0.1, None, 1e-4, objective_mode="joint",
+                            alpha_quantum=1.0, quantum_prior_sigma_ang=0.02)
+    base = opt._calibrated_alpha_q(hess)
+    for factor in (1e-4, 1e-2, 1e2, 1e4):
+        scaled = opt._calibrated_alpha_q(hess * factor)
+        assert scaled == pytest.approx(base / factor, rel=1e-9), factor
+
+
+def test_bridge_weight_still_mirrors_alpha_q_after_the_change():
+    """The two use the same cut; if they drift apart the geomeTRIC route and
+    the in-house optimiser are solving different problems."""
+    from backend.geometric_bridge import calibrated_spectral_weight
+    from backend.spectral.SVD import SubspaceOptimizer
+
+    hess = h2o_hessian(h2o_coords()) * (1.8897261254578281 ** 2)
+    opt = SubspaceOptimizer(1e-3, 0.0, 0.1, None, 1e-4, objective_mode="joint",
+                            alpha_quantum=1.0, quantum_prior_sigma_ang=0.02)
+    assert calibrated_spectral_weight(hess, 0.02) == pytest.approx(
+        1.0 / opt._calibrated_alpha_q(hess), rel=1e-10)

@@ -94,9 +94,14 @@ def calibrated_spectral_weight(hessian_hartree_per_ang2, sigma_x_ang):
     geometry at half a chi-square unit, so the two formulations have the same
     minimum.
     """
+    from backend.spectral.SVD import _CURVATURE_FLOOR_REL
+
     h = np.asarray(hessian_hartree_per_ang2, dtype=float)
     evals = np.linalg.eigvalsh(0.5 * (h + h.T))
-    positive = evals[evals > 1e-8]
+    # Same rigid-mode cut as the optimiser, imported rather than repeated: the
+    # two must agree or the bridge stops being the reciprocal of alpha_q.
+    positive = evals[evals > _CURVATURE_FLOOR_REL * max(
+        float(np.max(np.abs(evals))), 1.0)]
     if positive.size == 0:
         return 1.0
     lam_bar = float(np.mean(positive))
