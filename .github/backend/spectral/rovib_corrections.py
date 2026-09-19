@@ -491,7 +491,8 @@ def resolve_corrections(
 
             # â”€â”€ Born-Oppenheimer Breakdown correction â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             if correction_bob_params and elems and masses:
-                delta_b, sig_b = bob_delta_b(elems, masses, comp_label, correction_bob_params)
+                delta_b, sig_b = bob_delta_b(
+                    elems, masses, comp_label, correction_bob_params, b0)
                 if delta_b != 0.0 or sig_b is not None:
                     records.append(CorrectionRecord(
                         isotopologue_label=name,
