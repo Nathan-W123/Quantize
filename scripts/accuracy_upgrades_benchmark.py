@@ -144,13 +144,27 @@ def electronic_shifted_isotopologues(isos, g_tensor, total_mass_amu):
 
 
 def hybrid_fit(mol, isos, prior_coords, ctbl, sigma_x_ang):
-    """The engine's answer, with the prior centred and widened as handed."""
+    """The engine's answer, with the prior centred and widened as handed.
+
+    ``prior_target_coords`` is what makes the prior's centre follow
+    ``prior_coords``. Without it the quantum term is the level of theory's own
+    gradient, so the prior's minimum stays at the level of theory's minimum
+    however the starting structure is chosen, and a bias-corrected prior is
+    discarded on the first step -- measured on vinyl fluoride as 18.01 mA
+    against 7.95 with the centre moved.
+
+    Passing it unconditionally is deliberate. Where the prior *is* the theory
+    geometry the two agree anyway, since g is zero at that minimum and
+    H (x - x_theory) is its harmonic expansion, so the base configuration is
+    not quietly running a different prior from the others.
+    """
     opt = MolecularOptimizer(
         elems=list(mol.elems), coords=np.asarray(prior_coords, dtype=float),
         isotopologues=isos, quantum_backend="pyscf_hf",
         orca_method=METHOD, orca_basis=BASIS, coordinate_mode="cartesian",
         use_autoconfig=False, max_iter=40, hess_recalc_every=10,
         correction_table=ctbl, quantum_prior_sigma_ang=float(sigma_x_ang),
+        prior_target_coords=np.asarray(prior_coords, dtype=float),
         chi2_rescale=True, chi2_rescale_max_passes=3)
     with contextlib.redirect_stdout(io.StringIO()):
         return opt.run()
