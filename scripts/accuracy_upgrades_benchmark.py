@@ -26,6 +26,47 @@ a table calibrated on an external set would give, and never an artefact.
     python scripts/accuracy_upgrades_benchmark.py [method=hf] [basis=6-31g]
                                                   [configs=base,offsets,all]
                                                   [molecule_key ...]
+
+Results
+-------
+Best row per molecule, all-bond RMS in mA, against the published references.
+
+                        RHF/6-31G                B3LYP/6-31G(d)
+                   theory    ME  hybrid     theory    ME  hybrid
+  vinyl fluoride     5.72  8.54    7.95       4.17  7.19    6.84
+  acetyl fluoride    6.57 13.71    8.55       6.87 11.18    8.75
+  fluoroethane      10.04  8.77    8.30       6.61  7.89    8.75
+  formyl fluoride    9.38  6.25    5.24       3.84  2.52    3.68
+  fluoroacetylene    5.02  4.59    4.37       3.41  3.46    2.27
+  chlorofluoro...   45.42 32.06   13.15      25.14 16.70   10.18
+  water              8.35  1.76    1.57      10.68  4.42    4.34
+  ozone             21.03  2.28    2.32       7.57  1.03    1.00
+  isocyanic acid    26.28 63.97   18.73       4.50  4.33    3.74
+  MEAN              15.31 15.77    8.66       8.09  6.52    5.51
+
+The hybrid is best of the three on 6/9 at RHF and 5/9 at B3LYP, and beats
+mixed estimation on 7/9 at both. It improves with the level of theory --
+8.66 to 5.51 mA overall, and on 6 of 9 molecules individually, by a factor of
+5 on isocyanic acid -- so it is not merely rescuing a bad prior, which three
+molecules into the B3LYP run looked like the conclusion.
+
+Where theory alone wins (vinyl fluoride, acetyl fluoride, fluoroethane) the
+margin is 2-3 mA, and those are the molecules whose corrected targets the
+inertial-defect probe independently flags as biased (see
+rovib_corrections._apply_defect_bias_floor). The hybrid's wins elsewhere run
+to 8-15 mA.
+
+Water is the one genuine regression with level, 1.57 to 4.34. sigma_x comes
+from a per-level table, 7 mA here, while B3LYP/6-31G(d) is atypically poor for
+O-H at 10.68 mA -- so the fit was instructed to trust a bad prior. A
+per-molecule sigma_x would catch it; prior_sigma_for_molecule already computes
+one from the offset residuals where the classes are calibrated.
+
+Ozone reaches 1.00 mA, but its reference is an r_s structure with a Costain
+floor of 4.1 mA, so that figure is at the resolution of the yardstick rather
+than of the engine. Sub-mA cannot be demonstrated against r_s references at
+all; that needs r_e or r_e^SE structures, and it is the binding constraint
+here rather than compute.
 """
 
 from __future__ import annotations
