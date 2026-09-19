@@ -76,6 +76,7 @@ class SubspaceOptimizer:
         null_trust_radius=None,
         lambda_damp=1e-4,
         objective_mode="split",
+        isotropic_prior_sigma_ang=None,
         alpha_quantum=1.0,
         dynamic_quantum_weight=True,
         quantum_weight_beta=2.0,
@@ -94,6 +95,9 @@ class SubspaceOptimizer:
         self.lambda_damp = lambda_damp
         self.null_hessian_floor = float(null_hessian_floor)
         self.objective_mode = objective_mode
+        #: Width of a genuine per-coordinate Gaussian prior, in Angstrom. None
+        #: disables it and leaves the curvature-weighted prior alone.
+        self.isotropic_prior_sigma_ang = isotropic_prior_sigma_ang
         self.alpha_quantum = float(alpha_quantum)
         self.dynamic_quantum_weight = bool(dynamic_quantum_weight)
         self.quantum_weight_beta = float(quantum_weight_beta)
@@ -223,8 +227,9 @@ class SubspaceOptimizer:
             return H
         return evecs @ np.diag(np.maximum(evals, floor)) @ evecs.T
 
-    def _joint_step(self, J, residual, gradient, hessian, alpha_q):
-        """MAP step: (JᵀJ + α_q H + λI) dp = Jᵀr − α_q g.
+    def _joint_step(self, J, residual, gradient, hessian, alpha_q,
+                    prior_displacement=None):
+        """MAP step: (JᵀJ + α_q H + P + λI) dp = Jᵀr − α_q g − P (x − x_target).
 
         Unlike the split step this has no hard range/null partition, so the
         quantum surface retains influence over every direction in proportion to
@@ -234,6 +239,40 @@ class SubspaceOptimizer:
         JTJ = J.T @ J
         rhs = J.T @ residual - alpha_q * gradient
         prior = alpha_q * self._spd_hessian(hessian)
+
+        # Isotropic prior precision, P = I / sigma_x^2.
+        #
+        # sigma_x is documented as the displacement over which the level of
+        # theory is trusted, but alpha_q H is not that prior -- it is a
+        # curvature-weighted one, which asserts the theory is more reliable
+        # along stiff directions. The two differ most exactly where it
+        # matters: a coordinate the rotational constants barely see.
+        #
+        # Measured on acetyl fluoride, whose C1-C2 stretch joins two heavy
+        # atoms near the centre of mass and so hardly moves the moments of
+        # inertia: four of its five bonds come out at 2.46 mA RMS while C1-C2
+        # runs to -18.49, because the fit is free to push the direction it
+        # cannot see in order to satisfy the ones it can. chi-square per degree
+        # of freedom is 0.83, so nothing internal flags it -- the data is
+        # self-consistent and simply wrong about that bond.
+        #
+        # A genuine Gaussian prior of width sigma_x per coordinate has
+        # precision 1/sigma_x^2 and is added directly, not through alpha_q:
+        # J is already sigma-normalised, so a displacement of sigma_x costs
+        # exactly one chi-square unit, which is the same convention alpha_q is
+        # calibrated to. It is negligible wherever the data is informative --
+        # measured, the spectral precision there is two to three orders larger
+        # -- and competitive only in the directions that have nothing else
+        # holding them.
+        if (self.isotropic_prior_sigma_ang is not None
+                and prior_displacement is not None):
+            sig = float(self.isotropic_prior_sigma_ang)
+            if sig > 0.0:
+                p_iso = 1.0 / (sig * sig)
+                disp = np.asarray(prior_displacement, dtype=float).ravel()
+                if disp.size == JTJ.shape[0]:
+                    prior = prior + p_iso * np.eye(JTJ.shape[0])
+                    rhs = rhs - p_iso * disp
         A = JTJ + prior
         n = max(A.shape[0], 1)
         # lambda_damp is a dimensionless relative damping. An absolute constant
@@ -330,7 +369,8 @@ class SubspaceOptimizer:
             return self.alpha_quantum
         return float(self.alpha_quantum / e_scale)
 
-    def step(self, J, residual, gradient, hessian, B=None):
+    def step(self, J, residual, gradient, hessian, B=None,
+             prior_displacement=None):
         """
         Full hybrid step in whatever parameter space J is defined over.
 
@@ -358,7 +398,8 @@ class SubspaceOptimizer:
         U, s, Vt, rank = self.decompose(J)
         alpha_q_eff = self._effective_quantum_weight(J, rank, hessian=hessian)
         if self.objective_mode == "joint":
-            dp = self._joint_step(J, residual, gradient, hessian, alpha_q_eff)
+            dp = self._joint_step(J, residual, gradient, hessian, alpha_q_eff,
+                                  prior_displacement=prior_displacement)
         else:
             dp_range = self.range_step(U, s, Vt, rank, residual)
             dp_null = self.null_step(Vt, rank, gradient, hessian)

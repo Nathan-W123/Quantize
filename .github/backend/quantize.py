@@ -303,6 +303,7 @@ class MolecularOptimizer:
         lambda_damp=1e-4,
         objective_mode="joint",
         prior_target_coords=None,
+        isotropic_prior=False,
         alpha_quantum=1.0,
         quantum_prior_sigma_ang=DEFAULT_QUANTUM_PRIOR_SIGMA_ANG,
         prior_class_sigma=None,
@@ -643,6 +644,9 @@ class MolecularOptimizer:
             objective_mode=objective_mode,
             alpha_quantum=alpha_quantum,
             quantum_prior_sigma_ang=quantum_prior_sigma_ang,
+            isotropic_prior_sigma_ang=(
+                (quantum_prior_sigma_ang or DEFAULT_QUANTUM_PRIOR_SIGMA_ANG)
+                if isotropic_prior else None),
             dynamic_quantum_weight=dynamic_quantum_weight,
             quantum_weight_beta=quantum_weight_beta,
             quantum_weight_min=quantum_weight_min,
@@ -1448,6 +1452,23 @@ class MolecularOptimizer:
             use_dihedrals=bool(getattr(self, "_ic_use_dihedrals", False)),
         )
 
+    def _prior_displacement(self):
+        """``x - x_target``, Kabsch-aligned, flattened -- or None.
+
+        The isotropic prior needs the displacement itself, not the
+        curvature-weighted gradient of it, so it is computed here rather than
+        recovered from ``_prior_gradient``'s output (which would require
+        inverting H and is singular in the six rigid directions).
+        """
+        target = self._prior_target_coords
+        if (target is None or self.coordinate_mode == "internal"
+                or self.optimizer.isotropic_prior_sigma_ang is None):
+            return None
+        x = np.asarray(self.coords, dtype=float)
+        if target.shape != x.shape:
+            return None
+        return (x - _kabsch_align(target, x)).ravel()
+
     def _prior_gradient(self, gradient, hessian):
         """Gradient of the quantum prior, centred where the prior actually is.
 
@@ -1846,7 +1867,9 @@ class MolecularOptimizer:
             mhz_rms_before = float(np.sqrt(np.mean(residual_mhz ** 2)))
             _svd_B = None if self.coordinate_mode == "internal" else B
             _ic_g = self._prior_gradient(_ic_g, _ic_H)
-            dp, rank, sv, alpha_q_eff, Vt = self.optimizer.step(J, residual_w, _ic_g, _ic_H, B=_svd_B)
+            dp, rank, sv, alpha_q_eff, Vt = self.optimizer.step(
+                J, residual_w, _ic_g, _ic_H, B=_svd_B,
+                prior_displacement=self._prior_displacement())
 
             # â”€â”€ Back-transform and compute trial geometry â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             _orig_coords = self.coords  # reference before update (never mutated here)

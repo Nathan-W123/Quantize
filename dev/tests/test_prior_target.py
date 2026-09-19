@@ -183,3 +183,97 @@ def test_a_mismatched_target_is_ignored_not_broadcast():
     stub = _Stub(x, np.zeros((3, 3)))
     g = np.ones(12)
     assert stub._prior_gradient(g, _h(4)) is g
+
+
+# ── isotropic prior: holding the coordinates the data cannot see ───────────
+
+def _iso_opt(sigma_x):
+    from backend.spectral.SVD import SubspaceOptimizer
+    return SubspaceOptimizer(1e-3, 0.0, 0.1, None, 0.0, objective_mode="joint",
+                             alpha_quantum=1.0, quantum_prior_sigma_ang=sigma_x,
+                             isotropic_prior_sigma_ang=sigma_x)
+
+
+def test_isotropic_prior_is_off_unless_asked_for():
+    """Every existing result must be reproducible, so this cannot default on."""
+    from backend.spectral.SVD import SubspaceOptimizer
+    assert SubspaceOptimizer(1e-3, 0.0, 0.1, None, 1e-4,
+                             objective_mode="joint").isotropic_prior_sigma_ang is None
+
+
+def test_a_direction_the_data_cannot_see_is_held_at_the_target():
+    """The whole point.
+
+    J sees coordinate 0 strongly and coordinate 1 not at all. Starting
+    displaced in both, the step must return the blind coordinate to the target
+    rather than let it absorb residual. Without the isotropic term the blind
+    direction is governed by alpha_q H alone, which on a real molecule was
+    measured losing acetyl fluoride's C1-C2 stretch to -18.49 mA while its
+    other four bonds sat at 2.46.
+    """
+    sigma_x = 0.006
+    n = 2
+    J = np.array([[1000.0, 0.0]])            # coordinate 1 is invisible
+    residual = np.array([5.0])
+    hess = np.diag([4.0, 4.0])
+    disp = np.array([0.02, 0.02])            # both start 20 mA off target
+    opt = _iso_opt(sigma_x)
+    opt.trust_radius = 10.0
+    dp, *_ = opt.step(J, residual, hess @ disp, hess, prior_displacement=disp)
+    # The blind coordinate is pulled back toward the target...
+    assert dp[1] == pytest.approx(-disp[1], rel=0.05), dp
+    # ...while the seen one is free to follow the data, which wants +x.
+    assert dp[0] > 0.0, dp
+
+
+@pytest.mark.parametrize("s_val,tol", [(1.0e4, 0.01), (1.0e3, 0.05)])
+def test_the_isotropic_prior_barely_disturbs_a_well_seen_direction(s_val, tol):
+    """It has to fade out where the data is informative, or it would trade good
+    coordinates for bad ones -- which is exactly what scaling alpha_q did:
+    measured on acetyl fluoride, alpha_q x30 moved C1-C2 from -18.49 to -15.13
+    while the other four bonds degraded from 2.46 to 6.35 mA RMS.
+
+    Parameterised because "negligible" is a statement about scale, not an
+    absolute: the isotropic precision is 1/sigma_x^2, about 2.8e4 per Angstrom
+    squared at sigma_x = 6 mA, so its influence is whatever that is next to
+    s^2. At the spectral scale of these molecules (dB/dx of 1e3-1e4 MHz per
+    Angstrom against sigmas of a few MHz) that is a fraction of a percent; at
+    s = 1e3 it is a few percent, which a first version of this test asserted
+    was under one percent and was right to fail.
+    """
+    from backend.spectral.SVD import SubspaceOptimizer as SO
+
+    sigma_x = 0.006
+    J = np.array([[s_val, 0.0], [0.0, s_val]])
+    residual = np.array([5.0, 5.0])
+    hess = np.diag([4.0, 4.0])
+    disp = np.zeros(2)
+
+    bare = SO(1e-3, 0.0, 0.1, None, 0.0, objective_mode="joint",
+              alpha_quantum=1.0, quantum_prior_sigma_ang=sigma_x)
+    bare.trust_radius = 10.0
+    opt = _iso_opt(sigma_x)
+    opt.trust_radius = 10.0
+
+    dp_bare, *_ = bare.step(J, residual, hess @ disp, hess)
+    dp_iso, *_ = opt.step(J, residual, hess @ disp, hess,
+                          prior_displacement=disp)
+    assert dp_iso == pytest.approx(dp_bare, rel=tol), (dp_iso, dp_bare)
+
+
+def test_no_displacement_means_no_isotropic_contribution():
+    """Callers that cannot supply a displacement (internal mode) must get the
+    old behaviour rather than a silently half-applied prior."""
+    from backend.spectral.SVD import SubspaceOptimizer as SO
+    sigma_x = 0.006
+    J = np.array([[1000.0, 0.0]])
+    residual = np.array([5.0])
+    hess = np.diag([4.0, 4.0])
+    bare = SO(1e-3, 0.0, 0.1, None, 0.0, objective_mode="joint",
+              alpha_quantum=1.0, quantum_prior_sigma_ang=sigma_x)
+    bare.trust_radius = 10.0
+    opt = _iso_opt(sigma_x)
+    opt.trust_radius = 10.0
+    a, *_ = bare.step(J, residual, np.zeros(2), hess)
+    b, *_ = opt.step(J, residual, np.zeros(2), hess, prior_displacement=None)
+    assert a == pytest.approx(b, rel=1e-12)
