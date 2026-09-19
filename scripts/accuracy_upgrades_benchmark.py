@@ -189,6 +189,20 @@ CONFIGS = {
     # against correction sigmas of 950-1500 -- but isotope-dependent, and
     # isotopic differences are where the structural information is, so the
     # effect on geometry need not track the sigma ratio.
+    #
+    # MEASURED, AND IT CHANGES NOTHING HERE. Across all nine molecules and both
+    # configurations, 18 rows at B3LYP/6-31G(d): the hybrid moved by 0.000 mA
+    # on every one, and mixed estimation by at most 0.29 (one fluoroethane row,
+    # mean -0.02). Water is the decisive case -- two thirds hydrogen, which
+    # carries the largest built-in u-parameter at 0.015 against oxygen's 0.002
+    # -- and it moved 0.00. If BOB does not move water it does not move
+    # anything in this set.
+    #
+    # So the repair in bob_delta_b was worth making, since a correction that
+    # silently returns zero is a liability whether or not it currently bites,
+    # but it is not a lever on accuracy at this level. It becomes one only when
+    # correction sigmas fall to single-digit MHz, which is the sub-mA regime
+    # the module's own warning refers to.
     "bob": {"offsets": False, "elec": False, "lam": False, "corr": False,
             "bob": True},
     "offsets+bob": {"offsets": True, "elec": False, "lam": False,
