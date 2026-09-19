@@ -75,6 +75,7 @@ def compute_harmonic_alpha(
     mode_derivs=None,
     nm_sigma_fraction: float = 0.15,
     linear_pair_coeff=None,
+    lam_freq_cm: float = 0.0,
 ):
     """
     Compute summed alpha Σ_r α_r^K for each rotational component K.
@@ -107,6 +108,14 @@ def compute_harmonic_alpha(
                     keeps the cubic term meaningful on a noisy DFT surface.
                     Computed once with the reference masses and reused across
                     isotopologues via the rigid-completed mode decomposition.
+    lam_freq_cm   : modes below this frequency are treated as large-amplitude:
+                    their whole contribution to α is added to sigma rather than
+                    trusted. VPT2 expands in the vibrational coordinate and a
+                    torsion of a methyl rotor at 100-250 cm⁻¹ has zero-point
+                    amplitude far outside the range where that expansion holds,
+                    so the correct statement about such a mode's α is not a
+                    number but an interval. 0 (default) disables the treatment
+                    and keeps the perturbative value at face value.
     nm_sigma_fraction : fractional uncertainty applied to the correction when
                     the normal-mode cubic term is present and its own noise
                     diagnostic is clean -- the B3LYP-literature scale for VPT2
@@ -365,6 +374,29 @@ def compute_harmonic_alpha(
             k = labels[K]
             sigma_vals[k] = float(np.hypot(sigma_vals[k], band_cm * _CM_TO_MHZ))
 
+    # ── Large-amplitude modes: widen, do not trust ───────────────────────────
+    # VPT2 is an expansion in the vibrational coordinate about equilibrium. A
+    # methyl torsion sits at 100-250 cm-1, its zero-point amplitude is tens of
+    # degrees, and alpha_r ~ 1/omega_r makes it one of the largest single
+    # contributions to the sum -- a large number from the part of the expansion
+    # least entitled to be believed. Computing the torsional average properly
+    # needs a hindered-rotor potential; short of that, the defensible statement
+    # is that the contribution is known only to its own size. So each such
+    # mode's contribution is removed from the trusted budget and added to
+    # sigma, which makes the fit lean on the quantum prior in exactly the
+    # directions the correction cannot resolve instead of pulling the structure
+    # to satisfy a target it should not believe.
+    lam_modes: list[float] = []
+    lam_sigma = {k: 0.0 for k in labels}
+    if float(lam_freq_cm) > 0.0:
+        lam_idx = [r for r in range(n_vib) if omega_cm[r] < float(lam_freq_cm)]
+        lam_modes = [float(omega_cm[r]) for r in lam_idx]
+        for i, k in enumerate(labels):
+            band = float(np.abs(alpha_total[i, lam_idx]).sum()) if lam_idx else 0.0
+            lam_sigma[k] = band
+            if band > 0.0:
+                sigma_vals[k] = float(np.hypot(sigma_vals[k], band))
+
     return (
         {k: float(alpha_sum[i]) for i, k in enumerate(labels)},
         {k: float(B_e_mhz[i]) for i, k in enumerate(labels)},
@@ -390,6 +422,11 @@ def compute_harmonic_alpha(
             "is_linear": bool(is_lin),
             "nonconvergent_components": nonconvergent,
             "frequencies_cm": omega_cm.tolist(),
+            # (3, n_vib) total alpha per mode, so a caller can see which modes
+            # the correction actually rests on.
+            "alpha_per_mode_mhz": alpha_total.tolist(),
+            "lam_modes_cm": lam_modes,
+            "lam_sigma_mhz": lam_sigma,
         },
     )
 
@@ -645,6 +682,7 @@ def build_correction_table_from_hessian(
     nonconvergent_policy: str = "warn",
     cubic_scheme: str = "cartesian",
     linear_pair_coeff=None,
+    lam_freq_cm: float = 0.0,
 ) -> tuple[dict, dict]:
     """
     Build a correction_table dict (compatible with parse_correction_table)
@@ -671,6 +709,11 @@ def build_correction_table_from_hessian(
     ``"inflate"`` only bites when the spectral block is over-determined; where it
     is exactly determined the fit reproduces its targets regardless of weight and
     only ``"drop"`` changes the outcome.
+
+    ``lam_freq_cm`` passes through to :func:`compute_harmonic_alpha`: modes
+    below it are treated as large-amplitude and their contribution to α is
+    carried as uncertainty rather than as a value. Set it above the torsional
+    fundamental for molecules with an internal rotor.
     """
     policy = str(nonconvergent_policy or "warn").strip().lower()
     if policy not in _NONCONVERGENT_POLICIES:
@@ -703,6 +746,7 @@ def build_correction_table_from_hessian(
         else "alpha from Hessian (harmonic + Coriolis only; anharmonic term omitted)"
     )
     statuses: list[str] = []
+    lam_report: dict = {}
     nonconvergent: dict = {}
     dropped: dict = {}
     cubic_cart = None
@@ -733,8 +777,15 @@ def build_correction_table_from_hessian(
             cubic_cart=cubic_cart,
             mode_derivs=mode_derivs,
             linear_pair_coeff=linear_pair_coeff,
+            lam_freq_cm=lam_freq_cm,
         )
         total_near_degen_skips += res_info.get("near_degen_skips", 0)
+        lam_here = list(res_info.get("lam_modes_cm", []))
+        if lam_here:
+            lam_report[name] = {
+                "modes_cm": lam_here,
+                "sigma_mhz": dict(res_info.get("lam_sigma_mhz", {})),
+            }
         statuses.append(str(res_info.get("anharmonic_status", "unknown")))
         ratios = res_info.get("anharmonic_ratio", {})
         bad = set(res_info.get("nonconvergent_components", []))
@@ -757,6 +808,13 @@ def build_correction_table_from_hessian(
             # (vpt2_delta_b), so the alpha uncertainty is halved to match.
             sigma_mhz = 0.5 * sigma[comp]
             note = notes
+            if lam_here:
+                note = (
+                    f"{note}; large-amplitude modes at "
+                    + ", ".join(f"{w:.0f}" for w in lam_here)
+                    + " cm-1: their alpha contribution is carried as sigma, "
+                    "not trusted"
+                )
             if comp in bad:
                 note = (
                     f"{notes}; WARNING cubic/harmonic = {ratio:.1f} -- "
@@ -779,4 +837,6 @@ def build_correction_table_from_hessian(
         "nonconvergent": nonconvergent,
         "nonconvergent_policy": policy,
         "dropped_components": dropped,
+        "lam": lam_report,
+        "lam_freq_cm": float(lam_freq_cm),
     }
