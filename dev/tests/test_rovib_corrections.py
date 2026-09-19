@@ -483,17 +483,44 @@ class TestBOBCorrection:
         elems = ["O", "H", "H"]
         masses = [15.9949, 1.00783, 1.00783]
         bob_params = {"O": {"B": 0.01}, "H": {"B": 0.005}}
-        delta, _ = bob_delta_b(elems, masses, "B", bob_params)
+        delta, _ = bob_delta_b(elems, masses, "B", bob_params, 435059.0)
         assert delta < 0.0
 
     def test_formula_exact(self):
-        """delta_bob = -Î£_a (m_e / m_a) * u_a for each atom."""
+        """delta_bob = -B_obs * sum_a (m_e / m_a) * u_a for each atom.
+
+        The B_obs factor is the whole point: u is a dimensionless *relative*
+        correction, exactly as the g-tensor is in electronic_delta_b. Without
+        it the function returned a number of order 1e-5 where the answer is of
+        order 1e-5 * B -- about 7 MHz on water's B -- so every BOB correction
+        the engine ever applied was zero to printing precision.
+        """
         elems = ["O", "H"]
         masses = [16.0, 1.0]
+        b_obs = 435059.0
         bob_params = {"O": {"B": 1.0}, "H": {"B": 2.0}}
-        delta, _ = bob_delta_b(elems, masses, "B", bob_params)
-        expected = -(M_ELECTRON_AMU / 16.0) * 1.0 - (M_ELECTRON_AMU / 1.0) * 2.0
+        delta, _ = bob_delta_b(elems, masses, "B", bob_params, b_obs)
+        expected = b_obs * (-(M_ELECTRON_AMU / 16.0) * 1.0
+                            - (M_ELECTRON_AMU / 1.0) * 2.0)
         assert delta == pytest.approx(expected, rel=1e-10)
+
+    def test_correction_scales_with_the_constant_it_corrects(self):
+        """Doubling B doubles the correction. A dimensionless return cannot."""
+        bob_params = {"H": {"B": 0.01}}
+        one, _ = bob_delta_b(["H"], [1.00783], "B", bob_params, 10000.0)
+        two, _ = bob_delta_b(["H"], [1.00783], "B", bob_params, 20000.0)
+        assert two == pytest.approx(2.0 * one, rel=1e-12)
+
+    def test_correction_is_a_physically_plausible_size(self):
+        """Built-in u-values on water must land in MHz, not in micro-MHz."""
+        import contextlib
+        import io as _io
+        from backend.spectral.correction_models import get_builtin_bob_params
+        with contextlib.redirect_stdout(_io.StringIO()):
+            bp = get_builtin_bob_params(["O", "H", "H"], None)
+        delta, _ = bob_delta_b(["O", "H", "H"], [15.9949, 1.00783, 1.00783],
+                               "B", bp, 435059.0)
+        assert 1.0 < abs(delta) < 100.0, delta
 
     def test_missing_element_contributes_zero(self):
         """Elements without BOB params contribute nothing to the correction."""
@@ -501,8 +528,8 @@ class TestBOBCorrection:
         masses = [16.0, 1.0, 1.0]
         # Only O in bob_params â€” H contributes zero
         bob_params = {"O": {"B": 0.01}}
-        delta_partial, _ = bob_delta_b(elems, masses, "B", bob_params)
-        expected = -(M_ELECTRON_AMU / 16.0) * 0.01
+        delta_partial, _ = bob_delta_b(elems, masses, "B", bob_params, 1000.0)
+        expected = -1000.0 * (M_ELECTRON_AMU / 16.0) * 0.01
         assert delta_partial == pytest.approx(expected, rel=1e-10)
 
     def test_missing_component_contributes_zero(self):
@@ -510,14 +537,14 @@ class TestBOBCorrection:
         elems = ["H"]
         masses = [1.0]
         bob_params = {"H": {"B": 0.01}}  # no "A" entry
-        delta_A, _ = bob_delta_b(elems, masses, "A", bob_params)
+        delta_A, _ = bob_delta_b(elems, masses, "A", bob_params, 1000.0)
         assert delta_A == pytest.approx(0.0)
 
     def test_isotope_mass_scaling(self):
         """Replacing H (m=1) with D (m=2) halves the BOB correction for that atom."""
         bob_params = {"H": {"B": 0.01}}
-        delta_H, _ = bob_delta_b(["H"], [1.00783], "B", bob_params)
-        delta_D, _ = bob_delta_b(["H"], [2.01410], "B", bob_params)
+        delta_H, _ = bob_delta_b(["H"], [1.00783], "B", bob_params, 1000.0)
+        delta_D, _ = bob_delta_b(["H"], [2.01410], "B", bob_params, 1000.0)
         # Ratio should match mass ratio
         ratio = delta_H / delta_D
         assert ratio == pytest.approx(2.01410 / 1.00783, rel=1e-4)
@@ -530,8 +557,9 @@ class TestBOBCorrection:
             "O": {"B": {"u": 0.01, "sigma_u": 0.001}},
             "H": {"B": {"u": 0.005, "sigma_u": 0.0005}},
         }
-        _, sigma = bob_delta_b(elems, masses, "B", bob_params)
-        expected = np.sqrt(
+        b_obs = 435059.0
+        _, sigma = bob_delta_b(elems, masses, "B", bob_params, b_obs)
+        expected = b_obs * np.sqrt(
             (M_ELECTRON_AMU / 16.0 * 0.001) ** 2
             + (M_ELECTRON_AMU / 1.0 * 0.0005) ** 2
         )
@@ -542,7 +570,7 @@ class TestBOBCorrection:
         elems = ["H"]
         masses = [1.0]
         bob_params = {"H": {"B": 0.01}}
-        _, sigma = bob_delta_b(elems, masses, "B", bob_params)
+        _, sigma = bob_delta_b(elems, masses, "B", bob_params, 1000.0)
         assert sigma is None
 
     def test_added_to_resolve_corrections(self):

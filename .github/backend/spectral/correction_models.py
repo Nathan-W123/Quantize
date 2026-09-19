@@ -339,6 +339,7 @@ def bob_delta_b(
     masses_amu: list,
     comp_label: str,
     bob_params: dict,
+    b_obs_mhz: float,
 ) -> tuple:
     """
     Born-Oppenheimer Breakdown (BOB) correction to one rotational constant.
@@ -347,7 +348,14 @@ def bob_delta_b(
     The correction is negative (for positive u-values) because DeltaB_BOB is
     subtracted in the r_e^SE formula:
         B_e,SE = B0 + DeltaB_vib - DeltaB_elec - DeltaB_BOB
-        delta_bob = -Σ_a (m_e / m_a) * u_a^X
+        delta_bob = -B_obs * Σ_a (m_e / m_a) * u_a
+
+    The u-parameters are dimensionless *relative* corrections, so they scale a
+    rotational constant exactly as the g-tensor does in ``electronic_delta_b``.
+    Omitting that factor is not a small error: it returns a number of order
+    1e-5 where the answer is of order 1e-5 * B, which for water's B is about
+    7 MHz. This function did that until the factor was added, so every BOB
+    correction it ever produced was zero to within printing precision.^X
 
     The u-parameters are dimensionless and mass-independent; the mass scaling
     (m_e / m_a) is applied here so that different isotopologues automatically
@@ -374,6 +382,9 @@ def bob_delta_b(
           - dict   : {"u": float, "sigma_u": float | None}
 
         Elements not present in bob_params contribute zero.
+    b_obs_mhz : float
+        The observed rotational constant this correction applies to, in MHz.
+        The u-values are relative, so the correction is proportional to it.
 
     Returns
     -------
@@ -382,6 +393,7 @@ def bob_delta_b(
         sigma_mhz : float | None — propagated uncertainty; None if no sigma_u supplied.
     """
     comp = str(comp_label).strip().upper()
+    b_obs = float(b_obs_mhz)
     total_delta = 0.0
     sigma_sq = 0.0
     any_sigma = False
@@ -406,10 +418,10 @@ def bob_delta_b(
             u = float(comp_entry)
             sigma_u = None
 
-        total_delta -= scale * u   # subtracted per r_e^SE formula
+        total_delta -= scale * u * b_obs   # subtracted per r_e^SE formula
 
         if sigma_u is not None:
-            sigma_sq += (scale * float(sigma_u)) ** 2
+            sigma_sq += (scale * float(sigma_u) * b_obs) ** 2
             any_sigma = True
 
     sigma = float(sigma_sq ** 0.5) if any_sigma else None
