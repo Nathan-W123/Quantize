@@ -184,6 +184,24 @@ def build_correction_from_iso(iso, method=None, basis=None, backend=None):
 from backend.orca.orca_backend import _find_orca  # noqa: F401
 
 
+def _kabsch_align(mobile, reference):
+    """``mobile`` rotated and translated onto ``reference``, least squares.
+
+    Both are (N, 3) in Angstrom. Unweighted by mass on purpose: this aligns a
+    prior target to a trial geometry so their difference is purely internal,
+    and mass weighting would let a heavy atom absorb the fit.
+    """
+    a = np.asarray(mobile, dtype=float)
+    b = np.asarray(reference, dtype=float)
+    ca, cb = a.mean(axis=0), b.mean(axis=0)
+    p, q = a - ca, b - cb
+    u, _, vt = np.linalg.svd(p.T @ q)
+    d = np.sign(np.linalg.det(vt.T @ u.T))
+    rot = vt.T @ np.diag([1.0, 1.0, d]) @ u.T
+    return (rot @ p.T).T + cb
+
+
+
 class MolecularOptimizer:
     """
     Parameters
@@ -284,6 +302,7 @@ class MolecularOptimizer:
         null_trust_radius=None,
         lambda_damp=1e-4,
         objective_mode="joint",
+        prior_target_coords=None,
         alpha_quantum=1.0,
         quantum_prior_sigma_ang=DEFAULT_QUANTUM_PRIOR_SIGMA_ANG,
         prior_class_sigma=None,
@@ -634,6 +653,11 @@ class MolecularOptimizer:
         self._base_null_trust_radius = float(self.optimizer.null_trust_radius)
         self._base_lambda_damp = float(self.optimizer.lambda_damp)
         self._base_sv_threshold = float(self.optimizer.sv_threshold)
+        #: Geometry the quantum prior is centred on, when it is not the level
+        #: of theory's own minimum. See _prior_gradient.
+        self._prior_target_coords = (
+            np.asarray(prior_target_coords, dtype=float).reshape(-1, 3)
+            if prior_target_coords is not None else None)
         self._base_alpha_quantum = float(self.optimizer.alpha_quantum)
 
         self.use_autoconfig = bool(use_autoconfig)
@@ -1424,6 +1448,46 @@ class MolecularOptimizer:
             use_dihedrals=bool(getattr(self, "_ic_use_dihedrals", False)),
         )
 
+    def _prior_gradient(self, gradient, hessian):
+        """Gradient of the quantum prior, centred where the prior actually is.
+
+        The joint step solves (J^T J + alpha_q H + lambda I) dp = J^T r -
+        alpha_q g. Nothing in that references the geometry the caller handed
+        in, so g -- the level of theory's own gradient -- places the prior's
+        minimum at the level of theory's own minimum. Handing the optimiser a
+        bias-corrected starting structure therefore moves the starting point
+        and nothing else, and -alpha_q g pulls straight back to the
+        uncorrected geometry. Measured on acetyl fluoride with the spectral
+        data suppressed a thousandfold: started at a 6.57 mA corrected
+        structure, relaxed to 15.03 mA against pure theory's 15.75.
+
+        When a target is supplied the prior becomes a Gaussian centred on it
+        with the quantum surface's own curvature,
+
+            E_prior(x) = 1/2 (x - x_target)^T H (x - x_target)
+
+        whose gradient is H (x - x_target). That is the statement the
+        bond-class offsets justify -- the equilibrium structure is near the
+        bias-corrected geometry, and H says how sharply -- where the raw
+        gradient asserts the stronger and measurably false claim that it is at
+        the level of theory's minimum.
+
+        The target is Kabsch-aligned to the current geometry first: the prior
+        is about internal structure, and a rigid rotation accumulated by the
+        optimiser would otherwise register as a displacement to be penalised.
+        Only Cartesian mode is handled; in internal mode the gradient has
+        already been projected into q-space, so the substitution is skipped
+        rather than applied in the wrong basis.
+        """
+        target = self._prior_target_coords
+        if target is None or self.coordinate_mode == "internal":
+            return gradient
+        x = np.asarray(self.coords, dtype=float)
+        if target.shape != x.shape:
+            return gradient
+        aligned = _kabsch_align(target, x)
+        return np.asarray(hessian, dtype=float) @ (x - aligned).ravel()
+
     def _apply_heuristic_optimizer_bases(self, isotopologues, n_params=None, label=""):
         shape = self._problem_shape(isotopologues, n_params=n_params)
         bases = infer_optimizer_bases(
@@ -1781,6 +1845,7 @@ class MolecularOptimizer:
             wrms_before = float(np.sqrt(np.mean(residual_w ** 2)))
             mhz_rms_before = float(np.sqrt(np.mean(residual_mhz ** 2)))
             _svd_B = None if self.coordinate_mode == "internal" else B
+            _ic_g = self._prior_gradient(_ic_g, _ic_H)
             dp, rank, sv, alpha_q_eff, Vt = self.optimizer.step(J, residual_w, _ic_g, _ic_H, B=_svd_B)
 
             # â”€â”€ Back-transform and compute trial geometry â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
