@@ -116,6 +116,19 @@ CONFIGS = {
     # Measured best pairing: offsets carry the gain, while elec and lam each
     # cost more than they return on this set (ozone 2.32 -> 3.23 to the RHF
     # g-tensor, isocyanic acid 18.73 -> 29.12 to the large-amplitude widening).
+    #
+    # The corr half of this was measured and does nothing. Corrections at
+    # B3LYP/6-31G(d) over an RHF/6-31G geometry, on the four molecules the
+    # diagnosis pointed at, moved the hybrid +0.43 mA and mixed estimation
+    # -0.33 mA -- both inside the noise, against a predicted ~20% gain from
+    # RHF's 11%-high bend frequency and the 1/omega^2 in both tau and alpha.
+    #
+    # The decisive one is isocyanic acid, where mixed estimation with honest
+    # sigmas sits at 63.97 mA against pure theory's 26.28: the corrected
+    # targets there are badly biased, and B3LYP corrections move that to
+    # 63.64. So the bias is not in the force field. What is left is the data
+    # itself -- two isotopologues, measured in 1950 -- and the r_s reference
+    # the fit is scored against while the engine targets r_e.
     "offsets+corr": {"offsets": True, "elec": False, "lam": False, "corr": True},
 }
 
