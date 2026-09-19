@@ -325,3 +325,57 @@ def test_bridge_weight_still_mirrors_alpha_q_after_the_change():
                             alpha_quantum=1.0, quantum_prior_sigma_ang=0.02)
     assert calibrated_spectral_weight(hess, 0.02) == pytest.approx(
         1.0 / opt._calibrated_alpha_q(hess), rel=1e-10)
+
+
+# ── prior width must not claim precision the offsets did not buy ───────────
+
+def test_prior_sigma_widens_for_a_class_nothing_calibrated():
+    """The defect this exists to prevent.
+
+    residual_sigma_after_offsets reports the spread left after the class
+    offsets are removed, which is right only for classes that got one. Where a
+    class had no other member, leave-one-out declines to correct it and the
+    full bias remains -- so quoting the corrected spread tells the optimiser
+    the prior is far better than it is. Measured: chlorofluoromethane's C-Cl is
+    +78 mA and alone in its class, the prior stayed 45 mA out while sigma_x
+    claimed 6.2, and centring the prior there moved the hybrid from 13.16 mA to
+    19.71.
+    """
+    from backend.spectral.bond_offsets import prior_sigma_for_molecule
+    from dev.monofluoro_references import MOLECULES_SET2
+
+    cfm = next(m for m in MOLECULES_SET2 if m.key == "chlorofluoromethane")
+    per_mol = {
+        "cfm": {"C-Cl": [0.078], "C-F": [0.025], "C-H": [-0.012, -0.010]},
+        "a": {"C-F": [0.028, 0.030], "C-H": [-0.012, -0.014]},
+        "b": {"C-F": [0.026], "C-H": [-0.010]},
+    }
+    wide = prior_sigma_for_molecule(cfm, per_mol, "cfm")
+    narrow = residual_sigma_after_offsets(per_mol, "cfm")
+    assert wide > 2.0 * narrow, (wide, narrow)
+
+
+def test_prior_sigma_is_unchanged_when_every_class_is_calibrated():
+    """The fix must not disturb the molecules it is not about -- those are
+    where the offsets actually paid off."""
+    from backend.spectral.bond_offsets import prior_sigma_for_molecule
+
+    vf = _VF
+    per_mol = {
+        "vf": {"C-F": [0.030], "C-C": [-0.018], "C-H": [-0.015, -0.016]},
+        "a": {"C-F": [0.028], "C-C": [-0.012], "C-H": [-0.012, -0.014]},
+        "b": {"C-F": [0.026], "C-C": [-0.010], "C-H": [-0.010]},
+    }
+    assert prior_sigma_for_molecule(vf, per_mol, "vf") == pytest.approx(
+        residual_sigma_after_offsets(per_mol, "vf"), rel=1e-9)
+
+
+def test_uncorrected_bias_is_the_typical_class_bias_not_zero():
+    """A class nothing calibrated is not a well-determined class; the honest
+    estimate of its error is how large a class bias usually is."""
+    from backend.spectral.bond_offsets import uncorrected_class_bias
+
+    per_mol = {"a": {"C-F": [0.028, 0.030]}, "b": {"C-H": [-0.012, -0.010]}}
+    got = uncorrected_class_bias(per_mol, "zzz")
+    assert got == pytest.approx(
+        float(np.sqrt(np.mean(np.square([0.029, -0.011])))), rel=1e-9)

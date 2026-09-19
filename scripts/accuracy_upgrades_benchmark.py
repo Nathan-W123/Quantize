@@ -51,7 +51,7 @@ from backend.spectral.bond_offsets import (  # noqa: E402
     leave_one_out_offsets,
     measure_offsets,
     offset_corrected_geometry,
-    residual_sigma_after_offsets,
+    prior_sigma_for_molecule,
 )
 from backend.spectral.correction_models import electronic_delta_b  # noqa: E402
 from backend.spectral.electronic_g import rotational_g_tensor  # noqa: E402
@@ -263,10 +263,14 @@ def main() -> None:
         loo = leave_one_out_offsets(per_molecule_offsets, mol.key)
         offset_coords = offset_corrected_geometry(mol, theory_coords, loo)
         # Removing the bias narrows the prior, so sigma_x has to follow it or
-        # the optimiser keeps treating a corrected prior as a loose one. Also
-        # leave-one-out, so the width is never informed by the answer.
-        sigma_x_offset = residual_sigma_after_offsets(
-            per_molecule_offsets, mol.key)
+        # the optimiser keeps treating a corrected prior as a loose one. Bond
+        # by bond, because a class leave-one-out could not calibrate is not
+        # narrowed at all -- quoting the corrected spread for it claimed a
+        # precision the prior did not have and cost chlorofluoromethane
+        # 13.16 -> 19.71 mA. Still leave-one-out, so the width is never
+        # informed by the answer.
+        sigma_x_offset = prior_sigma_for_molecule(
+            mol, per_molecule_offsets, mol.key)
 
         # A correction table per (geometry, lam) pair actually needed. The
         # Hessian cache is shared, so the second lam variant is nearly free.
