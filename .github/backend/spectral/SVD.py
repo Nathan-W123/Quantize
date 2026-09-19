@@ -27,6 +27,17 @@ Combined step:  Δp = Δp_range + Δp_null  (clipped to trust radius).
 import numpy as np
 
 
+#: Curvature below this fraction of the largest eigenvalue is a rigid mode,
+#: not a vibration. The threshold has to be relative: translations and
+#: rotations come out of a numerical Hessian at ~1e-8 Hartree/Ang^2, which
+#: clears an absolute 1e-8 cut, and averaging those zeros into lam_bar
+#: understates the typical curvature. Measured on water, two of the five
+#: values that passed the old absolute cut were rigid modes, putting lam_bar
+#: 1.67x too low and so making alpha_q 1.67x too weak -- the prior came out
+#: 1.29x looser than the sigma_x the caller asked for.
+_CURVATURE_FLOOR_REL = 1e-6
+
+
 class SubspaceOptimizer:
     """
     Parameters
@@ -308,7 +319,8 @@ class SubspaceOptimizer:
         electronic structure method is, in Angstroms.
         """
         evals = np.linalg.eigvalsh(0.5 * (hessian + hessian.T))
-        positive = evals[evals > 1e-8]
+        positive = evals[evals > _CURVATURE_FLOOR_REL * max(
+            float(np.max(np.abs(evals))), 1.0)]
         if positive.size == 0:
             return self.alpha_quantum
         lam_bar = float(np.mean(positive))
