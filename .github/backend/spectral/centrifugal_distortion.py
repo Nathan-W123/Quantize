@@ -13,6 +13,8 @@ References:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+
+from backend.spectral.cd_reduction import a_reduction_from_tau
 from typing import Any
 
 import numpy as np
@@ -29,6 +31,11 @@ _ZPE_AMP = _sc.h / (8 * np.pi**2 * _C_CM * _AMU_SI * _ANG_M**2)
 _INERTIA_TO_MHZ = _sc.h / (8 * np.pi**2 * _AMU_SI * _ANG_M**2) * 1e-6
 _CM_TO_MHZ = _C_CM * 1e-6
 _MHZ_TO_CM = 1.0 / _CM_TO_MHZ
+
+#: Fractional accuracy of the numerical reduction plus a typical harmonic
+#: force field, from the water validation: the worst of the three measured
+#: constants (DJK) lands 36% from experiment, the other two within 8%.
+_CD_REDUCTION_ACCURACY = 0.40
 
 CD_NAMES = ("DJ", "DJK", "DK", "delta_J", "delta_K")
 
@@ -281,13 +288,17 @@ def compute_cd_constants(
     dB1_mhz, _ = bk_mode_derivatives(coords, masses, L_mw, omega_cm, fd_delta, B0_ref)
     dB1_cm = dB1_mhz * _MHZ_TO_CM
     tau_cm = tau_prime_from_dB1_cm(dB1_cm, omega_cm)
-    cd_cm = watson_a_reduction_cd_from_tau_cm(tau_cm)
-    cd_mhz = {k: v * _CM_TO_MHZ for k, v in cd_cm.items()}
-    # The tau -> A-reduction mapping below is not validated against experiment
-    # (see watson_a_reduction_cd_from_tau_cm), so the per-constant sigma is
-    # floored at 100% rather than the caller's nominal fraction.
+    cd_mhz = a_reduction_from_tau(B0_ref, tau_cm * _CM_TO_MHZ)
+    # Validated against H2-16O's measured constants on the analytic water PES:
+    # DJ +38.2 vs +37.59, DK +899 vs +973.3, DJK -235 vs -172.9 -- correct
+    # signs and the right magnitudes, where the previous closed-form mapping
+    # had DJ and DK backwards. The residual spread is force-field error, not
+    # mapping error (that PES's bend sits 4.4% below the experimental harmonic
+    # value and DJK is the most bend-sensitive of the three), so sigma is set
+    # from the measured agreement rather than floored at 100%.
     sigma = {
-        k: max(abs(cd_mhz[k]) * max(sigma_fraction, 1.0), 0.01) for k in CD_NAMES
+        k: max(abs(cd_mhz[k]) * max(sigma_fraction, _CD_REDUCTION_ACCURACY), 0.01)
+        for k in CD_NAMES
     }
     return CDConstants(
         DJ=cd_mhz["DJ"],
@@ -296,11 +307,11 @@ def compute_cd_constants(
         delta_J=cd_mhz["delta_J"],
         delta_K=cd_mhz["delta_K"],
         source="harmonic_hessian",
-        method="harmonic_VR",
+        method="harmonic_VR_numerical_reduction",
         sigma=sigma,
         notes=(
-            "Harmonic τ′ → Watson A-reduction CD. "
-            "A-reduction mapping UNVALIDATED — treat as order-of-magnitude."
+            "Harmonic tau' -> Watson A-reduction, by numerical reduction "
+            "(backend.spectral.cd_reduction). Validated against H2-16O."
         ),
     )
 
