@@ -129,12 +129,23 @@ def corrected_targets(mol, isos, ctbl):
     (that part was standing in for the missing correction, so keeping it would
     double-count it).
 
-    The effect was not cosmetic. It left mixed estimation with tighter sigmas
-    than the hybrid on identical data -- on water's B the correction sigma is
-    950 MHz against an observed 1456 -- and switching on the large-amplitude
-    treatment moves that correction sigma to 6764 MHz, a change mixed
-    estimation could not see at all. A comparison built on that is measuring a
-    weighting difference and calling it a mechanism difference.
+    The effect was not cosmetic, and it runs the opposite way to the obvious
+    guess. Measured on water, the resolved sigma is far *tighter* than the raw
+    experimental one -- A: 1974 MHz against 20893, B: 953 against 10876 -- so
+    mixed estimation had been fitting identical target values with sigmas
+    about ten times too loose, and weight goes as 1/sigma^2, so its spectral
+    block carried roughly a hundredth of the influence the hybrid's did. The
+    narrowing is the double-count removal: sigma_exp is dominated by the
+    r_0-versus-r_e model gap, and applying a vibrational correction is the act
+    of removing that gap, so continuing to carry it would charge twice.
+
+    End to end at RHF/6-31G this moves mixed estimation from 0.95 to 1.81 mA
+    on water and from 17.46 to 26.71 on acetyl fluoride -- the latter now
+    worse than pure theory's 15.75, because with the correct sigmas the fit is
+    data-dominated and the RHF/6-31G corrected targets are not consistent with
+    a structure that good. That is a real result about the corrections, not an
+    artefact: the hybrid has always used these sigmas, which is why it too
+    sits near 20 mA on acetyl fluoride whatever prior it is handed.
     """
     resolved = resolve_corrections(isos, correction_table=ctbl,
                                    mode="hybrid_auto", elems=list(mol.elems))
