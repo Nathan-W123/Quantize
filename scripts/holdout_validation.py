@@ -28,6 +28,39 @@ Three legs, exactly as in the main benchmark:
 
     python scripts/holdout_validation.py [method=b3lyp] [basis=6-31g(d)]
                                          [molecule_key ...]
+
+Results, B3LYP/6-31G(d), RMS relative error on the withheld species
+-------------------------------------------------------------------
+
+    molecule          spec   theory       ME   hybrid   reference-based said
+    ozone                5   2.7298   0.0700   0.0694   hybrid
+    vinyl fluoride       8   1.4052   0.5040   0.5014   theory
+    acetyl fluoride     10   1.8070   0.2677   0.2485   theory
+    fluoroethane         6   1.6181   0.8871   0.0944   theory
+    fluoroacetylene      6   1.0973   0.0040   0.0163   hybrid
+    MEAN                     1.7315   0.3466   0.1860
+
+The hybrid beats the level of theory on 5 of 5, by a median factor of 17, and
+is best of the three on 4 of 5.
+
+What makes this worth having is the last column. On vinyl fluoride, acetyl
+fluoride and fluoroethane the reference-based benchmark says theory alone wins
+-- and all three predict isotopologues they have never seen 2.8x, 7.3x and 17x
+better than theory does. Those are the molecules whose published references are
+r_s structures, so the disagreement is evidence about the references rather
+than about the engine.
+
+Limitation, and it is a real one. This measures consistency with the
+*corrected* constants, not with the truth. A bias shared across every
+isotopologue of a molecule is absorbed into the fitted structure and then
+predicts the withheld species just as well, so a confident result here does not
+by itself establish that a structure is closer to the true equilibrium
+geometry. What it does establish is that the fitted structures capture the
+isotopic dependence of the constants and the level of theory does not.
+
+The one independent check available points the same way: water is the only
+molecule in the set with a genuine r_e reference, and there the hybrid scores
+4.34 mA against theory's 10.68.
 """
 
 from __future__ import annotations
