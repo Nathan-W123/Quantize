@@ -115,6 +115,10 @@ SIGMA_P_SCAN_ANG = tuple(sorted({
 #: after correcting it. Off by default so existing numbers stay reproducible.
 DEFECT_BIAS_FLOOR = any(a == "defect_floor=on" for a in sys.argv[1:])
 
+#: Force a planar species' corrected constants to satisfy I_c = I_a + I_b,
+#: spending the residual defect on whichever correction is least trusted.
+PLANARITY_CONSTRAINT = any(a == "planarity=on" for a in sys.argv[1:])
+
 #: Angle predicate sigma, in degrees, paired with each bond sigma above by the
 #: same ratio the reference module uses between its bond and angle widths.
 _ANGLE_SIGMA_PER_ANG = 1.5 / 0.020
@@ -159,7 +163,8 @@ def corrected_targets(mol, isos, ctbl, bob_params=None):
         # to be tighter than that.
         defect_bias_floor=DEFECT_BIAS_FLOOR,
         coords_ang=np.asarray(mol.geometry, dtype=float),
-        correction_bob_params=bob_params)
+        correction_bob_params=bob_params,
+        planarity_constraint=PLANARITY_CONSTRAINT)
     by_species = {iso["name"]: np.asarray(iso["masses"], dtype=float)
                   for iso in isos}
     out = []

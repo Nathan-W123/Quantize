@@ -6,7 +6,7 @@ from typing import Optional
 import numpy as np
 
 from backend.spectral.correction_models import COMPONENTS, RovibCorrection
-from backend.spectral.spectral import defect_model_sigma
+from backend.spectral.spectral import _INERTIA_TO_MHZ, defect_model_sigma
 
 
 # ---------------------------------------------------------------------------
@@ -298,6 +298,7 @@ def resolve_corrections(
     g_tensor: Optional[dict] = None,
     defect_bias_floor: bool = False,
     coords_ang=None,
+    planarity_constraint: bool = False,
 ) -> list:
     """
     For each isotopologue Ã— component pair, resolve all corrections and return
@@ -566,8 +567,121 @@ def resolve_corrections(
                 correction_records=records,
             ))
 
+    if planarity_constraint and coords_ang is not None:
+        targets = apply_planarity_constraint(targets, isotopologues, coords_ang)
     if defect_bias_floor and coords_ang is not None:
         targets = _apply_defect_bias_floor(targets, isotopologues, coords_ang)
+    return targets
+
+
+def apply_planarity_constraint(targets, isotopologues, coords_ang,
+                               tol_amu_a2=1e-9, planar_tol=1e-3):
+    """Force a planar species' corrected constants to satisfy I_c = I_a + I_b.
+
+    A planar rigid molecule has zero inertial defect exactly. Any fitted
+    structure is rigid, so *its* defect is zero by construction and
+    constraining the structure achieves nothing -- the defect that survives
+    lives in the corrected constants, and it is pure correction error.
+
+    Measured on ozone, that error does not spread evenly. The A constant
+    carries by far the largest vibrational correction, and it is also the only
+    constant that meaningfully determines the bond angle: dB/dtheta is
+    30 MHz per 0.01 degree for A against 1.45 and 0.76 for B and C. So the
+    correction bias lands almost entirely in the angle, which is why ozone's
+    bond comes out 0.3 sigma from its equilibrium reference while the angle is
+    7.9 sigma out.
+
+    The fix is to spend the defect where it is least trusted. Writing the
+    constraint as f(delta) = I_c - I_a - I_b = 0 and moving the three
+    corrections by the smallest sigma-weighted amount that satisfies it,
+
+        d_delta = -f0 * (W g) / (g^T W g),    W = diag(sigma^2)
+
+    puts most of the adjustment on the component with the widest sigma, which
+    is the one whose correction is least believable -- normally A. The
+    constants themselves are never touched, only the corrections applied to
+    them, and a species that is already consistent is left alone.
+
+    MEASURED ON OZONE, AND IT CANNOT REACH THE PROBLEM. The constraint works:
+    residual defects of 0.005 to 0.022 amu.A^2 collapse to about 1e-6. But the
+    adjustment it makes to A is only 0.15 to 0.65 MHz, and at dA/dtheta of
+    30 MHz per 0.01 degree that is 0.0002 degrees of angle. The 0.105 degree
+    error needs roughly 315 MHz of A, five hundred times more than the whole
+    residual defect can supply, and the fitted geometry does not move at all.
+
+    The reason is structural rather than a matter of tuning: the bias that
+    misplaces the angle preserves planarity, so the inertial defect is blind to
+    it by construction. A constraint can only remove the part of the error that
+    violates it.
+
+    Kept because it is correct, cheap, and does remove a real inconsistency
+    from the corrected constants -- but it is not a fix for angle bias.
+
+    Only planar molecules qualify, and planarity is read off the geometry
+    rather than taken on trust. That restriction is what makes the constraint
+    safe: a planar molecule's defect is zero whatever its bond lengths and
+    angles turn out to be, so the target is known before the fit. A non-planar
+    molecule's defect is a function of the structure being determined, so
+    constraining to it would be circular, and those species are skipped.
+    """
+    coords = np.asarray(coords_ang, dtype=float)
+    if coords.ndim != 2 or coords.shape[1] != 3:
+        return targets
+    # Planar means every atom lies in one plane: the smallest singular value of
+    # the centred coordinates vanishes.
+    centred = coords - coords.mean(axis=0)
+    if float(np.linalg.svd(centred, compute_uv=False)[-1]) > planar_tol:
+        return targets
+
+    by_species: dict = {}
+    for t in targets:
+        by_species.setdefault(t.isotopologue_label, []).append(t)
+
+    for label, group in by_species.items():
+        if len(group) != 3:
+            continue
+        vals = np.empty(3)
+        sig = np.empty(3)
+        slot = {}
+        ok = True
+        for t in group:
+            c = int(t.component_index)
+            if c not in (0, 1, 2) or not np.isfinite(t.value_mhz) \
+                    or t.value_mhz <= 0:
+                ok = False
+                break
+            vals[c] = float(t.value_mhz)
+            sig[c] = max(float(t.sigma_mhz), 1e-9)
+            slot[c] = t
+        if not ok or len(slot) != 3:
+            continue
+
+        inertia = _INERTIA_TO_MHZ / vals
+        f0 = float(inertia[2] - inertia[1] - inertia[0])
+        if abs(f0) < tol_amu_a2:
+            continue
+        # d(I_k)/d(value_k) = -K / value_k^2, and f = I_c - I_b - I_a
+        g = np.array([+_INERTIA_TO_MHZ / vals[0] ** 2,
+                      +_INERTIA_TO_MHZ / vals[1] ** 2,
+                      -_INERTIA_TO_MHZ / vals[2] ** 2])
+        w = sig ** 2
+        denom = float(g @ (w * g))
+        if denom <= 0.0 or not np.isfinite(denom):
+            continue
+        step = -f0 * (w * g) / denom
+        for c, t in slot.items():
+            t.value_mhz = float(t.value_mhz + step[c])
+            t.correction_records.append(CorrectionRecord(
+                isotopologue_label=label,
+                component=t.component,
+                delta_mhz=float(step[c]),
+                sigma_mhz=abs(float(step[c])),
+                source="planarity",
+                method="inertial_defect_constraint",
+                notes=(f"defect {f0:+.4g} amu.A^2 removed; sigma-weighted "
+                       f"share {step[c]:+.4g} MHz"),
+                quality_flags=["planarity_constrained"],
+            ))
     return targets
 
 
