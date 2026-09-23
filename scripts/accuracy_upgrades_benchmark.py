@@ -29,26 +29,40 @@ a table calibrated on an external set would give, and never an artefact.
 
 Results
 -------
-Best row per molecule, all-bond RMS in mA, against the published references.
+All-bond RMS in mA against the published references, each leg at its own best
+configuration. Run ``--table`` to regenerate this from the cached JSON rather
+than trusting the transcription; an earlier hand-assembled version of this
+table had drifted from its own data, and its MEAN row did not reproduce from
+the rows above it.
 
-                        RHF/6-31G                B3LYP/6-31G(d)
-                   theory    ME  hybrid     theory    ME  hybrid
-  vinyl fluoride     5.72  8.54    7.95       4.17  7.19    6.84
-  acetyl fluoride    6.57 13.71    8.55       6.87 11.18    8.75
-  fluoroethane      10.04  8.77    8.30       6.61  7.89    8.75
-  formyl fluoride    9.38  6.25    5.24       3.84  2.52    3.68
-  fluoroacetylene    5.02  4.59    4.37       3.41  3.46    2.27
-  chlorofluoro...   45.42 32.06   13.15      25.14 16.70   10.18
-  water              8.35  1.76    1.57      10.68  4.42    4.34
-  ozone             21.03  2.28    2.32       7.57  1.03    1.00
-  isocyanic acid    26.28 63.97   18.73       4.50  4.33    3.74
-  MEAN              15.31 15.77    8.66       8.09  6.52    5.51
+Scoring each leg independently matters. Picking one row per molecule -- the
+configuration where the hybrid happens to do best -- lets the hybrid choose the
+settings the other two are then scored under, and that alone moves the
+mixed-estimation mean at RHF from 12.41 to 15.30 mA. The margins below are the
+ones that survive giving every method its best case.
+
+                              RHF/6-31G             B3LYP/6-31G(d)
+                         theory    ME  hybrid    theory    ME  hybrid
+  vinyl fluoride           5.72  8.44    7.87      4.17  7.18    6.84
+  acetyl fluoride          6.57 12.07    8.55      6.87 11.18    8.75
+  fluoroethane            10.04  8.77    8.25      6.61  7.88    8.75
+  formyl fluoride          9.38  6.06    5.24      3.84  2.52    3.68
+  fluoroacetylene          5.02  4.59    4.37      3.41  3.46    2.27
+  chlorofluoromethane     45.42 27.26   13.15     25.14 16.70   10.18
+  water                    8.14  1.38    1.36     10.89  4.20    4.13
+  ozone                   21.03  2.28    2.32      7.57  1.03    1.00
+  isocyanic acid          26.28 40.86   18.73      4.50  4.32    3.74
+  MEAN                    15.29 12.41    7.76      8.11  6.50    5.48
 
 The hybrid is best of the three on 6/9 at RHF and 5/9 at B3LYP, and beats
-mixed estimation on 7/9 at both. It improves with the level of theory --
-8.66 to 5.51 mA overall, and on 6 of 9 molecules individually, by a factor of
+mixed estimation on 8/9 and 7/9. It improves with the level of theory --
+7.76 to 5.48 mA overall, and on 6 of 9 molecules individually, by a factor of
 5 on isocyanic acid -- so it is not merely rescuing a bad prior, which three
 molecules into the B3LYP run looked like the conclusion.
+
+Water's row moved (1.57 -> 1.36 and 4.34 -> 4.13) when its reference structure
+was corrected to the r_e it cites; see monofluoro_references.WATER and
+dev/tests/test_water_reference_verification.py.
 
 Where theory alone wins (vinyl fluoride, acetyl fluoride, fluoroethane) the
 margin is 2-3 mA, and those are the molecules whose corrected targets the
@@ -56,9 +70,9 @@ inertial-defect probe independently flags as biased (see
 rovib_corrections._apply_defect_bias_floor). The hybrid's wins elsewhere run
 to 8-15 mA.
 
-Water is the one genuine regression with level, 1.57 to 4.34. sigma_x comes
+Water is the one genuine regression with level, 1.36 to 4.13. sigma_x comes
 from a per-level table, 7 mA here, while B3LYP/6-31G(d) is atypically poor for
-O-H at 10.68 mA -- so the fit was instructed to trust a bad prior. A
+O-H at 10.89 mA -- so the fit was instructed to trust a bad prior. A
 per-molecule sigma_x would catch it; prior_sigma_for_molecule already computes
 one from the offset residuals where the classes are calibrated.
 
@@ -464,5 +478,63 @@ def main() -> None:
     print(f"\n  written to {out_path}")
 
 
+#: Molecule order used by the summary table.
+_TABLE_ORDER = [
+    "vinyl_fluoride", "acetyl_fluoride", "fluoroethane", "formyl_fluoride",
+    "fluoroacetylene", "chlorofluoromethane", "water", "ozone",
+    "isocyanic_acid",
+]
+
+#: Levels the summary table reports, as (label, output-file tag).
+_TABLE_LEVELS = [("RHF/6-31G", "hf_6-31g"), ("B3LYP/6-31G(d)", "b3lyp_6-31gd")]
+
+
+def print_summary_table() -> None:
+    """Regenerate the results table in this module's docstring from the JSON.
+
+    Each leg is reported at its own best configuration, independently. Picking
+    one row per molecule -- the row where the hybrid does best -- would let the
+    hybrid choose the settings the other two are then scored under, which
+    flatters it by 2.9 mA on the mixed-estimation mean at RHF.
+    """
+    legs = ("theory_rms_ma", "me_rms_ma", "hybrid_rms_ma")
+    tables = {}
+    for label, tag in _TABLE_LEVELS:
+        path = _ROOT / "output" / f"accuracy_upgrades_{tag}.json"
+        tables[label] = json.loads(path.read_text(encoding="utf-8")) \
+            if path.exists() else {}
+
+    head = " " * 23
+    for label, _ in _TABLE_LEVELS:
+        head += f"{label:^24s}"
+    print(head)
+    print(" " * 23 + 2 * f"{'theory':>8s}{'ME':>6s}{'hybrid':>8s}  ")
+
+    totals = {lab: [0.0, 0.0, 0.0] for lab, _ in _TABLE_LEVELS}
+    counts = {lab: 0 for lab, _ in _TABLE_LEVELS}
+    for key in _TABLE_ORDER:
+        line = f"  {key.replace('_', ' '):<21s}"
+        for label, _ in _TABLE_LEVELS:
+            recs = tables[label].get(key)
+            if not recs:
+                line += f"{'-':>8s}{'-':>6s}{'-':>8s}  "
+                continue
+            vals = [min(v[leg] for v in recs.values()) for leg in legs]
+            for i, v in enumerate(vals):
+                totals[label][i] += v
+            counts[label] += 1
+            line += f"{vals[0]:8.2f}{vals[1]:6.2f}{vals[2]:8.2f}  "
+        print(line)
+    line = f"  {'MEAN':<21s}"
+    for label, _ in _TABLE_LEVELS:
+        n = max(counts[label], 1)
+        line += "".join(f"{t / n:8.2f}" if i != 1 else f"{t / n:6.2f}"
+                        for i, t in enumerate(totals[label])) + "  "
+    print(line)
+
+
 if __name__ == "__main__":
-    main()
+    if "--table" in sys.argv:
+        print_summary_table()
+    else:
+        main()

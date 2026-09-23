@@ -572,9 +572,33 @@ CHLOROFLUOROMETHANE = ReferenceMolecule(
 MOLECULES_SET2 = [FORMYL_FLUORIDE, FLUOROACETYLENE, CHLOROFLUOROMETHANE]
 
 
+#: Water's equilibrium structure, as published parameters rather than
+#: coordinates, so the two can never drift apart.
+WATER_R_E = 0.95777          # Angstrom
+WATER_THETA_E_DEG = 104.48
+
+
+def _bent_xy(r_ang: float, theta_deg: float) -> np.ndarray:
+    """C2v XY2 geometry: heavy atom at the origin, C2 axis along +y."""
+    half = np.radians(theta_deg) / 2.0
+    return np.array([
+        [0.0, 0.0, 0.0],
+        [r_ang * np.sin(half), r_ang * np.cos(half), 0.0],
+        [-r_ang * np.sin(half), r_ang * np.cos(half), 0.0],
+    ])
+
+
 # ── Water, H2O — a deliberate stress test ────────────────────────────────────
-# Structure: r_e = 0.9578 A, 104.48 deg, the accepted equilibrium geometry.
+# Structure: r_e = 0.95777 A, 104.48 deg -- the spectroscopic (nonadiabatic)
+# equilibrium structure of Csaszar et al., J. Chem. Phys. 122, 214305 (2005),
+# which agrees with the Hoy & Bunker force-field determination NIST CCCBDB
+# lists as water's experimental geometry (0.958 A, 104.4776 +/- 0.0019 deg).
 # Constants: NIST CCCBDB experimental values for H2O and D2O.
+#
+# The coordinates are generated from those two parameters rather than typed in:
+# an earlier hand-entered set encoded 0.957982 A / 104.4929 deg, 0.2 mA and
+# 0.013 deg away from the structure the comment claimed, which is a tenth of
+# water's own benchmark error and so worth not carrying.
 #
 # Water is the hardest case here and it is included to show where the approach
 # breaks down rather than where it works. Every fluorinated molecule above
@@ -596,11 +620,7 @@ WATER = ReferenceMolecule(
     name="Water",
     formula="H2O",
     elems=["O", "H", "H"],
-    geometry=np.array([
-        [0.0000000,  0.0000000, 0.0],
-        [0.757430,  0.5865400, 0.0],
-        [-0.757430,  0.5865400, 0.0],
-    ]),
+    geometry=_bent_xy(WATER_R_E, WATER_THETA_E_DEG),
     masses=np.array([M_O16, M_H, M_H]),
     species=[
         Isotopologue("H2-16O", {},
@@ -608,7 +628,11 @@ WATER = ReferenceMolecule(
         Isotopologue("D2-16O", {1: M_D, 2: M_D},
                      (462278.3, 218038.5, 145258.5), (1, 1, 1), (0.025,)*3),
     ],
-    structure_source="Accepted equilibrium structure r_e = 0.9578 A, 104.48 deg",
+    structure_source=(
+        "Equilibrium structure r_e = 0.95777 A, 104.48 deg "
+        "(Csaszar et al., J. Chem. Phys. 122, 214305 (2005); consistent with "
+        "Hoy & Bunker via NIST CCCBDB)"
+    ),
     constants_source="NIST CCCBDB experimental rotational constants (H2O, D2O)",
     bonds={"O-H": [(0, 1), (0, 2)]},
     angles={"H-O-H": [(1, 0, 2)]},

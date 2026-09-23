@@ -60,7 +60,7 @@ isotopic dependence of the constants and the level of theory does not.
 
 The one independent check available points the same way: water is the only
 molecule in the set with a genuine r_e reference, and there the hybrid scores
-4.34 mA against theory's 10.68.
+4.13 mA against theory's 10.89.
 """
 
 from __future__ import annotations
