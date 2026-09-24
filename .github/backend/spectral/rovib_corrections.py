@@ -6,7 +6,11 @@ from typing import Optional
 import numpy as np
 
 from backend.spectral.correction_models import COMPONENTS, RovibCorrection
-from backend.spectral.spectral import _INERTIA_TO_MHZ, defect_model_sigma
+from backend.spectral.spectral import (
+    _INERTIA_TO_MHZ,
+    _rotational_constants,
+    defect_model_sigma,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -297,6 +301,7 @@ def resolve_corrections(
     correction_bob_params: Optional[dict] = None,
     g_tensor: Optional[dict] = None,
     defect_bias_floor: bool = False,
+    defect_bias_scale: bool = False,
     coords_ang=None,
     planarity_constraint: bool = False,
 ) -> list:
@@ -571,6 +576,8 @@ def resolve_corrections(
         targets = apply_planarity_constraint(targets, isotopologues, coords_ang)
     if defect_bias_floor and coords_ang is not None:
         targets = _apply_defect_bias_floor(targets, isotopologues, coords_ang)
+    if defect_bias_scale and coords_ang is not None:
+        targets = apply_defect_bias_scale(targets, isotopologues, coords_ang)
     return targets
 
 
@@ -780,6 +787,99 @@ def _apply_defect_bias_floor(targets, isotopologues, coords_ang):
             floor = float(floors[int(t.component_index)])
             if np.isfinite(floor) and floor > float(t.sigma_mhz):
                 t.sigma_mhz = floor
+    return targets
+
+
+def defect_improvement_ratio(b0_abc, corrected_abc, coords_ang, masses):
+    """How much of a species' vibrational inertial defect the correction removed.
+
+    Returns |defect after| / |defect before|, both measured against the rigid
+    structure's own defect so that non-planarity is not mistaken for
+    non-rigidity. Below 1 the correction is doing its job; above 1 it has made
+    the constants *less* mutually consistent than the raw measurements were,
+    which is only possible if the correction is wrong.
+
+    None when the defect is undefined -- a linear species, or one whose three
+    constants were not all measured.
+    """
+    b0 = np.asarray(b0_abc, dtype=float)
+    corr = np.asarray(corrected_abc, dtype=float)
+    if b0.size != 3 or corr.size != 3 or np.any(b0 <= 0) or np.any(corr <= 0):
+        return None
+    calc = _rotational_constants(np.asarray(coords_ang, dtype=float),
+                                 np.asarray(masses, dtype=float))
+    if np.any(~np.isfinite(calc)) or np.any(calc <= 0):
+        return None
+
+    def defect(abc):
+        i = _INERTIA_TO_MHZ / np.asarray(abc, dtype=float)
+        return float(i[2] - i[1] - i[0])
+
+    d_struct = defect(calc)
+    before = abs(defect(b0) - d_struct)
+    after = abs(defect(corr) - d_struct)
+    if before <= 0.0:
+        return None
+    return after / before
+
+
+def apply_defect_bias_scale(targets, isotopologues, coords_ang):
+    """Widen sigma in proportion to how badly the correction failed its own test.
+
+    This is the defect probe used the way _apply_defect_bias_floor's own
+    measurements say it should be. That function flooring sigma at the
+    *absolute* residual defect made the fit worse, and the reason recorded
+    there is precise: the probe's discriminating power is in the **ratio** of
+    the residual defect to the raw one, while the absolute residual is a number
+    whose size mostly tracks the molecule's moments of inertia. Formyl
+    fluoride's correction works -- it improves the defect 1.8x -- and was still
+    handed a 287 MHz sigma that swamped its data and cost 1.3 mA.
+
+    So scale instead of floor:
+
+        sigma -> sigma * max(1, |defect after| / |defect before|)
+
+    A correction that removes defect is left entirely alone, whatever its
+    molecule's absolute scale, which is what protects the controls. Only a
+    correction that made the constants *less* self-consistent than the raw
+    measurements is down-weighted, and it is down-weighted by exactly how much
+    it failed by. Measured on the reference set the flagged molecules are vinyl
+    fluoride (1.66) and acetyl fluoride (2.2-64), which are also the only two
+    where theory alone beats the hybrid.
+
+    Like the floor, this never touches the constants or the corrections
+    themselves, only the weight the fit gives them, and species whose defect is
+    undefined are skipped.
+    """
+    by_species: dict = {}
+    for t in targets:
+        by_species.setdefault(t.isotopologue_label, []).append(t)
+    masses_of = {str(iso.get("name", "iso")): iso.get("masses")
+                 for iso in isotopologues}
+
+    for label, group in by_species.items():
+        if len(group) != 3:
+            continue                      # the defect needs all three
+        masses = masses_of.get(label)
+        if masses is None:
+            continue
+        b0 = np.empty(3, dtype=float)
+        corr = np.empty(3, dtype=float)
+        seen = set()
+        for t in group:
+            c = int(t.component_index)
+            if c not in (0, 1, 2):
+                break
+            b0[c] = float(t.b0_mhz)
+            corr[c] = float(t.value_mhz)
+            seen.add(c)
+        if seen != {0, 1, 2}:
+            continue
+        ratio = defect_improvement_ratio(b0, corr, coords_ang, masses)
+        if ratio is None or not np.isfinite(ratio) or ratio <= 1.0:
+            continue
+        for t in group:
+            t.sigma_mhz = float(t.sigma_mhz) * ratio
     return targets
 
 

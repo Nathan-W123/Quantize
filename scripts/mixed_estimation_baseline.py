@@ -118,13 +118,16 @@ DEFECT_BIAS_FLOOR = any(a == "defect_floor=on" for a in sys.argv[1:])
 #: Force a planar species' corrected constants to satisfy I_c = I_a + I_b,
 #: spending the residual defect on whichever correction is least trusted.
 PLANARITY_CONSTRAINT = any(a == "planarity=on" for a in sys.argv[1:])
+#: Widen sigma by how badly the correction failed its own defect test.
+DEFECT_BIAS_SCALE = any(a == "defect_scale=on" for a in sys.argv[1:])
 
 #: Angle predicate sigma, in degrees, paired with each bond sigma above by the
 #: same ratio the reference module uses between its bond and angle widths.
 _ANGLE_SIGMA_PER_ANG = 1.5 / 0.020
 
 
-def corrected_targets(mol, isos, ctbl, bob_params=None):
+def corrected_targets(mol, isos, ctbl, bob_params=None,
+                      coords_ang=None, defect_bias_scale=None):
     """B_e per species and component, resolved exactly as the hybrid resolves them.
 
     Both methods must fit the same numbers *and* weight them the same way, and
@@ -162,7 +165,13 @@ def corrected_targets(mol, isos, ctbl, bob_params=None):
         # vibrational correction is correction error, and no sigma should claim
         # to be tighter than that.
         defect_bias_floor=DEFECT_BIAS_FLOOR,
-        coords_ang=np.asarray(mol.geometry, dtype=float),
+        defect_bias_scale=(DEFECT_BIAS_SCALE if defect_bias_scale is None
+                           else bool(defect_bias_scale)),
+        # The prior geometry, not the reference: the probe subtracts the
+        # structure's own defect, and reading that off the answer would make it
+        # circular for every non-planar species.
+        coords_ang=(np.asarray(mol.geometry, dtype=float) if coords_ang is None
+                    else np.asarray(coords_ang, dtype=float)),
         correction_bob_params=bob_params,
         planarity_constraint=PLANARITY_CONSTRAINT)
     by_species = {iso["name"]: np.asarray(iso["masses"], dtype=float)
@@ -231,6 +240,25 @@ def rms_bond_error(mol, coords):
     ref = mol.internal_coordinates(np.asarray(mol.geometry, dtype=float))
     got = mol.internal_coordinates(np.asarray(coords, dtype=float))
     errs = [(got[k] - ref[k]) * 1000.0 for k in mol.bonds]
+    return float(np.sqrt(np.mean(np.square(errs)))), errs
+
+
+def rms_angle_error(mol, coords):
+    """RMS angle error in degrees, and the per-angle list.
+
+    Reported alongside the bond RMS because the bond RMS alone flatters the
+    engine: angles are determined almost entirely by A, they carry the
+    correction bias that A carries, and a headline quoted in milliangstroms
+    never shows it. Ozone's bond lands 0.06 mA from its equilibrium reference
+    while its angle is 0.1 degrees out.
+
+    Empty for a molecule with no angles defined; the caller gets nan.
+    """
+    if not getattr(mol, "angles", None):
+        return float("nan"), []
+    ref = mol.internal_coordinates(np.asarray(mol.geometry, dtype=float))
+    got = mol.internal_coordinates(np.asarray(coords, dtype=float))
+    errs = [float(got[k] - ref[k]) for k in mol.angles]
     return float(np.sqrt(np.mean(np.square(errs)))), errs
 
 

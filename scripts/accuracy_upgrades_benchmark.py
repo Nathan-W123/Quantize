@@ -127,6 +127,7 @@ from scripts.mixed_estimation_baseline import (  # noqa: E402
     _SIGMA_X_BY_LEVEL,
     corrected_targets,
     mixed_estimation_fit,
+    rms_angle_error,
     rms_bond_error,
 )
 from scripts.monofluoro_benchmark import build_isotopologues, start_geometry  # noqa: E402
@@ -221,9 +222,19 @@ CONFIGS = {
             "bob": True},
     "offsets+bob": {"offsets": True, "elec": False, "lam": False,
                     "corr": False, "bob": True},
+    # Widen sigma by how badly each species' correction failed the inertial-
+    # defect test. See rovib_corrections.apply_defect_bias_scale: the probe's
+    # *ratio* is what carries the signal, and the earlier attempt to use its
+    # absolute residual as a sigma floor damaged the molecules whose
+    # corrections work.
+    "defect": {"offsets": False, "elec": False, "lam": False, "corr": False,
+               "defect_scale": True},
+    "offsets+defect": {"offsets": True, "elec": False, "lam": False,
+                       "corr": False, "defect_scale": True},
 }
 for _cfg in CONFIGS.values():
     _cfg.setdefault("bob", False)
+    _cfg.setdefault("defect_scale", False)
 
 
 def electronic_shifted_isotopologues(isos, g_tensor, total_mass_amu):
@@ -253,7 +264,8 @@ def electronic_shifted_isotopologues(isos, g_tensor, total_mass_amu):
     return out
 
 
-def hybrid_fit(mol, isos, prior_coords, ctbl, sigma_x_ang):
+def hybrid_fit(mol, isos, prior_coords, ctbl, sigma_x_ang,
+               defect_scale=False):
     """The engine's answer, with the prior centred and widened as handed.
 
     ``prior_target_coords`` is what makes the prior's centre follow
@@ -275,6 +287,7 @@ def hybrid_fit(mol, isos, prior_coords, ctbl, sigma_x_ang):
         use_autoconfig=False, max_iter=40, hess_recalc_every=10,
         correction_table=ctbl, quantum_prior_sigma_ang=float(sigma_x_ang),
         prior_target_coords=np.asarray(prior_coords, dtype=float),
+        defect_bias_scale=bool(defect_scale),
         chi2_rescale=True, chi2_rescale_max_passes=3)
     with contextlib.redirect_stdout(io.StringIO()):
         return opt.run()
@@ -443,23 +456,30 @@ def main() -> None:
                     "so the correction level differs from the geometry level")
             ctbl, info = table_for(prior, cfg["lam"], cfg["corr"])
             targets = corrected_targets(mol, isos, ctbl,
-                                        bob_params=bob_params)
+                                        bob_params=bob_params,
+                                        coords_ang=prior,
+                                        defect_bias_scale=cfg["defect_scale"])
 
             # Both methods get the same prior centre and the same width; the
             # comparison is about mechanism, not about who was told to trust
             # the theory more.
             me_geom, _chi2 = mixed_estimation_fit(mol, targets, prior, sigma_x)
-            hyb = hybrid_fit(mol, isos, prior, ctbl, sigma_x)
+            hyb = hybrid_fit(mol, isos, prior, ctbl, sigma_x,
+                             defect_scale=cfg["defect_scale"])
 
             entry = {
                 "theory_rms_ma": rms_bond_error(mol, prior)[0],
                 "me_rms_ma": rms_bond_error(mol, me_geom)[0],
                 "hybrid_rms_ma": rms_bond_error(mol, hyb)[0],
+                "theory_rms_deg": rms_angle_error(mol, prior)[0],
+                "me_rms_deg": rms_angle_error(mol, me_geom)[0],
+                "hybrid_rms_deg": rms_angle_error(mol, hyb)[0],
                 "n_species": len(isos),
                 "sigma_x_ang": float(sigma_x),
                 "corr_level": (f"{CORR_METHOD or METHOD}/{CORR_BASIS or BASIS}"
                                if cfg["corr"] else f"{METHOD}/{BASIS}"),
                 "bob": bool(cfg["bob"]),
+                "defect_scale": bool(cfg["defect_scale"]),
                 "lam_modes_cm": sorted({round(w, 1) for v in info.get("lam", {}).values()
                                         for w in v.get("modes_cm", [])}),
                 "g_tensor": g_tensor if cfg["elec"] else None,

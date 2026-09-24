@@ -383,6 +383,7 @@ class MolecularOptimizer:
         anharmonic_from_hessian=False,
         anharmonic_fd_delta_ang=0.01,
         nonconvergent_policy="warn",
+        defect_bias_scale=False,
         harmonic_cd_from_hessian=False,
         cd_sigma_fraction=0.05,
         fit_cd_constants=False,
@@ -421,6 +422,7 @@ class MolecularOptimizer:
         self._anharmonic_from_hessian = bool(anharmonic_from_hessian)
         self._anharmonic_fd_delta_ang = max(float(anharmonic_fd_delta_ang), 1e-4)
         self._nonconvergent_policy = str(nonconvergent_policy or "warn").strip().lower()
+        self._defect_bias_scale = bool(defect_bias_scale)
         self._harmonic_cd_from_hessian = bool(harmonic_cd_from_hessian)
         self._warned_cd_unvalidated = False
         self.chi2_rescale = bool(chi2_rescale)
@@ -487,6 +489,8 @@ class MolecularOptimizer:
                 sigma_elec_fraction=float(correction_sigma_elec_fraction),
                 correction_bob_params=correction_bob_params or None,
                 g_tensor=correction_g_tensor or None,
+                defect_bias_scale=bool(defect_bias_scale),
+                coords_ang=np.asarray(coords, dtype=float),
             )
             _qc_warnings = validate_correction_quality(_corrected_targets)
             print("\nRovibrational corrections applied:")
@@ -1198,6 +1202,8 @@ class MolecularOptimizer:
             sigma_elec_fraction=self._correction_sigma_elec_fraction,
             correction_bob_params=self._correction_bob_params,
             g_tensor=self._correction_g_tensor,
+            defect_bias_scale=self._defect_bias_scale,
+            coords_ang=np.asarray(self.coords, dtype=float),
         )
         _qc_warnings = validate_correction_quality(corrected_targets)
         print("\n  Rovibrational corrections (harmonic from Hessian):")
