@@ -43,22 +43,30 @@ ones that survive giving every method its best case.
 
                               RHF/6-31G             B3LYP/6-31G(d)
                          theory    ME  hybrid    theory    ME  hybrid
-  vinyl fluoride           5.72  8.44    7.87      4.17  7.18    6.84
+  vinyl fluoride           5.72  7.80    7.21      4.17  7.18    6.84
   acetyl fluoride          6.57 12.07    8.55      6.87 11.18    8.75
-  fluoroethane            10.04  8.77    8.25      6.61  7.88    8.75
+  fluoroethane            10.04  8.77    7.40      6.61  7.88    8.75
   formyl fluoride          9.38  6.06    5.24      3.84  2.52    3.68
   fluoroacetylene          5.02  4.59    4.37      3.41  3.46    2.27
   chlorofluoromethane     45.42 27.26   13.15     25.14 16.70   10.18
   water                    8.14  1.38    1.36     10.89  4.20    4.13
   ozone                   21.03  2.28    2.32      7.57  1.03    1.00
   isocyanic acid          26.28 40.86   18.73      4.50  4.32    3.74
-  MEAN                    15.29 12.41    7.76      8.11  6.50    5.48
+  MEAN                    15.29 12.34    7.59      8.11  6.50    5.48
 
 The hybrid is best of the three on 6/9 at RHF and 5/9 at B3LYP, and beats
 mixed estimation on 8/9 and 7/9. It improves with the level of theory --
-7.76 to 5.48 mA overall, and on 6 of 9 molecules individually, by a factor of
+7.59 to 5.48 mA overall, and on 6 of 9 molecules individually, by a factor of
 5 on isocyanic acid -- so it is not merely rescuing a bad prior, which three
 molecules into the B3LYP run looked like the conclusion.
+
+The RHF hybrid mean is 7.59 rather than 7.76 because of ``defect``, the last
+upgrade that improved anything without costing a Hessian. Against the
+offset-corrected prior it moved vinyl fluoride 7.95 -> 7.21 and fluoroethane
+8.30 -> 7.40, left acetyl fluoride at 8.55 -> 8.59, and did not touch the other
+six molecules at all -- which is the property that matters, because the earlier
+absolute-floor version of the same probe bought a similar gain by damaging the
+molecules whose corrections work.
 
 Water's row moved (1.57 -> 1.36 and 4.34 -> 4.13) when its reference structure
 was corrected to the r_e it cites; see monofluoro_references.WATER and
