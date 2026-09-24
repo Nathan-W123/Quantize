@@ -850,6 +850,26 @@ def apply_defect_bias_scale(targets, isotopologues, coords_ang):
     Like the floor, this never touches the constants or the corrections
     themselves, only the weight the fit gives them, and species whose defect is
     undefined are skipped.
+
+    MEASURED at RHF/6-31G against the offset-corrected prior, hybrid RMS in mA:
+
+        vinyl fluoride    7.95 -> 7.21    flagged, better
+        fluoroethane      8.30 -> 7.40    flagged, better
+        acetyl fluoride   8.55 -> 8.59    flagged, neutral
+        formyl fluoride   6.45 -> 6.45    control, untouched
+        five others          unchanged    ratio < 1, untouched
+        MEAN              8.63 -> 8.46
+
+    Nothing in the set got worse. That is the whole difference from the floor,
+    which bought vinyl fluoride 7.95 -> 6.39 and paid 6.45 -> 7.78 for it on a
+    control whose correction demonstrably works.
+
+    One caveat on where to use it. With a *bad* prior the widening defers to
+    that prior, and the sign of the result follows the prior's quality rather
+    than the probe's verdict: on the uncorrected theory prior the same flag
+    moved vinyl fluoride 18.69 -> 19.47 (worse) and acetyl fluoride
+    20.16 -> 17.69 (better). Honest sigmas are worth having either way, but the
+    accuracy gain is only reliable once the prior is itself bias-corrected.
     """
     by_species: dict = {}
     for t in targets:
