@@ -42,8 +42,25 @@ _inertia_paf = _inertia_paf
 _normal_modes = _normal_modes
 _bk_mode_derivatives = _bk_mode_derivatives
 
-# |ω_r² − ω_s²| below this (cm⁻²) is treated as a Coriolis resonance and skipped
-# rather than divided through, which would blow up the denominator.
+# |ω_r² − ω_s²| below this (cm⁻²) makes the Coriolis denominator unusable, so
+# the term is skipped rather than divided through.
+#
+# This is a divide-by-zero guard for EXACT symmetry degeneracy, not a resonance
+# treatment, and calling it one was misleading. At 1 cm⁻² it fires only for
+# modes degenerate by symmetry -- a linear molecule's bend pair, a symmetric
+# top's e modes -- and the linear case is then handled properly by
+# ``linear_pair_coeff`` rather than left dropped. Physical near-resonances are
+# nowhere near it: water's closest pair, nu1 and nu3 at 99 cm⁻¹ apart, differ by
+# 8.6e5 cm⁻² in ω², five orders of magnitude above the threshold, so nothing is
+# skipped for water or ozone (measured: near_degen_skips == 0 for both).
+#
+# That matters because it rules out a tempting explanation for the engine's two
+# 5-sigma correction failures. Water's B and ozone's A are the failing
+# components, and in both the Coriolis contribution is identically zero by C2v
+# symmetry -- so no treatment of the Coriolis denominator, resonant or
+# otherwise, can reach them. The error is entirely in the anharmonic term, which
+# carries no resonant denominator at this order. See
+# test_alpha_against_experiment for the pinned numbers.
 _DEGENERACY_TOL_CM2 = 1.0
 
 # Assumed size of the cubic term, relative to the harmonic one, when it has not

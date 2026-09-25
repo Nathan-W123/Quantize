@@ -326,3 +326,62 @@ def test_water_alpha_signs_match_the_required_correction():
     )
     delta = 0.5 * np.array([alpha["A"], alpha["B"], alpha["C"]])
     assert np.all(np.sign(delta) == np.sign(required))
+
+
+# ── where the correction error actually lives ───────────────────────────────
+
+def test_nothing_is_skipped_as_near_degenerate_for_water():
+    """The degeneracy guard is for exact symmetry degeneracy, not resonance.
+
+    The threshold is 1 cm^-2 in omega^2. Water's closest pair, nu1 and nu3 at
+    99 cm^-1 apart, differ by 8.6e5 cm^-2 -- five orders of magnitude above it.
+    So the guard never fires for an asymmetric top, and it cannot be the reason
+    any correction is wrong.
+    """
+    coords = h2o_coords()
+    _, _, _, info = compute_harmonic_alpha(
+        h2o_hessian(coords), coords, H2O_MASSES, hessian_fn=h2o_hessian)
+    assert info["near_degen_skips"] == 0
+
+    w = np.asarray(info["frequencies_cm"], dtype=float)
+    gaps = [abs(w[i] ** 2 - w[j] ** 2)
+            for i in range(len(w)) for j in range(i + 1, len(w))]
+    assert min(gaps) > 1e5
+
+
+def test_coriolis_is_identically_zero_on_the_components_that_fail():
+    """C2v symmetry zeroes the Coriolis term for A and B, leaving only C.
+
+    This is the measurement that rules out resonance treatment as a fix for the
+    engine's two 5-sigma correction failures. Water's B is 5.4 sigma out and
+    ozone's A is 5.0 sigma out, and the Coriolis contribution to both is exactly
+    zero -- so nothing done to the Coriolis denominator, resonant or otherwise,
+    can move them. Whatever is wrong is in the anharmonic term.
+
+    zeta_rs^alpha is non-zero only where Gamma(Q_r) x Gamma(Q_s) contains
+    Gamma(R_alpha), and for a C2v XY2 molecule that picks out one axis.
+    """
+    coords = h2o_coords()
+    _, _, _, info = compute_harmonic_alpha(
+        h2o_hessian(coords), coords, H2O_MASSES, hessian_fn=h2o_hessian)
+    cor = info["alpha_coriolis_mhz"]
+    assert cor["A"] == pytest.approx(0.0, abs=1e-9)
+    assert cor["B"] == pytest.approx(0.0, abs=1e-9)
+    assert abs(cor["C"]) > 100.0
+
+
+def test_the_anharmonic_term_dominates_the_components_that_fail():
+    """On water's B the anharmonic term is several times the total correction.
+
+    Measured on the analytic PES: B is centrifugal -3253.7, Coriolis 0.0,
+    anharmonic +15930.2 MHz. There is no cancellation to appeal to and no other
+    term to blame -- the anharmonic contribution is the correction, so its
+    accuracy is the correction's accuracy.
+    """
+    coords = h2o_coords()
+    _, _, _, info = compute_harmonic_alpha(
+        h2o_hessian(coords), coords, H2O_MASSES, hessian_fn=h2o_hessian)
+    harm = info["alpha_centrifugal_mhz"]["B"] + info["alpha_coriolis_mhz"]["B"]
+    anh = info["alpha_anharmonic_mhz"]["B"]
+    assert abs(anh) > 4.0 * abs(harm)
+    assert abs(anh + harm) < abs(anh)
