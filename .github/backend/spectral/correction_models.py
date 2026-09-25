@@ -38,7 +38,20 @@ M_ELECTRON_AMU: float = 5.48579909070e-4
 # Provide molecule-specific values via bob_params in the YAML for higher accuracy.
 #
 # Format: element → component → {"u": float, "sigma_u": float}
-# Components A, B, C.  A is omitted for heavy atoms (negligible for oblate tops).
+#
+# Components A, B, C. A is present only for H, D and T. The earlier note here
+# said it was omitted because it is negligible for oblate tops, which is not the
+# reason and not a safe thing to rely on in this engine: A is the constant that
+# determines bond angles, and a molecule with no hydrogens would get no A-axis
+# BOB correction at all. The real reason is that no source consulted gives an
+# A-axis u for a heavy atom.
+#
+# So the omission is carried as uncertainty rather than as a zero -- see
+# ``bob_delta_b``'s ``unknown_component_sigma``. Measured magnitude, for anyone
+# tempted to chase it: on ozone's A that adds about 0.025 MHz of sigma against a
+# correction sigma of ~68 MHz, so it is currently irrelevant. It stops being
+# irrelevant if a molecule-specific u is supplied that is larger than these
+# placeholders, or once correction sigmas reach single-digit MHz.
 #: Elements already warned about, so the notice appears once per run.
 _warned_builtin_bob: set = set()
 
@@ -334,12 +347,36 @@ def electronic_delta_b(
 
 # ── Born-Oppenheimer Breakdown correction ─────────────────────────────────────
 
+def _unknown_u_bound(elem_params: dict) -> float:
+    """A bound on an element's u for an axis it has no value for.
+
+    Taken as the largest ``|u| + sigma_u`` over the axes it does have. A BOB
+    parameter is a property of how one atom's electron cloud follows that atom,
+    and no axis of the same atom is expected to be systematically larger than
+    the others, so the measured axes bound the unmeasured one. It is a bound,
+    not an estimate, which is why it lands in sigma and never in the value.
+    """
+    best = 0.0
+    for key, entry in elem_params.items():
+        if str(key).strip().upper() not in ("A", "B", "C"):
+            continue
+        if isinstance(entry, dict):
+            u = abs(float(entry.get("u", 0.0)))
+            sig = entry.get("sigma_u", None)
+            u += abs(float(sig)) if sig is not None else 0.0
+        else:
+            u = abs(float(entry))
+        best = max(best, u)
+    return best
+
+
 def bob_delta_b(
     elems: list,
     masses_amu: list,
     comp_label: str,
     bob_params: dict,
     b_obs_mhz: float,
+    unknown_component_sigma: bool = True,
 ) -> tuple:
     """
     Born-Oppenheimer Breakdown (BOB) correction to one rotational constant.
@@ -355,7 +392,7 @@ def bob_delta_b(
     Omitting that factor is not a small error: it returns a number of order
     1e-5 where the answer is of order 1e-5 * B, which for water's B is about
     7 MHz. This function did that until the factor was added, so every BOB
-    correction it ever produced was zero to within printing precision.^X
+    correction it ever produced was zero to within printing precision.
 
     The u-parameters are dimensionless and mass-independent; the mass scaling
     (m_e / m_a) is applied here so that different isotopologues automatically
@@ -385,6 +422,23 @@ def bob_delta_b(
     b_obs_mhz : float
         The observed rotational constant this correction applies to, in MHz.
         The u-values are relative, so the correction is proportional to it.
+    unknown_component_sigma : bool
+        What to do about an element that has u-values for some axes but not the
+        one being corrected -- which is every heavy atom's A axis in the
+        built-in table, because no source consulted gives one.
+
+        The historical behaviour was to contribute exactly zero with no sigma,
+        which tells the fit the BOB correction on that axis is known to be zero.
+        It is not known; it is unmeasured, and those are different claims. With
+        this set (the default) the value still contributes zero -- there is no
+        defensible non-zero estimate -- but the element's known u-values bound
+        the unknown one, and that bound is carried as sigma.
+
+        Measured magnitude: on ozone's A this adds about 0.025 MHz against a
+        correction sigma of ~68 MHz, so it changes nothing today. It is here so
+        that the ignorance is recorded rather than asserted away, and because it
+        starts to matter if a molecule-specific u is supplied or once sigmas
+        reach single-digit MHz.
 
     Returns
     -------
@@ -402,14 +456,23 @@ def bob_delta_b(
         elem_params = bob_params.get(str(elem), None)
         if elem_params is None:
             continue
-        comp_entry = elem_params.get(comp, None)
-        if comp_entry is None:
-            continue
-
         m = float(mass)
         if m <= 0.0:
             continue
         scale = M_ELECTRON_AMU / m
+
+        comp_entry = elem_params.get(comp, None)
+        if comp_entry is None:
+            # This axis is unparameterised for this element. Contribute no
+            # value -- there is nothing to base one on -- but bound the unknown
+            # u by the ones the element does have, and carry that as sigma.
+            if not unknown_component_sigma:
+                continue
+            bound = _unknown_u_bound(elem_params)
+            if bound > 0.0:
+                sigma_sq += (scale * bound * b_obs) ** 2
+                any_sigma = True
+            continue
 
         if isinstance(comp_entry, dict):
             u = float(comp_entry.get("u", 0.0))
