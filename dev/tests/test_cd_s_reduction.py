@@ -225,3 +225,91 @@ def test_unknown_reduction_is_rejected_rather_than_defaulted():
     abc, tau = _water_tau()
     with pytest.raises(ValueError, match="reduction"):
         reduction_from_tau(abc, tau, reduction="B")
+
+
+# ── the sextic block ────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("reduction", ["A", "S"])
+def test_sextic_order_adds_seven_parameters(reduction):
+    from backend.spectral.cd_reduction import reduction_params
+    quartic = reduction_params(reduction, 4)
+    sextic = reduction_params(reduction, 6)
+    assert len(quartic) == 8
+    assert len(sextic) == 15
+    assert sextic[:8] == quartic
+
+
+@pytest.mark.parametrize("reduction", ["A", "S"])
+def test_sextic_reduces_the_level_residual(reduction):
+    """The point of the block: a quartic-only form cannot span the tau levels.
+
+    Measured on water at jmax=8, A goes 762.8 -> 482.6 MHz and S 811.7 -> 371.7.
+    """
+    abc, tau = _water_tau()
+    quartic = reduction_residual_mhz(abc, tau, reduction=reduction, jmax=8, order=4)
+    sextic = reduction_residual_mhz(abc, tau, reduction=reduction, jmax=8, order=6)
+    assert sextic < 0.8 * quartic
+
+
+@pytest.mark.parametrize("reduction,keys", [("A", ("phi_J", "phi_JK", "phi_K")),
+                                            ("S", ("h1", "h2", "h3"))])
+def test_a_symmetric_top_has_no_sextic_asymmetry_constants(reduction, keys):
+    _, tau = _water_tau()
+    got = reduction_from_tau(_SYMMETRIC, tau, reduction=reduction, order=6)
+    for k in keys:
+        assert abs(got[k]) < 1e-9
+
+
+@pytest.mark.parametrize("reduction", ["A", "S"])
+def test_sextic_parameters_round_trip_through_their_own_operator(reduction):
+    abc, tau = _water_tau()
+    params = reduction_from_tau(abc, tau, reduction=reduction, order=6)
+    got = levels_from_reduction(abc, params, reduction=reduction, order=6)
+    want = levels_from_tau(abc, tau)
+    resid = float(np.sqrt(np.mean((got - want) ** 2)))
+    assert resid == pytest.approx(
+        reduction_residual_mhz(abc, tau, reduction=reduction, order=6), rel=1e-9)
+
+
+def test_sextic_constants_are_much_smaller_than_quartic_ones():
+    """Sixth order in P against fourth: on water the ratio is about 1e-4.
+
+    A sextic constant coming out comparable to a quartic one would mean the
+    design matrix is degenerate and the solve has split one physical effect
+    across two columns.
+    """
+    abc, tau = _water_tau()
+    p = reduction_from_tau(abc, tau, reduction="A", order=6)
+    quartic = max(abs(p[k]) for k in ("DJ", "DJK", "DK"))
+    sextic = max(abs(p[k]) for k in ("Phi_J", "Phi_JK", "Phi_KJ", "Phi_K"))
+    assert sextic < 1e-2 * quartic
+
+
+def test_including_sextic_does_not_rescue_the_quartic_constants():
+    """A hypothesis worth recording as falsified.
+
+    The quartic-only fit leaves a 139.8 MHz level residual, which suggested the
+    quartic constants were absorbing sextic-shaped error -- and DJK is 36% off
+    experiment, by far the worst of the three. Adding the sextic block cuts the
+    residual by a third and moves DJK from -36.1% to -36.8%: slightly further
+    away, and DJ and DK by a tenth of a percent.
+
+    So DJK's error is force-field error, not reduction contamination, exactly as
+    compute_cd_constants already claims (the analytic PES's bend sits 4.4% below
+    the experimental harmonic frequency and DJK is the most bend-sensitive of
+    the three). Sextic constants are worth having on their own merits; they are
+    not a fix for the quartic ones.
+    """
+    abc, tau = _water_tau()
+    q = reduction_from_tau(abc, tau, reduction="A", jmax=6, order=4)
+    s = reduction_from_tau(abc, tau, reduction="A", jmax=6, order=6)
+    for k in ("DJ", "DJK", "DK"):
+        assert s[k] == pytest.approx(q[k], rel=0.02), k
+
+
+@pytest.mark.parametrize("order", [4, 6])
+def test_unknown_order_is_rejected(order):
+    from backend.spectral.cd_reduction import reduction_params
+    assert len(reduction_params("A", order)) in (8, 15)
+    with pytest.raises(ValueError, match="order"):
+        reduction_params("A", 8)
