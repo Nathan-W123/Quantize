@@ -120,7 +120,10 @@ from backend.spectral.correction_models import (  # noqa: E402
     electronic_delta_b,
     get_builtin_bob_params,
 )
-from backend.spectral.electronic_g import rotational_g_tensor  # noqa: E402
+from backend.spectral.electronic_g import (  # noqa: E402
+    g_tensors_for_isotopologues,
+    rotational_g_tensor,
+)
 from backend.spectral.harmonic_alpha import (  # noqa: E402
     build_correction_table_from_hessian,
 )
@@ -258,8 +261,11 @@ def electronic_shifted_isotopologues(isos, g_tensor, total_mass_amu):
         new = dict(iso)
         obs = np.asarray(iso["obs_constants"], dtype=float).copy()
         sig = np.asarray(iso["sigma_constants"], dtype=float).copy()
+        # g_tensor is species-keyed: the tensor is isotope-dependent, so the
+        # parent's g is the wrong number for every substituted species.
+        g_here = g_tensor.get(str(iso.get("name", "iso")), {})
         for k, comp in enumerate(np.asarray(iso["component_indices"], dtype=int)):
-            g_val = g_tensor.get("ABC"[int(comp)])
+            g_val = g_here.get("ABC"[int(comp)])
             if g_val is None or not np.isfinite(g_val):
                 continue
             delta = electronic_delta_b(float(obs[k]), total_mass_amu,
@@ -452,9 +458,10 @@ def main() -> None:
                     bob_params = get_builtin_bob_params(list(mol.elems), None)
             if cfg["elec"]:
                 if g_tensor is None:
-                    g_tensor = rotational_g_tensor(
-                        list(mol.elems), theory_coords, np.asarray(mol.masses),
-                        method=METHOD, basis=BASIS)
+                    with contextlib.redirect_stdout(io.StringIO()):
+                        g_tensor = g_tensors_for_isotopologues(
+                            list(mol.elems), theory_coords, isos,
+                            method=METHOD, basis=BASIS)
                 isos = electronic_shifted_isotopologues(
                     isos, g_tensor, float(np.sum(np.asarray(mol.masses))))
 
@@ -491,6 +498,7 @@ def main() -> None:
                 "lam_modes_cm": sorted({round(w, 1) for v in info.get("lam", {}).values()
                                         for w in v.get("modes_cm", [])}),
                 "g_tensor": g_tensor if cfg["elec"] else None,
+                "g_per_isotopologue": bool(cfg["elec"]),
                 "loo_offsets_ma": {k: round(v * 1000.0, 2) for k, v in loo.items()}
                                   if cfg["offsets"] else None,
             }

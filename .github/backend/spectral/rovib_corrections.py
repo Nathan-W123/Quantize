@@ -290,6 +290,21 @@ _M_E_OVER_M_P = 5.446170214e-4
 _G_MAX_TYPICAL = 0.7
 
 
+def _g_for_species(g_tensor, name: str):
+    """The g-tensor for one isotopologue, from either supported shape.
+
+    ``{"A": ..., "B": ..., "C": ...}`` applies to every species;
+    ``{"H2-16O": {"A": ...}, ...}`` gives one per species. The two are told
+    apart by whether the top-level keys are component labels.
+    """
+    if not g_tensor:
+        return None
+    if any(k in ("A", "B", "C") for k in g_tensor):
+        return g_tensor
+    entry = g_tensor.get(name)
+    return entry if isinstance(entry, dict) else None
+
+
 def resolve_corrections(
     isotopologues: list,
     correction_table: Optional[dict] = None,
@@ -345,6 +360,9 @@ def resolve_corrections(
         Floored at 100% when no g_tensor is supplied, since the fallback formula
         is only order-of-magnitude.
     g_tensor : dict or None
+        Either component-keyed ({"A","B","C"}) to apply one g-tensor to every
+        isotopologue, or species-keyed ({name: {"A","B","C"}}) for the
+        physically correct per-isotopologue form. See :func:`_g_for_species`.
         Rotational g-tensor components, ``{"A": g_aa, "B": g_bb, "C": g_cc}``.
         When given, the standard delta_elec = -(m_e/m_p) * g * B_obs is used
         instead of the crude 1/M_total fallback. Components may be negative.
@@ -455,7 +473,14 @@ def resolve_corrections(
 
             # â”€â”€ Electronic correction â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             if correction_elec and total_mass > 0.0:
-                g_val = (g_tensor or {}).get(comp_label)
+                # g may be given once for the molecule or per isotopologue. It
+                # is genuinely isotope-dependent -- the rotational g-tensor
+                # divides by the inertia tensor, so H2-16O's g_bb is +0.682
+                # against D2-16O's +0.341 at HF/6-31g, a factor of two -- and
+                # the correction is applied per species, so a single g quietly
+                # mis-corrects every substituted one.
+                g_here = _g_for_species(g_tensor, name)
+                g_val = (g_here or {}).get(comp_label)
                 g_val = _finite_or_none(g_val)
                 delta_e = electronic_delta_b(b0, total_mass, g_value=g_val)
                 if g_val is not None:
