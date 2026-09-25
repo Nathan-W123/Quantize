@@ -76,8 +76,38 @@ _A_PARAM_NAMES = ("A", "B", "C", "DJ", "DJK", "DK", "delta_J", "delta_K")
 #: reduction is therefore always carried alongside the values.
 _S_PARAM_NAMES = ("A", "B", "C", "DJ", "DJK", "DK", "d1", "d2")
 
+#: The sextic constants each reduction adds, in operator order. Watson writes
+#: the A set as Phi/phi and the S set as H/h. They enter the Hamiltonian with a
+#: PLUS sign where the quartic constants enter with a minus, which is a
+#: convention and not a choice: it is how every published table is signed.
+_A_SEXTIC_NAMES = ("Phi_J", "Phi_JK", "Phi_KJ", "Phi_K", "phi_J", "phi_JK", "phi_K")
+_S_SEXTIC_NAMES = ("H_J", "H_JK", "H_KJ", "H_K", "h1", "h2", "h3")
+
 #: reduction label -> the parameters its Hamiltonian is linear in.
 REDUCTION_PARAMS = {"A": _A_PARAM_NAMES, "S": _S_PARAM_NAMES}
+
+_SEXTIC_PARAMS = {"A": _A_SEXTIC_NAMES, "S": _S_SEXTIC_NAMES}
+
+#: The orders this module can fit. 4 is quartic only -- the historical
+#: behaviour; 6 adds the sextic block.
+REDUCTION_ORDERS = (4, 6)
+
+
+def reduction_params(reduction: str = "A", order: int = 4):
+    """Parameter names for a reduction at a given order, in operator order."""
+    red = str(reduction).strip().upper()
+    if red not in REDUCTION_PARAMS:
+        raise ValueError(
+            f"Unknown reduction {reduction!r}. Valid: {sorted(REDUCTION_PARAMS)}"
+        )
+    if int(order) not in REDUCTION_ORDERS:
+        raise ValueError(
+            f"Unknown order {order!r}. Valid: {list(REDUCTION_ORDERS)}"
+        )
+    names = REDUCTION_PARAMS[red]
+    if int(order) >= 6:
+        names = names + _SEXTIC_PARAMS[red]
+    return names
 
 #: Backwards-compatible alias; callers that predate the S reduction.
 _PARAM_NAMES = _A_PARAM_NAMES
@@ -168,7 +198,7 @@ def levels_from_tau(abc_mhz, tau_mhz, jmax: int = 6):
     return np.concatenate(out)
 
 
-def _reduced_operators(reduction: str, j: int):
+def _reduced_operators(reduction: str, j: int, order: int = 4):
     """The operators the reduced Hamiltonian is linear in, in parameter order.
 
     Shared between the design matrix (which takes their diagonal elements in
@@ -176,35 +206,66 @@ def _reduced_operators(reduction: str, j: int):
     them into a Hamiltonian and diagonalises it), so the two can never drift
     apart -- a fitted parameter set always means the same operator it was
     fitted for.
+
+    ``order`` 4 gives the eight quartic parameters, 6 adds the seven sextic
+    ones. P^2 is J(J+1) times the identity in this basis, so the P^6, P^4 Pz^2
+    and P^2 Pz^4 operators cost nothing beyond a scalar factor.
     """
     red = str(reduction).strip().upper()
+    if red not in REDUCTION_PARAMS:
+        raise ValueError(
+            f"Unknown reduction {reduction!r}. Valid: {sorted(REDUCTION_PARAMS)}"
+        )
+    if int(order) not in REDUCTION_ORDERS:
+        raise ValueError(
+            f"Unknown order {order!r}. Valid: {list(REDUCTION_ORDERS)}"
+        )
     p2, pz2, pd = angular_momentum_operators(j)
     sq = _axis_squares(p2, pz2, pd)
+    p4 = p2 @ p2
+    pz4 = pz2 @ pz2
     ops = [
         sq[0], sq[1], sq[2],
-        -(p2 @ p2),
+        -p4,
         -(p2 @ pz2),
-        -(pz2 @ pz2),
+        -pz4,
     ]
     if red == "A":
         ops += [
             -2.0 * (p2 @ pd),
             -(pz2 @ pd + pd @ pz2),
         ]
-    elif red == "S":
+    else:
         # d1 multiplies P^2 (P+^2 + P-^2) = 2 P^2 Pd; d2 multiplies P+^4 + P-^4.
         ops += [
             2.0 * (p2 @ pd),
             ladder_power_sum(j, 4),
         ]
-    else:
-        raise ValueError(
-            f"Unknown reduction {reduction!r}. Valid: {sorted(REDUCTION_PARAMS)}"
-        )
+
+    if int(order) >= 6:
+        ops += [
+            p2 @ p4,
+            p4 @ pz2,
+            p2 @ pz4,
+            pz2 @ pz4,
+        ]
+        if red == "A":
+            ops += [
+                2.0 * (p4 @ pd),
+                p2 @ (pz2 @ pd + pd @ pz2),
+                pz4 @ pd + pd @ pz4,
+            ]
+        else:
+            lad4 = ladder_power_sum(j, 4)
+            ops += [
+                p4 @ (2.0 * pd),
+                p2 @ lad4,
+                ladder_power_sum(j, 6),
+            ]
     return [0.5 * (op + op.T) for op in ops]
 
 
-def _reduced_basis_levels(jmax: int, reduction: str = "A"):
+def _reduced_basis_levels(jmax: int, reduction: str = "A", order: int = 4):
     """Level derivatives with respect to each reduced parameter.
 
     The reduced Hamiltonian is linear in all eight parameters, but its
@@ -224,7 +285,7 @@ def _reduced_basis_levels(jmax: int, reduction: str = "A"):
             sq = _axis_squares(p2, pz2, pd)
             h0 = a * sq[0] + b * sq[1] + c * sq[2]
             _, vecs = np.linalg.eigh(0.5 * (h0 + h0.T))
-            ops = _reduced_operators(reduction, j)
+            ops = _reduced_operators(reduction, j, order)
             block = np.empty((2 * j + 1, len(ops)))
             for m, op in enumerate(ops):
                 block[:, m] = np.einsum("ik,ij,jk->k", vecs, op, vecs)
@@ -238,7 +299,8 @@ def _a_reduced_basis_levels(jmax: int):
     return _reduced_basis_levels(jmax, "A")
 
 
-def levels_from_reduction(abc_mhz, params, reduction: str = "A", jmax: int = 6):
+def levels_from_reduction(abc_mhz, params, reduction: str = "A", jmax: int = 6,
+                          order: int = 4):
     """Exact eigenvalues of a reduced Hamiltonian built from fitted parameters.
 
     The inverse of :func:`reduction_from_tau`, and the thing that makes the
@@ -249,17 +311,18 @@ def levels_from_reduction(abc_mhz, params, reduction: str = "A", jmax: int = 6):
     ``params`` must carry A, B and C as well, since the reduction shifts them.
     """
     red = str(reduction).strip().upper()
-    names = REDUCTION_PARAMS[red]
+    names = reduction_params(red, order)
     vals = [float(params[n]) for n in names]
     out = []
     for j in range(jmax + 1):
-        ops = _reduced_operators(red, j)
+        ops = _reduced_operators(red, j, order)
         h = sum(v * op for v, op in zip(vals, ops))
         out.append(np.sort(np.linalg.eigvalsh(0.5 * (h + h.T))))
     return np.concatenate(out)
 
 
-def reduction_from_tau(abc_mhz, tau_mhz, reduction: str = "A", jmax: int = 6):
+def reduction_from_tau(abc_mhz, tau_mhz, reduction: str = "A", jmax: int = 6,
+                       order: int = 4):
     """Watson reduced distortion constants in MHz, from A/B/C and the tau tensor.
 
     ``reduction`` is "A" or "S". Returns the eight parameters that reduction is
@@ -276,28 +339,28 @@ def reduction_from_tau(abc_mhz, tau_mhz, reduction: str = "A", jmax: int = 6):
     parameters) and the constants are stable against raising it.
     """
     red = str(reduction).strip().upper()
-    if red not in REDUCTION_PARAMS:
-        raise ValueError(
-            f"Unknown reduction {reduction!r}. Valid: {sorted(REDUCTION_PARAMS)}"
-        )
+    names = reduction_params(red, order)
     a, b, c = (float(x) for x in abc_mhz)
     target = levels_from_tau(abc_mhz, tau_mhz, jmax=jmax)
-    design = _reduced_basis_levels(jmax, red)(a, b, c)
+    design = _reduced_basis_levels(jmax, red, order)(a, b, c)
     sol, *_ = np.linalg.lstsq(design, target, rcond=None)
-    return dict(zip(REDUCTION_PARAMS[red], (float(v) for v in sol)))
+    return dict(zip(names, (float(v) for v in sol)))
 
 
-def a_reduction_from_tau(abc_mhz, tau_mhz, jmax: int = 6):
+def a_reduction_from_tau(abc_mhz, tau_mhz, jmax: int = 6, order: int = 4):
     """Watson A-reduction constants in MHz. See :func:`reduction_from_tau`."""
-    return reduction_from_tau(abc_mhz, tau_mhz, reduction="A", jmax=jmax)
+    return reduction_from_tau(abc_mhz, tau_mhz, reduction="A", jmax=jmax,
+                              order=order)
 
 
-def s_reduction_from_tau(abc_mhz, tau_mhz, jmax: int = 6):
+def s_reduction_from_tau(abc_mhz, tau_mhz, jmax: int = 6, order: int = 4):
     """Watson S-reduction constants in MHz. See :func:`reduction_from_tau`."""
-    return reduction_from_tau(abc_mhz, tau_mhz, reduction="S", jmax=jmax)
+    return reduction_from_tau(abc_mhz, tau_mhz, reduction="S", jmax=jmax,
+                              order=order)
 
 
-def reduction_residual_mhz(abc_mhz, tau_mhz, reduction: str = "A", jmax: int = 6):
+def reduction_residual_mhz(abc_mhz, tau_mhz, reduction: str = "A", jmax: int = 6,
+                           order: int = 4):
     """RMS mismatch, in MHz, between the exact tau levels and the reduced form.
 
     A reduction is an exact reparameterisation of the same operator only to the
@@ -310,13 +373,15 @@ def reduction_residual_mhz(abc_mhz, tau_mhz, reduction: str = "A", jmax: int = 6
     transcription error in the operator set shows up here immediately as a
     residual comparable to the distortion itself.
     """
-    params = reduction_from_tau(abc_mhz, tau_mhz, reduction=reduction, jmax=jmax)
-    got = levels_from_reduction(abc_mhz, params, reduction=reduction, jmax=jmax)
+    params = reduction_from_tau(abc_mhz, tau_mhz, reduction=reduction, jmax=jmax,
+                                order=order)
+    got = levels_from_reduction(abc_mhz, params, reduction=reduction, jmax=jmax,
+                                order=order)
     want = levels_from_tau(abc_mhz, tau_mhz, jmax=jmax)
     return float(np.sqrt(np.mean((got - want) ** 2)))
 
 
-def best_reduction(abc_mhz, tau_mhz, jmax: int = 6):
+def best_reduction(abc_mhz, tau_mhz, jmax: int = 6, order: int = 4):
     """``(label, params, residual_mhz)`` for whichever reduction fits better.
 
     Near-symmetric tops are ill-conditioned in A and well-conditioned in S --
@@ -324,10 +389,12 @@ def best_reduction(abc_mhz, tau_mhz, jmax: int = 6):
     the molecule, not a house style.
     """
     scored = []
+    want = levels_from_tau(abc_mhz, tau_mhz, jmax=jmax)
     for red in sorted(REDUCTION_PARAMS):
-        params = reduction_from_tau(abc_mhz, tau_mhz, reduction=red, jmax=jmax)
-        got = levels_from_reduction(abc_mhz, params, reduction=red, jmax=jmax)
-        want = levels_from_tau(abc_mhz, tau_mhz, jmax=jmax)
+        params = reduction_from_tau(abc_mhz, tau_mhz, reduction=red, jmax=jmax,
+                                    order=order)
+        got = levels_from_reduction(abc_mhz, params, reduction=red, jmax=jmax,
+                                    order=order)
         scored.append((float(np.sqrt(np.mean((got - want) ** 2))), red, params))
     scored.sort(key=lambda t: t[0])
     resid, red, params = scored[0]
