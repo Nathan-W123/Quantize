@@ -92,9 +92,23 @@ def rotational_g_tensor(elems, coords_ang, masses_amu, method="hf",
     from pyscf.prop import rotational_gtensor
 
     coords = np.asarray(coords_ang, dtype=float)
+    masses = np.asarray(masses_amu, dtype=float)
     mol = gto.M(atom=[(e, tuple(xyz)) for e, xyz in zip(elems, coords)],
                 basis=basis, charge=int(charge), spin=int(multiplicity) - 1,
                 unit="Angstrom", verbose=0)
+    # The g-tensor is mass-dependent: pyscf's rotational_gtensor divides by the
+    # inertia tensor it builds from mol's own masses, and it asks for those with
+    # isotope_avg=True -- standard atomic weights, so chlorine comes out at
+    # 35.45 rather than as either isotope, and a deuterated species is computed
+    # as though it were protiated. Neither is what this engine wants: the
+    # electronic correction is applied per isotopologue, and isotopic
+    # differences are precisely where the structural information lives, so a
+    # g that cannot tell the isotopologues apart injects error into the
+    # quantity being fitted.
+    #
+    # nucprop overrides the mass table whatever isotope_avg is set to, and it
+    # is the only hook that does.
+    mol.nucprop = {i + 1: {"mass": float(m)} for i, m in enumerate(masses)}
     if str(method).lower() in ("hf", "rhf", "scf"):
         mf = scf.RHF(mol)
     else:
@@ -112,6 +126,36 @@ def rotational_g_tensor(elems, coords_ang, masses_amu, method="hf",
     # Rotate into the principal axis frame. inertia_paf returns eigenvalues in
     # increasing order with V's columns the corresponding axes, so column 0 is
     # the A axis.
-    _, v_paf, _ = inertia_paf(coords, np.asarray(masses_amu, dtype=float))
+    _, v_paf, _ = inertia_paf(coords, masses)
     g_paf = v_paf.T @ g_input_frame @ v_paf
     return {k: float(g_paf[i, i]) for i, k in enumerate(("A", "B", "C"))}
+
+
+def g_tensors_for_isotopologues(elems, coords_ang, isotopologues, method="hf",
+                                basis="6-31g", charge=0, multiplicity=1):
+    """``{species name: {"A","B","C"}}`` -- one g-tensor per isotopologue.
+
+    The rotational g-tensor divides by the inertia tensor, so it is as
+    isotope-dependent as a rotational constant is: at HF/6-31g water's g_bb is
+    +0.682 for H2-16O and +0.341 for D2-16O. Since the electronic correction is
+    applied species by species, and isotopic differences are what carry the
+    structural information, reusing the parent's g for every substituted
+    species puts an isotope-shaped error into exactly the quantity being
+    fitted.
+
+    Costs one SCF plus one CPHF solve per species. Both are mass-independent in
+    principle, so this is more work than the physics strictly requires, but it
+    is cheap beside the Hessians the correction table already needs and it
+    avoids reaching into the property code's internals.
+    """
+    out = {}
+    for iso in isotopologues:
+        name = str(iso.get("name", "iso"))
+        masses = iso.get("masses")
+        if masses is None:
+            continue
+        out[name] = rotational_g_tensor(
+            elems, coords_ang, np.asarray(masses, dtype=float),
+            method=method, basis=basis, charge=charge,
+            multiplicity=multiplicity)
+    return out
