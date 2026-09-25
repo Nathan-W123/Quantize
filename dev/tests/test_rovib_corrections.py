@@ -657,3 +657,69 @@ class TestCombinedCorrections:
             corr_sigmas = [r.sigma_mhz for r in t.correction_records if r.sigma_mhz is not None]
             expected = np.sqrt(t.sigma_exp_mhz**2 + sum(s**2 for s in corr_sigmas))
             assert t.sigma_mhz == pytest.approx(expected, rel=1e-10)
+
+
+class TestBOBUnknownComponent:
+    """An unparameterised axis is unmeasured, not known to be zero.
+
+    Every heavy atom in the built-in table has u for B and C and none for A,
+    because no source consulted gives one. Contributing exactly zero with no
+    sigma tells the fit the A-axis BOB correction is known to vanish, which is a
+    different claim from not knowing it -- and A is the constant that determines
+    bond angles, so it is the worst axis to be quietly confident about.
+    """
+
+    def test_missing_component_contributes_sigma_but_no_value(self):
+        from backend.spectral.correction_models import bob_delta_b
+        params = {"O": {"B": {"u": 0.002, "sigma_u": 0.002},
+                        "C": {"u": 0.002, "sigma_u": 0.002}}}
+        delta, sigma = bob_delta_b(["O", "O", "O"], [15.9949] * 3, "A",
+                                   params, 106536.1)
+        assert delta == 0.0
+        assert sigma is not None and sigma > 0.0
+
+    def test_the_historical_behaviour_is_still_reachable(self):
+        from backend.spectral.correction_models import bob_delta_b
+        params = {"O": {"B": {"u": 0.002, "sigma_u": 0.002}}}
+        delta, sigma = bob_delta_b(["O"], [15.9949], "A", params, 106536.1,
+                                   unknown_component_sigma=False)
+        assert delta == 0.0
+        assert sigma is None
+
+    def test_the_bound_is_small_enough_to_change_nothing_today(self):
+        """Recorded so nobody chases it: ~0.025 MHz on ozone's A.
+
+        Against the ~68 MHz sigma that component's vibrational correction
+        carries, this is nearly three thousand times smaller. The point of the change is
+        that the ignorance is recorded rather than asserted away.
+        """
+        from backend.spectral.correction_models import bob_delta_b
+        params = {"O": {"B": {"u": 0.002, "sigma_u": 0.002},
+                        "C": {"u": 0.002, "sigma_u": 0.002}}}
+        _, sigma = bob_delta_b(["O", "O", "O"], [15.9949] * 3, "A",
+                               params, 106536.1)
+        assert sigma == pytest.approx(0.0253, abs=0.002)
+
+    def test_an_element_absent_entirely_still_contributes_nothing(self):
+        """Absent from bob_params means out of scope, not unmeasured."""
+        from backend.spectral.correction_models import bob_delta_b
+        delta, sigma = bob_delta_b(["Xe"], [131.29], "A", {"O": {"B": 0.002}},
+                                   100000.0)
+        assert delta == 0.0
+        assert sigma is None
+
+    def test_the_bound_takes_the_largest_known_u_plus_its_sigma(self):
+        from backend.spectral.correction_models import _unknown_u_bound
+        assert _unknown_u_bound(
+            {"B": {"u": 0.002, "sigma_u": 0.002},
+             "C": {"u": 0.01, "sigma_u": 0.005}}) == pytest.approx(0.015)
+        assert _unknown_u_bound({"B": 0.004}) == pytest.approx(0.004)
+        assert _unknown_u_bound({}) == 0.0
+        # Non-component keys must not be mistaken for axes.
+        assert _unknown_u_bound({"note": "text", "B": 0.004}) == pytest.approx(0.004)
+
+    def test_hydrogen_has_all_three_so_nothing_is_bounded(self):
+        """The built-ins do give H an A value, so a hydride is unaffected."""
+        from backend.spectral.correction_models import _BOB_BUILTIN
+        assert set(_BOB_BUILTIN["H"]) == {"A", "B", "C"}
+        assert "A" not in _BOB_BUILTIN["O"]
