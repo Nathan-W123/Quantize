@@ -453,6 +453,34 @@ class MolecularOptimizer:
         # the coherent, common-mode part, which for this error source is all of
         # it, and the post-correction sigma logic in resolve_corrections needs
         # to know how much of sigma the vibrational correction supersedes.
+        # NOT auto-derived when sigma_constants was supplied, and the reason is
+        # worth recording because the obvious fix does not work.
+        #
+        # _systematic_covariance returns zero when no systematic sigma is given,
+        # so a user who quotes only measurement uncertainties gets a reported
+        # uncertainty with the model-error term silently missing -- and model
+        # error is the dominant term here. The engine's own benchmark harness
+        # passes them explicitly, which is why that never showed up in testing.
+        #
+        # Deriving them automatically was tried and reverted. The propagation
+        # A = C J^T Sigma^-1 amplifies the systematic by (sigma_sys/sigma_meas)^2
+        # in variance, which is correct arithmetic: if the model is wrong by far
+        # more than the data are imprecise, the answer's uncertainty really is
+        # dominated by the model. But rotational constants are measured to nine
+        # figures while the model error is ~0.5% of B, so that ratio is around
+        # 1e5 and the reported width becomes absurd -- measured on the test
+        # molecules, bond widths of 47 Angstrom and an angle width of 10975
+        # degrees.
+        #
+        # The number is not wrong, it is a symptom: weighting data at 1 kHz
+        # while the model is wrong at 100 MHz is itself inconsistent, and the
+        # honest resolution is to reconcile the two (floor the weighting sigma
+        # at the model error, or report the systematic term separately rather
+        # than in quadrature) rather than to feed one into the other. That is a
+        # real piece of work and not done yet.
+        #
+        # Until it is, the user is TOLD, rather than handed a number that omits
+        # the dominant term without saying so.
         _filled = []
         for _iso in isotopologues:
             if _iso.get("sigma_constants") is not None:
@@ -468,6 +496,17 @@ class MolecularOptimizer:
             if _iso.get("sigma_systematic_constants") is None:
                 _iso["sigma_systematic_constants"] = np.asarray(_sig, dtype=float)
             _filled.append(f"{_iso.get('name', 'iso')} [{_how}]")
+        _no_sys = [str(_i.get("name", "iso")) for _i in isotopologues
+                   if _i.get("sigma_systematic_constants") is None]
+        if _no_sys:
+            print(
+                "  [sigma] WARNING: no sigma_systematic_constants for "
+                f"{', '.join(_no_sys)}. Reported geometry uncertainties will "
+                "cover measurement precision ONLY -- the B0-versus-Be model "
+                "error, which dominates here, is not included and the "
+                "intervals are therefore optimistic. Supply "
+                "sigma_systematic_constants per species to include it."
+            )
         if _filled:
             print(f"  [sigma] derived for {len(_filled)} species: "
                   f"{', '.join(_filled[:3])}{' ...' if len(_filled) > 3 else ''}")
