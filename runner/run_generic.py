@@ -386,17 +386,21 @@ def _compute_metrics(
     return metrics
 
 
-def _print_internal_uncertainty_summary(best: dict, cfg: dict, elems: list[str]) -> str | None:
+def _print_internal_uncertainty_summary(best: dict, cfg: dict, elems: list[str]):
     """Print internal-coordinate uncertainty and variance table to CLI.
 
-    Returns the path to the written covariance .npy file, or None if not in internal mode.
+    Returns ``(covariance_path, rows)``. The rows used to be printed and thrown
+    away, which meant the one number a structure cannot be quoted without
+    reached the terminal and nothing else -- no report, no export, nothing a
+    reader of the run directory could find. They are now handed back so
+    write_outputs can put them in the report and a CSV.
     """
     coord_mode = str(cfg.get("coordinate_mode", "internal")).strip().lower()
     if coord_mode != "internal":
-        return None
+        return None, None
     iso_snapshot = best.get("spectral_isotopologues_snapshot", [])
     if not iso_snapshot:
-        return None
+        return None, None
 
     ic_cfg = cfg.get("internal_coordinates", {}) or {}
     use_dihedrals = bool(ic_cfg.get("use_dihedrals", False))
@@ -416,7 +420,7 @@ def _print_internal_uncertainty_summary(best: dict, cfg: dict, elems: list[str])
     J_spectral, residual_w = SpectralEngine(iso_snapshot).stacked(coords)
     Jq = spectral_jacobian_q(J_spectral, Bplus)
     if B_active.shape[1] == 0:
-        return None
+        return None, None
     _, _, sigma_prior = build_internal_priors(
         coord_set,
         coords,
@@ -486,7 +490,7 @@ def _print_internal_uncertainty_summary(best: dict, cfg: dict, elems: list[str])
     except OSError as _exc:
         print(f"\n  [Uncertainty] Could not write covariance matrix: {_exc}")
         _cov_path = None
-    return _cov_path
+    return _cov_path, rows
 
 
 def _fit_scan_potential(
@@ -2308,7 +2312,7 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
             f"{sc.get('n_symmetry', 0)} symmetry mismatch."
         )
 
-    _cov_path = _print_internal_uncertainty_summary(best, cfg, elems)
+    _cov_path, _unc_rows = _print_internal_uncertainty_summary(best, cfg, elems)
 
     result_bundle = {
         "name": name,
@@ -2316,6 +2320,11 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
         "cfg": cfg,
         "elems": elems,
         "bonds": bonds,
+        # None when the run was not in internal coordinates, which
+        # write_markdown_report reports as a stated absence rather than by
+        # omitting the section.
+        "uncertainty_rows": _unc_rows,
+        "uncertainty_covariance_npy": _cov_path,
         "results": results,
         "best": best,
         "score": score,

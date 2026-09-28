@@ -13,7 +13,30 @@ not be quoted on unknown molecules until the cause is fixed.
 
     python scripts/uncertainty_calibration.py
     python scripts/uncertainty_calibration.py method=b3lyp "basis=6-31g(d)"
-"""
+
+RESULT, and it runs the opposite way to the warning in geometry_uncertainty
+--------------------------------------------------------------------------
+42 coordinates across the held-out molecules at RHF/6-31G:
+
+    coverage of the quoted 1-sigma interval   38/42 = 90%   (ideal ~68%)
+    median |error| / sigma                    0.38          (ideal ~0.67)
+      bonds    18/20 covered, median 0.72
+      angles   20/22 covered, median 0.24
+
+The intervals are CONSERVATIVE, by roughly 1.8x overall and 2.8x on angles.
+geometry_uncertainty's docstring says "expect it to be optimistic"; on this set
+it is not, and that sentence should not be relied on. Most rows come back marked
+theory-determined, so the width being reported is largely the prior's width, and
+the prior sigma is set conservatively.
+
+Two things keep this from being a clean bill of health. The errors here are
+measured against r_0 and r_s references, not equilibrium structures, so part of
+each "error" is the reference's own offset from r_e -- that inflates |error| and
+therefore pushes coverage DOWN, so 90% is if anything an underestimate of how
+wide the intervals are. And coverage is a statement about noise: a bias shared
+across every isotopologue of a molecule moves the fitted structure and the
+interval together, so this test cannot see it. It says the widths are not
+overconfident. It does not say the centres are right.
 
 from __future__ import annotations
 

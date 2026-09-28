@@ -1368,6 +1368,72 @@ def generate_kraitchman_report_section(kr: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def write_uncertainty_csv(path: Path, rows: list[dict[str, Any]]) -> None:
+    """Per-coordinate value, standard error and 95% interval.
+
+    The engine's own note on geometry_uncertainty says a structure quoted
+    without an uncertainty cannot be used. These numbers were being printed to
+    the terminal and then dropped, so a run directory carried the structure and
+    not the uncertainty. Now they are exported next to it.
+    """
+    cols = ["name", "value", "value_unit", "std_err", "std_err_unit",
+            "ci_lo", "ci_hi", "ci_unit", "chi2_scale",
+            "prior_dominance", "prior_sensitivity"]
+    with path.open("w", newline="", encoding="utf-8") as fh:
+        w = csv.writer(fh)
+        w.writerow(cols)
+        for r in rows:
+            w.writerow([r.get(c, "") for c in cols])
+
+
+def generate_uncertainty_report_section(result: dict[str, Any]) -> str:
+    """The uncertainty table, or an explicit statement that there is none."""
+    rows = result.get("uncertainty_rows")
+    lines = ["## Parameter Uncertainty", ""]
+    if not rows:
+        mode = str((result.get("cfg") or {}).get("coordinate_mode", "internal"))
+        lines.extend([
+            f"No parameter uncertainty was computed (coordinate_mode = `{mode}`).",
+            "",
+            "Uncertainties are only available in internal-coordinate mode. A "
+            "structure without one cannot be used for anything that depends on "
+            "its precision, so this is recorded as an absence rather than left "
+            "out of the report.",
+        ])
+        return "\n".join(lines)
+
+    infl = max((float(r.get("chi2_scale", 1.0)) for r in rows), default=1.0)
+    lines.extend([
+        "| coordinate | value | std err | 95% interval | prior |",
+        "|---|---:|---:|:---:|---|",
+    ])
+    for r in rows:
+        unit = r.get("value_unit", "")
+        prior = str(r.get("prior_dominance", "") or "")
+        sens = str(r.get("prior_sensitivity", "") or "")
+        both = prior if not sens else f"{prior}/{sens}"
+        lines.append(
+            f"| {r['name']} | {float(r['value']):.6f} {unit} "
+            f"| {float(r['std_err']):.6f} "
+            f"| {float(r['ci_lo']):.5f} to {float(r['ci_hi']):.5f} "
+            f"| {both} |"
+        )
+    lines.extend([
+        "",
+        f"- chi-square inflation applied: `{infl:.3f}`"
+        + ("" if infl > 1.0 else " (none; residuals within their stated sigma)"),
+        "- These are POSTERIOR widths and include the quantum prior, so a "
+        "coordinate the spectrum cannot see reports the prior's width rather "
+        "than infinity. The `prior` column says which is which.",
+        "- They are a PRECISION, not an accuracy: they propagate the stated "
+        "uncertainties on the constants and know nothing about residual "
+        "B0-versus-Be correction bias. Expect them to be optimistic.",
+    ])
+    if result.get("uncertainty_covariance_npy"):
+        lines.append(f"- Full covariance: `{result['uncertainty_covariance_npy']}`")
+    return "\n".join(lines)
+
+
 def write_markdown_report(path: Path, result: dict[str, Any], artifacts: dict[str, Any] | None = None) -> None:
     from runner.reporting import (
         generate_conformer_report_section,
@@ -1396,6 +1462,8 @@ def write_markdown_report(path: Path, result: dict[str, Any], artifacts: dict[st
     iso_snapshot = best.get("spectral_isotopologues_snapshot", [])
     if iso_snapshot:
         lines.extend(["", generate_rovib_report_section(iso_snapshot)])
+
+    lines.extend(["", generate_uncertainty_report_section(result)])
 
     if result.get("kraitchman"):
         lines.extend(["", generate_kraitchman_report_section(result["kraitchman"])])
@@ -1689,6 +1757,12 @@ def write_outputs(result: dict[str, Any]) -> dict[str, Path | list[Path]]:
         "geometry_csv": geom_csv,
         "residuals_csv": residual_csv,
     }
+
+    unc_rows = result.get("uncertainty_rows")
+    if unc_rows:
+        unc_csv = exports_dir / "parameter_uncertainty.csv"
+        write_uncertainty_csv(unc_csv, unc_rows)
+        artifacts["uncertainty_csv"] = unc_csv
 
     # Kraitchman rs analysis + inertial defects (needs full A/B/C per species).
     kraitchman_csv = None
