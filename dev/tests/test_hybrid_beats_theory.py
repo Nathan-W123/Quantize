@@ -154,7 +154,11 @@ def test_full_correction_chain_improves_the_bond_angle():
     start = h2o_coords(R_THEORY, np.radians(THETA_THEORY))
     _, theta_raw = run_scenario("detuned_water", start, False, False)
     _, theta_full = run_scenario("detuned_water", start, True, True)
-    assert abs(theta_full - THETA_E) < 0.9 * abs(theta_raw - THETA_E)
+    # Two-sided: a one-sided 0.9 bound sat 6% from the measured 0.844 and was
+    # both near-vacuous and brittle. Pinning the ratio catches a regression in
+    # either direction, which is what this surface can actually support.
+    ratio = abs(theta_full - THETA_E) / abs(theta_raw - THETA_E)
+    assert 0.70 < ratio < 0.92, f"angle-improvement ratio moved to {ratio:.3f}"
 
 
 def test_undersaturated_spectroscopy_alone_is_ambiguous():

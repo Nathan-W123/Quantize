@@ -136,9 +136,14 @@ for label, masses in (("H2-16O", np.array([M_O16, M_H, M_H])),
                   f"   mills {-d2_mills[xi,r]*zpe[r]:12.1f}")
     # totals, combined with the repo's Coriolis + anharmonic
     with contextlib.redirect_stdout(io.StringIO()):
+        # Explicitly the historical scheme: this script's whole point is the
+        # three-way comparison, and taking whatever the default happens to be
+        # would make the "repo (fd_sorted)" row print the mills value and the
+        # comparison degenerate.
         alpha, _, sig, info = compute_harmonic_alpha(
             hess, coords, masses,
-            hessian_fn=lambda c: be.run_hessian(c).hessian_bohr)
+            hessian_fn=lambda c: be.run_hessian(c).hessian_bohr,
+            harmonic_scheme="eigenvalue_fd")
     truth = rotational_constants_mhz(_bent_xy(WATER_R_E, WATER_THETA_E_DEG),
                                      masses) - np.array(
         [s.abc_mhz for s in WATER.species if s.label == label][0], float)
