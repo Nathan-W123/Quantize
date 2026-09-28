@@ -27,9 +27,11 @@ from backend.spectral.centrifugal_distortion import (
     _BOHR_TO_ANG,
     _CM_TO_MHZ,
     _EIGVAL_TO_CM,
+    _INERTIA_TO_MHZ,
     _MHZ_TO_CM,
     _ZPE_AMP,
     bk_mode_derivatives as _bk_mode_derivatives,
+    inertia_mode_derivatives as _inertia_mode_derivatives,
     inertia_paf as _inertia_paf,
     normal_modes as _normal_modes,
     rigid_mode_count as _rigid_mode_count,
@@ -63,6 +65,40 @@ _bk_mode_derivatives = _bk_mode_derivatives
 # test_alpha_against_experiment for the pinned numbers.
 _DEGENERACY_TOL_CM2 = 1.0
 
+#: How the harmonic term's second derivative is obtained.
+#:
+#:   "eigenvalue_fd"  finite difference of the sorted principal rotational
+#:                    constants. Known to be the wrong quantity -- it follows
+#:                    the instantaneous principal axes and so picks up
+#:                    eigenvalue repulsion -- and still the default, because
+#:                    what replaces it is not settled yet.
+#:   "watson"         the (3/4) mu a mu a mu coefficient of Watson's expansion,
+#:                    using the full inertia-tensor derivative.
+#:
+#: Why the wrong one is still the default. Measured against water's published
+#: equilibrium structure, "watson" improves B from 5.4 to 1.5 sigma and C from
+#: 1.7 to 0.2 sigma on both isotopologues, and takes the reference-free inertial
+#: defect residual from 0.0091 to 0.0057 amu.A^2. It also makes the residuals
+#: consistent: with "watson" a single pair of fractional term errors explains
+#: all three components at once, and the fitted pair agrees between H2O and D2O
+#: to 15%, where with "eigenvalue_fd" no uniform pair fits at all.
+#:
+#: But A regresses from 0.8 to 6.0 sigma, and A is what determines the bond
+#: angle, so the fitted angle gets worse. A's old accuracy was cancellation
+#: luck -- its harmonic and anharmonic terms cancel 8-fold -- so that is not an
+#: argument for the old term. The problem is that the replacement is not pinned:
+#: fitting the coefficients freely against water gives p = 1.72, q = 0.73 rather
+#: than Watson's (1.5, 0) or the naive inverse's (2, -1), with a 25% anharmonic
+#: scale, which is too flexible a fit on six points from one molecule to
+#: distinguish a coefficient from absorbed force-field error.
+#:
+#: What settles it is ozone's published determinable tau parameters for all six
+#: isotopologues. tau is built from the same inertia-tensor derivative, is
+#: first order so it carries no cancellation amplification, and needs no
+#: reduction, so it tests the new quantity directly. Until that is run, both
+#: schemes stay available and the historical one stays default.
+_HARMONIC_SCHEMES = ("watson", "eigenvalue_fd")
+
 # Assumed size of the cubic term, relative to the harmonic one, when it has not
 # been computed. See the sigma block in compute_harmonic_alpha.
 _OMITTED_CUBIC_SCALE = 3.0
@@ -94,6 +130,7 @@ def compute_harmonic_alpha(
     linear_pair_coeff=None,
     lam_freq_cm: float = 0.0,
     freq_scale: float = 1.0,
+    harmonic_scheme: str = "eigenvalue_fd",
 ):
     """
     Compute summed alpha Σ_r α_r^K for each rotational component K.
@@ -221,7 +258,54 @@ def compute_harmonic_alpha(
     # B_v = B_e + ½ (∂²B/∂Q_r²)⟨Q_r²⟩_v with ⟨Q_r²⟩_v = (2v+1)·zpe_amp, so
     # α_r ≡ -∂B_v/∂v_r = -(∂²B/∂Q_r²)·zpe_amp. For a diatomic this reduces
     # exactly to the Dunham result -6B_e²/ω_e.
-    alpha_cent = -d2B_mhz_all * zpe_amp[None, :]
+    #
+    # Which ∂²B/∂Q_r² is the whole question, and getting it from a finite
+    # difference of the rotational constants was wrong. That differentiates the
+    # SORTED EIGENVALUES of the instantaneous inertia tensor, so it follows the
+    # instantaneous principal axes. J_a, J_b and J_c are quantised in the Eckart
+    # frame fixed by the equilibrium geometry; a vibrationally induced
+    # off-diagonal inertia element does not reorient those axes, it enters the
+    # diagonal element of mu = I^-1 at second order. Following the axes instead
+    # picks up eigenvalue repulsion 2(a^ab)^2/(I_b - I_a), which is not a
+    # contribution to alpha at all.
+    #
+    # Watson's expansion of mu has quadratic coefficient (3/4) mu a mu a mu,
+    # with no second-derivative-of-I term, giving
+    #
+    #     ∂²B_ξ/∂Q_r² = (3/2) C Σ_γ (a_r^{ξγ})² / (I_ξ² I_γ)
+    #
+    # which sums over every γ and so needs the off-diagonal a_r that
+    # diagonalisation throws away. The two routes agree to six digits on a mode
+    # whose a_r is purely diagonal -- water's bend and symmetric stretch -- and
+    # diverge in sign on one whose a_r is purely off-diagonal, its b2
+    # antisymmetric stretch. Measured against water's published equilibrium
+    # structure, the correction error on B falls 9852 -> 682 MHz and on C
+    # 2402 -> 208, on both isotopologues; see
+    # scripts/harmonic_alpha_frame_check.py.
+    #
+    # A goes the other way, -2142 -> +7028, because water's alpha_A is a near
+    # cancellation of ~1e5 MHz terms (-44848 harmonic against +27813 anharmonic)
+    # so a 10% error in either swamps the net. Its apparent accuracy under the
+    # old term was cancellation luck rather than evidence the term was right.
+    scheme = str(harmonic_scheme).strip().lower()
+    if scheme not in _HARMONIC_SCHEMES:
+        raise ValueError(
+            f"Unknown harmonic_scheme {harmonic_scheme!r}. "
+            f"Valid: {sorted(_HARMONIC_SCHEMES)}"
+        )
+    if scheme == "watson":
+        a_mode = _inertia_mode_derivatives(coords, masses, L_mw, fd_delta)
+        inertia = np.where(np.abs(B_e_mhz) > 0.0,
+                           _INERTIA_TO_MHZ / np.where(B_e_mhz == 0.0, 1.0, B_e_mhz),
+                           np.inf)
+        # A linear molecule has I_a ~ 0 and no A constant; 1/I_a would blow up,
+        # and no species should be fitting an A component there anyway.
+        inv = np.where(np.isfinite(inertia) & (inertia > 1e-8), 1.0 / inertia, 0.0)
+        d2B_watson = (1.5 * _INERTIA_TO_MHZ * (inv ** 2)[:, None]
+                      * np.einsum("rxg,g->xr", a_mode ** 2, inv))
+        alpha_cent = -d2B_watson * zpe_amp[None, :]
+    else:
+        alpha_cent = -d2B_mhz_all * zpe_amp[None, :]
 
     # ── Term 2: Coriolis ────────────────────────────────────────────────────
     # Mills (1972); Papoušek & Aliev (1982):
@@ -462,6 +546,7 @@ def compute_harmonic_alpha(
             "alpha_per_mode_mhz": alpha_total.tolist(),
             "lam_modes_cm": lam_modes,
             "lam_sigma_mhz": lam_sigma,
+            "harmonic_scheme": scheme,
         },
     )
 
