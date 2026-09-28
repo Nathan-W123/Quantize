@@ -176,9 +176,11 @@ LAM_FREQ_CM = 350.0
 #: 11% stiff on the bend (1829.4 against 1649) but only 1.5% on the stretches
 #: (3903.5 against 3832), so a single factor cannot fit both and tuning one on
 #: this set would be fitting the answer. The hook is here because alpha is very
-#: sensitive to it -- water's alpha_B moves from 12675 to 18939 MHz at 0.89 --
-#: so it belongs to any serious attempt at the correction bias, with per-mode
-#: factors from an external frequency set rather than a scalar guessed here.
+#: sensitive to it -- with the corrected harmonic term water's alpha_B moves
+#: from -5366 to -1331 MHz between scales of 1.00 and 0.89, a factor of four
+#: from an 11% frequency change -- so it belongs to any serious attempt at the
+#: correction bias, with per-mode factors from an external frequency set rather
+#: than a scalar guessed here.
 FREQ_SCALE = 1.0
 
 #: Fractional uncertainty on a computed g value. The OCS cross-check puts

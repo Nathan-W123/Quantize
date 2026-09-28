@@ -193,3 +193,65 @@ def test_the_schemes_agree_exactly_where_the_diagonal_a_r_dominates():
     # term is the whole difference.
     assert abs(a[0, 2, 2]) < 0.01
     assert abs(old[2, 0] - new[2, 0]) > 1000.0
+
+
+# ── a symmetric top, where the old route does not merely differ but diverges ──
+
+try:
+    import dev.pyscf_backend  # noqa: F401  (registers "pyscf_hf")
+    _HAS_PYSCF = True
+except Exception:                                      # noqa: BLE001
+    _HAS_PYSCF = False
+
+
+@pytest.mark.skipif(not _HAS_PYSCF, reason="PySCF not installed")
+def test_a_symmetric_top_forces_equal_alphas_and_only_one_scheme_delivers():
+    """The strongest check available, and it needs no reference data at all.
+
+    NH3 is an oblate symmetric top: I_a == I_b exactly by C3v symmetry, so
+    alpha_A and alpha_B must come out identical. Whether they do is a property
+    of the formula, not of the force field or of any measured structure.
+
+    The eigenvalue route cannot. Its error term is the repulsion
+    2 (a^{ab})^2 / (I_b - I_a), whose denominator vanishes here, so it returns
+    values that differ in sign and by more than a million MHz for two components
+    that are the same quantity. Measured at HF/6-31G: -662838.8 against
+    +667184.2 MHz. The Watson route returns -12442.4 and -12442.4.
+
+    Everything else in this investigation was an argument from agreement with
+    experiment, which a force-field error can always muddy. This is an argument
+    from symmetry, which it cannot.
+    """
+    from backend.registry import get_backend
+    from backend.spectral.centrifugal_distortion import rotational_constants_mhz
+
+    r_nh, ang = 1.012, np.radians(106.7)
+    ring = r_nh * np.sin(ang / 2) * 2 / np.sqrt(3)
+    z = np.sqrt(max(r_nh ** 2 - ring ** 2, 0.0))
+    start = np.array([[0.0, 0.0, 0.0]] + [
+        [ring * np.cos(2 * np.pi * k / 3), ring * np.sin(2 * np.pi * k / 3), -z]
+        for k in range(3)])
+    masses = np.array([14.0030740048] + [1.00782503207] * 3)
+
+    backend = get_backend("pyscf_hf")(elems=["N", "H", "H", "H"],
+                                      method="hf", basis="sto-3g")
+    import contextlib
+    import io
+    with contextlib.redirect_stdout(io.StringIO()):
+        coords = backend.optimise(start)
+        hess = backend.run_hessian(coords).hessian_bohr
+
+    abc = rotational_constants_mhz(coords, masses)
+    assert abc[0] == pytest.approx(abc[1], rel=1e-8), "sanity: A == B for NH3"
+
+    with contextlib.redirect_stdout(io.StringIO()):
+        _, _, _, old = compute_harmonic_alpha(
+            hess, coords, masses, harmonic_scheme="eigenvalue_fd")
+        _, _, _, new = compute_harmonic_alpha(
+            hess, coords, masses, harmonic_scheme="watson")
+
+    got_new = new["alpha_centrifugal_mhz"]
+    assert got_new["A"] == pytest.approx(got_new["B"], rel=1e-6)
+
+    got_old = old["alpha_centrifugal_mhz"]
+    assert abs(got_old["A"] - got_old["B"]) > 100.0 * abs(got_new["A"])

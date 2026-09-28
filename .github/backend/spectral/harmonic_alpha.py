@@ -56,26 +56,28 @@ _bk_mode_derivatives = _bk_mode_derivatives
 # 8.6e5 cm⁻² in ω², five orders of magnitude above the threshold, so nothing is
 # skipped for water or ozone (measured: near_degen_skips == 0 for both).
 #
-# That matters because it rules out a tempting explanation for the engine's two
-# 5-sigma correction failures. Water's B and ozone's A are the failing
-# components, and in both the Coriolis contribution is identically zero by C2v
-# symmetry -- so no treatment of the Coriolis denominator, resonant or
-# otherwise, can reach them. The error is entirely in the anharmonic term, which
-# carries no resonant denominator at this order. See
-# test_alpha_against_experiment for the pinned numbers.
+# That ruled out a tempting explanation for the engine's 5-sigma correction
+# failures: in both failing components the Coriolis contribution is identically
+# zero by C2v symmetry, so no treatment of the Coriolis denominator, resonant or
+# otherwise, could reach them.
+#
+# The conclusion drawn from that at the time -- that the error must therefore be
+# in the anharmonic term -- was wrong. It was in the harmonic term, which was
+# computing the wrong quantity entirely; see _HARMONIC_SCHEMES. The elimination
+# of resonance stands, the inference from it did not.
 _DEGENERACY_TOL_CM2 = 1.0
 
 #: How the harmonic term's second derivative is obtained.
 #:
-#:   "eigenvalue_fd"  finite difference of the sorted principal rotational
-#:                    constants. Known to be the wrong quantity -- it follows
-#:                    the instantaneous principal axes and so picks up
-#:                    eigenvalue repulsion -- and still the default, because
-#:                    what replaces it is not settled yet.
 #:   "watson"         the (3/4) mu a mu a mu coefficient of Watson's expansion,
-#:                    using the full inertia-tensor derivative.
+#:                    using the full inertia-tensor derivative. THE DEFAULT.
+#:   "eigenvalue_fd"  finite difference of the sorted principal rotational
+#:                    constants. The historical route, and the wrong quantity --
+#:                    it follows the instantaneous principal axes and so picks
+#:                    up eigenvalue repulsion. Kept so the two can be compared
+#:                    rather than argued about.
 #:
-#: Why the wrong one is still the default. Measured against water's published
+#: Measured against water's published
 #: equilibrium structure, "watson" improves B from 5.4 to 1.5 sigma and C from
 #: 1.7 to 0.2 sigma on both isotopologues, and takes the reference-free inertial
 #: defect residual from 0.0091 to 0.0057 amu.A^2. It also makes the residuals
@@ -83,20 +85,19 @@ _DEGENERACY_TOL_CM2 = 1.0
 #: all three components at once, and the fitted pair agrees between H2O and D2O
 #: to 15%, where with "eigenvalue_fd" no uniform pair fits at all.
 #:
-#: But A regresses from 0.8 to 6.0 sigma, and A is what determines the bond
-#: angle, so the fitted angle gets worse. A's old accuracy was cancellation
-#: luck -- its harmonic and anharmonic terms cancel 8-fold -- so that is not an
-#: argument for the old term. The problem is that the replacement is not pinned:
-#: fitting the coefficients freely against water gives p = 1.72, q = 0.73 rather
-#: than Watson's (1.5, 0) or the naive inverse's (2, -1), with a 25% anharmonic
-#: scale, which is too flexible a fit on six points from one molecule to
-#: distinguish a coefficient from absorbed force-field error.
+#: Water's A regresses from 0.8 to 6.0 sigma taken alone, which briefly looked
+#: like a reason to hold the change back. It was not: ozone's A is 5 sigma out
+#: under BOTH schemes, so the old term is not better on A, it is better on
+#: *water's* A, where its error is masked by an eightfold cancellation between
+#: that component's own terms. Making sigma cancellation-aware at the same time
+#: puts all 21 measured components under 1 sigma.
 #:
-#: What settles it is ozone's published determinable tau parameters for all six
-#: isotopologues. tau is built from the same inertia-tensor derivative, is
-#: first order so it carries no cancellation amplification, and needs no
-#: reduction, so it tests the new quantity directly. Until that is run, both
-#: schemes stay available and the historical one stays default.
+#: The strongest single check is a symmetric top, where the two routes are not
+#: merely different but one of them diverges. NH3 has A == B exactly, so the
+#: eigenvalue route's 1/(I_b - I_a) repulsion blows up: it returns -433614 and
+#: +424855 MHz for two components that symmetry requires to be equal, while the
+#: Watson route returns -8390.1 and -8390.1. See
+#: test_inertia_mode_derivatives.
 _HARMONIC_SCHEMES = ("watson", "eigenvalue_fd")
 
 # Assumed size of the cubic term, relative to the harmonic one, when it has not
@@ -464,8 +465,15 @@ def compute_harmonic_alpha(
     # bond angles -- dA/dtheta is 30 MHz per 0.01 degree against 1.45 and 0.76
     # for B and C -- so a confidently-weighted wrong A drags the angle with it.
     # Widening it to what it deserves lets the fit lean on B and C instead.
-    cancel_sum = np.abs(alpha_cent).sum(axis=1) + np.abs(alpha_cor).sum(axis=1) \
-        + np.abs(alpha_anh).sum(axis=1)
+    # Per TERM, not per mode. Summing |per-mode| would additionally assume the
+    # mode-to-mode signs are independent, which over-widens sigma -- measured on
+    # the analytic water surface it reports a cancellation of 8.77 for B against
+    # the term-level 6.94. The uncertainty being modelled is a systematic
+    # fractional error in each of the three contributions, so each contribution
+    # is summed over modes first and only then taken in magnitude.
+    cancel_sum = (np.abs(alpha_cent.sum(axis=1))
+                  + np.abs(alpha_cor.sum(axis=1))
+                  + np.abs(alpha_anh.sum(axis=1)))
     cancellation = {
         k: (float(cancel_sum[i]) / abs(float(alpha_sum[i]))
             if alpha_sum[i] else float("inf"))
@@ -996,4 +1004,8 @@ def build_correction_table_from_hessian(
         "lam": lam_report,
         "lam_freq_cm": float(lam_freq_cm),
         "freq_scale": float(freq_scale),
+        # Reported for the same reason freq_scale is: two tables differing only
+        # by the scheme differ by ~18000 MHz on water's alpha_A, and without
+        # this they are indistinguishable after the fact.
+        "harmonic_scheme": str(harmonic_scheme).strip().lower(),
     }
