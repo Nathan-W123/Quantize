@@ -414,15 +414,20 @@ def test_freq_scale_scales_the_frequencies_exactly():
 def test_alpha_is_strongly_sensitive_to_the_frequency_scale():
     """Why this hook exists: alpha carries 1/omega, so a systematic frequency
     error is a systematic bias in the correction rather than noise in it.
-    Measured on water, alpha_B moves from 12675 to 18939 MHz between scales of
-    1.00 and 0.89 -- a 49% change from an 11% one.
+    Measured on water with the corrected harmonic term, alpha_B moves from
+    -5366 to -1331 MHz between scales of 1.00 and 0.89 -- a factor of four from
+    an 11% frequency change. The direction is not the point and is not asserted:
+    alpha is a difference of terms that scale differently with omega, so which
+    way it moves depends on the molecule and the component. The magnitude of the
+    response is the point.
     """
     coords = h2o_coords()
     a10, *_ = compute_harmonic_alpha(h2o_hessian(coords), coords, H2O_MASSES,
                                      hessian_fn=h2o_hessian, freq_scale=1.0)
     a89, *_ = compute_harmonic_alpha(h2o_hessian(coords), coords, H2O_MASSES,
                                      hessian_fn=h2o_hessian, freq_scale=0.89)
-    assert abs(a89["B"]) > 1.4 * abs(a10["B"])
+    ratio = abs(a89["B"]) / abs(a10["B"])
+    assert ratio > 1.4 or ratio < 1 / 1.4
 
 
 def test_freq_scale_is_reported_so_a_table_cannot_be_read_without_it():
