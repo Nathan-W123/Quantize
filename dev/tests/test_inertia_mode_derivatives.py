@@ -117,17 +117,24 @@ def test_both_schemes_are_selectable_and_unknown_ones_rejected():
         compute_harmonic_alpha(hess, coords, H2O_MASSES, harmonic_scheme="mills")
 
 
-def test_the_historical_scheme_is_still_the_default():
-    """It is known to be the wrong quantity, and still the default.
+def test_the_corrected_scheme_is_the_default():
+    """It was held back for one round, and the ozone measurement settled it.
 
-    What replaces it improves water's B and C by a lot and its A by nothing,
-    and A is what sets the bond angle. Switching the default waits on the
-    independent check against ozone's published tau parameters. See
-    _HARMONIC_SCHEMES for the measurements.
+    The case for holding back was that the correction improves water's B and C
+    but not its A, and A determines the bond angle. That reasoning only worked
+    because it looked at water: ozone's A is 5 sigma out under BOTH schemes, so
+    the old one is not better on A, it is better on *water's* A, by an eightfold
+    cancellation between its own terms.
+
+    With sigma made cancellation-aware as well, every one of the 21 components
+    across the two molecules with published equilibrium structures now sits
+    under 1 sigma, and the benchmark improves on both metrics for both
+    molecules -- water 2.08 -> 0.38 mA and 0.646 -> 0.203 deg, ozone
+    2.42 -> 1.66 mA and 0.152 -> 0.093 deg.
     """
     coords, hess, _, _ = _water_modes()
     _, _, _, info = compute_harmonic_alpha(hess, coords, H2O_MASSES)
-    assert info["harmonic_scheme"] == "eigenvalue_fd"
+    assert info["harmonic_scheme"] == "watson"
 
 
 @pytest.mark.parametrize("scheme", list(_HARMONIC_SCHEMES))

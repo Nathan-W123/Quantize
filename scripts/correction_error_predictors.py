@@ -92,7 +92,8 @@ R_E = {
 }
 
 
-def measure(mol, r_e_coords, method: str, basis: str) -> list[dict]:
+def measure(mol, r_e_coords, method: str, basis: str,
+            harmonic_scheme: str = "eigenvalue_fd") -> list[dict]:
     """One row per (isotopologue, component): the correction, its error, and
     every quantity the engine could have used to distrust it."""
     backend = get_backend("pyscf_hf")(elems=list(mol.elems),
@@ -119,7 +120,8 @@ def measure(mol, r_e_coords, method: str, basis: str) -> list[dict]:
         truth = rotational_constants_mhz(r_e_coords, masses) - obs
         with contextlib.redirect_stdout(io.StringIO()):
             alpha, _, sigma, info = compute_harmonic_alpha(
-                hess, coords, masses, mode_derivs=mode_derivs)
+                hess, coords, masses, mode_derivs=mode_derivs,
+                harmonic_scheme=harmonic_scheme)
         for i, comp in enumerate("ABC"):
             if comp not in alpha:
                 continue
@@ -149,20 +151,24 @@ def main() -> None:
         elif tok.startswith("basis="):
             basis = tok.split("=", 1)[1]
 
+    schemes = ["eigenvalue_fd", "watson"]
     rows = []
     for key, (mol, r_e_coords) in R_E.items():
-        print(f"  [{key}] {method}/{basis} ...", flush=True)
-        rows += measure(mol, r_e_coords, method, basis)
+        for sch in schemes:
+            print(f"  [{key}] {method}/{basis} scheme={sch} ...", flush=True)
+            for row in measure(mol, r_e_coords, method, basis, sch):
+                row["scheme"] = sch
+                rows.append(row)
 
     print()
-    print(f"  {'mol':6s} {'iso':24s} {'c':2s} "
+    print(f"  {'scheme':14s} {'mol':6s} {'iso':22s} {'c':2s} "
           f"{'harm':>9s} {'cori':>9s} {'anh':>10s} {'calc':>10s} "
           f"{'true':>10s} {'err':>10s} {'sigma':>9s} {'n_sig':>6s} "
           f"{'anh/hrm':>8s} {'|err|/anh':>10s}")
     for r in rows:
         n_sig = abs(r["err"]) / r["sigma"] if r["sigma"] else float("nan")
         per_anh = abs(r["err"]) / abs(r["anh"]) if r["anh"] else float("nan")
-        print(f"  {r['mol']:6s} {r['iso'][:24]:24s} {r['comp']:2s} "
+        print(f"  {r.get('scheme','')[:14]:14s} {r['mol']:6s} {r['iso'][:22]:22s} {r['comp']:2s} "
               f"{r['harm']:9.1f} {r['cori']:9.1f} {r['anh']:10.1f} "
               f"{r['calc']:10.1f} {r['true']:10.1f} {r['err']:+10.1f} "
               f"{r['sigma']:9.1f} {n_sig:6.1f} {r['ratio']:8.2f} {per_anh:10.2f}")

@@ -2,6 +2,35 @@
 
 These pin down the accuracy claims that motivate the rovibrational correction
 machinery. They use analytic potentials, so they run without Psi4 or ORCA.
+
+The analytic water surface and what it can arbitrate
+----------------------------------------------------
+Several tests below compare a correction computed on ``dev.analytic_water_backend``
+against experiment. That surface's own docstring says it "carries no bend
+anharmonicity", and water's anharmonic alpha is dominated by bend-containing
+cubic constants -- the bend is the lowest mode and the term is weighted by
+1/omega_s^2. So its anharmonic alpha is structurally short, by 64% on B against
+B3LYP/6-31G(d), while the two surfaces' harmonic terms agree to 5%.
+
+That matters for what these tests can decide. They were passing under a harmonic
+term now known to be the wrong quantity, because its error ran opposite to the
+missing bend anharmonicity and the two partly cancelled on this surface. With
+the harmonic term corrected the cancellation is gone and the surface's own gap
+shows through, so several numbers here got worse while the same calculation on a
+real electronic-structure surface got much better:
+
+    water, against its published equilibrium structure, RHF/6-31G geometry
+                      old harmonic term    corrected
+        bond RMS           2.08 mA           0.38 mA
+        angle RMS          0.646 deg         0.203 deg
+    ozone, same run
+        bond RMS           2.42 mA           1.66 mA
+        angle RMS          0.152 deg         0.093 deg
+
+So these tests are kept as regression pins on a model surface, with tolerances
+that reflect what that surface can support, and the physics claims live in
+scripts/verify_water_corrections.py and scripts/correction_error_predictors.py
+where the comparison is against real references.
 """
 
 import sys
@@ -155,9 +184,13 @@ def test_diverging_perturbation_series_is_flagged():
     _, _, _, winfo = compute_harmonic_alpha(
         h2o_hessian(coords), coords, H2O_MASSES, hessian_fn=h2o_hessian
     )
-    # A's series converges for water; B and C's do not.
+    # A's series converges for water, and B's now does too: correcting the
+    # harmonic term took its cubic/harmonic ratio from 13.7 to 1.3, because the
+    # old term was understating the harmonic contribution to B by sevenfold.
+    # C's ratio stays above 1 and it is still flagged.
     assert winfo["anharmonic_ratio"]["A"] < 1.0
-    assert set(winfo["nonconvergent_components"]) == {"B", "C"}
+    assert winfo["anharmonic_ratio"]["B"] < 2.0
+    assert set(winfo["nonconvergent_components"]) == {"C"}
 
 
 def test_correction_table_marks_unreliable_components():
@@ -180,7 +213,10 @@ def test_correction_table_marks_unreliable_components():
         h2o_hessian(coords), coords, iso, hessian_fn=h2o_hessian,
         cubic_scheme="cartesian",
     )
-    assert set(info["nonconvergent"]["H2-16O"]) == {"B", "C"}
+    # C alone now. Correcting the harmonic term took B's cubic/harmonic ratio
+    # from 13.7 to 1.3 -- the old term understated the harmonic contribution to
+    # B sevenfold, which is what made its series look divergent.
+    assert set(info["nonconvergent"]["H2-16O"]) == {"C"}
     assert "not converging" in table["H2-16O"]["C"]["notes"]
     assert "not converging" not in table["H2-16O"]["A"]["notes"]
 
@@ -222,8 +258,13 @@ def test_water_force_field_reproduces_observed_frequencies():
 
 
 def test_water_be_correction_improves_with_anharmonic_term():
-    """B_e recovered from B_0 must move toward the B_e implied by the accepted
-    equilibrium geometry once the cubic term is included."""
+    """B_e recovered from B_0 must move toward the accepted equilibrium B_e
+    once the cubic term is included.
+
+    The factor was 4x under the old harmonic term and is 2.9x now. Both say the
+    cubic term helps a lot, which is the claim; the surface's missing bend
+    anharmonicity is why it cannot say more precisely than that here.
+    """
     coords = h2o_coords()
     hess = h2o_hessian(coords)
     be_target = rotational_constants_mhz(coords, H2O_MASSES)
@@ -236,7 +277,7 @@ def test_water_be_correction_improves_with_anharmonic_term():
 
     err_harm = total_error()
     err_full = total_error(hessian_fn=h2o_hessian)
-    assert err_full < 0.25 * err_harm
+    assert err_full < 0.4 * err_harm
 
 
 def test_tau_prime_requires_frequencies():
@@ -313,11 +354,22 @@ def test_corrected_targets_recover_the_equilibrium_structure():
     # And that structure is closer to equilibrium on the angle.
     assert abs(full["theta_deg"] - THETA_E_DEG) < abs(raw["theta_deg"] - THETA_E_DEG)
     assert abs(full["r_ang"] - R_E_ANG) < 0.005
-    assert abs(full["theta_deg"] - THETA_E_DEG) < 0.5
+    # 0.61 deg on this surface, against 0.20 for the same calculation on a real
+    # electronic-structure surface. The gap is the surface's missing bend
+    # anharmonicity, not the correction -- see the module docstring.
+    assert abs(full["theta_deg"] - THETA_E_DEG) < 0.7
 
 
 def test_water_alpha_signs_match_the_required_correction():
-    """Each component of the correction must at least have the right sign."""
+    """A and C must have the right sign on this surface; B cannot be asked.
+
+    B is where the missing bend anharmonicity bites hardest: the surface gives
+    an anharmonic alpha_B of +15930 MHz against B3LYP/6-31G(d)'s +26078, and
+    the harmonic term is -21294, so the sum comes out negative here and
+    positive there. The same calculation on the real surface reproduces the
+    measured B_e - B_0 to 0.2 sigma, so this is the surface's gap and not a
+    sign error in the correction.
+    """
     coords = h2o_coords()
     be_target = rotational_constants_mhz(coords, H2O_MASSES)
     required = be_target - H2O_B0_MHZ
@@ -325,7 +377,8 @@ def test_water_alpha_signs_match_the_required_correction():
         h2o_hessian(coords), coords, H2O_MASSES, hessian_fn=h2o_hessian,
     )
     delta = 0.5 * np.array([alpha["A"], alpha["B"], alpha["C"]])
-    assert np.all(np.sign(delta) == np.sign(required))
+    for i in (0, 2):
+        assert np.sign(delta[i]) == np.sign(required[i]), "ABC"[i]
 
 
 # ── where the correction error actually lives ───────────────────────────────
@@ -370,18 +423,28 @@ def test_coriolis_is_identically_zero_on_the_components_that_fail():
     assert abs(cor["C"]) > 100.0
 
 
-def test_the_anharmonic_term_dominates_the_components_that_fail():
-    """On water's B the anharmonic term is several times the total correction.
+def test_the_harmonic_term_is_no_longer_negligible_on_water_b():
+    """This test used to claim the opposite, and the claim was an artefact.
 
-    Measured on the analytic PES: B is centrifugal -3253.7, Coriolis 0.0,
-    anharmonic +15930.2 MHz. There is no cancellation to appeal to and no other
-    term to blame -- the anharmonic contribution is the correction, so its
-    accuracy is the correction's accuracy.
+    It was written to record that water's B correction was carried almost
+    entirely by the anharmonic term -- centrifugal -3253.7 against anharmonic
+    +15930.2 MHz -- which made the anharmonic term the only place a 5-sigma
+    error could be hiding. That was a consequence of the harmonic term being
+    computed from the wrong quantity: correcting it takes B's harmonic
+    contribution from -3253.7 to -21294.7, and the two terms become comparable.
+
+    The conclusion it was used to support was wrong, and the search it pointed
+    at -- for a missing piece of the anharmonic theory -- found nothing because
+    there was nothing there.
     """
     coords = h2o_coords()
     _, _, _, info = compute_harmonic_alpha(
         h2o_hessian(coords), coords, H2O_MASSES, hessian_fn=h2o_hessian)
     harm = info["alpha_centrifugal_mhz"]["B"] + info["alpha_coriolis_mhz"]["B"]
     anh = info["alpha_anharmonic_mhz"]["B"]
-    assert abs(anh) > 4.0 * abs(harm)
-    assert abs(anh + harm) < abs(anh)
+    assert abs(harm) > 0.5 * abs(anh)
+
+    old_harm = compute_harmonic_alpha(
+        h2o_hessian(coords), coords, H2O_MASSES, hessian_fn=h2o_hessian,
+        harmonic_scheme="eigenvalue_fd")[3]["alpha_centrifugal_mhz"]["B"]
+    assert abs(harm) > 5.0 * abs(old_harm)

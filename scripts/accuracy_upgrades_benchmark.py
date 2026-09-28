@@ -144,6 +144,7 @@ from scripts.mixed_estimation_baseline import (  # noqa: E402
 from scripts.monofluoro_benchmark import build_isotopologues, start_geometry  # noqa: E402
 
 METHOD, BASIS = "hf", "6-31g"
+HARMONIC_SCHEME = "watson"
 CORR_METHOD, CORR_BASIS = None, None
 WANT_CONFIGS: list[str] = []
 _args: list[str] = []
@@ -156,6 +157,8 @@ for _tok in sys.argv[1:]:
         CORR_METHOD = _tok.split("=", 1)[1]
     elif _tok.startswith("corr_basis="):
         CORR_BASIS = _tok.split("=", 1)[1]
+    elif _tok.startswith("harmonic="):
+        HARMONIC_SCHEME = _tok.split("=", 1)[1]
     elif _tok.startswith("configs="):
         WANT_CONFIGS = _tok.split("=", 1)[1].split(",")
     else:
@@ -442,7 +445,8 @@ def main() -> None:
                         hfn(at), at, isos_local, hessian_fn=hfn,
                         cubic_scheme="normal_mode",
                         lam_freq_cm=LAM_FREQ_CM if lam else 0.0,
-                        freq_scale=FREQ_SCALE)
+                        freq_scale=FREQ_SCALE,
+                        harmonic_scheme=HARMONIC_SCHEME)
             return _tabs[key]
 
         g_tensor = None
@@ -495,6 +499,7 @@ def main() -> None:
                                if cfg["corr"] else f"{METHOD}/{BASIS}"),
                 "bob": bool(cfg["bob"]),
                 "defect_scale": bool(cfg["defect_scale"]),
+                "harmonic_scheme": HARMONIC_SCHEME,
                 "lam_modes_cm": sorted({round(w, 1) for v in info.get("lam", {}).values()
                                         for w in v.get("modes_cm", [])}),
                 "g_tensor": g_tensor if cfg["elec"] else None,

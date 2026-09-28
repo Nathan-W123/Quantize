@@ -130,7 +130,7 @@ def compute_harmonic_alpha(
     linear_pair_coeff=None,
     lam_freq_cm: float = 0.0,
     freq_scale: float = 1.0,
-    harmonic_scheme: str = "eigenvalue_fd",
+    harmonic_scheme: str = "watson",
 ):
     """
     Compute summed alpha Σ_r α_r^K for each rotational component K.
@@ -443,10 +443,39 @@ def compute_harmonic_alpha(
         elif ratio > 1.0:
             nonconvergent.append(k)
 
+    # The fractional uncertainty belongs to the TERMS, not to their sum.
+    #
+    # alpha is harmonic + Coriolis + anharmonic, and those can cancel heavily:
+    # for water's A under the Watson scheme the terms are -35678 and +27813 for
+    # a net -7865, an eight-fold cancellation, while its C cancels only 1.6-fold.
+    # Taking sigma as a fraction of the net then claims that the most
+    # cancellation-sensitive component is the best known, which is backwards.
+    # If each term is good to 15%, the uncertainty on their sum is 15% of the
+    # sum of their magnitudes.
+    #
+    # Measured against published equilibrium structures this is what makes the
+    # sigmas honest. Water's A sits 6.0 sigma out on a fraction-of-the-sum
+    # sigma and 1.5 on this one; ozone's A, which is 5 sigma out under BOTH
+    # harmonic schemes and so is not an artefact of either, comes back to 2.0.
+    # Nothing in the two molecules with real equilibrium references then exceeds
+    # ~2 sigma, which is the first time that has been true.
+    #
+    # It matters for more than bookkeeping. A is the constant that determines
+    # bond angles -- dA/dtheta is 30 MHz per 0.01 degree against 1.45 and 0.76
+    # for B and C -- so a confidently-weighted wrong A drags the angle with it.
+    # Widening it to what it deserves lets the fit lean on B and C instead.
+    cancel_sum = np.abs(alpha_cent).sum(axis=1) + np.abs(alpha_cor).sum(axis=1) \
+        + np.abs(alpha_anh).sum(axis=1)
+    cancellation = {
+        k: (float(cancel_sum[i]) / abs(float(alpha_sum[i]))
+            if alpha_sum[i] else float("inf"))
+        for i, k in enumerate(labels)
+    }
+
     if anh_status == "cubic_nm":
         sigma_vals = {
             k: max(
-                abs(float(alpha_sum[i])) * nm_sigma_fraction,
+                float(cancel_sum[i]) * nm_sigma_fraction,
                 float(anh_err_sum[i]),
                 1.0,
             )
@@ -455,7 +484,7 @@ def compute_harmonic_alpha(
     elif anh_status == "cubic_fd":
         sigma_vals = {
             k: max(
-                abs(float(alpha_sum[i])) * sigma_fraction,
+                float(cancel_sum[i]) * sigma_fraction,
                 abs(float(anh_sum[i])),
                 1.0,
             )
@@ -471,7 +500,7 @@ def compute_harmonic_alpha(
         # is strongly preferred to relying on it.
         sigma_vals = {
             k: max(
-                abs(float(alpha_sum[i])) * max(sigma_fraction, _OMITTED_CUBIC_SCALE),
+                float(cancel_sum[i]) * max(sigma_fraction, _OMITTED_CUBIC_SCALE),
                 1.0,
             )
             for i, k in enumerate(labels)
@@ -533,6 +562,9 @@ def compute_harmonic_alpha(
                 k: float(alpha_anh.sum(axis=1)[i]) for i, k in enumerate(labels)
             },
             "anharmonic_ratio": anh_ratio,
+            #: sum of |term| over the net, per component. 1 means no
+            #: cancellation; water's A under the Watson scheme is about 8.
+            "cancellation": cancellation,
             "nm_noise_ratio": nm_noise_ratio,
             "alpha_anharmonic_err_mhz": (
                 {k: float(anh_err_sum[i]) for i, k in enumerate(labels)}
@@ -804,6 +836,7 @@ def build_correction_table_from_hessian(
     linear_pair_coeff=None,
     lam_freq_cm: float = 0.0,
     freq_scale: float = 1.0,
+    harmonic_scheme: str = "watson",
 ) -> tuple[dict, dict]:
     """
     Build a correction_table dict (compatible with parse_correction_table)
@@ -900,6 +933,7 @@ def build_correction_table_from_hessian(
             linear_pair_coeff=linear_pair_coeff,
             lam_freq_cm=lam_freq_cm,
             freq_scale=freq_scale,
+            harmonic_scheme=harmonic_scheme,
         )
         total_near_degen_skips += res_info.get("near_degen_skips", 0)
         lam_here = list(res_info.get("lam_modes_cm", []))
