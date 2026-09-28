@@ -113,6 +113,77 @@ def normal_modes(hess_bohr, masses_amu, n_rigid=6, min_eigval=1e-6):
     return omega_cm, L_vib
 
 
+def inertia_tensor_amu_ang2(coords_ang, masses_amu):
+    """The full 3x3 inertia tensor in amu.A^2, centre of mass removed.
+
+    ``inertia_paf`` diagonalises this; the off-diagonal elements it throws away
+    are what ``inertia_mode_derivatives`` needs.
+    """
+    masses = np.asarray(masses_amu, dtype=float)
+    r = np.asarray(coords_ang, dtype=float)
+    r = r - (masses[:, None] * r).sum(0) / masses.sum()
+    r2 = np.einsum("ia,ia->i", r, r)
+    return (np.einsum("i,jk->jk", masses * r2, np.eye(3))
+            - np.einsum("i,ij,ik->jk", masses, r, r))
+
+
+def inertia_mode_derivatives(coords, masses, L_mw, fd_delta=0.02):
+    """``a_r[r, xi, xi'] = dI_{xi xi'}/dQ_r`` in the EQUILIBRIUM principal frame.
+
+    Units: amu^(1/2).A, since I is in amu.A^2 and Q_r in A.sqrt(amu).
+
+    This is the quantity the engine was missing, and the reason it was missing
+    is that ``rotational_constants_mhz`` returns only the sorted eigenvalues.
+    Two separate pieces of physics need the off-diagonal elements that
+    diagonalisation discards:
+
+      * the harmonic contribution to alpha, whose second-order coefficient in
+        Watson's expansion of mu = I^-1 is (3/4) mu a mu a mu and therefore sums
+        over all xi', not just xi' = xi; and
+      * the Kivelson-Wilson tau tensor, whose tau_abab, tau_bcbc and tau_caca
+        components are built from a_r^{xi xi'} with xi' != xi.
+
+    Differentiating a sorted principal value instead of the tensor element is
+    not a small approximation. J_a, J_b and J_c are quantised in the Eckart
+    frame fixed by the equilibrium geometry, and a vibrationally induced
+    off-diagonal inertia element does not reorient those axes -- it enters the
+    diagonal element of mu at second order. Following the instantaneous
+    principal axes instead picks up eigenvalue repulsion,
+    2 (a^{ab})^2 / (I_b - I_a), which is not a contribution to alpha at all.
+    Measured on water it is the difference between a B correction 9852 MHz wrong
+    and one 682 MHz wrong.
+
+    The symmetry structure is a free check on the result: for a C2v XY2
+    molecule the symmetric modes give a purely diagonal a_r and the
+    antisymmetric stretch a purely off-diagonal one, to the precision of the
+    finite difference.
+
+    Central differences of a closed-form function of geometry, so Richardson
+    extrapolation is safe and removes the O(h^2) truncation error -- the same
+    argument ``bk_mode_derivatives`` makes for itself.
+    """
+    coords = np.asarray(coords, dtype=float)
+    masses = np.asarray(masses, dtype=float)
+    n_atoms = coords.shape[0]
+    n_vib = L_mw.shape[1]
+    _, v_paf, coords_paf = inertia_paf(coords, masses)
+
+    def _at(disp):
+        return inertia_tensor_amu_ang2(coords_paf + disp, masses)
+
+    a = np.zeros((n_vib, 3, 3))
+    for r in range(n_vib):
+        # Cartesian displacement per unit Q_r, rotated into the principal frame.
+        d = (L_mw[:, r].reshape(n_atoms, 3)
+             / np.sqrt(masses[:, None])) @ v_paf
+
+        def _first(h, _d=d):
+            return (_at(h * _d) - _at(-h * _d)) / (2.0 * h)
+
+        a[r] = (4.0 * _first(0.5 * fd_delta) - _first(fd_delta)) / 3.0
+    return a
+
+
 def bk_mode_derivatives(coords, masses, L_mw, omega_cm, fd_delta, B0_ref=None):
     """
     First and second derivatives of B_K w.r.t. each normal coordinate Q_r.
