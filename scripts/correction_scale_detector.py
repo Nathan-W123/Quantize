@@ -66,6 +66,37 @@ Three consequences, and they redirect the whole approach:
    correction physics and in acquiring r_e references, not in better residual
    diagnostics.
 
+What was tried, and how far it got
+----------------------------------
+The degeneracy has two terms. The correction's isotopic signature is nearly
+parallel to the geometry's, AND the correction's own sigma is large. Data can
+attack the first; only physics can attack the second.
+
+Centrifugal distortion attacks the first, and it is the one channel that
+constrains the geometry WITHOUT passing through the B0-to-Be correction. The
+full Kivelson-Wilson tau tensor is now computable (see tau_components_mhz; the
+off-diagonal components were structurally absent before) and validated against
+ozone's published reduction-free values across five isotopologues, to 2.3% on
+tau_aaaa, 9.9% on tau_bbbb and 12.6% on tau_cccc. Feeding it in as data at a
+13% sigma:
+
+    ozone, 2-sigma limit on |s-1|      A        B        C
+      rotational constants only     2937%     793%     599%
+      plus tau as data              1001%     674%     560%
+      improvement                    2.9x     1.2x     1.1x
+
+Real, measured, and not enough. A stays an order of magnitude above the ~90%
+biases that actually occur, because tau does nothing about the second term.
+
+Which leaves the second term, and it has a name: cancellation. The correction
+sigma is a fraction of the SUM of the magnitudes of its three contributions, so
+a component whose terms cancel eightfold carries eight times the uncertainty of
+one that does not. The detection limits rank exactly that way -- ozone's A
+cancels about fivefold and sits at 2937%, its C cancels 1.5-fold and sits at
+599%. Making a component detectable means making its terms cancel less, which
+means computing them correctly, which is the same conclusion arrived at from
+the other direction.
+
 The detection limit itself is the deliverable. It needs no measured constants --
 only masses, a geometry and the correction sigmas -- so it can be computed for
 species nobody has made, and it answers the question worth asking before
