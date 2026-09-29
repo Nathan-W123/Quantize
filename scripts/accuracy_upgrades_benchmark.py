@@ -126,6 +126,7 @@ from backend.spectral.electronic_g import (  # noqa: E402
 )
 from backend.spectral.harmonic_alpha import (  # noqa: E402
     build_correction_table_from_hessian,
+    self_consistent_correction_table,
 )
 from dev.monofluoro_references import (  # noqa: E402
     ISOCYANIC_ACID,
@@ -247,10 +248,28 @@ CONFIGS = {
                "defect_scale": True},
     "offsets+defect": {"offsets": True, "elec": False, "lam": False,
                        "corr": False, "defect_scale": True},
+    # The correction's expansion point follows where the fit lands.
+    #
+    # alpha is expanded at the quantum minimum and then frozen, but the joint
+    # objective exists to move the geometry off that minimum. Measured on
+    # water at B3LYP/cc-pVTZ the optimiser travels -2.97 mA, and alpha is not
+    # flat over that: d(corr)/dr is +273.5 MHz/mA on A, so the frozen
+    # correction is applied ~787 MHz from where it belongs, against a
+    # correction error of 2825. Two extra alpha evaluations buy it back.
+    #
+    # Mixed estimation deliberately does NOT get this. It has no geometry
+    # variable to track -- the correction is applied to the data before any
+    # fitting -- so handing it a tracked table would be scoring it on
+    # something it cannot do.
+    "track": {"offsets": False, "elec": False, "lam": False, "corr": False,
+              "track": True},
+    "offsets+track": {"offsets": True, "elec": False, "lam": False,
+                      "corr": False, "track": True},
 }
 for _cfg in CONFIGS.values():
     _cfg.setdefault("bob", False)
     _cfg.setdefault("defect_scale", False)
+    _cfg.setdefault("track", False)
 
 
 def electronic_shifted_isotopologues(isos, g_tensor, total_mass_amu):
@@ -483,10 +502,31 @@ def main() -> None:
 
             # Both methods get the same prior centre and the same width; the
             # comparison is about mechanism, not about who was told to trust
-            # the theory more.
+            # the theory more. Mixed estimation is always handed the untracked
+            # table: tracking is a property of having a geometry variable in
+            # the objective, which it does not have.
             me_geom, _chi2 = mixed_estimation_fit(mol, targets, prior, sigma_x)
-            hyb = hybrid_fit(mol, isos, prior, ctbl, sigma_x,
-                             defect_scale=cfg["defect_scale"])
+            if cfg["track"]:
+                at = np.asarray(corr_geom if cfg["corr"] else prior, dtype=float)
+                hfn_track = corr_hessian_fn if cfg["corr"] else hessian_fn
+
+                def _fit(table, _p=prior, _s=sigma_x, _c=cfg):
+                    return hybrid_fit(mol, isos, _p, table, _s,
+                                      defect_scale=_c["defect_scale"])
+
+                with contextlib.redirect_stdout(io.StringIO()):
+                    tracked, track_info = self_consistent_correction_table(
+                        hfn_track, at, isos, _fit,
+                        cubic_scheme="normal_mode",
+                        lam_freq_cm=LAM_FREQ_CM if cfg["lam"] else 0.0,
+                        freq_scale=FREQ_SCALE,
+                        harmonic_scheme=HARMONIC_SCHEME)
+                hyb = _fit(tracked)
+                ctbl = tracked
+            else:
+                track_info = None
+                hyb = hybrid_fit(mol, isos, prior, ctbl, sigma_x,
+                                 defect_scale=cfg["defect_scale"])
 
             entry = {
                 "theory_rms_ma": rms_bond_error(mol, prior)[0],
@@ -497,6 +537,14 @@ def main() -> None:
                 "hybrid_rms_deg": rms_angle_error(mol, hyb)[0],
                 "n_species": len(isos),
                 "sigma_x_ang": float(sigma_x),
+                # How far the fit travelled off the expansion point, and so
+                # how far the correction had to be tracked. Reported because a
+                # tracked run that moved nothing and an untracked run are the
+                # same run, and without this they are indistinguishable after
+                # the fact.
+                "track_distances_ang": (
+                    [float(d) for d in track_info["distances_ang"]]
+                    if track_info else None),
                 "corr_level": (f"{CORR_METHOD or METHOD}/{CORR_BASIS or BASIS}"
                                if cfg["corr"] else f"{METHOD}/{BASIS}"),
                 "bob": bool(cfg["bob"]),
