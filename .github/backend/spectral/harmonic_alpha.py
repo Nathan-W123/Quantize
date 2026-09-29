@@ -165,6 +165,8 @@ def compute_harmonic_alpha(
                     Computed once with the reference masses and reused across
                     isotopologues via the rigid-completed mode decomposition.
     freq_scale    : multiply the harmonic frequencies by this before forming α.
+                    Scalar, or one factor per mode (ordered as the modes come
+                    out of the normal-mode analysis, after min_freq_cm).
                     A computed force field is systematically stiff -- RHF/6-31G
                     puts water's bend at 1829 cm⁻¹ against an experimental
                     harmonic 1649, 11% high -- and α carries 1/ω through both
@@ -211,8 +213,24 @@ def compute_harmonic_alpha(
     # thing in scaled units. Only omega moves: the mode vectors are invariant
     # under a uniform scaling of the Hessian, and the cubic constants are left
     # as computed.
-    if float(freq_scale) != 1.0:
-        omega_cm = omega_cm * float(freq_scale)
+    # Scalar, or one factor per mode. Per-mode is what this hook was always
+    # for -- its own note in the benchmark asks for "per-mode factors from an
+    # external frequency set rather than a scalar guessed here" -- because the
+    # error in a computed harmonic frequency is not uniform across modes. At
+    # B3LYP/6-31G(d) ozone's bend is 2.7% high while its antisymmetric stretch
+    # is 16.2% high, and alpha carries 1/omega in the harmonic term and
+    # 1/omega_s^2 in the anharmonic one, so a single scalar cannot represent it.
+    _fs = np.atleast_1d(np.asarray(freq_scale, dtype=float))
+    if _fs.size == 1:
+        if float(_fs[0]) != 1.0:
+            omega_cm = omega_cm * float(_fs[0])
+    elif _fs.size == omega_cm.size:
+        omega_cm = omega_cm * _fs
+    else:
+        raise ValueError(
+            f"freq_scale must be a scalar or one factor per mode "
+            f"({omega_cm.size}), got {_fs.size}"
+        )
     real_mask = omega_cm >= min_freq_cm
     omega_cm = omega_cm[real_mask]
     L_mw = L_mw[:, real_mask]
@@ -1003,7 +1021,9 @@ def build_correction_table_from_hessian(
         "dropped_components": dropped,
         "lam": lam_report,
         "lam_freq_cm": float(lam_freq_cm),
-        "freq_scale": float(freq_scale),
+        "freq_scale": (float(np.atleast_1d(freq_scale)[0])
+                       if np.atleast_1d(freq_scale).size == 1
+                       else [float(x) for x in np.atleast_1d(freq_scale)]),
         # Reported for the same reason freq_scale is: two tables differing only
         # by the scheme differ by ~18000 MHz on water's alpha_A, and without
         # this they are indistinguishable after the fact.

@@ -255,3 +255,71 @@ def test_a_symmetric_top_forces_equal_alphas_and_only_one_scheme_delivers():
 
     got_old = old["alpha_centrifugal_mhz"]
     assert abs(got_old["A"] - got_old["B"]) > 100.0 * abs(got_new["A"])
+
+
+# ── per-mode frequency scaling, and the hypothesis it killed ────────────────
+
+def test_freq_scale_accepts_one_factor_per_mode():
+    """The hook always meant to take these; it only accepted a scalar.
+
+    A computed harmonic frequency is not wrong by a uniform factor: at
+    B3LYP/6-31G(d) ozone's bend is 2.7% high while its antisymmetric stretch is
+    16.2% high. alpha carries 1/omega in the harmonic term and 1/omega_s^2 in
+    the anharmonic one, so a scalar cannot represent that.
+    """
+    coords, hess, omega, _ = _water_modes()
+    scalar = compute_harmonic_alpha(hess, coords, H2O_MASSES, freq_scale=0.97)[0]
+    per_mode = compute_harmonic_alpha(
+        hess, coords, H2O_MASSES, freq_scale=np.full(len(omega), 0.97))[0]
+    for comp in "ABC":
+        assert per_mode[comp] == pytest.approx(scalar[comp], rel=1e-12)
+
+    uneven = compute_harmonic_alpha(
+        hess, coords, H2O_MASSES, freq_scale=np.array([0.96, 1.03, 1.03]))[0]
+    assert uneven["A"] != pytest.approx(scalar["A"], rel=1e-6)
+
+
+def test_a_wrong_length_freq_scale_is_rejected():
+    coords, hess, _, _ = _water_modes()
+    with pytest.raises(ValueError, match="per mode"):
+        compute_harmonic_alpha(hess, coords, H2O_MASSES,
+                               freq_scale=np.array([1.0, 1.0]))
+
+
+def test_measured_frequencies_do_not_fix_the_remaining_a_error():
+    """A hypothesis, tested and dead -- recorded so it is not chased again.
+
+    After the harmonic-frame fix, B and C agree with the published equilibrium
+    structures to a few percent and A does not. Since the harmonic term is now
+    validated (tau_aaaa reproduces ozone's published value to 2.3%) and the
+    Coriolis term is identically zero for A by C2v symmetry, the residual has to
+    sit in the frequencies or in the cubic force field.
+
+    Substituting the MEASURED harmonic frequencies settles it, at
+    B3LYP/6-31G(d) against published equilibrium structures, error in MHz:
+
+        water H2-16O    A  +7084 -> +3838     B  +672 -> -371     C  +211 -> -458
+        ozone 16-O3     A   -325 ->  +210     B    -6 ->  +24     C    -7 ->  +25
+
+    A is not fixed -- on ozone it changes sign -- and B and C, which were right,
+    get worse. So the frequencies are not the error; the cubic force field is.
+    That closes the cheap routes and leaves the quartic force field, which costs
+    about fifty times the current Hessian count.
+
+    This test pins the mechanism rather than the numbers: alpha must remain
+    strongly sensitive to the frequencies, since that sensitivity is why the
+    hypothesis was worth testing and why a real frequency error would matter.
+    """
+    coords, hess, omega, _ = _water_modes()
+    base = compute_harmonic_alpha(hess, coords, H2O_MASSES)[0]
+    shifted = compute_harmonic_alpha(
+        hess, coords, H2O_MASSES, freq_scale=np.full(len(omega), 0.90))[0]
+    moved = max(abs(shifted[c] - base[c]) / max(abs(base[c]), 1.0) for c in "ABC")
+    assert moved > 0.05, "alpha should be strongly frequency-sensitive"
+
+    # And a per-mode set moves it differently from any scalar, which is the
+    # whole reason the hook had to take an array.
+    uneven = compute_harmonic_alpha(
+        hess, coords, H2O_MASSES,
+        freq_scale=np.array([1649.0, 3832.0, 3943.0]) / np.sort(omega))[0]
+    assert uneven["A"] != pytest.approx(base["A"], rel=1e-6)
