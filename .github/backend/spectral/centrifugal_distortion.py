@@ -258,6 +258,57 @@ def tau_prime_from_dB1_cm(dB1_cm: np.ndarray, omega_cm: np.ndarray = None) -> np
     return -2.0 * np.einsum("Kr,Jr,r->KJ", dB1_cm, dB1_cm, 1.0 / lam, optimize=True)
 
 
+def tau_tensor_cm(a_mode, inertia_amu_ang2, omega_cm) -> np.ndarray:
+    """Full Kivelson-Wilson tau_{alpha beta gamma delta} in cm^-1, shape (3,3,3,3).
+
+        tau_abgd = -2 C^2 sum_r a_r^{ab} a_r^{gd} / (I_a I_b I_g I_d lambda_r)
+
+    ``tau_prime_from_dB1_cm`` computes the same thing collapsed to its diagonal
+    block, by substituting a_r^{aa} = -I_a (dB_a/dQ_r)/B_a -- a substitution
+    that exists only for alpha == beta. Everything off-diagonal was therefore
+    structurally absent: tau_abab, tau_bcbc and tau_caca could not be produced
+    at all, and those are the components that carry the asymmetry parameters a
+    published fit reports.
+
+    It is the same omission that was in the harmonic alpha term, for the same
+    reason -- ``rotational_constants_mhz`` returns sorted eigenvalues, so any
+    derivative built from it has already discarded the off-diagonal elements --
+    and it is fixed with the same quantity, ``inertia_mode_derivatives``.
+
+    The prefactor is not taken on trust. Requiring tau[K,K,J,J] to reproduce
+    ``tau_prime_from_dB1_cm`` pins it against an expression that was already
+    validated, which is what ``test_tau_tensor`` checks.
+    """
+    a = np.asarray(a_mode, dtype=float)
+    inertia = np.asarray(inertia_amu_ang2, dtype=float)
+    lam = np.asarray(omega_cm, dtype=float) ** 2 / (2.0 * _ZPE_AMP)
+    c_cm = _INERTIA_TO_MHZ * _MHZ_TO_CM
+    inv = np.where(inertia > 1e-12, 1.0 / np.where(inertia == 0.0, 1.0, inertia), 0.0)
+    tau = -2.0 * c_cm ** 2 * np.einsum(
+        "rab,rgd,r->abgd", a, a, 1.0 / lam, optimize=True)
+    return tau * np.einsum("a,b,g,d->abgd", inv, inv, inv, inv, optimize=True)
+
+
+def tau_components_mhz(a_mode, inertia_amu_ang2, omega_cm) -> dict:
+    """The determinable quartic tau parameters a published fit reports, in MHz.
+
+    Keys ``tau_aaaa``/``tau_bbbb``/``tau_cccc`` (diagonal) and
+    ``tau_abab``/``tau_bcbc``/``tau_caca`` (off-diagonal, previously
+    uncomputable). These are reduction-free, which is what makes them the right
+    thing to validate against: an A-reduced constant can only be compared to an
+    A-reduced fit, while tau is just tau.
+    """
+    tau = tau_tensor_cm(a_mode, inertia_amu_ang2, omega_cm) * _CM_TO_MHZ
+    return {
+        "tau_aaaa": float(tau[0, 0, 0, 0]),
+        "tau_bbbb": float(tau[1, 1, 1, 1]),
+        "tau_cccc": float(tau[2, 2, 2, 2]),
+        "tau_abab": float(tau[0, 1, 0, 1]),
+        "tau_bcbc": float(tau[1, 2, 1, 2]),
+        "tau_caca": float(tau[2, 0, 2, 0]),
+    }
+
+
 def watson_a_reduction_cd_from_tau_cm(tau_cm: np.ndarray) -> dict[str, float]:
     """
     Watson A-reduction quartic CD constants in cm⁻¹ (x,y,z = A,B,C principal axes).
