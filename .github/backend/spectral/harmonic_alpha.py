@@ -1029,3 +1029,208 @@ def build_correction_table_from_hessian(
         # this they are indistinguishable after the fact.
         "harmonic_scheme": str(harmonic_scheme).strip().lower(),
     }
+
+
+# ── Correction self-consistency ──────────────────────────────────────────────
+#
+# alpha is expanded about the quantum minimum x_QM and then frozen, but the
+# joint objective exists to move the geometry OFF x_QM -- the spectra pull it
+# towards the true equilibrium. So the frozen correction is applied at a
+# geometry it was never expanded about, and alpha is not flat in between.
+#
+# Measured on water at B3LYP/cc-pVTZ, force field held fixed and only the
+# expansion point moved:
+#
+#     d(correction)/dr      A +273.5   B  +42.1   C  +16.4  MHz per mA
+#     d(correction)/dtheta  A -2266.9  B +341.6   C   -9.9  MHz per deg
+#
+# and the optimiser moves -2.97 mA, which is worth -787 MHz on A. Against a
+# correction error of +2825 MHz that is 28% of the gap -- the same order as
+# the force-field-quality floor, and unlike that floor it costs two alpha
+# evaluations rather than a correlated force field.
+#
+# Two things make this cheap. The optimiser travels essentially one direction,
+# so a DIRECTIONAL derivative suffices and the cost is two alpha evaluations
+# whatever the molecule's size, rather than the 2(3N-6) a full gradient would
+# need. And the extrapolated table is an ordinary correction table with
+# shifted alpha_sum_mhz, so every consumer -- parse_correction_table, the
+# optimiser, the geomeTRIC bridge -- is untouched.
+#
+# What is NOT done here, deliberately: alpha is not recomputed AT the fitted
+# geometry. VPT2 expands about a stationary point, and the fitted geometry is
+# not one; a Hessian there carries a residual gradient that contaminates the
+# normal-mode analysis at first order. Here the expansion stays at x_QM and
+# only the SLOPE is measured off-stationary, so that contamination enters the
+# final correction multiplied by the displacement -- second order rather than
+# first.
+
+#: Fraction of the applied shift carried as added uncertainty. The shift is a
+#: first-order estimate whose remainder is the second-order term; measured on
+#: water that term is 126 MHz against a 787 MHz shift, i.e. 16%, so 25% is
+#: that rounded up rather than a free parameter.
+_SLOPE_SIGMA_FRACTION = 0.25
+
+
+def _as_flat_direction(direction, n_atoms):
+    """Normalise a direction given as (N,3) or (3N,) to a unit (N,3) array."""
+    vec = np.asarray(direction, dtype=float).reshape(n_atoms, 3)
+    norm = float(np.linalg.norm(vec))
+    if norm <= 0.0:
+        raise ValueError("direction has zero length")
+    return vec / norm, norm
+
+
+def alpha_directional_derivative(
+    hessian_fn,
+    coords_ang,
+    isotopologues,
+    direction,
+    step_ang: float | None = None,
+    **table_kw,
+):
+    """d(alpha_sum)/ds along one Cartesian direction, in MHz per Angstrom.
+
+    ``direction`` is a displacement, shaped (N,3) or (3N,); its length is used
+    as the step unless ``step_ang`` overrides it. The derivative is a central
+    difference about ``coords_ang``, so two correction tables are built --
+    independent of how many atoms or isotopologues are involved.
+
+    Returns ``(slopes, info)`` where ``slopes[iso_name][component]`` is the
+    slope in MHz per Angstrom. A component is present only if both displaced
+    tables produced it, so anything the nonconvergent policy dropped on either
+    side is simply absent and the caller leaves it unshifted.
+    """
+    coords = np.asarray(coords_ang, dtype=float)
+    unit, length = _as_flat_direction(direction, coords.shape[0])
+    step = float(step_ang) if step_ang is not None else length
+    if step <= 0.0:
+        raise ValueError("step_ang must be positive")
+
+    half = 0.5 * step
+    plus = coords + half * unit
+    minus = coords - half * unit
+    table_plus, _ = build_correction_table_from_hessian(
+        hessian_fn(plus), plus, isotopologues, hessian_fn=hessian_fn, **table_kw)
+    table_minus, _ = build_correction_table_from_hessian(
+        hessian_fn(minus), minus, isotopologues, hessian_fn=hessian_fn, **table_kw)
+
+    slopes: dict = {}
+    for name, entries_plus in table_plus.items():
+        entries_minus = table_minus.get(name, {})
+        for comp, spec_plus in entries_plus.items():
+            spec_minus = entries_minus.get(comp)
+            if spec_minus is None:
+                continue
+            d = (float(spec_plus["alpha_sum_mhz"])
+                 - float(spec_minus["alpha_sum_mhz"])) / step
+            slopes.setdefault(name, {})[comp] = d
+    return slopes, {"step_ang": step, "direction_unit": unit}
+
+
+def extrapolate_correction_table(
+    table,
+    slopes,
+    distance_ang: float,
+    slope_sigma_fraction: float = _SLOPE_SIGMA_FRACTION,
+):
+    """A correction table moved along the measured slope by ``distance_ang``.
+
+    The result is an ordinary correction table -- same keys, same schema -- so
+    it drops straight into anything that already consumes one. Components with
+    no measured slope are copied through unchanged.
+
+    sigma grows by ``slope_sigma_fraction`` of the applied shift, in
+    quadrature: the shift is first order and its remainder is the second-order
+    term, which the extrapolation does not model.
+    """
+    out: dict = {}
+    shifted = 0
+    for name, entries in table.items():
+        new_entries: dict = {}
+        for comp, spec in entries.items():
+            new_spec = dict(spec)
+            slope = slopes.get(name, {}).get(comp)
+            if slope is not None:
+                shift = float(slope) * float(distance_ang)
+                new_spec["alpha_sum_mhz"] = float(spec["alpha_sum_mhz"]) + shift
+                sigma = float(spec.get("sigma_mhz", 0.0) or 0.0)
+                # The table's sigma is on the correction (0.5*alpha_sum), so
+                # the shift is halved to match before going into quadrature.
+                extra = abs(0.5 * shift) * float(slope_sigma_fraction)
+                new_spec["sigma_mhz"] = float(np.hypot(sigma, extra))
+                note = str(spec.get("notes", "") or "")
+                new_spec["notes"] = (
+                    f"{note}; expansion point tracked {1000 * distance_ang:+.2f} mA "
+                    f"to the fitted geometry ({shift:+.1f} MHz on alpha)").lstrip("; ")
+                shifted += 1
+            new_entries[comp] = new_spec
+        out[name] = new_entries
+    return out, {"components_shifted": shifted,
+                 "distance_ang": float(distance_ang)}
+
+
+def self_consistent_correction_table(
+    hessian_fn,
+    coords_ang,
+    isotopologues,
+    fit_fn,
+    passes: int = 2,
+    min_step_ang: float = 1e-4,
+    slope_sigma_fraction: float = _SLOPE_SIGMA_FRACTION,
+    **table_kw,
+):
+    """Correction table whose expansion point follows where the fit lands.
+
+    ``fit_fn(table) -> coords`` runs the caller's fit and returns the fitted
+    geometry; everything else is handled here. The loop is:
+
+      1. Build the table at ``coords_ang`` -- the quantum stationary point.
+      2. Fit, and see how far the fit moved.
+      3. Measure d(alpha)/ds along that displacement (two alpha evaluations,
+         once -- the direction barely changes between passes).
+      4. Re-extrapolate the ORIGINAL table by the new distance and fit again.
+
+    Step 4 always extrapolates from the table built at the stationary point,
+    never from the previous extrapolation, so error does not compound across
+    passes and the VPT2 expansion stays where it is allowed to be.
+
+    Two passes is the default because the second-order term is small: on water
+    the first pass shifts A by -787 MHz and the induced re-fit is worth +126
+    MHz, so a third pass would move A by ~20 MHz.
+
+    Returns ``(table, info)``; ``info["geometries"]`` is the fitted geometry
+    after each pass, so the caller can check it converged rather than assume.
+    """
+    if passes < 1:
+        raise ValueError("passes must be at least 1")
+    coords = np.asarray(coords_ang, dtype=float)
+    base_table, base_info = build_correction_table_from_hessian(
+        hessian_fn(coords), coords, isotopologues, hessian_fn=hessian_fn, **table_kw)
+
+    table = base_table
+    slopes: dict | None = None
+    geometries: list = []
+    distances: list = []
+    for _ in range(passes):
+        fitted = np.asarray(fit_fn(table), dtype=float)
+        geometries.append(fitted)
+        step = fitted - coords
+        distance = float(np.linalg.norm(step))
+        distances.append(distance)
+        if distance < float(min_step_ang):
+            break
+        if slopes is None:
+            slopes, _ = alpha_directional_derivative(
+                hessian_fn, coords, isotopologues, step, **table_kw)
+        table, _ = extrapolate_correction_table(
+            base_table, slopes, distance,
+            slope_sigma_fraction=slope_sigma_fraction)
+
+    info = dict(base_info)
+    info.update({
+        "self_consistent_passes": len(geometries),
+        "geometries": geometries,
+        "distances_ang": distances,
+        "slopes": slopes,
+    })
+    return table, info
