@@ -1064,6 +1064,23 @@ def build_correction_table_from_hessian(
 # final correction multiplied by the displacement -- second order rather than
 # first.
 
+#: Largest displacement the first-order extrapolation is trusted over, in
+#: Angstrom. Beyond it the table is left alone.
+#:
+#: This is a validity limit, not a tuning knob: alpha(x) is expanded to first
+#: order, so it is only good while the displacement is small, and nothing in
+#: the derivation says what "small" is. Measured across 12 molecule/level
+#: pairs, the answer changes sign around here -- mean bond error -7% for
+#: displacements under 20 mA (n=4) against +61% over it (n=8), and every one
+#: of the three worst regressions (water at 60 mA +285%, ozone at 30 mA +141%,
+#: isocyanic acid at 324 mA +108%) is on the far side.
+#:
+#: The number is where the measured evidence turns, on 12 points, so treat it
+#: as a guard rail rather than a calibrated constant. The principle behind it
+#: -- a first-order expansion stops being valid at some displacement -- is not
+#: in doubt; only the exact crossing point is.
+_MAX_TRACK_DISTANCE_ANG = 0.020
+
 #: Fraction of the applied shift carried as added uncertainty. The shift is a
 #: first-order estimate whose remainder is the second-order term; measured on
 #: water that term is 126 MHz against a 787 MHz shift, i.e. 16%, so 25% is
@@ -1176,6 +1193,7 @@ def self_consistent_correction_table(
     fit_fn,
     passes: int = 2,
     min_step_ang: float = 1e-4,
+    max_distance_ang: float = _MAX_TRACK_DISTANCE_ANG,
     slope_sigma_fraction: float = _SLOPE_SIGMA_FRACTION,
     **table_kw,
 ):
@@ -1209,6 +1227,7 @@ def self_consistent_correction_table(
 
     table = base_table
     slopes: dict | None = None
+    skipped: float | None = None
     geometries: list = []
     distances: list = []
     for _ in range(passes):
@@ -1218,6 +1237,13 @@ def self_consistent_correction_table(
         distance = float(np.linalg.norm(step))
         distances.append(distance)
         if distance < float(min_step_ang):
+            break
+        if distance > float(max_distance_ang):
+            # Too far for a first-order model. Leaving the table alone is the
+            # conservative failure: it gives back exactly the untracked answer
+            # rather than a correction extrapolated past where it was measured.
+            skipped = float(distance)
+            table = base_table
             break
         if slopes is None:
             slopes, _ = alpha_directional_derivative(
@@ -1232,5 +1258,9 @@ def self_consistent_correction_table(
         "geometries": geometries,
         "distances_ang": distances,
         "slopes": slopes,
+        # Not None when the fit moved further than the expansion is good for,
+        # in which case the table handed back is the untracked one.
+        "skipped_beyond_ang": skipped,
+        "max_distance_ang": float(max_distance_ang),
     })
     return table, info
