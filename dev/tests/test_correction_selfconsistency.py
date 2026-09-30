@@ -172,7 +172,7 @@ def test_a_fit_that_does_not_move_leaves_the_table_alone(coords, isos, base_tabl
 def test_a_fit_that_moves_shifts_the_table(coords, isos, base_table):
     target = coords + _stretch_direction(coords)
     table, info = self_consistent_correction_table(
-        h2o_hessian, coords, isos, lambda _t: target, **_TABLE_KW)
+        h2o_hessian, coords, isos, lambda _t: target, scheme="linear", **_TABLE_KW)
     assert info["slopes"] is not None
     assert info["self_consistent_passes"] == 2
     moved = [comp for comp in "ABC"
@@ -192,9 +192,11 @@ def test_passes_do_not_compound_the_extrapolation(coords, isos, base_table):
     """
     target = coords + _stretch_direction(coords)
     one, _ = self_consistent_correction_table(
-        h2o_hessian, coords, isos, lambda _t: target, passes=1, **_TABLE_KW)
+        h2o_hessian, coords, isos, lambda _t: target, passes=1,
+        scheme="linear", **_TABLE_KW)
     three, _ = self_consistent_correction_table(
-        h2o_hessian, coords, isos, lambda _t: target, passes=3, **_TABLE_KW)
+        h2o_hessian, coords, isos, lambda _t: target, passes=3,
+        scheme="linear", **_TABLE_KW)
     for comp in "ABC":
         a = float(one["H2-16O"][comp]["alpha_sum_mhz"])
         b = float(three["H2-16O"][comp]["alpha_sum_mhz"])
@@ -227,7 +229,7 @@ def test_a_fit_that_moves_too_far_is_not_extrapolated(coords, isos, base_table):
     """
     far = coords + 200.0 * _stretch_direction(coords)   # 200 mA, far past the gate
     table, info = self_consistent_correction_table(
-        h2o_hessian, coords, isos, lambda _t: far, **_TABLE_KW)
+        h2o_hessian, coords, isos, lambda _t: far, scheme="linear", **_TABLE_KW)
     assert info["skipped_beyond_ang"] is not None
     assert info["skipped_beyond_ang"] > info["max_distance_ang"]
     assert info["slopes"] is None, "no alpha evaluations should have been spent"
@@ -240,7 +242,7 @@ def test_the_gate_can_be_raised(coords, isos, base_table):
     """The limit is a guard rail, not a hard law -- a caller may widen it."""
     far = coords + 50.0 * _stretch_direction(coords)    # 50 mA
     table, info = self_consistent_correction_table(
-        h2o_hessian, coords, isos, lambda _t: far,
+        h2o_hessian, coords, isos, lambda _t: far, scheme="linear",
         max_distance_ang=1.0, **_TABLE_KW)
     assert info["skipped_beyond_ang"] is None
     assert info["slopes"] is not None
@@ -254,7 +256,7 @@ def test_a_short_move_still_tracks(coords, isos, base_table):
     """The gate must not disable tracking in the regime where it works."""
     near = coords + _stretch_direction(coords)          # 1 mA, well inside
     table, info = self_consistent_correction_table(
-        h2o_hessian, coords, isos, lambda _t: near, **_TABLE_KW)
+        h2o_hessian, coords, isos, lambda _t: near, scheme="linear", **_TABLE_KW)
     assert info["skipped_beyond_ang"] is None
     assert info["slopes"] is not None
 
@@ -320,9 +322,17 @@ def test_an_unknown_scheme_is_rejected(coords, isos):
             h2o_hessian, coords, isos, lambda _t: coords, scheme="cubic", **_TABLE_KW)
 
 
-def test_every_scheme_respects_the_distance_gate(coords, isos, base_table):
+def test_only_the_extrapolating_schemes_are_distance_gated(coords, isos, base_table):
+    """The gate contains truncation error, so "direct" is not subject to it.
+
+    Measured across 9 molecules, "direct"'s outcome correlates with
+    displacement at -0.17 -- distance simply does not predict when it fails,
+    and it was the one scheme that came through a 324 mA move intact. Gating it
+    on distance would be gating on the wrong variable. "linear" and
+    "quadratic" extrapolate and stay gated.
+    """
     far = coords + 200.0 * _stretch_direction(coords)
-    for scheme in ("direct", "linear", "quadratic"):
+    for scheme in ("linear", "quadratic"):
         table, info = self_consistent_correction_table(
             h2o_hessian, coords, isos, lambda _t: far, scheme=scheme, **_TABLE_KW)
         assert info["skipped_beyond_ang"] is not None, scheme
@@ -330,3 +340,27 @@ def test_every_scheme_respects_the_distance_gate(coords, isos, base_table):
             assert (float(table["H2-16O"][comp]["alpha_sum_mhz"])
                     == pytest.approx(
                         float(base_table["H2-16O"][comp]["alpha_sum_mhz"]))), scheme
+
+    table, info = self_consistent_correction_table(
+        h2o_hessian, coords, isos, lambda _t: far, scheme="direct", **_TABLE_KW)
+    assert info["skipped_beyond_ang"] is None
+    assert info["max_distance_ang"] == float("inf")
+
+
+def test_direct_is_the_default_scheme(coords, isos):
+    """Set from the measured medians, so a silent change should fail here."""
+    _table, info = self_consistent_correction_table(
+        h2o_hessian, coords, isos, lambda _t: coords, **_TABLE_KW)
+    assert info["scheme"] == "direct"
+
+
+def test_direct_can_still_be_given_an_explicit_gate(coords, isos, base_table):
+    """Not gated by default is not the same as ungateable."""
+    far = coords + 200.0 * _stretch_direction(coords)
+    table, info = self_consistent_correction_table(
+        h2o_hessian, coords, isos, lambda _t: far, scheme="direct",
+        max_distance_ang=0.020, **_TABLE_KW)
+    assert info["skipped_beyond_ang"] is not None
+    for comp in "ABC":
+        assert (float(table["H2-16O"][comp]["alpha_sum_mhz"])
+                == pytest.approx(float(base_table["H2-16O"][comp]["alpha_sum_mhz"])))

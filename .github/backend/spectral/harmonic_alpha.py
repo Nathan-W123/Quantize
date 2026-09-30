@@ -1111,6 +1111,34 @@ _MAX_TRACK_DISTANCE_ANG = 0.020
 #: our best estimate of the true one, carrying the best force constants we
 #: have. What the gradient does affect is the rotation/vibration separation,
 #: which is why "direct" additionally checks that the mode count held.
+#:
+#: MEASURED, 9 molecules at HF/6-31G with the distance gate off, displacements
+#: 15-324 mA, against the untracked fit:
+#:
+#:                    mean bond   median bond   median angle   alpha evals
+#:     linear            +24%        -2.0%         +20.5%           2
+#:     direct             -9%        -4.2%          +9.6%           1
+#:     quadratic         -14%        -2.3%         +12.5%           2
+#:
+#: The mean is carried almost entirely by isocyanic acid at 324 mA, where
+#: linear blows up (+108%) while direct (-23%) and quadratic (-45%) beat the
+#: untracked fit. Drop that one molecule and all three land within 1% of each
+#: other, so the mean overstates the difference badly. The medians are the
+#: honest summary, and on them "direct" wins on both bond and angle while
+#: costing half what the other two cost.
+#:
+#: So "direct" is the default: best median on both measures, cheapest, and the
+#: only one that is the wanted quantity rather than an approximation to it.
+#: "quadratic" is better when the displacement is large, though that rests on
+#: a single molecule. "linear" is kept because measurements on file were made
+#: with it, not because it is recommended -- "direct" beats it on every
+#: measure at half the cost.
+#:
+#: What none of them fix: every scheme makes the mean angle WORSE at this
+#: level, and the two best-determined molecules (water at 0.38 mA, ozone at
+#: 1.66) degrade under all three. At B3LYP/cc-pVTZ, where displacements are
+#: 4-20 mA rather than 15-324, linear improved water's angle by 33% and
+#: ozone's by 85%. The level of theory matters more than the scheme does.
 _SCHEMES = ("direct", "linear", "quadratic")
 
 #: Fraction of the applied shift carried as added uncertainty. The shift is a
@@ -1255,9 +1283,9 @@ def self_consistent_correction_table(
     isotopologues,
     fit_fn,
     passes: int = 2,
-    scheme: str = "linear",
+    scheme: str = "direct",
     min_step_ang: float = 1e-4,
-    max_distance_ang: float = _MAX_TRACK_DISTANCE_ANG,
+    max_distance_ang: float | None = None,
     slope_sigma_fraction: float = _SLOPE_SIGMA_FRACTION,
     **table_kw,
 ):
@@ -1288,6 +1316,15 @@ def self_consistent_correction_table(
     scheme = str(scheme).strip().lower()
     if scheme not in _SCHEMES:
         raise ValueError(f"Unknown scheme '{scheme}'. Valid: {sorted(_SCHEMES)}")
+    if max_distance_ang is None:
+        # The gate contains truncation error, so it belongs to the schemes that
+        # extrapolate. "direct" does not, and measurement agrees: across the 9
+        # molecules its outcome correlates with displacement at only -0.17,
+        # against -0.94 with how good the untracked fit already was. Gating it
+        # on distance would be gating on the wrong variable -- and it is the
+        # scheme that came through 324 mA intact.
+        max_distance_ang = (float("inf") if scheme == "direct"
+                            else _MAX_TRACK_DISTANCE_ANG)
     coords = np.asarray(coords_ang, dtype=float)
     base_table, base_info = build_correction_table_from_hessian(
         hessian_fn(coords), coords, isotopologues, hessian_fn=hessian_fn, **table_kw)
