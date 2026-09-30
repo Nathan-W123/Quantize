@@ -214,3 +214,46 @@ def test_a_zero_length_direction_is_rejected(coords, isos):
     with pytest.raises(ValueError, match="zero length"):
         alpha_directional_derivative(
             h2o_hessian, coords, isos, np.zeros_like(coords), **_TABLE_KW)
+
+
+def test_a_fit_that_moves_too_far_is_not_extrapolated(coords, isos, base_table):
+    """Past the validity limit the table is handed back untracked.
+
+    alpha(x) is expanded to first order, so a large displacement is outside
+    what the slope can describe. Measured across 12 molecule/level pairs the
+    outcome changes sign around 20 mA, and extrapolating anyway produced the
+    three worst regressions in the set. The conservative failure is to leave
+    the table alone rather than shift it by an amount nothing supports.
+    """
+    far = coords + 200.0 * _stretch_direction(coords)   # 200 mA, far past the gate
+    table, info = self_consistent_correction_table(
+        h2o_hessian, coords, isos, lambda _t: far, **_TABLE_KW)
+    assert info["skipped_beyond_ang"] is not None
+    assert info["skipped_beyond_ang"] > info["max_distance_ang"]
+    assert info["slopes"] is None, "no alpha evaluations should have been spent"
+    for comp in "ABC":
+        assert (float(table["H2-16O"][comp]["alpha_sum_mhz"])
+                == pytest.approx(float(base_table["H2-16O"][comp]["alpha_sum_mhz"])))
+
+
+def test_the_gate_can_be_raised(coords, isos, base_table):
+    """The limit is a guard rail, not a hard law -- a caller may widen it."""
+    far = coords + 50.0 * _stretch_direction(coords)    # 50 mA
+    table, info = self_consistent_correction_table(
+        h2o_hessian, coords, isos, lambda _t: far,
+        max_distance_ang=1.0, **_TABLE_KW)
+    assert info["skipped_beyond_ang"] is None
+    assert info["slopes"] is not None
+    moved = [c for c in "ABC"
+             if float(table["H2-16O"][c]["alpha_sum_mhz"])
+             != pytest.approx(float(base_table["H2-16O"][c]["alpha_sum_mhz"]))]
+    assert moved
+
+
+def test_a_short_move_still_tracks(coords, isos, base_table):
+    """The gate must not disable tracking in the regime where it works."""
+    near = coords + _stretch_direction(coords)          # 1 mA, well inside
+    table, info = self_consistent_correction_table(
+        h2o_hessian, coords, isos, lambda _t: near, **_TABLE_KW)
+    assert info["skipped_beyond_ang"] is None
+    assert info["slopes"] is not None
