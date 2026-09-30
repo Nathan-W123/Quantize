@@ -147,6 +147,10 @@ from scripts.monofluoro_benchmark import build_isotopologues, start_geometry  # 
 METHOD, BASIS = "hf", "6-31g"
 HARMONIC_SCHEME = "watson"
 CORR_METHOD, CORR_BASIS = None, None
+#: Distance gate for expansion-point tracking, in Angstrom. Raised on the
+#: command line to measure where each scheme actually stops working, which is
+#: the only way the default can be set from evidence rather than guessed.
+TRACK_MAX = None
 WANT_CONFIGS: list[str] = []
 _args: list[str] = []
 for _tok in sys.argv[1:]:
@@ -158,6 +162,8 @@ for _tok in sys.argv[1:]:
         CORR_METHOD = _tok.split("=", 1)[1]
     elif _tok.startswith("corr_basis="):
         CORR_BASIS = _tok.split("=", 1)[1]
+    elif _tok.startswith("track_max="):
+        TRACK_MAX = float(_tok.split("=", 1)[1])
     elif _tok.startswith("harmonic="):
         HARMONIC_SCHEME = _tok.split("=", 1)[1]
     elif _tok.startswith("configs="):
@@ -527,6 +533,8 @@ def main() -> None:
                     tracked, track_info = self_consistent_correction_table(
                         hfn_track, at, isos, _fit,
                         scheme=cfg["scheme"],
+                        **({"max_distance_ang": TRACK_MAX}
+                           if TRACK_MAX is not None else {}),
                         cubic_scheme="normal_mode",
                         lam_freq_cm=LAM_FREQ_CM if cfg["lam"] else 0.0,
                         freq_scale=FREQ_SCALE,
