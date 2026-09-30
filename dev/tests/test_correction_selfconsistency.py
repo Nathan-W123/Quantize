@@ -257,3 +257,76 @@ def test_a_short_move_still_tracks(coords, isos, base_table):
         h2o_hessian, coords, isos, lambda _t: near, **_TABLE_KW)
     assert info["skipped_beyond_ang"] is None
     assert info["slopes"] is not None
+
+
+# ── schemes ──────────────────────────────────────────────────────────────────
+
+def test_direct_scheme_builds_the_table_at_the_fitted_geometry(coords, isos):
+    """"direct" must reproduce a table built there by hand."""
+    target = coords + _stretch_direction(coords)
+    table, info = self_consistent_correction_table(
+        h2o_hessian, coords, isos, lambda _t: target, scheme="direct", **_TABLE_KW)
+    assert info["scheme"] == "direct"
+    assert info["slopes"] is None, "direct spends no derivative evaluations"
+    by_hand, _ = build_correction_table_from_hessian(
+        h2o_hessian(target), target, isos, hessian_fn=h2o_hessian, **_TABLE_KW)
+    for comp in "ABC":
+        assert (float(table["H2-16O"][comp]["alpha_sum_mhz"])
+                == pytest.approx(float(by_hand["H2-16O"][comp]["alpha_sum_mhz"])))
+
+
+def test_quadratic_differs_from_linear_and_costs_no_extra_chemistry(coords, isos):
+    """The curvature comes from points the linear scheme already evaluates."""
+    target = coords + 8.0 * _stretch_direction(coords)   # far enough for h^2 to bite
+    lin, lin_info = self_consistent_correction_table(
+        h2o_hessian, coords, isos, lambda _t: target, scheme="linear", **_TABLE_KW)
+    quad, quad_info = self_consistent_correction_table(
+        h2o_hessian, coords, isos, lambda _t: target, scheme="quadratic", **_TABLE_KW)
+    assert quad_info["curvatures"] is not None
+    assert lin_info["curvatures"] is None
+    # same slopes -- the quadratic term is the only difference
+    for comp in "ABC":
+        assert (lin_info["slopes"]["H2-16O"][comp]
+                == pytest.approx(quad_info["slopes"]["H2-16O"][comp]))
+    moved = [c for c in "ABC"
+             if float(quad["H2-16O"][c]["alpha_sum_mhz"])
+             != pytest.approx(float(lin["H2-16O"][c]["alpha_sum_mhz"]))]
+    assert moved, "the second-order term changed nothing"
+
+
+def test_quadratic_beats_linear_against_a_directly_built_table(coords, isos):
+    """Second order should sit closer to the truth than first order does.
+
+    "direct" is the reference here: it is alpha actually evaluated there,
+    which is what both extrapolations are approximating.
+    """
+    target = coords + 8.0 * _stretch_direction(coords)
+    truth, _ = build_correction_table_from_hessian(
+        h2o_hessian(target), target, isos, hessian_fn=h2o_hessian, **_TABLE_KW)
+    lin, _ = self_consistent_correction_table(
+        h2o_hessian, coords, isos, lambda _t: target, scheme="linear", **_TABLE_KW)
+    quad, _ = self_consistent_correction_table(
+        h2o_hessian, coords, isos, lambda _t: target, scheme="quadratic", **_TABLE_KW)
+    for comp in "ABC":
+        t = float(truth["H2-16O"][comp]["alpha_sum_mhz"])
+        e_lin = abs(float(lin["H2-16O"][comp]["alpha_sum_mhz"]) - t)
+        e_quad = abs(float(quad["H2-16O"][comp]["alpha_sum_mhz"]) - t)
+        assert e_quad <= e_lin + 1e-6, f"{comp}: quad {e_quad:.1f} vs lin {e_lin:.1f}"
+
+
+def test_an_unknown_scheme_is_rejected(coords, isos):
+    with pytest.raises(ValueError, match="Unknown scheme"):
+        self_consistent_correction_table(
+            h2o_hessian, coords, isos, lambda _t: coords, scheme="cubic", **_TABLE_KW)
+
+
+def test_every_scheme_respects_the_distance_gate(coords, isos, base_table):
+    far = coords + 200.0 * _stretch_direction(coords)
+    for scheme in ("direct", "linear", "quadratic"):
+        table, info = self_consistent_correction_table(
+            h2o_hessian, coords, isos, lambda _t: far, scheme=scheme, **_TABLE_KW)
+        assert info["skipped_beyond_ang"] is not None, scheme
+        for comp in "ABC":
+            assert (float(table["H2-16O"][comp]["alpha_sum_mhz"])
+                    == pytest.approx(
+                        float(base_table["H2-16O"][comp]["alpha_sum_mhz"]))), scheme

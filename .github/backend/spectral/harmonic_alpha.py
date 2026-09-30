@@ -249,6 +249,7 @@ def compute_harmonic_alpha(
             {
                 "near_degen_skips": 0,
                 "anharmonic_status": "no_modes",
+                "n_vib": 0,
                 "warning": (
                     f"no vibrational modes above {min_freq_cm} cm-1; "
                     "alpha is undetermined, not zero"
@@ -578,6 +579,11 @@ def compute_harmonic_alpha(
         {
             "near_degen_skips": near_degen_skips,
             "anharmonic_status": anh_status,
+            #: Vibrational modes that survived the positive-eigenvalue cut in
+            #: normal_modes. A drop in this count between two geometries means
+            #: the surface went unstable in between, which is the signal that
+            #: an off-minimum alpha should not be trusted.
+            "n_vib": int(n_vib),
             "alpha_centrifugal_mhz": {
                 k: float(alpha_cent.sum(axis=1)[i]) for i, k in enumerate(labels)
             },
@@ -926,6 +932,7 @@ def build_correction_table_from_hessian(
         else "alpha from Hessian (harmonic + Coriolis only; anharmonic term omitted)"
     )
     statuses: list[str] = []
+    n_vib_seen: list[int] = []
     lam_report: dict = {}
     nonconvergent: dict = {}
     dropped: dict = {}
@@ -962,6 +969,7 @@ def build_correction_table_from_hessian(
             harmonic_scheme=harmonic_scheme,
         )
         total_near_degen_skips += res_info.get("near_degen_skips", 0)
+        n_vib_seen.append(int(res_info.get("n_vib", 0)))
         lam_here = list(res_info.get("lam_modes_cm", []))
         if lam_here:
             lam_report[name] = {
@@ -1015,6 +1023,9 @@ def build_correction_table_from_hessian(
         table[name] = entries
     return table, {
         "total_near_degen_skips": total_near_degen_skips,
+        #: Fewest vibrational modes any isotopologue kept. Compared between
+        #: geometries to catch a surface that has gone unstable.
+        "n_vib": min(n_vib_seen) if n_vib_seen else 0,
         "anharmonic_statuses": statuses,
         "nonconvergent": nonconvergent,
         "nonconvergent_policy": policy,
@@ -1081,6 +1092,27 @@ def build_correction_table_from_hessian(
 #: in doubt; only the exact crossing point is.
 _MAX_TRACK_DISTANCE_ANG = 0.020
 
+#: How alpha is carried from the quantum minimum to the fitted geometry.
+#:
+#:   "direct"    -- rebuild the table AT the fitted geometry. One alpha
+#:                  evaluation, and no extrapolation at all: it is the wanted
+#:                  quantity rather than an approximation to it.
+#:   "linear"    -- first order from the slope measured at +-step/2. Two alpha
+#:                  evaluations, and it predicts at a distance twice the
+#:                  sampled half-width, so it extrapolates.
+#:   "quadratic" -- second order from those same points plus the centre. Same
+#:                  two evaluations as "linear"; less truncation error.
+#:
+#: On "direct" and VPT2's stationary-point requirement: adding a linear term
+#: to a potential moves its minimum without changing ANY derivative of order
+#: two or higher. So the Hessian and cubic constants at the fitted geometry
+#: are exactly those of a surface that IS stationary there, and the alpha
+#: built from them is that surface's alpha -- a molecule whose equilibrium is
+#: our best estimate of the true one, carrying the best force constants we
+#: have. What the gradient does affect is the rotation/vibration separation,
+#: which is why "direct" additionally checks that the mode count held.
+_SCHEMES = ("direct", "linear", "quadratic")
+
 #: Fraction of the applied shift carried as added uncertainty. The shift is a
 #: first-order estimate whose remainder is the second-order term; measured on
 #: water that term is 126 MHz against a 787 MHz shift, i.e. 16%, so 25% is
@@ -1103,6 +1135,7 @@ def alpha_directional_derivative(
     isotopologues,
     direction,
     step_ang: float | None = None,
+    base_table=None,
     **table_kw,
 ):
     """d(alpha_sum)/ds along one Cartesian direction, in MHz per Angstrom.
@@ -1116,6 +1149,12 @@ def alpha_directional_derivative(
     slope in MHz per Angstrom. A component is present only if both displaced
     tables produced it, so anything the nonconvergent policy dropped on either
     side is simply absent and the caller leaves it unshifted.
+
+    Pass ``base_table`` -- alpha at ``coords_ang`` itself -- to also get the
+    second derivative in ``info["curvatures"]``, in MHz per Angstrom squared.
+    The two displaced points plus the centre are three points on a line, which
+    is exactly enough for a curvature, so this costs no extra quantum
+    chemistry: it reuses evaluations the first derivative already paid for.
     """
     coords = np.asarray(coords_ang, dtype=float)
     unit, length = _as_flat_direction(direction, coords.shape[0])
@@ -1141,13 +1180,33 @@ def alpha_directional_derivative(
             d = (float(spec_plus["alpha_sum_mhz"])
                  - float(spec_minus["alpha_sum_mhz"])) / step
             slopes.setdefault(name, {})[comp] = d
-    return slopes, {"step_ang": step, "direction_unit": unit}
+
+    curvatures: dict = {}
+    if base_table is not None:
+        # Central second difference over the same three points. The displaced
+        # ones sit at +-step/2, so the interval is step/2, not step.
+        half_sq = (0.5 * step) ** 2
+        for name, entries_plus in table_plus.items():
+            entries_minus = table_minus.get(name, {})
+            entries_zero = base_table.get(name, {})
+            for comp, spec_plus in entries_plus.items():
+                spec_minus, spec_zero = entries_minus.get(comp), entries_zero.get(comp)
+                if spec_minus is None or spec_zero is None:
+                    continue
+                curvatures.setdefault(name, {})[comp] = (
+                    float(spec_plus["alpha_sum_mhz"])
+                    - 2.0 * float(spec_zero["alpha_sum_mhz"])
+                    + float(spec_minus["alpha_sum_mhz"])) / half_sq
+
+    return slopes, {"step_ang": step, "direction_unit": unit,
+                    "curvatures": curvatures or None}
 
 
 def extrapolate_correction_table(
     table,
     slopes,
     distance_ang: float,
+    curvatures=None,
     slope_sigma_fraction: float = _SLOPE_SIGMA_FRACTION,
 ):
     """A correction table moved along the measured slope by ``distance_ang``.
@@ -1169,6 +1228,10 @@ def extrapolate_correction_table(
             slope = slopes.get(name, {}).get(comp)
             if slope is not None:
                 shift = float(slope) * float(distance_ang)
+                if curvatures is not None:
+                    curv = curvatures.get(name, {}).get(comp)
+                    if curv is not None:
+                        shift += 0.5 * float(curv) * float(distance_ang) ** 2
                 new_spec["alpha_sum_mhz"] = float(spec["alpha_sum_mhz"]) + shift
                 sigma = float(spec.get("sigma_mhz", 0.0) or 0.0)
                 # The table's sigma is on the correction (0.5*alpha_sum), so
@@ -1192,6 +1255,7 @@ def self_consistent_correction_table(
     isotopologues,
     fit_fn,
     passes: int = 2,
+    scheme: str = "linear",
     min_step_ang: float = 1e-4,
     max_distance_ang: float = _MAX_TRACK_DISTANCE_ANG,
     slope_sigma_fraction: float = _SLOPE_SIGMA_FRACTION,
@@ -1221,13 +1285,19 @@ def self_consistent_correction_table(
     """
     if passes < 1:
         raise ValueError("passes must be at least 1")
+    scheme = str(scheme).strip().lower()
+    if scheme not in _SCHEMES:
+        raise ValueError(f"Unknown scheme '{scheme}'. Valid: {sorted(_SCHEMES)}")
     coords = np.asarray(coords_ang, dtype=float)
     base_table, base_info = build_correction_table_from_hessian(
         hessian_fn(coords), coords, isotopologues, hessian_fn=hessian_fn, **table_kw)
 
     table = base_table
     slopes: dict | None = None
+    curvatures: dict | None = None
     skipped: float | None = None
+    unstable: tuple | None = None
+    n_vib_base = int(base_info.get("n_vib", 0))
     geometries: list = []
     distances: list = []
     for _ in range(passes):
@@ -1245,12 +1315,30 @@ def self_consistent_correction_table(
             skipped = float(distance)
             table = base_table
             break
-        if slopes is None:
-            slopes, _ = alpha_directional_derivative(
-                hessian_fn, coords, isotopologues, step, **table_kw)
-        table, _ = extrapolate_correction_table(
-            base_table, slopes, distance,
-            slope_sigma_fraction=slope_sigma_fraction)
+        if scheme == "direct":
+            # One alpha evaluation, at the geometry the answer is used at.
+            candidate, cand_info = build_correction_table_from_hessian(
+                hessian_fn(fitted), fitted, isotopologues,
+                hessian_fn=hessian_fn, **table_kw)
+            n_vib_here = int(cand_info.get("n_vib", 0))
+            if n_vib_here < n_vib_base:
+                # The surface lost a mode between the two geometries, so the
+                # fitted point is past where this force field is a minimum at
+                # all. Fall back rather than trust an alpha built on it.
+                unstable = (n_vib_base, n_vib_here)
+                table = base_table
+                break
+            table = candidate
+        else:
+            if slopes is None:
+                slopes, deriv_info = alpha_directional_derivative(
+                    hessian_fn, coords, isotopologues, step,
+                    base_table=(base_table if scheme == "quadratic" else None),
+                    **table_kw)
+                curvatures = deriv_info.get("curvatures")
+            table, _ = extrapolate_correction_table(
+                base_table, slopes, distance, curvatures=curvatures,
+                slope_sigma_fraction=slope_sigma_fraction)
 
     info = dict(base_info)
     info.update({
@@ -1262,5 +1350,10 @@ def self_consistent_correction_table(
         # in which case the table handed back is the untracked one.
         "skipped_beyond_ang": skipped,
         "max_distance_ang": float(max_distance_ang),
+        "scheme": scheme,
+        "curvatures": curvatures,
+        #: (modes at the minimum, modes at the fitted geometry) when "direct"
+        #: bailed out because the surface lost one; None otherwise.
+        "unstable_modes": unstable,
     })
     return table, info
