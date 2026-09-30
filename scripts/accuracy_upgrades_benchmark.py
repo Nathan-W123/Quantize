@@ -265,11 +265,20 @@ CONFIGS = {
               "track": True},
     "offsets+track": {"offsets": True, "elec": False, "lam": False,
                       "corr": False, "track": True},
+    # The three ways of carrying alpha to the fitted geometry, so they can be
+    # compared on the same molecules rather than argued about. "track" is
+    # "track_linear" under its original name and is kept so the measurements
+    # already on file stay addressable.
+    "track_direct": {"offsets": False, "elec": False, "lam": False,
+                     "corr": False, "track": True, "scheme": "direct"},
+    "track_quadratic": {"offsets": False, "elec": False, "lam": False,
+                        "corr": False, "track": True, "scheme": "quadratic"},
 }
 for _cfg in CONFIGS.values():
     _cfg.setdefault("bob", False)
     _cfg.setdefault("defect_scale", False)
     _cfg.setdefault("track", False)
+    _cfg.setdefault("scheme", "linear")
 
 
 def electronic_shifted_isotopologues(isos, g_tensor, total_mass_amu):
@@ -517,6 +526,7 @@ def main() -> None:
                 with contextlib.redirect_stdout(io.StringIO()):
                     tracked, track_info = self_consistent_correction_table(
                         hfn_track, at, isos, _fit,
+                        scheme=cfg["scheme"],
                         cubic_scheme="normal_mode",
                         lam_freq_cm=LAM_FREQ_CM if cfg["lam"] else 0.0,
                         freq_scale=FREQ_SCALE,
@@ -545,6 +555,12 @@ def main() -> None:
                 "track_distances_ang": (
                     [float(d) for d in track_info["distances_ang"]]
                     if track_info else None),
+                "track_scheme": track_info["scheme"] if track_info else None,
+                "track_skipped_beyond_ang": (
+                    track_info["skipped_beyond_ang"] if track_info else None),
+                "track_unstable_modes": (
+                    list(track_info["unstable_modes"])
+                    if track_info and track_info["unstable_modes"] else None),
                 "corr_level": (f"{CORR_METHOD or METHOD}/{CORR_BASIS or BASIS}"
                                if cfg["corr"] else f"{METHOD}/{BASIS}"),
                 "bob": bool(cfg["bob"]),
