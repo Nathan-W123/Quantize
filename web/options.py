@@ -54,7 +54,10 @@ def backend_options() -> dict[str, Any]:
         "nonconvergent_policy": _sorted_strs(_NONCONVERGENT_POLICIES),
         "tracking_scheme": list(_SCHEMES),
         "cd_reduction": _sorted_strs(REDUCTION_PARAMS),
-        "cubic_scheme": ["normal_mode", "cartesian"],
+        # cartesian first: it is what build_correction_table_from_hessian
+        # defaults to, and the UI matching that keeps a browser run and a CLI
+        # run of the same case identical unless someone changes it on purpose.
+        "cubic_scheme": ["cartesian", "normal_mode"],
         "coordinate_mode": ["internal", "cartesian"],
         "geometry_method": ["coords", "bonds", "pubchem"],
         "internal_priors_mode": ["soft", "hard", "off"],

@@ -31,6 +31,10 @@
   summary::marker{color:var(--edge)}
   .prow{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);gap:10px;
     align-items:center;padding:5px 13px}
+  /* display:grid above beats the UA stylesheet's [hidden]{display:none}, so a
+     hidden row stayed visible -- the PubChem box showed while geometry was
+     set to coords. */
+  .prow[hidden]{display:none}
   .prow:hover{background:color-mix(in srgb,var(--accent) 7%,transparent)}
   .prow>label{color:var(--dim);font-size:13px}
   .pv{display:flex;gap:6px;align-items:center;min-width:0}
@@ -373,8 +377,13 @@ $("#addIso").addEventListener("click", ()=>$("#isoBody").appendChild(isoRow()));
   fill("quantum_backend", OPTS.quantum_backend, "pyscf_hf");
   fill("corrections_mode", OPTS.corrections_mode, "hybrid_auto");
   fill("coordinate_mode", OPTS.coordinate_mode, "internal");
+  // These two are sorted out of Python sets, so the first entry is whatever
+  // sorts first, not the default. "drop" sorted ahead of "warn" and the page
+  // opened silently set to discard non-convergent components.
+  fill("nonconvergent_policy", OPTS.nonconvergent_policy, "warn");
+  fill("internal_priors_mode", OPTS.internal_priors_mode, "soft");
   fill("harmonic_scheme", OPTS.harmonic_scheme, "watson");
-  fill("cubic_scheme", OPTS.cubic_scheme, "normal_mode");
+  fill("cubic_scheme", OPTS.cubic_scheme, "cartesian");
   datalist("methodList", OPTS.suggested_methods);
   datalist("basisList", OPTS.suggested_bases);
   datalist("pgList", OPTS.suggested_point_groups);
