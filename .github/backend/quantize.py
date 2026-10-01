@@ -383,6 +383,10 @@ class MolecularOptimizer:
         anharmonic_from_hessian=False,
         anharmonic_fd_delta_ang=0.01,
         nonconvergent_policy="warn",
+        harmonic_scheme="watson",
+        cubic_scheme="cartesian",
+        freq_scale=1.0,
+        lam_freq_cm=0.0,
         defect_bias_scale=False,
         harmonic_cd_from_hessian=False,
         cd_sigma_fraction=0.05,
@@ -422,6 +426,16 @@ class MolecularOptimizer:
         self._anharmonic_from_hessian = bool(anharmonic_from_hessian)
         self._anharmonic_fd_delta_ang = max(float(anharmonic_fd_delta_ang), 1e-4)
         self._nonconvergent_policy = str(nonconvergent_policy or "warn").strip().lower()
+        # These four reach build_correction_table_from_hessian. Until now they
+        # were only settable by calling that function directly, which meant the
+        # benchmark scripts could pick a scheme and a config file could not --
+        # so the Watson harmonic term, the normal-mode cubic transform,
+        # frequency scaling and the large-amplitude cut were all unreachable
+        # from the CLI and the web UI.
+        self._harmonic_scheme = str(harmonic_scheme or "watson").strip().lower()
+        self._cubic_scheme = str(cubic_scheme or "cartesian").strip().lower()
+        self._freq_scale = freq_scale
+        self._lam_freq_cm = max(float(lam_freq_cm or 0.0), 0.0)
         self._defect_bias_scale = bool(defect_bias_scale)
         self._harmonic_cd_from_hessian = bool(harmonic_cd_from_hessian)
         self._warned_cd_unvalidated = False
@@ -1114,9 +1128,18 @@ class MolecularOptimizer:
     def _apply_harmonic_alpha_corrections(self):
         """Recompute harmonic alpha from the current Hessian and update spectral targets.
 
-        Called once after the first Hessian computation when harmonic_from_hessian=True.
-        Re-applies rovibrational + electronic corrections to the raw (uncorrected)
-        isotopologue data using the current harmonic alpha values.
+        Re-applies rovibrational + electronic corrections to the raw
+        (uncorrected) isotopologue data using the current harmonic alpha.
+
+        This fires on EVERY Hessian recalculation, not once. An earlier version
+        of this docstring claimed otherwise, and there is no guard that would
+        make it true. The distinction matters: self.coords is the CURRENT
+        geometry, so each rebuild re-expands alpha about wherever the optimiser
+        has reached. That is the expansion-point tracking the benchmark calls
+        the "direct" scheme -- measured there as the best of three, since it is
+        the wanted quantity rather than an extrapolation towards it -- and it
+        means hess_recalc_every, not a separate switch, is what controls how
+        closely the correction follows the fit.
         """
         from backend.spectral.harmonic_alpha import build_correction_table_from_hessian  # pylint: disable=import-outside-toplevel
 
@@ -1154,6 +1177,10 @@ class MolecularOptimizer:
             hessian_fn=hessian_fn,
             fd_delta_cubic=self._anharmonic_fd_delta_ang,
             nonconvergent_policy=self._nonconvergent_policy,
+            harmonic_scheme=self._harmonic_scheme,
+            cubic_scheme=self._cubic_scheme,
+            freq_scale=self._freq_scale,
+            lam_freq_cm=self._lam_freq_cm,
         )
         for status in dict.fromkeys(_res_info.get("anharmonic_statuses", [])):
             if status not in ("cubic_fd", "not_requested"):

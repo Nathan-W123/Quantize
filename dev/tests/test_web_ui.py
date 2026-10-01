@@ -232,3 +232,66 @@ def test_help_text_exists_for_the_settings_that_carry_a_choice():
 def test_options_payload_is_json_serialisable():
     """It is served over HTTP, so a stray numpy scalar would break the page."""
     json.dumps(all_options())
+
+
+# ── the scheme keys reach the optimiser ──────────────────────────────────────
+
+def test_scheme_keys_land_where_the_runner_reads_them(water_form):
+    """They were benchmark-script-only until the runner was taught to read them.
+
+    Each has a specific home: the four correction schemes sit inside
+    rovibrational_corrections, and hess_recalc_every sits under "optimizer"
+    because run_generic only copies a key into the optimiser when it appears
+    there -- a top-level one is silently ignored.
+    """
+    water_form.update({
+        "harmonic_scheme": "watson",
+        "cubic_scheme": "normal_mode",
+        "freq_scale": "0.98",
+        "lam_freq_cm": "120",
+        "hess_recalc_every": "2",
+    })
+    cfg = form_to_config(water_form)
+    rc = cfg["rovibrational_corrections"]
+    assert rc["harmonic_scheme"] == "watson"
+    assert rc["cubic_scheme"] == "normal_mode"
+    assert rc["freq_scale"] == 0.98
+    assert rc["lam_freq_cm"] == 120.0
+    assert cfg["optimizer"]["hess_recalc_every"] == 2
+    assert "hess_recalc_every" not in cfg, "top level is read by nothing"
+    validate_config(cfg)
+
+
+def test_the_optimiser_accepts_every_scheme_key_the_form_emits(water_form):
+    """A config key with no matching parameter would be a silent no-op."""
+    import inspect
+
+    from backend.quantize import MolecularOptimizer
+
+    water_form.update({"harmonic_scheme": "watson", "cubic_scheme": "normal_mode",
+                       "freq_scale": "0.98", "lam_freq_cm": "120"})
+    rc = form_to_config(water_form)["rovibrational_corrections"]
+    params = inspect.signature(MolecularOptimizer.__init__).parameters
+    for key in ("harmonic_scheme", "cubic_scheme", "freq_scale", "lam_freq_cm"):
+        assert key in rc, f"{key} not emitted"
+        assert key in params, f"MolecularOptimizer has no {key} parameter"
+
+
+def test_every_offered_scheme_passes_the_validator(water_form):
+    opts = all_options()
+    for scheme in opts["harmonic_scheme"]:
+        water_form["harmonic_scheme"] = scheme
+        validate_config(form_to_config(water_form))
+    water_form["harmonic_scheme"] = "watson"
+    for scheme in opts["cubic_scheme"]:
+        water_form["cubic_scheme"] = scheme
+        validate_config(form_to_config(water_form))
+
+
+def test_scheme_keys_round_trip(water_form):
+    water_form.update({"harmonic_scheme": "eigenvalue_fd",
+                       "cubic_scheme": "cartesian",
+                       "freq_scale": "0.97", "lam_freq_cm": "80",
+                       "hess_recalc_every": "3"})
+    once = form_to_config(water_form)
+    assert form_to_config(config_to_form(once)) == once

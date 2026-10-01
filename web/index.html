@@ -141,6 +141,18 @@ placeholder="0.0 0.0 0.0
       <div class="prow" data-f="anharmonic_fd_delta_ang"><label for="anharmonic_fd_delta_ang">Cubic FD step</label>
         <div class="pv"><input id="anharmonic_fd_delta_ang" type="number" step="0.005" placeholder="0.01">
           <span class="u">Å</span></div></div>
+      <div class="prow" data-f="harmonic_scheme"><label for="harmonic_scheme">Harmonic α scheme</label>
+        <div class="pv"><select id="harmonic_scheme"></select></div></div>
+      <div class="prow" data-f="cubic_scheme"><label for="cubic_scheme">Cubic transform</label>
+        <div class="pv"><select id="cubic_scheme"></select></div></div>
+      <div class="prow" data-f="freq_scale"><label for="freq_scale">Frequency scale</label>
+        <div class="pv"><input id="freq_scale" type="number" step="0.005" placeholder="1.0"></div></div>
+      <div class="prow" data-f="lam_freq_cm"><label for="lam_freq_cm">Large-amplitude cut</label>
+        <div class="pv"><input id="lam_freq_cm" type="number" step="10" placeholder="0">
+          <span class="u">cm⁻¹</span></div></div>
+      <div class="prow" data-f="hess_recalc_every"><label for="hess_recalc_every">Hessian every</label>
+        <div class="pv"><input id="hess_recalc_every" type="number" step="1" min="1" placeholder="2">
+          <span class="u">updates — also re-expands α</span></div></div>
     </details>
 
     <details><summary>Centrifugal distortion</summary>
@@ -200,7 +212,8 @@ placeholder="0.0 0.0 0.0
 <script>
 const $ = s => document.querySelector(s);
 const SELECTS = ["preset","coordinate_mode","geometry_method","quantum_backend",
-  "corrections_mode","nonconvergent_policy","internal_priors_mode"];
+  "corrections_mode","nonconvergent_policy","internal_priors_mode",
+  "harmonic_scheme","cubic_scheme"];
 let OPTS = {};
 
 function fill(id, values, preferred){
@@ -261,6 +274,7 @@ const FIELDS = ["name","preset","coordinate_mode","rng_seed","elements",
   "quantum_backend","method","basis","corrections_mode","harmonic_from_hessian",
   "anharmonic_from_hessian","nonconvergent_policy","electronic_correction",
   "use_builtin_bob","harmonic_sigma_fraction","anharmonic_fd_delta_ang",
+  "harmonic_scheme","cubic_scheme","freq_scale","lam_freq_cm","hess_recalc_every",
   "harmonic_cd_from_hessian","fit_cd_constants","cd_weight","cd_sigma_fraction",
   "prior_sigma_bond","prior_sigma_angle_deg","internal_priors_mode",
   "use_dihedrals","output_root","artifacts"];
@@ -359,6 +373,8 @@ $("#addIso").addEventListener("click", ()=>$("#isoBody").appendChild(isoRow()));
   fill("quantum_backend", OPTS.quantum_backend, "pyscf_hf");
   fill("corrections_mode", OPTS.corrections_mode, "hybrid_auto");
   fill("coordinate_mode", OPTS.coordinate_mode, "internal");
+  fill("harmonic_scheme", OPTS.harmonic_scheme, "watson");
+  fill("cubic_scheme", OPTS.cubic_scheme, "normal_mode");
   datalist("methodList", OPTS.suggested_methods);
   datalist("basisList", OPTS.suggested_bases);
   datalist("pgList", OPTS.suggested_point_groups);

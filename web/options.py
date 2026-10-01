@@ -54,6 +54,7 @@ def backend_options() -> dict[str, Any]:
         "nonconvergent_policy": _sorted_strs(_NONCONVERGENT_POLICIES),
         "tracking_scheme": list(_SCHEMES),
         "cd_reduction": _sorted_strs(REDUCTION_PARAMS),
+        "cubic_scheme": ["normal_mode", "cartesian"],
         "coordinate_mode": ["internal", "cartesian"],
         "geometry_method": ["coords", "bonds", "pubchem"],
         "internal_priors_mode": ["soft", "hard", "off"],
@@ -128,6 +129,23 @@ FIELD_HELP: dict[str, str] = {
                         "small a correction bias the run could detect.",
     "cd_reduction": "Watson reduction for the distortion constants. A suits "
                     "asymmetric tops, S near-prolate and symmetric ones.",
+    "cubic_scheme": "How the cubic force field is transformed per "
+                    "isotopologue. normal_mode transforms phi through the "
+                    "mode basis; cartesian differentiates the Hessian in "
+                    "Cartesians. normal_mode is what the benchmarks use.",
+    "freq_scale": "Scales the computed harmonic frequencies before alpha is "
+                  "built, as a crude stand-in for the anharmonicity the "
+                  "force field misses. One value, or one per mode.",
+    "lam_freq_cm": "Modes below this are treated as large-amplitude: their "
+                   "contribution to alpha is carried as uncertainty rather "
+                   "than as a value. Set it above the torsional fundamental "
+                   "for a molecule with an internal rotor. 0 disables it.",
+    "hess_recalc_every": "Quantum updates between Hessian rebuilds. It also "
+                         "controls the correction, because alpha is "
+                         "re-expanded about the CURRENT geometry on every "
+                         "rebuild -- so a smaller number tracks the fitted "
+                         "geometry more closely, at the cost of more "
+                         "Hessians.",
     "prior_sigma_bond": "How far the quantum geometry is trusted, per bond, "
                         "in Angstrom. It sets the weight between the quantum "
                         "surface and the spectral data in one objective.",
