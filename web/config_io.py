@@ -81,6 +81,18 @@ def form_to_config(form: dict[str, Any]) -> dict[str, Any]:
     if seed not in (None, ""):
         cfg["rng_seed"] = int(seed)
 
+    # How often the Hessian -- and so the correction's expansion point -- is
+    # recomputed. This is the real control over how closely the correction
+    # follows the fitted geometry: _apply_harmonic_alpha_corrections re-expands
+    # alpha at the CURRENT geometry on every Hessian rebuild, which is the
+    # "direct" tracking scheme the benchmark measured as the best of three.
+    #
+    # It belongs under "optimizer", not at the top level: run_generic only
+    # copies a key into the optimiser when it appears in cfg["optimizer"], so a
+    # top-level one is read by nothing and silently ignored.
+    if get("hess_recalc_every") not in (None, ""):
+        cfg["optimizer"] = {"hess_recalc_every": int(get("hess_recalc_every"))}
+
     symmetry = str(get("symmetry") or "").strip()
     if symmetry:
         cfg["symmetry"] = symmetry
@@ -133,9 +145,14 @@ def form_to_config(form: dict[str, Any]) -> dict[str, Any]:
         "nonconvergent_policy": str(get("nonconvergent_policy") or "warn"),
         "electronic_correction": bool(get("electronic_correction", False)),
         "use_builtin_bob": bool(get("use_builtin_bob", True)),
+        # Scheme choices. Reachable from a config only since the runner was
+        # taught to read them; before that they were benchmark-script-only.
+        "harmonic_scheme": str(get("harmonic_scheme") or "watson"),
+        "cubic_scheme": str(get("cubic_scheme") or "cartesian"),
     }
     for key in ("harmonic_sigma_fraction", "anharmonic_fd_delta_ang",
-                "sigma_vib_fraction", "sigma_elec_fraction", "cd_sigma_fraction"):
+                "sigma_vib_fraction", "sigma_elec_fraction", "cd_sigma_fraction",
+                "freq_scale", "lam_freq_cm"):
         val = get(key)
         if val not in (None, ""):
             corrections[key] = float(val)
@@ -198,6 +215,11 @@ def config_to_form(cfg: dict[str, Any]) -> dict[str, Any]:
         "harmonic_from_hessian": bool(corr.get("harmonic_from_hessian", True)),
         "anharmonic_from_hessian": bool(corr.get("anharmonic_from_hessian", True)),
         "nonconvergent_policy": corr.get("nonconvergent_policy", "warn"),
+        "harmonic_scheme": corr.get("harmonic_scheme", "watson"),
+        "cubic_scheme": corr.get("cubic_scheme", "cartesian"),
+        "freq_scale": corr.get("freq_scale", ""),
+        "lam_freq_cm": corr.get("lam_freq_cm", ""),
+        "hess_recalc_every": (cfg.get("optimizer") or {}).get("hess_recalc_every", ""),
         "electronic_correction": bool(corr.get("electronic_correction", False)),
         "use_builtin_bob": bool(corr.get("use_builtin_bob", True)),
         "harmonic_sigma_fraction": corr.get("harmonic_sigma_fraction", ""),
