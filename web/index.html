@@ -1,0 +1,375 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Quantize</title>
+<style>
+  :root{
+    --bg:#0e1116; --panel:#161b22; --edge:#283040; --ink:#e6edf3; --dim:#8b949e;
+    --accent:#4493f8; --ok:#3fb950; --bad:#f85149; --warn:#d29922;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:light){:root:not([data-theme=dark]){
+    --bg:#fff; --panel:#f6f8fa; --edge:#d0d7de; --ink:#1f2328; --dim:#636c76;
+    --accent:#0969da; --ok:#1a7f37; --bad:#cf222e; --warn:#9a6700;
+  }}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif}
+  header{padding:14px 16px;border-bottom:1px solid var(--edge);display:flex;
+    gap:12px;align-items:baseline;flex-wrap:wrap}
+  h1{font-size:17px;margin:0;font-weight:650;letter-spacing:-.01em}
+  header .sub{color:var(--dim);font-size:12.5px}
+  main{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;padding:16px;
+    align-items:start}
+  @media (max-width:900px){main{grid-template-columns:1fr}}
+  section{background:var(--panel);border:1px solid var(--edge);border-radius:10px;
+    overflow:hidden}
+  details{border-bottom:1px solid var(--edge)}
+  details:last-child{border-bottom:0}
+  summary{padding:9px 13px;cursor:pointer;font-weight:600;font-size:12.5px;
+    text-transform:uppercase;letter-spacing:.05em;color:var(--dim)}
+  summary::marker{color:var(--edge)}
+  .prow{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);gap:10px;
+    align-items:center;padding:5px 13px}
+  .prow:hover{background:color-mix(in srgb,var(--accent) 7%,transparent)}
+  .prow>label{color:var(--dim);font-size:13px}
+  .pv{display:flex;gap:6px;align-items:center;min-width:0}
+  input,select,textarea{background:var(--bg);color:var(--ink);
+    border:1px solid var(--edge);border-radius:6px;padding:5px 7px;font-size:13px;
+    width:100%;min-width:0;font-family:inherit}
+  input[type=checkbox]{width:auto}
+  textarea{font-family:var(--mono);font-size:12.5px;resize:vertical}
+  select:focus,input:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:-1px}
+  .u{color:var(--dim);font-size:12px;white-space:nowrap}
+  .pdesc{padding:11px 13px;border-top:1px solid var(--edge);font-size:12.5px;
+    color:var(--dim);min-height:62px;background:color-mix(in srgb,var(--accent) 4%,transparent)}
+  .pdesc b{color:var(--ink);display:block;margin-bottom:3px}
+  .bar{display:flex;gap:8px;padding:11px 13px;flex-wrap:wrap;align-items:center}
+  button{background:var(--accent);color:#fff;border:0;border-radius:6px;
+    padding:7px 13px;font-size:13px;font-weight:550;cursor:pointer;font-family:inherit}
+  button.ghost{background:transparent;color:var(--ink);border:1px solid var(--edge)}
+  button:disabled{opacity:.5;cursor:default}
+  pre{margin:0;padding:11px 13px;font-family:var(--mono);font-size:12px;
+    white-space:pre-wrap;word-break:break-word;max-height:58vh;overflow:auto}
+  .status{font-size:12.5px;padding:0 13px 11px}
+  .status.ok{color:var(--ok)} .status.bad{color:var(--bad)} .status.warn{color:var(--warn)}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th,td{text-align:left;padding:4px 6px;border-bottom:1px solid var(--edge)}
+  th{color:var(--dim);font-weight:600}
+  td input{padding:3px 5px;font-size:12px}
+  .isoWrap{padding:0 13px 9px;overflow-x:auto}
+  .comps{display:flex;gap:7px}
+  .comps label{display:flex;gap:3px;align-items:center;color:var(--dim);font-size:12px}
+  .note{padding:0 13px 11px;color:var(--dim);font-size:12px}
+  code{font-family:var(--mono);background:var(--bg);padding:1px 4px;border-radius:4px;
+    border:1px solid var(--edge)}
+</style>
+
+<header>
+  <h1>Quantize</h1>
+  <span class="sub">hybrid molecular geometry from isotopic rotational spectra</span>
+</header>
+
+<main>
+  <section id="formPanel">
+    <details open><summary>Case</summary>
+      <div class="prow" data-f="name"><label for="name">Name</label>
+        <div class="pv"><input id="name" value="quantize_run"></div></div>
+      <div class="prow" data-f="preset"><label for="preset">Preset</label>
+        <div class="pv"><select id="preset"></select></div></div>
+      <div class="prow" data-f="coordinate_mode"><label for="coordinate_mode">Coordinates</label>
+        <div class="pv"><select id="coordinate_mode"></select></div></div>
+      <div class="prow" data-f="rng_seed"><label for="rng_seed">RNG seed</label>
+        <div class="pv"><input id="rng_seed" type="number" value="42"></div></div>
+    </details>
+
+    <details open><summary>Molecule</summary>
+      <div class="prow" data-f="elements"><label for="elements">Elements</label>
+        <div class="pv"><input id="elements" value="O H H" placeholder="O H H"></div></div>
+      <div class="prow" data-f="geometry_method"><label for="geometry_method">Geometry from</label>
+        <div class="pv"><select id="geometry_method"></select></div></div>
+      <div class="prow" id="coordsRow" data-f="coords_angstrom">
+        <label for="coords_angstrom">Coordinates (Å)</label>
+        <div class="pv"><textarea id="coords_angstrom" rows="4"
+placeholder="0.0 0.0 0.0
+0.0 0.78 0.60
+0.0 -0.78 0.60"></textarea></div></div>
+      <div class="prow" id="pubchemRow" hidden data-f="pubchem_name">
+        <label for="pubchem_name">PubChem name</label>
+        <div class="pv"><input id="pubchem_name" placeholder="water"></div></div>
+      <div class="prow" data-f="symmetry"><label for="symmetry">Point group</label>
+        <div class="pv"><input id="symmetry" list="pgList" placeholder="(detect)">
+          <datalist id="pgList"></datalist></div></div>
+    </details>
+
+    <details open><summary>Isotopologues</summary>
+      <div class="isoWrap"><table id="isoTable">
+        <thead><tr><th>Name</th><th>Masses (amu)</th><th>Components</th>
+          <th>Observed B₀ (MHz)</th><th>σ (MHz)</th><th></th></tr></thead>
+        <tbody id="isoBody"></tbody>
+      </table></div>
+      <div class="bar"><button class="ghost" id="addIso">Add isotopologue</button>
+        <span class="u">isotopic substitution is where the structural information comes from</span></div>
+    </details>
+
+    <details open><summary>Quantum</summary>
+      <div class="prow" data-f="quantum_backend"><label for="quantum_backend">Backend</label>
+        <div class="pv"><select id="quantum_backend"></select></div></div>
+      <div class="prow" data-f="method"><label for="method">Method</label>
+        <div class="pv"><input id="method" list="methodList" placeholder="(backend default)">
+          <datalist id="methodList"></datalist></div></div>
+      <div class="prow" data-f="basis"><label for="basis">Basis</label>
+        <div class="pv"><input id="basis" list="basisList" placeholder="(backend default)">
+          <datalist id="basisList"></datalist></div></div>
+    </details>
+
+    <details open><summary>Corrections (B₀ → Bₑ)</summary>
+      <div class="prow" data-f="corrections_mode"><label for="corrections_mode">Source</label>
+        <div class="pv"><select id="corrections_mode"></select></div></div>
+      <div class="prow" data-f="harmonic_from_hessian"><label for="harmonic_from_hessian">Harmonic α from Hessian</label>
+        <div class="pv"><input type="checkbox" id="harmonic_from_hessian" checked></div></div>
+      <div class="prow" data-f="anharmonic_from_hessian"><label for="anharmonic_from_hessian">Anharmonic (cubic) α</label>
+        <div class="pv"><input type="checkbox" id="anharmonic_from_hessian" checked></div></div>
+      <div class="prow" data-f="nonconvergent_policy"><label for="nonconvergent_policy">Non-convergent components</label>
+        <div class="pv"><select id="nonconvergent_policy"></select></div></div>
+      <div class="prow" data-f="electronic_correction"><label for="electronic_correction">Electronic (g-tensor)</label>
+        <div class="pv"><input type="checkbox" id="electronic_correction"></div></div>
+      <div class="prow" data-f="use_builtin_bob"><label for="use_builtin_bob">Born–Oppenheimer breakdown</label>
+        <div class="pv"><input type="checkbox" id="use_builtin_bob" checked></div></div>
+      <div class="prow" data-f="harmonic_sigma_fraction"><label for="harmonic_sigma_fraction">Harmonic σ fraction</label>
+        <div class="pv"><input id="harmonic_sigma_fraction" type="number" step="0.01" placeholder="0.02"></div></div>
+      <div class="prow" data-f="anharmonic_fd_delta_ang"><label for="anharmonic_fd_delta_ang">Cubic FD step</label>
+        <div class="pv"><input id="anharmonic_fd_delta_ang" type="number" step="0.005" placeholder="0.01">
+          <span class="u">Å</span></div></div>
+    </details>
+
+    <details><summary>Centrifugal distortion</summary>
+      <div class="prow" data-f="harmonic_cd_from_hessian"><label for="harmonic_cd_from_hessian">Compute CD constants</label>
+        <div class="pv"><input type="checkbox" id="harmonic_cd_from_hessian"></div></div>
+      <div class="prow" data-f="fit_cd_constants"><label for="fit_cd_constants">Use CD as fit data</label>
+        <div class="pv"><input type="checkbox" id="fit_cd_constants"></div></div>
+      <div class="prow" data-f="cd_weight"><label for="cd_weight">CD weight</label>
+        <div class="pv"><input id="cd_weight" type="number" step="0.1" placeholder="1.0"></div></div>
+      <div class="prow" data-f="cd_sigma_fraction"><label for="cd_sigma_fraction">CD σ fraction</label>
+        <div class="pv"><input id="cd_sigma_fraction" type="number" step="0.01" placeholder="0.05"></div></div>
+    </details>
+
+    <details><summary>Priors</summary>
+      <div class="prow" data-f="prior_sigma_bond"><label for="prior_sigma_bond">σ bond</label>
+        <div class="pv"><input id="prior_sigma_bond" type="number" step="0.01" placeholder="0.04">
+          <span class="u">Å</span></div></div>
+      <div class="prow" data-f="prior_sigma_angle_deg"><label for="prior_sigma_angle_deg">σ angle</label>
+        <div class="pv"><input id="prior_sigma_angle_deg" type="number" step="0.5" placeholder="2.0">
+          <span class="u">°</span></div></div>
+      <div class="prow" data-f="internal_priors_mode"><label for="internal_priors_mode">Prior mode</label>
+        <div class="pv"><select id="internal_priors_mode"></select></div></div>
+      <div class="prow" data-f="use_dihedrals"><label for="use_dihedrals">Fit dihedrals</label>
+        <div class="pv"><input type="checkbox" id="use_dihedrals"></div></div>
+    </details>
+
+    <details><summary>Output</summary>
+      <div class="prow" data-f="output_root"><label for="output_root">Run root</label>
+        <div class="pv"><input id="output_root" value="output/runs"></div></div>
+      <div class="prow" data-f="artifacts"><label for="artifacts">Write artifacts</label>
+        <div class="pv"><input type="checkbox" id="artifacts" checked></div></div>
+    </details>
+
+    <div class="pdesc" aria-live="polite">
+      <b id="descName">Case properties</b>
+      <span id="descText">Hover or focus a setting to see what it does.</span></div>
+  </section>
+
+  <section>
+    <div class="bar">
+      <button id="runBtn">Run</button>
+      <button class="ghost" id="validateBtn">Validate</button>
+      <button class="ghost" id="yamlBtn">Download YAML</button>
+      <button class="ghost" id="loadBtn">Load YAML…</button>
+      <input type="file" id="loadFile" accept=".yaml,.yml,.json" hidden>
+    </div>
+    <div class="status" id="status"></div>
+    <div class="note">
+      A case built here is the same case a config file describes. <b>Download YAML</b>
+      gives a file that runs unchanged with <code>python -m cli run case.yaml</code>,
+      and every run writes its own <code>input.yaml</code> beside its results.
+    </div>
+    <pre id="log">No run yet.</pre>
+  </section>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const SELECTS = ["preset","coordinate_mode","geometry_method","quantum_backend",
+  "corrections_mode","nonconvergent_policy","internal_priors_mode"];
+let OPTS = {};
+
+function fill(id, values, preferred){
+  const el = $("#"+id); if(!el) return;
+  el.innerHTML = (values||[]).map(v=>`<option value="${v}">${v}</option>`).join("");
+  if(preferred && (values||[]).includes(preferred)) el.value = preferred;
+}
+function datalist(id, values){
+  const el = $("#"+id); if(!el) return;
+  el.innerHTML = (values||[]).map(v=>`<option value="${v}">`).join("");
+}
+
+// ── description pane, fed from the backend's own field help ────────────────
+function wireDesc(){
+  document.querySelectorAll(".prow[data-f]").forEach(row=>{
+    const key = row.dataset.f;
+    const show = ()=>{
+      const label = row.querySelector("label");
+      $("#descName").textContent = label ? label.textContent : key;
+      $("#descText").textContent = (OPTS.field_help||{})[key]
+        || "No note for this setting yet.";
+    };
+    row.addEventListener("mouseenter", show);
+    row.addEventListener("focusin", show);
+  });
+}
+
+// ── isotopologue rows ──────────────────────────────────────────────────────
+function isoRow(data){
+  const d = data || {name:"", masses:"", components:["A","B","C"],
+                     obs_b0_mhz:"", sigma_mhz:""};
+  const tr = document.createElement("tr");
+  tr.innerHTML = `
+    <td><input class="iso-name" value="${d.name||""}" placeholder="H2-16O"></td>
+    <td><input class="iso-masses" value="${d.masses||""}" placeholder="15.9949 1.00783 1.00783"></td>
+    <td><div class="comps">${["A","B","C"].map(c=>
+      `<label><input type="checkbox" class="iso-c" value="${c}"
+        ${(d.components||[]).includes(c)?"checked":""}>${c}</label>`).join("")}</div></td>
+    <td><input class="iso-b0" value="${d.obs_b0_mhz||""}" placeholder="835840.29 435351.72 278138.70"></td>
+    <td><input class="iso-sig" value="${d.sigma_mhz||""}" placeholder="0.2 0.2 0.2"></td>
+    <td><button class="ghost iso-del" title="remove">×</button></td>`;
+  tr.querySelector(".iso-del").addEventListener("click", ()=>tr.remove());
+  return tr;
+}
+function readIsos(){
+  return [...$("#isoBody").querySelectorAll("tr")].map(tr=>({
+    name: tr.querySelector(".iso-name").value,
+    masses: tr.querySelector(".iso-masses").value,
+    components: [...tr.querySelectorAll(".iso-c")].filter(c=>c.checked).map(c=>c.value),
+    obs_b0_mhz: tr.querySelector(".iso-b0").value,
+    sigma_mhz: tr.querySelector(".iso-sig").value,
+  }));
+}
+
+// ── form state ─────────────────────────────────────────────────────────────
+const FIELDS = ["name","preset","coordinate_mode","rng_seed","elements",
+  "geometry_method","coords_angstrom","pubchem_name","symmetry",
+  "quantum_backend","method","basis","corrections_mode","harmonic_from_hessian",
+  "anharmonic_from_hessian","nonconvergent_policy","electronic_correction",
+  "use_builtin_bob","harmonic_sigma_fraction","anharmonic_fd_delta_ang",
+  "harmonic_cd_from_hessian","fit_cd_constants","cd_weight","cd_sigma_fraction",
+  "prior_sigma_bond","prior_sigma_angle_deg","internal_priors_mode",
+  "use_dihedrals","output_root","artifacts"];
+
+function readForm(){
+  const f = {};
+  for(const id of FIELDS){
+    const el = $("#"+id); if(!el) continue;
+    f[id] = el.type === "checkbox" ? el.checked : el.value;
+  }
+  f.isotopologues = readIsos();
+  return f;
+}
+function writeForm(f){
+  for(const id of FIELDS){
+    const el = $("#"+id); if(!el || !(id in f)) continue;
+    if(el.type === "checkbox") el.checked = !!f[id];
+    else el.value = f[id] === null || f[id] === undefined ? "" : f[id];
+  }
+  const body = $("#isoBody"); body.innerHTML = "";
+  (f.isotopologues||[]).forEach(d=>body.appendChild(isoRow(d)));
+  syncGeometryRows();
+}
+function syncGeometryRows(){
+  const m = $("#geometry_method").value;
+  $("#coordsRow").hidden  = m !== "coords";
+  $("#pubchemRow").hidden = m !== "pubchem";
+}
+
+function status(msg, kind){ const s = $("#status"); s.textContent = msg;
+  s.className = "status" + (kind ? " "+kind : ""); }
+
+async function post(path, payload){
+  const r = await fetch(path, {method:"POST",
+    headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload)});
+  return r.json();
+}
+
+// ── actions ────────────────────────────────────────────────────────────────
+$("#validateBtn").addEventListener("click", async ()=>{
+  status("validating…");
+  const r = await post("/api/validate", {form: readForm()});
+  if(r.ok) status("Valid. This case would run.", "ok");
+  else status(r.error || "invalid", "bad");
+});
+
+$("#yamlBtn").addEventListener("click", async ()=>{
+  const r = await post("/api/config", {form: readForm()});
+  if(r.error){ status(r.error, "bad"); return; }
+  const blob = new Blob([r.yaml], {type:"text/yaml"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = ($("#name").value || "case") + ".yaml";
+  a.click(); URL.revokeObjectURL(a.href);
+  status("YAML downloaded. Run it with: python -m cli run " + a.download, "ok");
+});
+
+$("#loadBtn").addEventListener("click", ()=>$("#loadFile").click());
+$("#loadFile").addEventListener("change", async ev=>{
+  const file = ev.target.files[0]; if(!file) return;
+  const r = await post("/api/load", {text: await file.text()});
+  if(r.ok){ writeForm(r.form); status("Loaded "+file.name, "ok"); }
+  else status(r.error || "could not load", "bad");
+  ev.target.value = "";
+});
+
+let poller = null;
+$("#runBtn").addEventListener("click", async ()=>{
+  if(poller){ clearInterval(poller); poller = null; }
+  status("starting…"); $("#log").textContent = "";
+  const r = await post("/api/run", {form: readForm()});
+  if(!r.ok){ status(r.error || "could not start", "bad"); return; }
+  $("#runBtn").disabled = true;
+  status("running…", "warn");
+  let since = 0;
+  poller = setInterval(async ()=>{
+    const p = await (await fetch(`/api/progress?id=${r.id}&since=${since}`)).json();
+    if(p.text){ $("#log").textContent += p.text; since = p.length;
+      $("#log").scrollTop = $("#log").scrollHeight; }
+    if(p.done){
+      clearInterval(poller); poller = null; $("#runBtn").disabled = false;
+      if(p.error) status(p.error, "bad");
+      else status("Finished. " + (p.run_dir ? "Results in " + p.run_dir : ""), "ok");
+    }
+  }, 700);
+});
+
+$("#geometry_method").addEventListener("change", syncGeometryRows);
+$("#addIso").addEventListener("click", ()=>$("#isoBody").appendChild(isoRow()));
+
+// ── boot ───────────────────────────────────────────────────────────────────
+(async ()=>{
+  OPTS = await (await fetch("/api/options")).json();
+  for(const id of SELECTS) fill(id, OPTS[id]);
+  fill("preset", OPTS.preset, "BALANCED");
+  fill("quantum_backend", OPTS.quantum_backend, "pyscf_hf");
+  fill("corrections_mode", OPTS.corrections_mode, "hybrid_auto");
+  fill("coordinate_mode", OPTS.coordinate_mode, "internal");
+  datalist("methodList", OPTS.suggested_methods);
+  datalist("basisList", OPTS.suggested_bases);
+  datalist("pgList", OPTS.suggested_point_groups);
+  wireDesc();
+  // A worked example in the boxes beats an empty form: it is water, and it is
+  // the case the end-to-end test runs, so Run works on a fresh page.
+  $("#isoBody").appendChild(isoRow({
+    name:"H2-16O", masses:"15.99491461956 1.00782503207 1.00782503207",
+    components:["A","B","C"], obs_b0_mhz:"835840.29 435351.72 278138.70",
+    sigma_mhz:"0.20 0.20 0.20"}));
+  syncGeometryRows();
+  status("Ready. " + (OPTS.quantum_backend||[]).length + " backends available.");
+})();
+</script>
