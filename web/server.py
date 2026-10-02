@@ -149,6 +149,9 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self._send(200, body, "text/html; charset=utf-8")
             return
+        if path.startswith("/vendor/"):
+            self._vendor(path)
+            return
         if path == "/api/options":
             self._options()
             return
@@ -177,6 +180,17 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"error": f"{type(exc).__name__}: {exc}"}, 400)
 
     # ── handlers ─────────────────────────────────────────────────────────────
+
+    def _vendor(self, path: str) -> None:
+        """Serve a vendored asset. Local, so the UI works with no network."""
+        name = Path(path).name          # no traversal: basename only
+        target = Path(__file__).resolve().parent / "vendor" / name
+        if not target.is_file() or target.suffix not in (".js", ".css"):
+            self._json({"error": f"no asset {name}"}, 404)
+            return
+        ctype = ("application/javascript" if target.suffix == ".js"
+                 else "text/css") + "; charset=utf-8"
+        self._send(200, target.read_bytes(), ctype)
 
     def _options(self) -> None:
         from runner.usability import valid_backends

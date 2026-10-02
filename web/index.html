@@ -145,8 +145,9 @@
   /* A molecular viewer is dark in both themes. The Jmol palette was chosen
      against a dark background -- white hydrogens and yellow sulfur vanish on
      white -- so this one does not follow the page. */
-  #mol{display:block;width:100%;height:420px;background:#0a0e1a;cursor:grab}
-  #mol:active{cursor:grabbing}
+  /* 3Dmol positions its canvas absolutely inside this box, so it needs to be
+     a positioned block of a definite height. */
+  #mol{position:relative;width:100%;height:440px;background:#0a0e1a}
   .legend{display:flex;gap:16px;align-items:center;padding:5px 9px;font-size:11.5px;
     color:var(--dim);border-top:1px solid var(--edge2);border-bottom:1px solid var(--edge2);
     flex-wrap:wrap}
@@ -175,6 +176,8 @@
   code{font-family:var(--mono);background:var(--chrome);padding:0 3px;border-radius:3px;
     border:1px solid var(--edge2)}
 </style>
+
+<script src="/vendor/3Dmol-min.js"></script>
 
 <div class="title">
   <span class="dot">Q</span><b id="docTitle">Untitled — Quantize</b>
@@ -235,7 +238,7 @@
         <label class="sck"><input type="checkbox" id="spin"> spin</label>
         <span class="u" id="structNote">drag to rotate · wheel to zoom</span>
       </div>
-      <canvas id="mol" width="900" height="420"></canvas>
+      <div id="mol"></div>
       <div class="legend"><span><i class="sw" style="background:#9aa7bb"></i>before — the quantum starting structure</span>
         <span><i class="sw" style="background:#2f6fd0"></i>after — where the spectra put it</span>
         <span id="rmsdNote"></span></div>
@@ -524,7 +527,11 @@ document.querySelectorAll(".vt").forEach(t => t.addEventListener("click", () => 
   document.querySelectorAll(".vt").forEach(x => x.classList.remove("on"));
   document.querySelectorAll(".view").forEach(x => x.classList.remove("on"));
   t.classList.add("on"); $("#v-" + t.dataset.v).classList.add("on");
-  if(t.dataset.v === "struct"){ if(!VIEW.data) loadStructure(LAST_RUN); else drawMol(); }
+  if(t.dataset.v === "struct"){
+    if(!VIEW.data) loadStructure(LAST_RUN);
+    else if(VIEW.viewer){ VIEW.viewer.resize(); VIEW.viewer.render(); }
+    else drawMol();
+  }
 }));
 
 $("#runBtn").addEventListener("click", async () => {
@@ -559,129 +566,98 @@ $("#runBtn").addEventListener("click", async () => {
 });
 
 /* ── 3D structure viewer ─────────────────────────────────────────────────── */
-/* Canvas, no library. A molecule is a few dozen spheres and sticks, which is
-   well inside what a painter's-algorithm renderer does convincingly, and it
-   keeps the UI dependency-free: nothing to fetch, nothing to pin, works
-   offline and behind a proxy. */
-const VIEW = {rot:{x:-0.35, y:0.6}, zoom:1, data:null, drag:null, spin:false};
+/* 3Dmol.js, vendored under web/vendor so it loads with no network. A canvas 2D
+   renderer was tried first and the geometry was right, but the lighting was
+   not: real specular shading is what makes a ball-and-stick picture read as
+   solid, and approximating it with radial gradients looked like fuzzy discs.
+   Settings follow HF-SCF-Engine's MolecularViewer exactly -- sphere scale 0.3,
+   stick radius 0.12, colorscheme Jmol, background 0x0a0e1a. */
+const VIEW = {viewer:null, data:null, spin:false};
 
-function project(p, w, h, scale){
-  const {x:rx, y:ry} = VIEW.rot;
-  let [X, Y, Z] = p;
-  // rotate about Y then X -- order matters only in that it must match the
-  // drag handler, or dragging feels like it fights the view
-  let x1 =  X*Math.cos(ry) + Z*Math.sin(ry);
-  let z1 = -X*Math.sin(ry) + Z*Math.cos(ry);
-  let y2 =  Y*Math.cos(rx) - z1*Math.sin(rx);
-  let z2 =  Y*Math.sin(rx) + z1*Math.cos(rx);
-  return [w/2 + x1*scale, h/2 - y2*scale, z2];
+function xyzBlock(set){
+  return `${set.elements.length}\n\n` + set.elements.map((e, i) =>
+    `${e} ${set.coords[i].map(v => v.toFixed(6)).join(" ")}`).join("\n");
 }
 
 function drawMol(){
-  const c = $("#mol"), g = c.getContext("2d");
-  const dpr = window.devicePixelRatio || 1;
-  const w = c.clientWidth, h = 420;
-  if(c.width !== w*dpr || c.height !== h*dpr){
-    c.width = w*dpr; c.height = h*dpr; }
-  g.setTransform(dpr, 0, 0, dpr, 0, 0);
-  g.clearRect(0, 0, w, h);
-  const d = VIEW.data; if(!d){ return; }
-
-  // one scale for both structures, or a change in size would read as a change
-  // in shape
-  let span = 1;
-  for(const set of [d.before, d.after]) if(set)
-    for(const p of set.coords) span = Math.max(span, Math.hypot(p[0],p[1],p[2]));
-  const scale = (Math.min(w, h) * 0.34 / span) * VIEW.zoom;
-
-  const layers = [];
-  const add = (set, colourFn, alpha, r) => {
-    if(!set) return;
-    const pts = set.coords.map(p => project(p, w, h, scale));
-    // Each bond is drawn as TWO segments meeting at the midpoint, each in its
-    // own atom's colour. That half-and-half stick is what makes a ball-and-
-    // stick picture readable -- you can see which atom an end belongs to
-    // without tracing it back.
-    (d.before.bonds||[]).forEach(([i,j]) => {
-      const mid = [(pts[i][0]+pts[j][0])/2, (pts[i][1]+pts[j][1])/2,
-                   (pts[i][2]+pts[j][2])/2];
-      layers.push({z:(pts[i][2]+mid[2])/2, kind:"bond", a:pts[i], b:mid,
-                   alpha, colour: colourFn(i)});
-      layers.push({z:(pts[j][2]+mid[2])/2, kind:"bond", a:pts[j], b:mid,
-                   alpha, colour: colourFn(j)});
-    });
-    pts.forEach((p, i) => layers.push(
-      {z:p[2], kind:"atom", p, i, alpha, r,
-       colour: colourFn(i), sym: set.elements[i]}));
-  };
-  // The ghost styling exists to CONTRAST with a fitted structure. With nothing
-  // to contrast against it is just a washed-out molecule that looks like a
-  // rendering fault, so before a run the starting structure is drawn solid, in
-  // element colours, as the real thing it is.
-  const solid = i => (d.before.styles[i]||{}).colour || "#2f6fd0";
-  if(!d.after){
-    if($("#showBefore").checked || $("#showAfter").checked)
-      add(d.before, solid, 1, 1);
-  } else {
-    if($("#showBefore").checked) add(d.before, () => "#6f7b90", 0.5, 0.8);
-    if($("#showAfter").checked)  add(d.after, solid, 1, 1);
+  const d = VIEW.data; if(!d) return;
+  if(!VIEW.viewer){
+    if(typeof $3Dmol === "undefined"){
+      $("#structNote").textContent = "3Dmol failed to load from /vendor";
+      return;
+    }
+    VIEW.viewer = $3Dmol.createViewer($("#mol"),
+      {backgroundColor:"0x0a0e1a", antialias:true});
   }
+  const v = VIEW.viewer;
+  v.clear();
+  const showBefore = $("#showBefore").checked, showAfter = $("#showAfter").checked;
 
-  // painter's algorithm: far things first, so near atoms occlude properly
-  layers.sort((a, b) => a.z - b.z);
-  // Ball and stick, after 3Dmol's defaults: sphere scale 0.3 of the van der
-  // Waals radius and a 0.12 A stick. Small balls and thin sticks are what let
-  // you read the geometry; big spheres hide the thing you are looking at.
-  const STICK_ANG = 0.12, SPHERE_FRAC = 0.30;
-  for(const L of layers){
-    g.globalAlpha = L.alpha;
-    if(L.kind === "bond"){
-      g.lineCap = "round";
-      // a dark casing under the stick reads as a cylinder's shaded edge
-      g.strokeStyle = "rgba(0,0,0,.55)";
-      g.lineWidth = Math.max(3, STICK_ANG * 2 * scale) + 1.5;
-      g.beginPath(); g.moveTo(L.a[0], L.a[1]); g.lineTo(L.b[0], L.b[1]); g.stroke();
-      g.strokeStyle = L.colour;
-      g.lineWidth = Math.max(2, STICK_ANG * 2 * scale);
-      g.beginPath(); g.moveTo(L.a[0], L.a[1]); g.lineTo(L.b[0], L.b[1]); g.stroke();
-    } else {
-      const vdw = (d.before.styles[L.i]||{}).vdw || 1.7;
-      const rad = Math.max(3, vdw * SPHERE_FRAC * scale * L.r);
-      // light from the upper left, so the spheres read as spheres
-      const grd = g.createRadialGradient(L.p[0]-rad*0.38, L.p[1]-rad*0.38, rad*0.05,
-                                         L.p[0], L.p[1], rad*1.05);
-      grd.addColorStop(0, "#ffffff");
-      grd.addColorStop(0.22, L.colour);
-      grd.addColorStop(1, "rgba(0,0,0,.55)");
-      g.fillStyle = grd;
-      g.beginPath(); g.arc(L.p[0], L.p[1], rad, 0, 6.2832); g.fill();
-      g.strokeStyle = "rgba(0,0,0,.45)"; g.lineWidth = 1; g.stroke();
+  // With no fitted structure there is nothing to contrast against, so the
+  // starting one is drawn solid rather than as a ghost of nothing.
+  if(!d.after){
+    if(showBefore || showAfter){
+      v.addModel(xyzBlock(d.before), "xyz");
+      v.setStyle({}, {stick:{radius:0.12, colorscheme:"Jmol"},
+                      sphere:{scale:0.3, colorscheme:"Jmol"}});
+    }
+  } else {
+    if(showBefore){
+      v.addModel(xyzBlock(d.before), "xyz");
+      v.setStyle({model:-1}, {stick:{radius:0.07, color:"0x7c8798", opacity:0.55},
+                              sphere:{scale:0.18, color:"0x7c8798", opacity:0.55}});
+    }
+    if(showAfter){
+      v.addModel(xyzBlock(d.after), "xyz");
+      v.setStyle({model:-1}, {stick:{radius:0.12, colorscheme:"Jmol"},
+                              sphere:{scale:0.3, colorscheme:"Jmol"}});
     }
   }
-  g.globalAlpha = 1;
+  v.zoomTo();
+  v.render();
+  v.spin(VIEW.spin ? "y" : false);
 }
 
 (function wireViewer(){
-  const c = $("#mol");
-  c.addEventListener("mousedown", e => VIEW.drag = {x:e.clientX, y:e.clientY});
-  addEventListener("mouseup", () => VIEW.drag = null);
-  addEventListener("mousemove", e => {
-    if(!VIEW.drag) return;
-    VIEW.rot.y += (e.clientX - VIEW.drag.x) * 0.01;
-    VIEW.rot.x += (e.clientY - VIEW.drag.y) * 0.01;
-    VIEW.drag = {x:e.clientX, y:e.clientY};
-    drawMol();
-  });
-  c.addEventListener("wheel", e => {
-    e.preventDefault();
-    VIEW.zoom = Math.min(4, Math.max(0.3, VIEW.zoom * (e.deltaY < 0 ? 1.1 : 0.9)));
-    drawMol();
-  }, {passive:false});
-  addEventListener("resize", drawMol);
   for(const id of ["showBefore","showAfter"]) $("#"+id).addEventListener("change", drawMol);
-  $("#spin").addEventListener("change", e => VIEW.spin = e.target.checked);
-  setInterval(() => { if(VIEW.spin){ VIEW.rot.y += 0.012; drawMol(); } }, 40);
+  $("#spin").addEventListener("change", e => {
+    VIEW.spin = e.target.checked;
+    if(VIEW.viewer) VIEW.viewer.spin(VIEW.spin ? "y" : false);
+  });
+  addEventListener("resize", () => { if(VIEW.viewer) VIEW.viewer.resize(); });
 })();
+
+async function loadStructure(runId){
+  $("#structNote").textContent = "building…";
+  const r = await post("/api/structure", {form: readForm(), run_id: runId || ""});
+  if(!r.ok){ $("#structNote").textContent = r.error; return; }
+  VIEW.data = r;
+  $("#structNote").textContent = "drag to rotate · wheel to zoom";
+  const haveAfter = !!r.after;
+  document.querySelectorAll(".legend span").forEach((s, i) => {
+    if(i < 2) s.style.display = haveAfter ? "" : "none"; });
+  $("#rmsdNote").textContent = haveAfter
+    ? `superposed on the starting structure · RMSD ${(r.rmsd*1000).toFixed(1)} mÅ`
+    : "starting structure · run the fit to compare it with the result";
+  const tb = $("#cmpTable tbody");
+  if(r.comparison){
+    tb.innerHTML = r.comparison.rows.map(row => {
+      const f = row.unit === "Å" ? 4 : 2;
+      const dd = row.unit === "Å" ? (row.delta*1000).toFixed(2) + " mÅ"
+                                  : row.delta.toFixed(3) + " °";
+      const cls = Math.abs(row.delta) < 1e-9 ? "" : row.delta > 0 ? "up" : "down";
+      return `<tr><td>${row.label}</td><td class="d">${row.before.toFixed(f)}</td>`
+           + `<td class="d">${row.after.toFixed(f)}</td>`
+           + `<td class="d ${cls}">${row.delta > 0 ? "+" : ""}${dd}</td></tr>`;
+    }).join("");
+  } else {
+    tb.innerHTML = `<tr><td colspan="4" style="color:var(--dim)">`
+      + `Run the fit to compare the starting structure with the fitted one.</td></tr>`;
+  }
+  drawMol();
+}
+$("#previewBtn").addEventListener("click", () => loadStructure(LAST_RUN));
+let LAST_RUN = "";
 
 /* ── the right-hand panels ───────────────────────────────────────────────── */
 /* These were frames with "no run yet" in them and nothing behind. Each one is
@@ -732,37 +708,6 @@ async function loadResults(runId){
   $("#fitState").textContent = `${r.uncertainty.length} parameters`;
 }
 
-async function loadStructure(runId){
-  $("#structNote").textContent = "building…";
-  const r = await post("/api/structure", {form: readForm(), run_id: runId || ""});
-  if(!r.ok){ $("#structNote").textContent = r.error; return; }
-  VIEW.data = r;
-  $("#structNote").textContent = "drag to rotate · wheel to zoom";
-  const haveAfter = !!r.after;
-  document.querySelectorAll(".legend span").forEach((s, i) => {
-    if(i < 2) s.style.display = haveAfter ? "" : "none"; });
-  $("#rmsdNote").textContent = haveAfter
-    ? `superposed on the starting structure · RMSD ${(r.rmsd*1000).toFixed(1)} mÅ`
-    : "starting structure · run the fit to compare it with the result";
-  const tb = $("#cmpTable tbody");
-  if(r.comparison){
-    tb.innerHTML = r.comparison.rows.map(row => {
-      const f = row.unit === "Å" ? 4 : 2;
-      const dd = row.unit === "Å" ? (row.delta*1000).toFixed(2) + " mÅ"
-                                  : row.delta.toFixed(3) + " °";
-      const cls = Math.abs(row.delta) < 1e-9 ? "" : row.delta > 0 ? "up" : "down";
-      return `<tr><td>${row.label}</td><td class="d">${row.before.toFixed(f)}</td>`
-           + `<td class="d">${row.after.toFixed(f)}</td>`
-           + `<td class="d ${cls}">${row.delta > 0 ? "+" : ""}${dd}</td></tr>`;
-    }).join("");
-  } else {
-    tb.innerHTML = `<tr><td colspan="4" style="color:var(--dim)">`
-      + `Run the fit to compare the starting structure with the fitted one.</td></tr>`;
-  }
-  drawMol();
-}
-$("#previewBtn").addEventListener("click", () => loadStructure(LAST_RUN));
-let LAST_RUN = "";
 
 /* ── boot ────────────────────────────────────────────────────────────────── */
 function loadWater(){
