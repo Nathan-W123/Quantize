@@ -237,6 +237,24 @@ class Handler(BaseHTTPRequestHandler):
         except ConfigError as exc:
             self._json({"ok": False, "error": str(exc)})
             return
+
+        # Stop here rather than inside the first Hessian. validate_config only
+        # checks that the backend NAME is registered, and registration happens
+        # on import while the dependency is imported lazily later -- so a
+        # machine without pyscf validates fine, prints a correction table,
+        # starts optimising and only then raises ModuleNotFoundError. The run
+        # is lost either way; failing now says why and what to do about it.
+        from web.options import backend_availability
+
+        name = str((cfg.get("quantum") or {}).get("backend") or "")
+        info = backend_availability().get(name, {})
+        if info.get("ok") is False:
+            hint = info.get("hint") or ""
+            self._json({"ok": False, "error": (
+                f"backend '{name}' cannot run here: {info.get('why')}."
+                + (f" {hint}" if hint else ""))})
+            return
+
         run_id = uuid.uuid4().hex[:12]
         run = _Run(run_id, cfg)
         with _RUNS_LOCK:

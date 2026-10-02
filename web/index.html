@@ -342,6 +342,19 @@ function buildProps(){
   });
 }
 
+/* The backend list is annotated, because registration is not availability:
+   every backend imports its dependency lazily, so a name can be registered on
+   a machine where it cannot run. pyscf has no Windows wheel at all. */
+function fillBackends(){
+  const av = OPTS.backend_availability || {};
+  $("#quantum_backend").innerHTML = (OPTS.quantum_backend||[]).map(n => {
+    const a = av[n] || {};
+    const tag = a.ok === true ? "" : a.ok === false ? "  — not installed" : "  — unknown";
+    return `<option value="${n}">${n}${tag}</option>`;
+  }).join("");
+  $("#quantum_backend").value = OPTS.backend_default || "none";
+}
+
 function fill(id, values, preferred){
   const el = $("#"+id); if(!el) return;
   el.innerHTML = (values||[]).map(v => `<option value="${v}">${v}</option>`).join("");
@@ -423,6 +436,12 @@ async function refreshChecks(){
     out.push(["warn", "non-convergent components are being dropped, not flagged"]);
   if(f.coordinate_mode === "cartesian")
     out.push(["info", "cartesian mode · per-parameter uncertainties are not reported"]);
+  const av = (OPTS.backend_availability || {})[f.quantum_backend] || {};
+  if(av.ok === false)
+    out.unshift(["bad", `backend ${f.quantum_backend} cannot run here: `
+      + `${av.why}. ${av.hint || ""}`]);
+  else if(av.ok === true && f.quantum_backend !== "none")
+    out.push(["ok", `${f.quantum_backend} is installed`]);
   const r = await post("/api/validate", {form: f});
   out.unshift(r.ok ? ["ok", "config valid"] : ["bad", r.error || "invalid"]);
   $("#checks").innerHTML = out.map(([k, t]) =>
@@ -526,7 +545,7 @@ function loadWater(){
   for(const id of SEL_IDS) fill(id, OPTS[id]);
   fill("preset", OPTS.preset, "BALANCED");
   fill("coordinate_mode", OPTS.coordinate_mode, "internal");
-  fill("quantum_backend", OPTS.quantum_backend, "pyscf_hf");
+  fillBackends();
   fill("corrections_mode", OPTS.corrections_mode, "hybrid_auto");
   fill("nonconvergent_policy", OPTS.nonconvergent_policy, "warn");
   fill("internal_priors_mode", OPTS.internal_priors_mode, "soft");

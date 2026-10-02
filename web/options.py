@@ -25,6 +25,64 @@ def _sorted_strs(values) -> list[str]:
     return sorted(str(v) for v in values)
 
 
+#: What each backend needs before it can produce a gradient or a Hessian, and
+#: how to find out without importing or launching it. Registration is not
+#: availability: every backend here imports its dependency lazily, inside the
+#: call that needs it, so the name appears in the registry on a machine where
+#: the thing cannot run at all.
+#:
+#: That is not a hypothetical. pyscf publishes wheels for Linux and macOS only
+#: -- there is no Windows wheel -- and it is not in requirements.txt either, so
+#: "pip install -r requirements.txt" never supplies it. A Windows user picking
+#: the default backend got a valid config, a successful validate, a run that
+#: printed its correction table and started optimising, and then
+#: ModuleNotFoundError from inside the first Hessian. The cost of finding out
+#: late is the whole run.
+_BACKEND_NEEDS: dict[str, dict[str, Any]] = {
+    "pyscf_hf": {"module": "pyscf",
+                 "hint": "pip install pyscf (Linux/macOS only -- no Windows "
+                         "wheel; use WSL on Windows)"},
+    "psi4": {"module": "psi4",
+             "hint": "conda install -c conda-forge psi4"},
+    "orca": {"executable": "orca",
+             "hint": "install ORCA and put it on PATH, or set orca_executable"},
+    "none": {},
+}
+
+
+def backend_availability() -> dict[str, dict[str, Any]]:
+    """Which registered backends could actually run here, and why not if not.
+
+    Probes without importing: importlib.util.find_spec for a module, which()
+    for an executable. Both are cheap and neither pulls a heavy package into
+    the server process.
+    """
+    import importlib.util
+    import shutil
+
+    from backend.registry import list_backends
+
+    out: dict[str, dict[str, Any]] = {}
+    for name in sorted(set(list_backends()) | {"none"}):
+        need = _BACKEND_NEEDS.get(name)
+        if need is None:
+            # A backend nobody told us how to probe. Saying "unknown" is
+            # honest; claiming it works is not.
+            out[name] = {"ok": None, "why": "availability not known"}
+            continue
+        if not need:
+            out[name] = {"ok": True, "why": ""}
+            continue
+        if "module" in need:
+            found = importlib.util.find_spec(need["module"]) is not None
+            why = "" if found else f"Python package '{need['module']}' is not installed"
+        else:
+            found = shutil.which(need["executable"]) is not None
+            why = "" if found else f"'{need['executable']}' is not on PATH"
+        out[name] = {"ok": found, "why": why, "hint": need.get("hint", "")}
+    return out
+
+
 def backend_options() -> dict[str, Any]:
     """Choices that come from the backend's own definitions."""
     from backend.registry import list_backends
@@ -46,8 +104,18 @@ def backend_options() -> dict[str, Any]:
     except Exception:  # pragma: no cover - pyscf absent is a valid install
         pass
 
+    avail = backend_availability()
+    usable = [n for n in sorted(set(list_backends()) | {"none"})
+              if avail.get(n, {}).get("ok")]
     return {
-        "quantum_backend": _sorted_strs(list_backends()),
+        "quantum_backend": _sorted_strs(set(list_backends()) | {"none"}),
+        "backend_availability": avail,
+        # What to select on a fresh page: a backend that can actually run,
+        # preferring the one the benchmarks use. Offering an unusable default
+        # is how a run gets to the first Hessian before failing.
+        "backend_default": next(
+            (n for n in ("pyscf_hf", "psi4", "orca") if n in usable),
+            usable[0] if usable else "none"),
         "preset": _sorted_strs(VALID_PRESETS),
         "corrections_mode": _sorted_strs(_VALID_MODES),
         "harmonic_scheme": list(_HARMONIC_SCHEMES),
@@ -103,7 +171,11 @@ FIELD_HELP: dict[str, str] = {
                        "is what makes the per-parameter uncertainties "
                        "meaningful. cartesian fits atom positions and cannot "
                        "report them.",
-    "quantum_backend": "Supplies the energy, gradient and Hessian. pyscf_hf "
+    "quantum_backend": "Marked \u2014 not installed means the name is "
+                       "registered but its dependency is missing here, and a "
+                       "run would fail at the first Hessian. pyscf has no "
+                       "Windows wheel: use WSL, or ORCA. "
+                       "Supplies the energy, gradient and Hessian. pyscf_hf "
                        "covers HF and DFT; the ORCA path reaches MP2 and "
                        "CCSD(T), which matter because the cubic force field "
                        "is what limits the correction's accuracy.",
