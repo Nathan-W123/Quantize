@@ -39,17 +39,39 @@ _COVALENT = {
     "Al": 1.21, "Si": 1.11, "P": 1.07, "S": 1.05, "Cl": 1.02, "Ar": 1.06,
     "K": 2.03, "Ca": 1.76, "Br": 1.20, "I": 1.39,
 }
-#: Element colours, following the convention every chemist already reads.
+#: Jmol/CPK element colours -- the palette every chemist already reads, and
+#: the one 3Dmol draws with under colorscheme "Jmol". Matching it exactly
+#: matters more than picking nicer colours: a chemist identifies atoms by
+#: colour without thinking, and a custom palette makes them stop and check.
 _COLOUR = {
-    "H": "#e8e8e8", "C": "#404040", "N": "#2f5fd0", "O": "#d03a2f",
-    "F": "#4fbf6f", "Cl": "#3fa83f", "Br": "#9a4a1e", "I": "#6a2fa0",
-    "S": "#d0b020", "P": "#d08020", "Si": "#b0a090",
+    "H": "#ffffff", "He": "#d9ffff", "Li": "#cc80ff", "Be": "#c2ff00",
+    "B": "#ffb5b5", "C": "#909090", "N": "#3050f8", "O": "#ff0d0d",
+    "F": "#90e050", "Ne": "#b3e3f5", "Na": "#ab5cf2", "Mg": "#8aff00",
+    "Al": "#bfa6a6", "Si": "#f0c8a0", "P": "#ff8000", "S": "#ffff30",
+    "Cl": "#1ff01f", "Ar": "#80d1e3", "K": "#8f40d4", "Ca": "#3dff00",
+    "Fe": "#e06633", "Br": "#a62929", "I": "#940094",
+}
+
+#: Van der Waals radii in Angstrom (Bondi). The viewer draws spheres at a
+#: FRACTION of these rather than at covalent radii: a ball-and-stick picture
+#: wants small balls that mark where the atoms are, not space-filling ones that
+#: hide the geometry behind them.
+_VDW = {
+    "H": 1.20, "He": 1.40, "Li": 1.82, "Be": 1.53, "B": 1.92, "C": 1.70,
+    "N": 1.55, "O": 1.52, "F": 1.47, "Ne": 1.54, "Na": 2.27, "Mg": 1.73,
+    "Al": 1.84, "Si": 2.10, "P": 1.80, "S": 1.80, "Cl": 1.75, "Ar": 1.88,
+    "K": 2.75, "Ca": 2.31, "Fe": 2.04, "Br": 1.85, "I": 1.98,
 }
 
 
 def element_style(symbol: str) -> dict[str, Any]:
+    """Colour and both radii. Covalent decides bonding, van der Waals draws."""
     sym = str(symbol).strip().capitalize()
-    return {"radius": _COVALENT.get(sym, 0.75), "colour": _COLOUR.get(sym, "#9a7fb0")}
+    return {
+        "radius": _COVALENT.get(sym, 0.75),
+        "vdw": _VDW.get(sym, 1.70),
+        "colour": _COLOUR.get(sym, "#ff1493"),
+    }
 
 
 def detect_bonds(coords, elems, tolerance: float = 1.3) -> list[list[int]]:

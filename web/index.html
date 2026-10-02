@@ -142,7 +142,10 @@
     background:var(--chrome2);border-bottom:1px solid var(--edge2)}
   .sck{display:flex;gap:4px;align-items:center;color:var(--dim);font-size:12px}
   .sck input{width:auto}
-  #mol{display:block;width:100%;height:420px;background:var(--field);cursor:grab}
+  /* A molecular viewer is dark in both themes. The Jmol palette was chosen
+     against a dark background -- white hydrogens and yellow sulfur vanish on
+     white -- so this one does not follow the page. */
+  #mol{display:block;width:100%;height:420px;background:#0a0e1a;cursor:grab}
   #mol:active{cursor:grabbing}
   .legend{display:flex;gap:16px;align-items:center;padding:5px 9px;font-size:11.5px;
     color:var(--dim);border-top:1px solid var(--edge2);border-bottom:1px solid var(--edge2);
@@ -595,8 +598,18 @@ function drawMol(){
   const add = (set, colourFn, alpha, r) => {
     if(!set) return;
     const pts = set.coords.map(p => project(p, w, h, scale));
-    (d.before.bonds||[]).forEach(([i,j]) => layers.push(
-      {z:(pts[i][2]+pts[j][2])/2, kind:"bond", a:pts[i], b:pts[j], alpha}));
+    // Each bond is drawn as TWO segments meeting at the midpoint, each in its
+    // own atom's colour. That half-and-half stick is what makes a ball-and-
+    // stick picture readable -- you can see which atom an end belongs to
+    // without tracing it back.
+    (d.before.bonds||[]).forEach(([i,j]) => {
+      const mid = [(pts[i][0]+pts[j][0])/2, (pts[i][1]+pts[j][1])/2,
+                   (pts[i][2]+pts[j][2])/2];
+      layers.push({z:(pts[i][2]+mid[2])/2, kind:"bond", a:pts[i], b:mid,
+                   alpha, colour: colourFn(i)});
+      layers.push({z:(pts[j][2]+mid[2])/2, kind:"bond", a:pts[j], b:mid,
+                   alpha, colour: colourFn(j)});
+    });
     pts.forEach((p, i) => layers.push(
       {z:p[2], kind:"atom", p, i, alpha, r,
        colour: colourFn(i), sym: set.elements[i]}));
@@ -610,33 +623,39 @@ function drawMol(){
     if($("#showBefore").checked || $("#showAfter").checked)
       add(d.before, solid, 1, 1);
   } else {
-    if($("#showBefore").checked) add(d.before, () => "#9aa7bb", 0.45, 0.72);
+    if($("#showBefore").checked) add(d.before, () => "#6f7b90", 0.5, 0.8);
     if($("#showAfter").checked)  add(d.after, solid, 1, 1);
   }
 
   // painter's algorithm: far things first, so near atoms occlude properly
   layers.sort((a, b) => a.z - b.z);
+  // Ball and stick, after 3Dmol's defaults: sphere scale 0.3 of the van der
+  // Waals radius and a 0.12 A stick. Small balls and thin sticks are what let
+  // you read the geometry; big spheres hide the thing you are looking at.
+  const STICK_ANG = 0.12, SPHERE_FRAC = 0.30;
   for(const L of layers){
     g.globalAlpha = L.alpha;
     if(L.kind === "bond"){
-      g.strokeStyle = L.alpha < 1 ? "#9aa7bb" : "#7a8698";
-      g.lineWidth = L.alpha < 1 ? 2 : 3.5; g.lineCap = "round";
+      g.lineCap = "round";
+      // a dark casing under the stick reads as a cylinder's shaded edge
+      g.strokeStyle = "rgba(0,0,0,.55)";
+      g.lineWidth = Math.max(3, STICK_ANG * 2 * scale) + 1.5;
+      g.beginPath(); g.moveTo(L.a[0], L.a[1]); g.lineTo(L.b[0], L.b[1]); g.stroke();
+      g.strokeStyle = L.colour;
+      g.lineWidth = Math.max(2, STICK_ANG * 2 * scale);
       g.beginPath(); g.moveTo(L.a[0], L.a[1]); g.lineTo(L.b[0], L.b[1]); g.stroke();
     } else {
-      const rad = Math.max(4, ((d.before.styles[L.i]||{}).radius || 0.7) * scale * 0.42 * L.r);
-      const grd = g.createRadialGradient(L.p[0]-rad*0.35, L.p[1]-rad*0.35, rad*0.1,
-                                         L.p[0], L.p[1], rad);
-      grd.addColorStop(0, "#ffffff"); grd.addColorStop(0.35, L.colour);
-      grd.addColorStop(1, L.colour);
+      const vdw = (d.before.styles[L.i]||{}).vdw || 1.7;
+      const rad = Math.max(3, vdw * SPHERE_FRAC * scale * L.r);
+      // light from the upper left, so the spheres read as spheres
+      const grd = g.createRadialGradient(L.p[0]-rad*0.38, L.p[1]-rad*0.38, rad*0.05,
+                                         L.p[0], L.p[1], rad*1.05);
+      grd.addColorStop(0, "#ffffff");
+      grd.addColorStop(0.22, L.colour);
+      grd.addColorStop(1, "rgba(0,0,0,.55)");
       g.fillStyle = grd;
       g.beginPath(); g.arc(L.p[0], L.p[1], rad, 0, 6.2832); g.fill();
-      if(L.alpha === 1){
-        g.strokeStyle = "rgba(0,0,0,.25)"; g.lineWidth = 1; g.stroke();
-        g.globalAlpha = 1; g.fillStyle = "#fff";
-        g.font = `600 ${Math.max(9, rad*0.8)}px system-ui`;
-        g.textAlign = "center"; g.textBaseline = "middle";
-        if(rad > 9) g.fillText(L.sym, L.p[0], L.p[1]);
-      }
+      g.strokeStyle = "rgba(0,0,0,.45)"; g.lineWidth = 1; g.stroke();
     }
   }
   g.globalAlpha = 1;
