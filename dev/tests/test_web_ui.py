@@ -367,3 +367,65 @@ def test_smiles_is_offered_first(water_form):
     methods = all_options()["geometry_method"]
     assert methods[0] == "smiles"
     assert methods[-1] == "coords"
+
+
+# ── backend availability ─────────────────────────────────────────────────────
+
+def test_registration_is_not_availability():
+    """The distinction that cost a user a whole run.
+
+    Every backend imports its dependency lazily, inside the call that needs it,
+    so the name is in the registry on a machine where the package is absent.
+    validate_config checks the name and passes; the run then dies in the first
+    Hessian with ModuleNotFoundError. The probe has to answer a different
+    question from the validator's.
+    """
+    from web.options import backend_availability
+
+    avail = backend_availability()
+    assert set(avail) >= set(valid_backends())
+    for name, info in avail.items():
+        assert info["ok"] in (True, False, None), name
+        if info["ok"] is False:
+            assert info["why"], f"{name} unavailable with no reason given"
+
+
+def test_an_unavailable_backend_reports_a_remedy():
+    from web.options import _BACKEND_NEEDS, backend_availability
+
+    for name, info in backend_availability().items():
+        if info["ok"] is False:
+            assert info.get("hint"), f"{name} has no hint"
+            assert _BACKEND_NEEDS[name]
+
+
+def test_the_default_backend_is_one_that_can_actually_run():
+    """A default that cannot run is how the failure happened in the first place."""
+    opts = all_options()
+    default = opts["backend_default"]
+    assert default in opts["quantum_backend"]
+    assert opts["backend_availability"][default]["ok"] is not False
+
+
+def test_none_is_always_available_as_a_fallback():
+    """With no quantum package at all the form must still produce a valid case."""
+    from web.options import backend_availability
+
+    assert backend_availability()["none"]["ok"] is True
+
+
+def test_a_config_naming_an_absent_backend_still_validates(water_form):
+    """Which is exactly why the UI needs its own check.
+
+    The validator's job is the config's shape, not the machine's contents, so
+    it cannot be the thing that catches this -- and should not be changed to,
+    since a config is often written on a different machine from the one that
+    runs it.
+    """
+    from web.options import backend_availability
+
+    absent = [n for n, i in backend_availability().items() if i["ok"] is False]
+    if not absent:
+        pytest.skip("every backend is installed here")
+    water_form["quantum_backend"] = absent[0]
+    validate_config(form_to_config(water_form))
