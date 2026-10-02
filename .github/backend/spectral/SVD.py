@@ -65,7 +65,7 @@ class SubspaceOptimizer:
         scale of the problem, preventing floating-point noise from producing a
         spuriously large null-space step.  Units match the Hessian eigenvalue
         units (energy / coordinate²); adjust if the optimizer is run at a very
-        different scale (e.g. cm⁻¹/Å² vs. MHz/Å²).  Default 1e-8.
+        different scale (e.g. cm⁻¹/Ų vs. MHz/Ų).  Default 1e-8.
     """
 
     def __init__(
@@ -403,7 +403,7 @@ class SubspaceOptimizer:
         gradient : (n_p,)   energy gradient in parameter space
                    Cartesian: Hartree/Å;  Internal: already transformed via B+^T gx
         hessian  : (n_p, n_p) energy Hessian in parameter space
-                   Cartesian: Hartree/Å²; Internal: B+^T Hx B+
+                   Cartesian: Hartree/Ų; Internal: B+^T Hx B+
 
         Returns
         -------
