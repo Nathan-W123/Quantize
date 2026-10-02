@@ -97,12 +97,27 @@ def form_to_config(form: dict[str, Any]) -> dict[str, Any]:
     if symmetry:
         cfg["symmetry"] = symmetry
 
-    geom_method = str(get("geometry_method") or "coords")
+    # Four ways in, and typing Cartesian coordinates is the last resort rather
+    # than the default: run_generic can fetch a PubChem 3D conformer from a
+    # name, a CID or a SMILES string, or build one from a bond list. The key
+    # each branch reads was checked against that code -- "pubchem" wants
+    # "identifier", and an earlier version of this wrote "name", which the
+    # runner would have rejected at run time with the form reporting no error.
+    geom_method = str(get("geometry_method") or "smiles")
     geometry: dict[str, Any] = {"method": geom_method}
     if geom_method == "coords":
         geometry["coords_angstrom"] = _coords(get("coords_angstrom"))
     elif geom_method == "pubchem":
-        geometry["name"] = str(get("pubchem_name") or "").strip()
+        geometry["identifier"] = str(get("pubchem_identifier") or "").strip()
+    elif geom_method == "smiles":
+        geometry["smiles"] = str(get("smiles") or "").strip()
+    elif geom_method == "bonds":
+        pairs = []
+        for line in str(get("bonds") or "").replace(",", " ").split("\n"):
+            toks = line.split()
+            if len(toks) == 2:
+                pairs.append([int(toks[0]), int(toks[1])])
+        geometry["bonds"] = pairs
     cfg["geometry"] = geometry
 
     isos = []
@@ -204,10 +219,12 @@ def config_to_form(cfg: dict[str, Any]) -> dict[str, Any]:
         "rng_seed": cfg.get("rng_seed", ""),
         "symmetry": cfg.get("symmetry", ""),
         "elements": " ".join(str(e) for e in (cfg.get("elements") or [])),
-        "geometry_method": geom.get("method", "coords"),
+        "geometry_method": geom.get("method", "smiles"),
         "coords_angstrom": "\n".join(
             " ".join(f"{float(x):.6f}" for x in row) for row in coords),
-        "pubchem_name": geom.get("name", ""),
+        "pubchem_identifier": geom.get("identifier", ""),
+        "smiles": geom.get("smiles", ""),
+        "bonds": "\n".join(f"{a} {b}" for a, b in (geom.get("bonds") or [])),
         "quantum_backend": quantum.get("backend", "pyscf_hf"),
         "method": quantum.get("method", ""),
         "basis": quantum.get("basis", ""),

@@ -68,7 +68,10 @@ def valid_backends() -> set[str]:
 
 # Retained as a module-level name for callers that imported it.
 VALID_BACKENDS = {"orca", "psi4", "none"}
-VALID_GEOMETRY_METHODS = {"bonds", "pubchem", "coords"}
+#: run_generic handles all four, and its own error message for an unknown one
+#: says "Use: smiles, bonds, pubchem, or coords" -- but "smiles" was missing
+#: here, so the validator refused a geometry the runner knows how to build.
+VALID_GEOMETRY_METHODS = {"smiles", "bonds", "pubchem", "coords"}
 _ELEMENT_RE = re.compile(r"^[A-Z][a-z]?$")
 _SAFE_NAME_RE = re.compile(r"[^A-Za-z0-9_.-]+")
 

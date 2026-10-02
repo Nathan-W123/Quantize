@@ -295,3 +295,75 @@ def test_scheme_keys_round_trip(water_form):
                        "hess_recalc_every": "3"})
     once = form_to_config(water_form)
     assert form_to_config(config_to_form(once)) == once
+
+
+# ── where the starting structure comes from ──────────────────────────────────
+
+def test_smiles_is_a_geometry_source_the_validator_accepts(water_form):
+    """run_generic has always handled it; the validator used to refuse it.
+
+    Its own error message for an unknown method reads "Use: smiles, bonds,
+    pubchem, or coords", while VALID_GEOMETRY_METHODS omitted smiles -- so a
+    geometry the runner knows how to build was rejected before it got there.
+    """
+    water_form["geometry_method"] = "smiles"
+    water_form["smiles"] = "O"
+    cfg = form_to_config(water_form)
+    assert cfg["geometry"] == {"method": "smiles", "smiles": "O"}
+    validate_config(cfg)
+
+
+def test_pubchem_emits_identifier_not_name(water_form):
+    """geometry.method=pubchem reads geometry.identifier.
+
+    An earlier version wrote "name", which validate_config accepts and
+    run_generic then rejects with "requires geometry.identifier" -- a failure
+    that only appears once the run starts.
+    """
+    water_form["geometry_method"] = "pubchem"
+    water_form["pubchem_identifier"] = "water"
+    cfg = form_to_config(water_form)
+    assert cfg["geometry"]["identifier"] == "water"
+    assert "name" not in cfg["geometry"]
+    validate_config(cfg)
+
+
+def test_bonds_are_parsed_as_index_pairs(water_form):
+    water_form["geometry_method"] = "bonds"
+    water_form["bonds"] = "0 1\n0 2"
+    cfg = form_to_config(water_form)
+    assert cfg["geometry"]["bonds"] == [[0, 1], [0, 2]]
+    validate_config(cfg)
+
+
+@pytest.mark.parametrize("method,field,value", [
+    ("smiles", "smiles", "O"),
+    ("pubchem", "pubchem_identifier", "water"),
+    ("bonds", "bonds", "0 1\n0 2"),
+])
+def test_every_geometry_source_round_trips(water_form, method, field, value):
+    water_form["geometry_method"] = method
+    water_form[field] = value
+    once = form_to_config(water_form)
+    assert form_to_config(config_to_form(once)) == once
+
+
+def test_coordinates_are_not_required_to_describe_a_molecule(water_form):
+    """The point of the SMILES and PubChem routes: no coordinate typing.
+
+    The optimiser only needs a starting structure in the right basin, so a
+    case that names the molecule is a complete case.
+    """
+    water_form["geometry_method"] = "smiles"
+    water_form["smiles"] = "O"
+    water_form["coords_angstrom"] = ""
+    cfg = form_to_config(water_form)
+    assert "coords_angstrom" not in cfg["geometry"]
+    validate_config(cfg)
+
+
+def test_smiles_is_offered_first(water_form):
+    """Dropdown order is the recommendation; coords should not lead."""
+    methods = all_options()["geometry_method"]
+    assert methods[0] == "smiles"
+    assert methods[-1] == "coords"
