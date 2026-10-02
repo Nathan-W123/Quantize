@@ -59,7 +59,10 @@ def backend_options() -> dict[str, Any]:
         # run of the same case identical unless someone changes it on purpose.
         "cubic_scheme": ["cartesian", "normal_mode"],
         "coordinate_mode": ["internal", "cartesian"],
-        "geometry_method": ["coords", "bonds", "pubchem"],
+        # SMILES first: it is the one that needs nothing but the molecule's
+        # identity. run_generic checks geometry.smiles before it looks at
+        # method at all, and fetches an MMFF94-quality PubChem conformer.
+        "geometry_method": ["smiles", "pubchem", "bonds", "coords"],
         "internal_priors_mode": ["soft", "hard", "off"],
         "components": ["A", "B", "C"],
         "track_max_default_ang": float(_MAX_TRACK_DISTANCE_ANG),
@@ -157,6 +160,25 @@ FIELD_HELP: dict[str, str] = {
                             "hard freezes the ones the data cannot "
                             "determine; off leaves the spectral data alone.",
     "rng_seed": "Seeds multistart and any resampling, so a run reproduces.",
+    "geometry_method": "Where the STARTING structure comes from. It only has "
+                       "to be in the right basin -- the optimiser moves it, "
+                       "and the spectra decide where it lands. SMILES or a "
+                       "PubChem name is usually enough; typing coordinates is "
+                       "the last resort.",
+    "smiles": "SMILES string. Bond orders let PubChem return an "
+              "MMFF94-relaxed 3D conformer, which is a better starting point "
+              "than a hand-built one.",
+    "pubchem_identifier": "A compound name or CID. Fetches PubChem's 3D "
+                          "conformer and reorders the atoms to match your "
+                          "elements list.",
+    "bonds": "Atom index pairs, one bond per line, zero-based. The geometry "
+             "is built from connectivity and relaxed.",
+    "coords_angstrom": "Cartesian coordinates, one atom per line. A leading "
+                       "element symbol is tolerated, so an .xyz block pastes "
+                       "straight in.",
+    "elements": "Atomic symbols in the order the masses and coordinates use. "
+                "Required even when the structure comes from PubChem, because "
+                "the fetched atoms are reordered to match it.",
     "symmetry": "Point group, if you want it imposed. Leave blank to let the "
                 "geometry's own symmetry be detected.",
     "obs_b0_mhz": "Measured ground-state rotational constants, in MHz, for "
