@@ -429,3 +429,131 @@ def test_a_config_naming_an_absent_backend_still_validates(water_form):
         pytest.skip("every backend is installed here")
     water_form["quantum_backend"] = absent[0]
     validate_config(form_to_config(water_form))
+
+
+# ── structure viewer and result panels ───────────────────────────────────────
+
+def test_superposition_ignores_a_rigid_move():
+    """A fit may translate and rotate the molecule without changing it at all.
+
+    Comparing two structures without superposing them first would report the
+    orientation as a structural change, and every bond and angle difference
+    would be wrong.
+    """
+    import numpy as np
+
+    from web.structure import superpose
+
+    a = np.array([[0.0, 0.0, 0.0], [0.0, 0.78, 0.6], [0.0, -0.78, 0.6]])
+    th = 0.7
+    rot = np.array([[np.cos(th), -np.sin(th), 0.0],
+                    [np.sin(th), np.cos(th), 0.0], [0.0, 0.0, 1.0]])
+    moved = a @ rot.T + np.array([3.0, -2.0, 1.0])
+    _, rmsd = superpose(moved, a)
+    assert rmsd < 1e-9, f"a rigid move read as a structural change: {rmsd}"
+
+
+def test_superposition_refuses_to_mirror():
+    """SVD will hand back a reflection; accepting one superposes a molecule
+    onto its enantiomer, which is a different molecule."""
+    import numpy as np
+
+    from web.structure import kabsch
+
+    rng = np.random.default_rng(0)
+    a = rng.normal(size=(6, 3))
+    b = a * np.array([1.0, 1.0, -1.0])      # mirrored
+    assert np.linalg.det(kabsch(a - a.mean(0), b - b.mean(0))) > 0
+
+
+def test_bonds_are_detected_from_covalent_radii():
+    from web.structure import detect_bonds
+
+    coords = [[0.0, 0.0, 0.0], [0.0, 0.76, 0.59], [0.0, -0.76, 0.59]]
+    bonds = detect_bonds(coords, ["O", "H", "H"])
+    assert sorted(bonds) == [[0, 1], [0, 2]], "the two O-H bonds, and no H-H"
+
+
+def test_the_comparison_is_in_internal_coordinates():
+    """Bond lengths and angles are what a structure is; Cartesian differences
+    also contain position and orientation, which carry no structure."""
+    import numpy as np
+
+    from web.structure import compare
+
+    before = np.array([[0.0, 0.0, 0.0], [0.0, 0.76, 0.59], [0.0, -0.76, 0.59]])
+    after = before * 1.01
+    rows = compare(before, after, ["O", "H", "H"], [[0, 1], [0, 2]])["rows"]
+    kinds = {r["kind"] for r in rows}
+    assert kinds == {"bond", "angle"}
+    for r in rows:
+        if r["kind"] == "bond":
+            assert r["delta"] == pytest.approx(0.01 * r["before"], rel=1e-6)
+        else:
+            # a uniform scaling moves no angle
+            assert r["delta"] == pytest.approx(0.0, abs=1e-9)
+
+
+def test_starting_geometry_uses_the_runners_own_builder(water_form):
+    """So the preview is the structure that would really be used."""
+    from web.structure import starting_geometry
+
+    water_form["geometry_method"] = "coords"
+    g = starting_geometry(form_to_config(water_form))
+    assert g["elements"] == ["O", "H", "H"]
+    assert len(g["coords"]) == 3
+    assert len(g["styles"]) == 3
+    # centred, so the viewer does not have to
+    import numpy as np
+    assert np.allclose(np.mean(g["coords"], axis=0), 0.0, atol=1e-9)
+
+
+def test_a_run_with_no_fitted_geometry_reports_before_only(water_form):
+    from web.structure import before_and_after
+
+    water_form["geometry_method"] = "coords"
+    out = before_and_after(form_to_config(water_form), None)
+    assert out["before"] is not None
+    assert out["after"] is None and out["comparison"] is None
+
+
+def test_result_panels_read_back_from_a_run_directory(tmp_path):
+    """Each panel is fed by an export the run already writes."""
+    from web.structure import run_results
+
+    exports = tmp_path / "exports"
+    exports.mkdir()
+    (exports / "residuals.csv").write_text(
+        "isotopologue,component,target_mhz,calculated_mhz,residual_mhz,sigma_mhz\n"
+        "H2-16O,A,100.0,110.0,-10.0,20.0\n"
+        "H2-16O,B,50.0,52.0,-2.0,1.0\n", encoding="utf-8")
+    (exports / "internal_uncertainty.csv").write_text(
+        "name,value,value_unit,std_err,prior_dominance,prior_sensitivity\n"
+        "bond 1-2,0.9652,Å,0.0094,mixed information,mildly prior-sensitive\n",
+        encoding="utf-8")
+    r = run_results(tmp_path)
+    assert [x["pull"] for x in r["residuals"]] == [-0.5, -2.0]
+    # rms over |pull|, which is what makes components comparable at all
+    assert r["rms_pull"] == pytest.approx((0.5**2 + 2.0**2) ** 0.5 / 2**0.5)
+    assert r["max_pull"] == pytest.approx(2.0)
+    assert r["uncertainty"][0]["unit"] == "Å"
+
+
+def test_missing_exports_do_not_break_the_panels(tmp_path):
+    from web.structure import run_results
+
+    r = run_results(tmp_path)
+    assert r["corrections"] == [] and r["residuals"] == []
+    assert r["rms_pull"] is None
+
+
+def test_every_form_field_has_help_text():
+    """The description pane is the only documentation in the UI."""
+    import re
+
+    html = (_ROOT / "web" / "index.html").read_text(encoding="utf-8")
+    groups = re.search(r"const GROUPS = \[(.*?)\n\];", html, re.S).group(1)
+    ids = re.findall(r'\["([a-z_]+)", "', groups)
+    help_map = all_options()["field_help"]
+    missing = [i for i in ids if i not in help_map]
+    assert not missing, f"no help for: {missing}"
