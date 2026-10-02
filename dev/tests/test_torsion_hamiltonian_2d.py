@@ -2,9 +2,9 @@
 Phase 6: 2D two-rotor torsion Hamiltonian tests.
 
 Validates:
-  - Free-rotor eigenvalues (analytic: F1*m1Â² + F2*m2Â²)
+  - Free-rotor eigenvalues (analytic: F1*m1² + F2*m2²)
   - Hermiticity of H for arbitrary potentials
-  - Separable V(Î±1,Î±2) = V1(Î±1) + V2(Î±2), F12=0 â†’ 2D eigenvalues equal all
+  - Separable V(α1,α2) = V1(α1) + V2(α2), F12=0 → 2D eigenvalues equal all
     pairwise sums of independent 1D eigenvalues (verified against solve_ram_lite_levels)
   - Basis size = (2*n_basis_1+1) * (2*n_basis_2+1)
   - Eigenvalues returned in ascending order
@@ -38,7 +38,7 @@ from backend.torsion.torsion_hamiltonian_2d import (
 )
 
 
-# â”€â”€ Shared helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Shared helpers ────────────────────────────────────────────────────────────
 
 def _free_rotor_2d(F1: float = 1.0, F2: float = 2.0, n1: int = 4, n2: int = 4) -> TorsionHamiltonianSpec2D:
     return TorsionHamiltonianSpec2D(
@@ -73,7 +73,7 @@ def _1d_spec(F: float, V3: float, n: int) -> TorsionHamiltonianSpec:
     )
 
 
-# â”€â”€ Hamiltonian construction â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Hamiltonian construction ──────────────────────────────────────────────────
 
 class TestBuild2DHamiltonian:
     def test_basis_size(self):
@@ -93,7 +93,7 @@ class TestBuild2DHamiltonian:
         assert np.allclose(H, H.T, atol=1e-12)
 
     def test_hermitian_coupling_potential(self):
-        """H with cross-term cos(3Î±1 + 3Î±2) must be real symmetric."""
+        """H with cross-term cos(3α1 + 3α2) must be real symmetric."""
         spec = TorsionHamiltonianSpec2D(
             F1=5.0, F2=3.0, rho1=0.0, rho2=0.0, F12=0.0,
             potential=TorsionFourierPotential2D(
@@ -111,7 +111,7 @@ class TestBuild2DHamiltonian:
         assert np.allclose(off, 0.0, atol=1e-12)
 
     def test_free_rotor_eigenvalues_analytic(self):
-        """V=0: eigenvalues must equal {F1*m1Â² + F2*m2Â²} for all (m1,m2) in basis."""
+        """V=0: eigenvalues must equal {F1*m1² + F2*m2²} for all (m1,m2) in basis."""
         F1, F2 = 1.0, 2.0
         n1, n2 = 4, 4
         spec = _free_rotor_2d(F1=F1, F2=F2, n1=n1, n2=n2)
@@ -137,7 +137,7 @@ class TestBuild2DHamiltonian:
         assert np.allclose(Ev - E0, 10.0, atol=1e-10)
 
     def test_f12_coupling_breaks_degeneracy(self):
-        """F12â‰ 0 must shift at least one eigenvalue compared with F12=0."""
+        """F12≠0 must shift at least one eigenvalue compared with F12=0."""
         base = dict(F1=5.0, F2=3.0, rho1=0.0, rho2=0.0,
                     potential=TorsionFourierPotential2D(v0=0.0, vcos={}),
                     n_basis_1=5, n_basis_2=5)
@@ -145,7 +145,7 @@ class TestBuild2DHamiltonian:
         spec12 = TorsionHamiltonianSpec2D(**base, F12=2.0)
         E0 = solve_2d_torsion_levels(spec0)["energies_cm-1"]
         E12 = solve_2d_torsion_levels(spec12)["energies_cm-1"]
-        assert not np.allclose(E0, E12), "F12â‰ 0 must shift some eigenvalues"
+        assert not np.allclose(E0, E12), "F12≠0 must shift some eigenvalues"
 
     def test_zero_coefficient_term_has_no_effect(self):
         """A vcos term with coefficient 0.0 must not change H."""
@@ -160,7 +160,7 @@ class TestBuild2DHamiltonian:
         assert np.allclose(H_bare, H_zero, atol=1e-12)
 
 
-# â”€â”€ Diagonalization â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Diagonalization ───────────────────────────────────────────────────────────
 
 class TestSolve2DTorsionLevels:
     def test_eigenvalues_ascending(self):
@@ -190,7 +190,7 @@ class TestSolve2DTorsionLevels:
         assert np.allclose(V.T @ V, np.eye(10), atol=1e-10)
 
     def test_separable_eigenvalues_match_pairwise_sums(self):
-        """V(Î±1,Î±2) = V1(Î±1) + V2(Î±2) with F12=0: 2D eigenvalues must equal
+        """V(α1,α2) = V1(α1) + V2(α2) with F12=0: 2D eigenvalues must equal
         all pairwise sums E1_a + E2_b of the independent 1D eigenvalues."""
         F1, V3_1 = 5.0, 100.0
         F2, V3_2 = 3.0, 80.0
@@ -218,7 +218,7 @@ class TestSolve2DTorsionLevels:
         assert E0 < 100.0 + 80.0
 
 
-# â”€â”€ Probability density â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Probability density ───────────────────────────────────────────────────────
 
 class TestProbabilityDensity2D:
     def test_output_shape(self):
@@ -238,7 +238,7 @@ class TestProbabilityDensity2D:
         assert np.all(density >= -1e-14)
 
     def test_normalization_ground_state(self):
-        """âˆ«âˆ« |Ïˆâ‚€(Î±1,Î±2)|Â² dÎ±1 dÎ±2 â‰ˆ 1 on a dense uniform grid."""
+        """∫∫ |ψ₀(α1,α2)|² dα1 dα2 ≈ 1 on a dense uniform grid."""
         spec = _separable_2d(n=5)
         eigenvec = solve_2d_torsion_levels(spec)["eigenvectors"][:, 0]
         G = 120
@@ -260,7 +260,7 @@ class TestProbabilityDensity2D:
         assert np.isclose(norm, 1.0, atol=0.01), f"Norm (excited) = {norm:.6f}"
 
     def test_free_rotor_ground_state_is_uniform(self):
-        """Free-rotor ground state (m1=0, m2=0) â†’ uniform density = 1/(4Ï€Â²)."""
+        """Free-rotor ground state (m1=0, m2=0) → uniform density = 1/(4π²)."""
         spec = _free_rotor_2d(n1=6, n2=6)
         out = solve_2d_torsion_levels(spec)
         # Ground state has eigenvalue 0 and is the e_{m1=0,m2=0} basis vector
@@ -272,7 +272,7 @@ class TestProbabilityDensity2D:
         assert np.allclose(density, expected, rtol=1e-6)
 
 
-# â”€â”€ 2D scan averaging â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── 2D scan averaging ─────────────────────────────────────────────────────────
 
 class TestTorsionAverage2D:
     def _uniform_scan(self, n_phi: int = 6, abc=None) -> TorsionScan2D:
@@ -305,7 +305,7 @@ class TestTorsionAverage2D:
         assert out["method"] == "quantum_2d_rotor"
 
     def test_constant_scan_returns_constant(self):
-        """All grid points have the same A/B/C â†’ average equals that value."""
+        """All grid points have the same A/B/C → average equals that value."""
         abc = np.array([4.0, 0.9, 0.8])
         scan = self._uniform_scan(abc=abc)
         spec = _free_rotor_2d(n1=5, n2=5)
@@ -325,7 +325,7 @@ class TestTorsionAverage2D:
         assert np.all(out["sigma_averaged"] >= 0.0)
 
     def test_sigma_zero_for_constant_scan(self):
-        """Constant A/B/C across all points â†’ zero representational scatter."""
+        """Constant A/B/C across all points → zero representational scatter."""
         abc = np.array([4.0, 0.9, 0.8])
         scan = self._uniform_scan(abc=abc, n_phi=6)
         spec = _free_rotor_2d(n1=4, n2=4)

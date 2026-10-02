@@ -1,12 +1,12 @@
 ﻿"""
-Master optimizer â€” ties SpectralEngine, QuantumEngine, and SubspaceOptimizer together.
+Master optimizer — ties SpectralEngine, QuantumEngine, and SubspaceOptimizer together.
 
 Workflow
 --------
 1. Provide initial geometry, element list, isotopologue data, and either
    the path to your ORCA binary or "orca" if it is on PATH.
 2. MolecularOptimizer.run() iterates:
-     a. Recompute spectral Jacobian J and residuals Î”Î½ at current geometry.
+     a. Recompute spectral Jacobian J and residuals Δν at current geometry.
      b. When geometry drifts beyond `orca_update_thresh`, refresh ORCA data:
           - Every `hess_recalc_every` ORCA calls: full Freq job (Hessian + gradient).
           - In between: cheap EnGrad job (gradient only, reuse existing Hessian).
@@ -18,8 +18,8 @@ Units
 -----
   Coordinates        : Angstroms
   Rotational constants : MHz
-  Gradient           : Hartree / Ã…  (converted internally from Hartree / Bohr)
-  Hessian            : Hartree / Ã…Â² (converted internally)
+  Gradient           : Hartree / Å  (converted internally from Hartree / Bohr)
+  Hessian            : Hartree / Å² (converted internally)
 """
 
 import os
@@ -228,7 +228,7 @@ class MolecularOptimizer:
     max_iter : int
         Maximum optimisation iterations.
     conv_step : float
-        Convergence threshold on Cartesian step norm [Ã…].
+        Convergence threshold on Cartesian step norm [Å].
     conv_freq : float
         Convergence threshold on rotational-constant RMS residual [MHz].
     conv_energy : float
@@ -236,34 +236,34 @@ class MolecularOptimizer:
         [Hartree]. Used for hybrid stall detection and optionally for null-space
         convergence when ``null_convergence_requires_energy`` is True.
     spectral_analytic_jacobian : bool
-        If True (default), ``SpectralEngine`` uses an analytic âˆ‚(A,B,C)/âˆ‚x with
+        If True (default), ``SpectralEngine`` uses an analytic ∂(A,B,C)/∂x with
         finite-difference fallback for degenerate principal moments.
     spectral_jacobian_degeneracy_tol : float
         Relative moment gap below which the Jacobian falls back to finite differences.
     null_convergence_requires_energy : bool
-        If True, null-space convergence also requires ``|Î”E| < conv_energy``.
+        If True, null-space convergence also requires ``|ΔE| < conv_energy``.
         Default False avoids stalling when energy differences fluctuate iteration-to-iteration.
     conv_step_range : float
         Convergence threshold on the range-space component of the Cartesian
-        step norm [Ã…].
+        step norm [Å].
     conv_step_null : float
         Convergence threshold on the null-space component of the Cartesian
-        step norm [Ã…].
+        step norm [Å].
     conv_grad_null : float
         Convergence threshold on the projected null-space gradient norm
-        [Hartree/Ã…].
+        [Hartree/Å].
     orca_update_thresh : float
         Re-run ORCA when RMS geometry drift from last ORCA point exceeds
-        this value [Ã…].  Default 0.005 Ã….
+        this value [Å].  Default 0.005 Å.
     hess_recalc_every : int
         Recalculate the full Hessian every N ORCA calls.  Between recalculations
         only a cheap gradient (EnGrad) job is run.  Default 1 (always recalculate).
     sv_threshold : float
         Relative singular-value cutoff for range/null-space split.
     trust_radius : float
-        Maximum step size [Ã…].
+        Maximum step size [Å].
     lambda_damp : float
-        Levenbergâ€“Marquardt regularisation on the null-space Hessian.
+        Levenberg–Marquardt regularisation on the null-space Hessian.
     """
 
     def __init__(
@@ -420,7 +420,7 @@ class MolecularOptimizer:
             orca_method = preset_method
             orca_basis = preset_basis
 
-        # â”€â”€ Rovibrational corrections (M1-M4) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        # ── Rovibrational corrections (M1-M4) ────────────────────────────────
         self._harmonic_from_hessian = bool(harmonic_from_hessian)
         self._harmonic_sigma_fraction = max(float(harmonic_sigma_fraction), 1e-6)
         self._anharmonic_from_hessian = bool(anharmonic_from_hessian)
@@ -555,7 +555,7 @@ class MolecularOptimizer:
             if use_orca_rovib:
                 print(
                     "[correction-warning] use_orca_rovib=True is ignored when correction_table "
-                    "is supplied â€” corrections are pre-applied and alpha_constants are zeroed."
+                    "is supplied — corrections are pre-applied and alpha_constants are zeroed."
                 )
                 use_orca_rovib = False
 
@@ -1076,7 +1076,7 @@ class MolecularOptimizer:
         """Compare VPT2 alpha (from ORCA) with harmonic alpha computed from the Hessian.
 
         Prints a per-isotopologue, per-component table.  Flags components where
-        |Î”Î±| > 2 Ã— harmonic_sigma â€” which suggests the harmonic uncertainty estimate
+        |Δα| > 2 × harmonic_sigma — which suggests the harmonic uncertainty estimate
         may be too tight or a resonance is affecting the VPT2 result.
         """
         from backend.spectral.harmonic_alpha import compute_harmonic_alpha  # pylint: disable=import-outside-toplevel
@@ -1120,8 +1120,8 @@ class MolecularOptimizer:
                 v_harm = h_alpha.get(lbl, 0.0)
                 sig = h_sigma.get(lbl, 1.0)
                 diff = abs(float(v_vpt2) - float(v_harm))
-                flag = "  [>2Ïƒ]" if diff > 2.0 * sig else ""
-                parts.append(f"{lbl}: VPT2={float(v_vpt2):+.1f} harm={v_harm:+.1f} Î”={diff:.1f} MHz{flag}")
+                flag = "  [>2σ]" if diff > 2.0 * sig else ""
+                parts.append(f"{lbl}: VPT2={float(v_vpt2):+.1f} harm={v_harm:+.1f} Δ={diff:.1f} MHz{flag}")
             if parts:
                 print(f"  [vpt2-check]   {label}: {';  '.join(parts)}")
 
@@ -1227,7 +1227,7 @@ class MolecularOptimizer:
         if _near_degen > 0:
             print(
                 f"  [harmonic-alpha] WARNING: {_near_degen} near-degenerate Coriolis pair(s) "
-                "skipped (|Ï‰_sÂ²âˆ’Ï‰_rÂ²| < 0.01 cmâ»Â²). Alpha values may be less reliable for "
+                "skipped (|ω_s²−ω_r²| < 0.01 cm⁻²). Alpha values may be less reliable for "
                 "these modes (Fermi/Coriolis resonance region)."
             )
         if not ctbl_raw:
@@ -1248,11 +1248,11 @@ class MolecularOptimizer:
                 if prev is not None:
                     delta = abs(v - prev)
                     max_delta = max(max_delta, delta)
-                    parts.append(f"{comp_lbl}={v:+.1f}Â±{s:.1f} (Î”={delta:+.2f})")
+                    parts.append(f"{comp_lbl}={v:+.1f}±{s:.1f} (Δ={delta:+.2f})")
                 else:
-                    parts.append(f"{comp_lbl}={v:+.1f}Â±{s:.1f}")
+                    parts.append(f"{comp_lbl}={v:+.1f}±{s:.1f}")
                 self._prev_harmonic_alpha_sum[key] = v
-            print(f"  [harmonic-alpha]   {iso_name}: Î£Î± = {', '.join(parts)} MHz")
+            print(f"  [harmonic-alpha]   {iso_name}: Σα = {', '.join(parts)} MHz")
         if max_delta > 0.0:
             print(f"  [harmonic-alpha] Max alpha drift since last Hessian: {max_delta:.2f} MHz")
 
@@ -1398,7 +1398,7 @@ class MolecularOptimizer:
         """Make the next quantum update recompute the Hessian rather than reuse it."""
         self._since_hessian = None
 
-    # â”€â”€ Pre-computed files â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Pre-computed files ────────────────────────────────────────────────────
 
     def load_orca(self, engrad_path, hess_path):
         """
@@ -1410,7 +1410,7 @@ class MolecularOptimizer:
         self._orca_ref_coords = self.coords.copy()
         print(f"Loaded ORCA files.  Energy = {self.quantum.energy:.10f} Hartree")
 
-    # â”€â”€ Drift check â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Drift check ───────────────────────────────────────────────────────────
 
     def _orca_drift(self):
         if self._orca_ref_coords is None:
@@ -1666,7 +1666,7 @@ class MolecularOptimizer:
             self.optimizer.alpha_quantum = target_alpha
         return controls
 
-    # â”€â”€ Optimisation loop â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Optimisation loop ─────────────────────────────────────────────────────
 
     def _chi2_dof(self):
         """Effective degrees of freedom of the regularised fit.
@@ -1813,7 +1813,7 @@ class MolecularOptimizer:
                 comps = [labels[c] if 0 <= int(c) < 3 else f"R{int(c)}" for c in idx]
                 print(f"[rank-debug]   iso {i}: {comps}")
 
-        # #5: Per-component observability â€” how many isotopologues constrain each constant
+        # #5: Per-component observability — how many isotopologues constrain each constant
         _comp_labels = ["A", "B", "C"]
         _obs_count = {"A": 0, "B": 0, "C": 0}
         for _iso in self.spectral.isotopologues:
@@ -1874,7 +1874,7 @@ class MolecularOptimizer:
                 prior_wrms_before = self.internal_prior.diagnostics(self.coords).get("prior_wrms", 0.0)
             B, _ = wilson_B(self.coords, self.elems)
 
-            # â”€â”€ Internal-coordinate mode: transform J and quantum terms to q-space â”€â”€
+            # ── Internal-coordinate mode: transform J and quantum terms to q-space ──
             _ic_coord_set = None
             _ic_Bplus = None
             _ic_g = g
@@ -1893,12 +1893,12 @@ class MolecularOptimizer:
                     kappa_b_str = f"{b_diag['kappa_B']:.2e}" if b_diag['kappa_B'] is not None else "n/a"
                     print(
                         f"[B-matrix] n_coords={b_diag['n_coords']}  rank={b_diag['rank']}"
-                        f"  of {b_diag['n_dof']} DOF  Îº(B)={kappa_b_str}"
+                        f"  of {b_diag['n_dof']} DOF  κ(B)={kappa_b_str}"
                     )
                     if b_diag["kappa_B"] is not None and b_diag["kappa_B"] > 1e4:
                         print(
-                            f"  [warn] B-matrix ill-conditioned Îº(B)={b_diag['kappa_B']:.2e}; "
-                            "some internal coordinates may be linearly dependent â€” "
+                            f"  [warn] B-matrix ill-conditioned κ(B)={b_diag['kappa_B']:.2e}; "
+                            "some internal coordinates may be linearly dependent — "
                             "consider increasing ic_damping."
                         )
                     if self.autoconfig is not None:
@@ -1943,7 +1943,7 @@ class MolecularOptimizer:
                 J, residual_w, _ic_g, _ic_H, B=_svd_B,
                 prior_displacement=self._prior_displacement())
 
-            # â”€â”€ Back-transform and compute trial geometry â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            # ── Back-transform and compute trial geometry ─────────────────────
             _orig_coords = self.coords  # reference before update (never mutated here)
             if self.coordinate_mode == "internal":
                 # dp is a q-space step; back-transform to Cartesian via micro-iterations
@@ -2036,7 +2036,7 @@ class MolecularOptimizer:
             sv_kept   = float(sv[rank - 1]) if rank > 0 else 0.0
             kappa_J   = float(sv[0] / sv[rank - 1]) if rank > 1 and sv[rank - 1] > 0 else None
             if kappa_J is not None and kappa_J > 1e6:
-                print(f"  [warn] Îº(J)={kappa_J:.2e} â€” Jacobian ill-conditioned; "
+                print(f"  [warn] κ(J)={kappa_J:.2e} — Jacobian ill-conditioned; "
                       "consider adding isotopologues or checking input consistency.")
             if self.debug_rank_diagnostics:
                 cutoff = float(self.optimizer.sv_threshold * sv[0]) if len(sv) and sv[0] > 0 else 0.0
@@ -2126,7 +2126,7 @@ class MolecularOptimizer:
                 stage_suffix = f" [{autoconfig_controls['stage']}]"
             print(
                 f"{it+1:>5}  {step_norm:>12.4e}  {wrms:>12.4f}  {freq_rms:>12.4f}  "
-                f"{rank:>6d}  {sv_kept:>12.4e}  Îº(J)={kappa_str}  "
+                f"{rank:>6d}  {sv_kept:>12.4e}  κ(J)={kappa_str}  "
                 f"{dx_range_norm:>10.3e}  {dx_null_norm:>10.3e}  "
                 f"{gnull_str}  {alpha_q_eff:>8.3f}  {dE_str}  "
                 f"lambda={self.optimizer.lambda_damp:.2e} {status}{stage_suffix}"
@@ -2212,7 +2212,7 @@ class MolecularOptimizer:
 
         return self.coords.copy()
 
-    # â”€â”€ Output â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Output ────────────────────────────────────────────────────────────────
 
     def write_xyz(self, path):
         """Write final geometry to an XYZ file."""

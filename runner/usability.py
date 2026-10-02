@@ -1393,7 +1393,7 @@ def generate_kraitchman_report_section(kr: dict[str, Any]) -> str:
             "",
             "Inertial defects (Δ = I_c − I_a − I_b; ≈ 0 for rigid planar molecules):",
             "",
-            "| species | Δ (amu·Å²) |",
+            "| species | Δ (amu·Ų) |",
             "|---|---:|",
         ])
         for d in defects:

@@ -22,7 +22,7 @@ from backend.torsion.torsion_hamiltonian import (
 from backend.torsion.torsion_uncertainty import default_torsion_parameters
 
 
-# â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _make_spec(F: float = 27.6, rho: float = 0.81, Vcos3: float = -186.8, n_basis: int = 10):
     pot = TorsionFourierPotential(
@@ -65,7 +65,7 @@ def _synthetic_transitions(spec, J_vals=(0, 1), K_vals=(0,), n_levels=6):
     return transitions
 
 
-# â”€â”€ select_fit_params â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── select_fit_params ─────────────────────────────────────────────────────────
 
 class TestSelectFitParams:
     def test_scalar_params(self):
@@ -116,7 +116,7 @@ class TestSelectFitParams:
         assert params == []
 
 
-# â”€â”€ fit_torsion_to_levels â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── fit_torsion_to_levels ─────────────────────────────────────────────────────
 
 class TestFitTorsionToLevels:
     def test_no_observed_rows_returns_inf(self):
@@ -181,7 +181,7 @@ class TestFitTorsionToLevels:
         assert result["rms_cm-1"] < result["rms_cm-1_init"]
 
     def test_v0_recovery(self):
-        """Fit v0 to exact data â€” should converge to near-zero offset."""
+        """Fit v0 to exact data — should converge to near-zero offset."""
         spec_true = _make_spec()
         obs_rows = _synthetic_levels(spec_true, n_levels=6)
         # Perturb v0 by +5 cm-1
@@ -218,7 +218,7 @@ class TestFitTorsionToLevels:
         assert np.allclose(np.diag(result["correlation"]), 1.0)
 
 
-# â”€â”€ fit_torsion_to_transitions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── fit_torsion_to_transitions ────────────────────────────────────────────────
 
 class TestFitTorsionToTransitions:
     def test_no_transitions_returns_inf(self):
@@ -238,7 +238,7 @@ class TestFitTorsionToTransitions:
             "freq_mhz": float(t["freq_cm-1"]) * _MHZ_PER_CM1,
         } for t in trans]
         result = fit_torsion_to_transitions(spec, trans_mhz)
-        assert result["rms_cm-1"] < 1.0  # self-consistent â†’ near zero
+        assert result["rms_cm-1"] < 1.0  # self-consistent → near zero
 
     def test_rms_decreases(self):
         spec_true = _make_spec()
@@ -263,7 +263,7 @@ class TestFitTorsionToTransitions:
             fit_torsion_to_transitions(spec, bad_trans)
 
 
-# â”€â”€ Integration: phase2 exports with fitting â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Integration: phase2 exports with fitting ──────────────────────────────────
 
 def test_phase2_with_fitting_enabled():
     """_run_torsion_phase2_exports should write torsion_fit_params.csv when fitting enabled."""

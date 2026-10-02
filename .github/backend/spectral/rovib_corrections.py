@@ -18,7 +18,7 @@ from backend.spectral.spectral import (
 # ---------------------------------------------------------------------------
 
 
-# â”€â”€ Existing helpers (backward-compatible) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Existing helpers (backward-compatible) ────────────────────────────────────
 
 def _as_alpha_vector(value):
     """Coerce a user-/parse-provided alpha value into a length-3 ndarray.
@@ -229,7 +229,7 @@ def resolve_alpha_components(
     return out, correction
 
 
-# â”€â”€ Data model â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Data model ────────────────────────────────────────────────────────────────
 
 _COMP_LABELS = {0: "A", 1: "B", 2: "C"}
 _COMP_INDICES = {"A": 0, "B": 1, "C": 2}
@@ -266,7 +266,7 @@ class CorrectedSpectralTarget:
         return sum(r.delta_mhz for r in self.correction_records)
 
 
-# â”€â”€ Internal helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Internal helpers ──────────────────────────────────────────────────────────
 
 def _propagate_sigma(sigma_exp: float, correction_sigmas: list) -> float:
     """sigma_eff = sqrt(sigma_exp^2 + sum(sigma_corr_i^2)); None entries skipped."""
@@ -279,7 +279,7 @@ def _propagate_sigma(sigma_exp: float, correction_sigmas: list) -> float:
     return float(total ** 0.5)
 
 
-# â”€â”€ Correction resolution â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Correction resolution ─────────────────────────────────────────────────────
 
 #: Electron-to-proton mass ratio, and the largest rotational g-tensor
 #: component a molecule plausibly shows. Together these bound the electronic
@@ -321,7 +321,7 @@ def resolve_corrections(
     planarity_constraint: bool = False,
 ) -> list:
     """
-    For each isotopologue Ã— component pair, resolve all corrections and return
+    For each isotopologue × component pair, resolve all corrections and return
     a CorrectedSpectralTarget for each.
 
     The full correction sequence (matching the r_e^SE formula) is:
@@ -343,7 +343,7 @@ def resolve_corrections(
         Isotopologue dicts as passed to MolecularOptimizer.
     correction_table : dict or None
         Parsed correction table from parse_correction_table().
-        Keys: isotopologue name â†’ {component â†’ spec_dict}.
+        Keys: isotopologue name → {component → spec_dict}.
     mode : str
         "hybrid_auto" | "user_only" | "alpha_only"
     sigma_vib_fraction : float
@@ -368,7 +368,7 @@ def resolve_corrections(
         instead of the crude 1/M_total fallback. Components may be negative.
     correction_bob_params : dict or None
         Per-element BOB u-parameters. When supplied, computes:
-            delta_bob = -Î£_a (m_e / m_a) * u_a^X
+            delta_bob = -Σ_a (m_e / m_a) * u_a^X
         Format: {elem_symbol: {comp_label: u_value_or_dict}}
         where each component value is a float (u, sigma unknown) or
         a dict {"u": float, "sigma_u": float|None}.
@@ -376,7 +376,7 @@ def resolve_corrections(
 
     Returns
     -------
-    list of CorrectedSpectralTarget (one per iso Ã— component)
+    list of CorrectedSpectralTarget (one per iso × component)
     """
     from backend.spectral.correction_models import (
         vpt2_delta_b, electronic_delta_b, bob_delta_b
@@ -419,7 +419,7 @@ def resolve_corrections(
 
             records = []
 
-            # â”€â”€ Vibrational correction (priority-ordered) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            # ── Vibrational correction (priority-ordered) ─────────────────────
 
             # Priority 1: user correction_table
             if mode != "alpha_only" and comp_label in iso_ctbl:
@@ -471,7 +471,7 @@ def resolve_corrections(
                     quality_flags=["no_correction"],
                 ))
 
-            # â”€â”€ Electronic correction â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            # ── Electronic correction ────────────────────────────────────────
             if correction_elec and total_mass > 0.0:
                 # g may be given once for the molecule or per isotopologue. It
                 # is genuinely isotope-dependent -- the rotational g-tensor
@@ -523,7 +523,7 @@ def resolve_corrections(
                     quality_flags=flags,
                 ))
 
-            # â”€â”€ Born-Oppenheimer Breakdown correction â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            # ── Born-Oppenheimer Breakdown correction ─────────────────────────
             if correction_bob_params and elems and masses:
                 delta_b, sig_b = bob_delta_b(
                     elems, masses, comp_label, correction_bob_params, b0)
@@ -535,7 +535,7 @@ def resolve_corrections(
                         sigma_mhz=sig_b,
                         source="user",
                         method="BOB",
-                        notes="BOB: -Î£_a (m_e/m_a)*u_a",
+                        notes="BOB: -Σ_a (m_e/m_a)*u_a",
                     ))
 
             total_delta = sum(r.delta_mhz for r in records)
@@ -928,7 +928,7 @@ def apply_defect_bias_scale(targets, isotopologues, coords_ang):
     return targets
 
 
-# â”€â”€ Apply corrections back to isotopologue dicts â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Apply corrections back to isotopologue dicts ──────────────────────────────
 
 def apply_corrections_to_isotopologues(
     isotopologues: list,
@@ -938,14 +938,14 @@ def apply_corrections_to_isotopologues(
     Return new isotopologue dicts with corrected equilibrium targets.
 
     For each corrected target, the corresponding isotopologue dict is updated:
-      obs_constants  â†’ Be,SE  (the corrected equilibrium value)
-      alpha_constants â†’ 0.0   (correction already absorbed)
-      sigma_constants â†’ sigma_eff (propagated uncertainty)
+      obs_constants  → Be,SE  (the corrected equilibrium value)
+      alpha_constants → 0.0   (correction already absorbed)
+      sigma_constants → sigma_eff (propagated uncertainty)
 
     The corrected dicts are otherwise identical to the originals and remain
     compatible with SpectralEngine without any changes to that class.
     """
-    # Build lookup: (iso_name, component_index) â†’ CorrectedSpectralTarget
+    # Build lookup: (iso_name, component_index) → CorrectedSpectralTarget
     lookup: dict = {}
     for t in corrected_targets:
         lookup[(t.isotopologue_label, t.component_index)] = t
@@ -966,7 +966,7 @@ def apply_corrections_to_isotopologues(
                 t = lookup[key]
                 obs[k] = t.value_mhz
                 sigma[k] = t.sigma_mhz
-                # alpha[k] remains 0.0 â€” correction absorbed into obs
+                # alpha[k] remains 0.0 — correction absorbed into obs
 
         new_iso = dict(iso)
         new_iso["obs_constants"] = obs
@@ -977,7 +977,7 @@ def apply_corrections_to_isotopologues(
     return result
 
 
-# â”€â”€ Quality-control checks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Quality-control checks ────────────────────────────────────────────────────
 
 def validate_correction_quality(
     corrected_targets: list,
@@ -1044,15 +1044,15 @@ def validate_correction_quality(
                 r.quality_flags = list(r.quality_flags) + ["large_correction_unknown_sigma"]
                 warnings_out.append(
                     f"{t.isotopologue_label}/{t.component}: correction "
-                    f"{r.delta_mhz:+.1f} MHz is {risk_ratio:.1f}Ã— the experimental "
-                    f"sigma ({sigma_floor:.3f} MHz) but correction uncertainty is unknown â€” "
+                    f"{r.delta_mhz:+.1f} MHz is {risk_ratio:.1f}× the experimental "
+                    f"sigma ({sigma_floor:.3f} MHz) but correction uncertainty is unknown — "
                     "consider supplying sigma_mhz in the correction table."
                 )
 
     return warnings_out
 
 
-# â”€â”€ Human-readable summary â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Human-readable summary ────────────────────────────────────────────────────
 
 def correction_summary(corrected_targets: list) -> str:
     """
