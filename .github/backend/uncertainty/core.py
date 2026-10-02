@@ -152,8 +152,8 @@ def uncertainty_table(
     for i, (ic, q, se, ci) in enumerate(zip(active, q_vals, std_err, ci_95)):
         if ic.kind == "bond":
             val = q
-            val_u = "Ã…"
-            se_u = "Ã…"
+            val_u = "Å"
+            se_u = "Å"
         else:
             val = np.degrees(q)
             se = np.degrees(se)
@@ -181,7 +181,7 @@ def uncertainty_table(
     if chi2_scale > 1.0:
         print(
             f"  [Uncertainty] ChiÂ²-inflation applied: sÂ²={chi2_scale:.3f} "
-            f"(residuals exceed stated Ïƒ; CIs inflated by Ã—{chi2_scale**0.5:.3f})"
+            f"(residuals exceed stated σ; CIs inflated by ×{chi2_scale**0.5:.3f})"
         )
     return rows
 

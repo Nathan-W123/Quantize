@@ -164,6 +164,8 @@ class Handler(BaseHTTPRequestHandler):
             "/api/config": self._config,
             "/api/load": self._load,
             "/api/run": self._run,
+            "/api/structure": self._structure,
+            "/api/results": self._results,
         }
         fn = routes.get(path)
         if fn is None:
@@ -262,6 +264,41 @@ class Handler(BaseHTTPRequestHandler):
         threading.Thread(target=_execute, args=(run,), daemon=True).start()
         print(f"[web] started run {run_id}: {cfg.get('name')}")
         self._json({"ok": True, "id": run_id})
+
+    def _structure(self) -> None:
+        """The starting structure, and the fitted one when a run has produced it.
+
+        Resolving the geometry can reach the network -- a SMILES string or a
+        PubChem name is fetched -- so this is a POST the browser asks for, not
+        something computed on every keystroke.
+        """
+        from web.config_io import form_to_config
+        from web.structure import before_and_after
+
+        body = self._body()
+        cfg = form_to_config(body.get("form") or {})
+        run_dir = None
+        run_id = str(body.get("run_id") or "")
+        if run_id:
+            with _RUNS_LOCK:
+                run = _RUNS.get(run_id)
+            run_dir = run.run_dir if run else None
+        try:
+            self._json({"ok": True, **before_and_after(cfg, run_dir)})
+        except Exception as exc:  # noqa: BLE001 - a bad SMILES lands here
+            self._json({"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+
+    def _results(self) -> None:
+        """Corrections, residuals and uncertainties for a finished run."""
+        from web.structure import run_results
+
+        run_id = str(self._body().get("run_id") or "")
+        with _RUNS_LOCK:
+            run = _RUNS.get(run_id)
+        if run is None or not run.run_dir:
+            self._json({"ok": False, "error": "no run directory"})
+            return
+        self._json({"ok": True, **run_results(run.run_dir)})
 
     def _progress(self) -> None:
         from urllib.parse import parse_qs, urlparse

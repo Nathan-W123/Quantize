@@ -224,6 +224,46 @@ FIELD_HELP: dict[str, str] = {
                          "rebuild -- so a smaller number tracks the fitted "
                          "geometry more closely, at the cost of more "
                          "Hessians.",
+    "harmonic_from_hessian": "Compute the harmonic and Coriolis parts of alpha "
+                             "from the Hessian. Off means the correction has "
+                             "to come from the isotopologue block instead.",
+    "anharmonic_from_hessian": "Add the cubic anharmonic term. It is the "
+                               "DOMINANT contribution to alpha and carries the "
+                               "opposite sign to the harmonic one, so leaving "
+                               "it off biases Be systematically. It costs 6N "
+                               "extra Hessians, which is why it is a switch.",
+    "electronic_correction": "Subtract the electron cloud's contribution to "
+                             "the moment of inertia, from the rotational "
+                             "g tensor. Small -- about -13.6 MHz on water's A "
+                             "-- but isotope-dependent, which is where the "
+                             "structural information lives.",
+    "use_builtin_bob": "Born-Oppenheimer breakdown with the module's built-in "
+                       "u-parameters. Measured to move nothing on this "
+                       "reference set, water included, so it is cheap "
+                       "insurance rather than a fix.",
+    "harmonic_sigma_fraction": "Uncertainty on the harmonic part of alpha, as "
+                               "a fraction of it. Sets how much the fit is "
+                               "allowed to disbelieve its own correction.",
+    "anharmonic_fd_delta_ang": "Step for differencing the Hessian to get cubic "
+                               "force constants. Too small and SCF noise "
+                               "dominates; too large and the third derivative "
+                               "is not the one you wanted.",
+    "harmonic_cd_from_hessian": "Compute centrifugal-distortion constants from "
+                                "the Hessian. Needed before they can be used "
+                                "as fit data.",
+    "cd_weight": "How heavily distortion constants count against the "
+                 "rotational constants. 0 computes them and fits nothing, "
+                 "which the runner warns about.",
+    "cd_sigma_fraction": "Uncertainty on each computed distortion constant, as "
+                         "a fraction of it.",
+    "use_dihedrals": "Fit dihedral angles as well as bonds and angles. Only "
+                     "meaningful for a molecule that has them, and they are "
+                     "usually the least determined parameters.",
+    "output_root": "Where run directories are created. Each run gets a "
+                   "timestamped folder holding its input.yaml, report, "
+                   "exports and plots.",
+    "artifacts": "Write the report, CSV exports and plots. Off leaves only the "
+                 "console output, so the run cannot be read back afterwards.",
     "prior_sigma_bond": "How far the quantum geometry is trusted, per bond, "
                         "in Angstrom. It sets the weight between the quantum "
                         "surface and the spectral data in one objective.",

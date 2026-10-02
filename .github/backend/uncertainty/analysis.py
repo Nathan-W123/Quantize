@@ -51,7 +51,7 @@ def analyze_coordinate_distribution(cloud_xyz, elems, use_dihedrals=False):
             data = np.degrees(data)
             unit = "deg"
         else:
-            unit = "Ã…"
+            unit = "Å"
             
         results.append({
             "name": name,
