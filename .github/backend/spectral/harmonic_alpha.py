@@ -67,6 +67,38 @@ _bk_mode_derivatives = _bk_mode_derivatives
 # of resonance stands, the inference from it did not.
 _DEGENERACY_TOL_CM2 = 1.0
 
+#: Two modes closer than this in frequency (cm^-1) are reported as a Coriolis
+#: resonance. REPORTED ONLY -- see the loop below for why nothing is done
+#: about them.
+#:
+#: The _DEGENERACY_TOL_CM2 guard above is on omega^2 at 1 cm^-2, so it fires
+#: only for exact symmetry degeneracy; a pair a few cm^-1 apart passes through
+#: it with a denominator small enough that its single term dwarfs every other
+#: term in the sum. Surveyed at HF/6-31G across the reference set, each
+#: molecule's largest Coriolis term measured against its own median:
+#:
+#:     fluoroacetylene   0.00 cm-1 apart   zeta 1.000   8.5e10x median
+#:     acetyl fluoride   3.41             0.312          544x
+#:     isocyanic acid    5.50             0.992         8436x
+#:     formyl fluoride  26.72             0.286           12x
+#:     fluoroethane     68.20             0.584          102x
+#:
+#: Only fluoroacetylene's exact pair was being caught by the omega^2 guard.
+#: Acetyl fluoride and isocyanic acid, 3.4 and 5.5 cm^-1 apart, were not --
+#: and it was tempting to read that against the fact that those are two of
+#: the molecules the engine does worst on. The measurement below says that
+#: reading is wrong: the terms are individually huge and collectively
+#: harmless, because they cancel in pairs. So this threshold selects what
+#: gets *named* in the diagnostics, not what gets changed, and 10 cm^-1 is
+#: simply a clean gap between the two near-resonant cases and the
+#: next-closest pair at 26.7.
+_CORIOLIS_RESONANCE_CM = 10.0
+
+#: zeta^2 below this is not worth reporting -- the coupling is what turns a
+#: small denominator into a large term, and an uncoupled pair contributes
+#: nothing however close its partners are in frequency.
+_CORIOLIS_ZETA2_FLOOR = 1e-4
+
 #: How the harmonic term's second derivative is obtained.
 #:
 #:   "watson"         the (3/4) mu a mu a mu coefficient of Watson's expansion,
@@ -131,6 +163,7 @@ def compute_harmonic_alpha(
     linear_pair_coeff=None,
     lam_freq_cm: float = 0.0,
     freq_scale: float = 1.0,
+    coriolis_resonance_cm: float = _CORIOLIS_RESONANCE_CM,
     harmonic_scheme: str = "watson",
 ):
     """
@@ -185,6 +218,11 @@ def compute_harmonic_alpha(
                     so the correct statement about such a mode's α is not a
                     number but an interval. 0 (default) disables the treatment
                     and keeps the perturbative value at face value.
+    coriolis_resonance_cm : frequency gap (cm⁻¹) below which a Coriolis pair is
+                    listed in ``info["coriolis_resonances"]``. Purely a
+                    reporting threshold — α and σ are identical whatever it is
+                    set to — so it is here to let a caller widen or narrow the
+                    diagnostic, not to tune the physics.
     nm_sigma_fraction : fractional uncertainty applied to the correction when
                     the normal-mode cubic term is present and its own noise
                     diagnostic is clean -- the B3LYP-literature scale for VPT2
@@ -353,6 +391,25 @@ def compute_harmonic_alpha(
                 if abs(omega_cm[i] - omega_cm[j]) < 2.0:
                     pair_partner[i] = j
                     pair_partner[j] = i
+    # Coriolis resonances are DETECTED AND REPORTED, and deliberately not
+    # treated. Deperturbing them was implemented first and then measured, and
+    # the measurement says not to.
+    #
+    # A near-degenerate pair's two terms carry denominators omega_r^2-omega_s^2
+    # and omega_s^2-omega_r^2, so they are equal and opposite and cancel in the
+    # sum that actually reaches B_0. Individually they are enormous --
+    # isocyanic acid's pair, 5.5 cm^-1 apart with zeta 0.992, contributes a
+    # term 8436 times that molecule's median -- and the cancellation survives
+    # anyway. Nudging one partner by 1 cm^-1 moves alpha_A by 83 MHz out of
+    # 6,534,832, which is 0.001%; acetyl fluoride's pair does not move alpha at
+    # all, to the printed precision, for nudges up to 5 cm^-1.
+    #
+    # So removing the terms changed alpha by 47 parts in 6.5 million, while
+    # carrying their magnitude as sigma inflated it from 20 MHz to 592 million
+    # -- seven orders of magnitude of claimed ignorance about a quantity
+    # measured to be insensitive. The pairs are worth knowing about, so they
+    # are reported; the value and the width are left alone.
+    resonant_pairs = []
     for r in range(n_vib):
         wr2 = omega_cm[r] ** 2
         for K in range(3):
@@ -365,7 +422,20 @@ def compute_harmonic_alpha(
                 if abs(denom) < _DEGENERACY_TOL_CM2:
                     near_degen_skips += 1
                     continue
-                cor += zeta[K, r, s] ** 2 * (3.0 * wr2 + ws2) / denom
+                z2 = zeta[K, r, s] ** 2
+                term = z2 * (3.0 * wr2 + ws2) / denom
+                if (r < s
+                        and abs(omega_cm[r] - omega_cm[s]) < coriolis_resonance_cm
+                        and z2 > _CORIOLIS_ZETA2_FLOOR):
+                    resonant_pairs.append({
+                        "modes": (int(r), int(s)),
+                        "omega_cm": (float(omega_cm[r]), float(omega_cm[s])),
+                        "separation_cm": float(abs(omega_cm[r] - omega_cm[s])),
+                        "zeta": float(abs(zeta[K, r, s])),
+                        "component": "ABC"[K],
+                        "term_cm": float(term),
+                    })
+                cor += term
             alpha_cor_cm[K, r] = -2.0 * B_e_cm[K] ** 2 / omega_cm[r] * cor
             if (linear_pair_coeff is not None and r in pair_partner
                     and K in (1, 2)):
@@ -578,6 +648,10 @@ def compute_harmonic_alpha(
         sigma_vals,
         {
             "near_degen_skips": near_degen_skips,
+            #: Near-degenerate Coriolis pairs, with the frequencies and
+            #: coupling that make them resonant. Diagnostic only: neither
+            #: alpha nor sigma is altered on their account.
+            "coriolis_resonances": resonant_pairs,
             "anharmonic_status": anh_status,
             #: Vibrational modes that survived the positive-eigenvalue cut in
             #: normal_modes. A drop in this count between two geometries means

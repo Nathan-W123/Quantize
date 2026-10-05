@@ -151,6 +151,9 @@ CORR_METHOD, CORR_BASIS = None, None
 #: command line to measure where each scheme actually stops working, which is
 #: the only way the default can be set from evidence rather than guessed.
 TRACK_MAX = None
+#: Weight on the distortion rows relative to the rotational constants. 1.0
+#: trusts them as stated; the sweep below is what says whether that is right.
+CD_WEIGHT = 1.0
 WANT_CONFIGS: list[str] = []
 _args: list[str] = []
 for _tok in sys.argv[1:]:
@@ -162,6 +165,8 @@ for _tok in sys.argv[1:]:
         CORR_METHOD = _tok.split("=", 1)[1]
     elif _tok.startswith("corr_basis="):
         CORR_BASIS = _tok.split("=", 1)[1]
+    elif _tok.startswith("cd_weight="):
+        CD_WEIGHT = float(_tok.split("=", 1)[1])
     elif _tok.startswith("track_max="):
         TRACK_MAX = float(_tok.split("=", 1)[1])
     elif _tok.startswith("harmonic="):
@@ -279,12 +284,20 @@ CONFIGS = {
                      "corr": False, "track": True, "scheme": "direct"},
     "track_quadratic": {"offsets": False, "elec": False, "lam": False,
                         "corr": False, "track": True, "scheme": "quadratic"},
+    # Centrifugal distortion as fit data, the switch that has been built and
+    # off since it was written. The constants come from the Hessian the
+    # corrections already need, so the only cost is their own model error.
+    "cd": {"offsets": False, "elec": False, "lam": False, "corr": False,
+           "fit_cd": True},
+    "offsets+cd": {"offsets": True, "elec": False, "lam": False, "corr": False,
+                   "fit_cd": True},
 }
 for _cfg in CONFIGS.values():
     _cfg.setdefault("bob", False)
     _cfg.setdefault("defect_scale", False)
     _cfg.setdefault("track", False)
     _cfg.setdefault("scheme", "linear")
+    _cfg.setdefault("fit_cd", False)
 
 
 def electronic_shifted_isotopologues(isos, g_tensor, total_mass_amu):
@@ -318,7 +331,7 @@ def electronic_shifted_isotopologues(isos, g_tensor, total_mass_amu):
 
 
 def hybrid_fit(mol, isos, prior_coords, ctbl, sigma_x_ang,
-               defect_scale=False):
+               defect_scale=False, fit_cd=False, cd_weight=1.0):
     """The engine's answer, with the prior centred and widened as handed.
 
     ``prior_target_coords`` is what makes the prior's centre follow
@@ -341,6 +354,13 @@ def hybrid_fit(mol, isos, prior_coords, ctbl, sigma_x_ang,
         correction_table=ctbl, quantum_prior_sigma_ang=float(sigma_x_ang),
         prior_target_coords=np.asarray(prior_coords, dtype=float),
         defect_bias_scale=bool(defect_scale),
+        # Distortion constants as fit data. They are computed from the same
+        # Hessian the corrections come from, so turning them on costs nothing
+        # extra -- the question is only whether the extra rows help or whether
+        # their own model error outweighs the information they carry.
+        harmonic_cd_from_hessian=bool(fit_cd),
+        fit_cd_constants=bool(fit_cd),
+        cd_weight=float(cd_weight) if fit_cd else 0.0,
         chi2_rescale=True, chi2_rescale_max_passes=3)
     with contextlib.redirect_stdout(io.StringIO()):
         return opt.run()
@@ -527,7 +547,8 @@ def main() -> None:
 
                 def _fit(table, _p=prior, _s=sigma_x, _c=cfg):
                     return hybrid_fit(mol, isos, _p, table, _s,
-                                      defect_scale=_c["defect_scale"])
+                                      defect_scale=_c["defect_scale"],
+                                      fit_cd=_c["fit_cd"], cd_weight=CD_WEIGHT)
 
                 with contextlib.redirect_stdout(io.StringIO()):
                     tracked, track_info = self_consistent_correction_table(
@@ -544,7 +565,8 @@ def main() -> None:
             else:
                 track_info = None
                 hyb = hybrid_fit(mol, isos, prior, ctbl, sigma_x,
-                                 defect_scale=cfg["defect_scale"])
+                                 defect_scale=cfg["defect_scale"],
+                                 fit_cd=cfg["fit_cd"], cd_weight=CD_WEIGHT)
 
             entry = {
                 "theory_rms_ma": rms_bond_error(mol, prior)[0],
@@ -564,6 +586,8 @@ def main() -> None:
                     [float(d) for d in track_info["distances_ang"]]
                     if track_info else None),
                 "track_scheme": track_info["scheme"] if track_info else None,
+                "fit_cd": bool(cfg["fit_cd"]),
+                "cd_weight": float(CD_WEIGHT) if cfg["fit_cd"] else 0.0,
                 "track_skipped_beyond_ang": (
                     track_info["skipped_beyond_ang"] if track_info else None),
                 "track_unstable_modes": (
