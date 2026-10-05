@@ -9,7 +9,7 @@ Quantize optimizes molecular structures (bond lengths and angles) for spectrosco
 - Use observed rotational constants (`A`, `B`, `C`) from one or more isotopologues.
 - Map ground-state constants onto equilibrium targets via $B_e = B_0 + \Delta_\mathrm{vib} + \Delta_\mathrm{elec} + \Delta_\mathrm{BOB}$ (see [Ground state to equilibrium](#ground-state-to-equilibrium-b_0-to-b_e)).
 - Stack the σ-weighted spectral Jacobian $J$ and residuals $r$ across all isotopologues, and take the electronic-energy **gradient** $g$ and **Hessian** $H$ from Psi4 or ORCA.
-- Minimize one **joint objective**, the spectral $\tfrac12\chi^2$ plus $\alpha_q$ times the electronic energy, with damped Newton steps $(J^TJ + \alpha_q H + \lambda I)\,\Delta p = J^T r - \alpha_q g$. No direction is handed wholesale to either source: each carries weight in proportion to how well it determines that direction, so theory holds the structure where the data are silent and yields where they are informative.
+- Minimize one **joint objective**, the spectral $\tfrac12\chi^2$ plus $\alpha_q$ times the electronic energy, with damped Newton steps $`(J^TJ + \alpha_q H + \lambda I)\,\Delta p = J^T r - \alpha_q g`$. No direction is handed wholesale to either source: each carries weight in proportion to how well it determines that direction, so theory holds the structure where the data are silent and yields where they are informative.
 - Set $\alpha_q$ through `quantum_prior_sigma_ang`, the displacement over which the quantum surface is trusted (roughly the method's geometry error; `MolecularOptimizer` defaults to 0.020 Å).
 
 An SVD-based `split` objective is also available; see [How data and theory share authority](#how-data-and-theory-share-authority).
@@ -76,7 +76,7 @@ $$B_e = B_0 + \Delta_\mathrm{vib} + \Delta_\mathrm{elec} + \Delta_\mathrm{BOB}$$
 
 | Term | Source | Enabled by |
 |------|--------|-----------|
-| Harmonic $\langle Q_r^2\rangle\,\partial^2 B/\partial Q_r^2$ | Cartesian Hessian | `harmonic_from_hessian` |
+| Harmonic $`\langle Q_r^2\rangle\,\partial^2 B/\partial Q_r^2`$ | Cartesian Hessian | `harmonic_from_hessian` |
 | Coriolis $\zeta^{(\xi)}_{rs}$ coupling | Normal-mode eigenvectors | `harmonic_from_hessian` |
 | Anharmonic $\phi_{rrs}$ (cubic) | Finite-difference cubic force field | `anharmonic_from_hessian` |
 
@@ -87,7 +87,7 @@ $+0.0175$; adding the cubic term reproduces the Dunham/Pekeris value to 0.1%.
 It costs $6N$ extra Hessian evaluations, so it is opt-in; when it is off, the
 reported $\alpha$ uncertainty is widened to 100%.
 
-**$\Delta_\mathrm{elec} = -(m_e/m_p)\, g_\alpha B_0$** requires the rotational
+**$`\Delta_\mathrm{elec} = -(m_e/m_p)\, g_\alpha B_0`$** requires the rotational
 g-tensor via `g_tensor`. Without it the code falls back to a crude $1/M_\mathrm{total}$
 estimate that is roughly an order of magnitude too small and has the wrong sign
 whenever $g < 0$ (as for OCS), so that path reports 100% uncertainty.
@@ -123,7 +123,7 @@ out worse than either theory or experiment alone would give.
 
 | Control | Effect |
 |---------|--------|
-| `optimizer.objective_mode: joint` with `optimizer.quantum_prior_sigma_ang` | The default. Solves $(J^TJ + \alpha_q H + \lambda I)\,\Delta p = J^T r - \alpha_q g$, leaving every direction contested and weighted by how well each source knows it. `quantum_prior_sigma_ang` is the displacement over which the quantum surface is trusted, roughly the geometry error of the method, which is what makes $\alpha_q$ interpretable rather than an arbitrary knob. |
+| `optimizer.objective_mode: joint` with `optimizer.quantum_prior_sigma_ang` | The default. Solves $`(J^TJ + \alpha_q H + \lambda I)\,\Delta p = J^T r - \alpha_q g`$, leaving every direction contested and weighted by how well each source knows it. `quantum_prior_sigma_ang` is the displacement over which the quantum surface is trusted, roughly the geometry error of the method, which is what makes $\alpha_q$ interpretable rather than an arbitrary knob. |
 | `optimizer.objective_mode: split` with `optimizer.sv_min_abs` | The SVD partition. `sv_min_abs` is an absolute floor on the singular value. The Jacobian is σ-weighted, so $1/s$ is the parameter uncertainty along a direction — the floor means "only trust what the data resolves this well". All-or-nothing per direction. |
 
 > **Note.** The config-driven runner (`python -m cli run`) still passes
@@ -381,10 +381,10 @@ On Windows, you can instead set `orca_exe` in `BASE_SETTINGS` to your `orca.exe`
 
 - **Rank** — number of directions retained above the relative singular-value cutoff in the stacked Jacobian SVD (a diagnostic under `joint`; under `split` it also decides which directions the data own).
 - **RMS MHz** — root-mean-square residual of rotational constants in MHz (unweighted block).
-- **$\|\Delta x_r\|$** — norm of the step projected onto the spectral range space.
-- **$\|\Delta x_n\|$** — norm of the step projected onto the null space.
-- **$\|g_n\|$** — norm of the gradient projected onto the null space (hybrid mode).
-- **$\|\Delta E\|$** — magnitude of energy change between iterations (Hartree).
+- **$`\|\Delta x_r\|`$** — norm of the step projected onto the spectral range space.
+- **$`\|\Delta x_n\|`$** — norm of the step projected onto the null space.
+- **$`\|g_n\|`$** — norm of the gradient projected onto the null space (hybrid mode).
+- **$`\|\Delta E\|`$** — magnitude of energy change between iterations (Hartree).
 
 If rank stays low and residuals plateau, add more informative isotopologues and/or check consistency of $B_0$, $\alpha$, and uncertainties $\sigma$.
 
