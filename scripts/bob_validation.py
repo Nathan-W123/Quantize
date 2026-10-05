@@ -28,6 +28,40 @@ Two things are reported, and they answer different questions:
               answer is absorbing something that is not BOB.
 
 Run:  python scripts/bob_validation.py [method=hf] [basis=6-31g]
+
+RESULT at HF/6-31G, scanning u_H over -0.015 to +0.045 -- a range spanning
+zero and three times the built-in value:
+
+  molecule           best chi2 u_H   chi2 spread   bond spread   best bond u_H
+  acetyl fluoride         +0.0150        19.4%         0.00%        +0.0075
+  vinyl fluoride          +0.0150         0.03%        0.00%        +0.0300
+  fluoroethane            -0.0150        13.1%         0.00%        +0.0150
+  fluoroacetylene         +0.0450         6.2%         0.00%        -0.0150
+
+THE STRUCTURE DOES NOT MOVE. Not "moves a little": the bond error is identical
+to three decimals at every u_H on every molecule, a 0.00% spread over a
+fourfold change in the parameter. Whatever the right u_H is, it does not reach
+the thing this engine exists to produce. That is consistent with the earlier
+leave-one-out measurement, where switching BOB on moved all nine reference
+molecules by 0.000 mA, and it is the headline: BOB is below the structural
+noise floor, full stop.
+
+THE DATA DOES NOT DETERMINE u_H EITHER. Only acetyl fluoride has a real
+interior minimum, and it falls exactly on the built-in 0.015 -- encouraging,
+and one molecule. Vinyl fluoride's chi2 varies by 0.03% across the whole scan,
+so its "minimum" is numerical noise. Fluoroethane and fluoroacetylene are
+monotonic across the range and run to opposite boundaries, which means the fit
+is not finding a value, it is being pushed to wherever the scan stops.
+
+So the built-in u-parameters are not refuted and not confirmed. Their 100%
+sigma_u is the honest description of what is known about them, and a run is
+entitled to ignore them.
+
+A corollary worth recording, because it closes a task rather than opening one:
+adding BOB A-axis parameters for heavy atoms is not worth doing. The
+correction scales as m_e/M_a, so hydrogen contributes twelve times what carbon
+does and sixteen times what oxygen does. Hydrogen's contribution is measured
+here to be structurally undetectable; the heavy atoms' cannot be larger.
 """
 
 from __future__ import annotations
