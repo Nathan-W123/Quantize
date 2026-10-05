@@ -526,6 +526,32 @@ class MolecularOptimizer:
                   f"{', '.join(_filled[:3])}{' ...' if len(_filled) > 3 else ''}")
 
         self._raw_isotopologues = list(isotopologues)   # preserved for harmonic updates
+        # Fitting distortion constants needs OBSERVED ones to fit against, and
+        # nothing anywhere supplies them by default. cd_residuals_mhz skips any
+        # isotopologue without a cd_observed block, so with none present the
+        # whole switch is a bit-exact no-op -- measured across all nine
+        # benchmark molecules in both prior configurations, the fitted geometry
+        # moved by at most 8e-9 mA, which is solver noise.
+        #
+        # That is a silence worth breaking. An hour of compute went into
+        # measuring a feature that was switched on, reported no error, and did
+        # nothing, and the next person to try would spend the same hour.
+        if self._fit_cd_constants and self._cd_weight > 0.0:
+            _n_cd = sum(
+                1 for _iso in self._raw_isotopologues
+                if (_iso.get("cd_observed") or _iso.get("centrifugal_distortion"))
+            )
+            if _n_cd == 0:
+                print(
+                    "[cd-warning] fit_cd_constants=True but no isotopologue "
+                    "carries a cd_observed\n"
+                    "             block, so there are no distortion rows to "
+                    "fit and the switch\n"
+                    "             will have NO effect. Add observed DJ/DJK/DK "
+                    "(with the reduction\n"
+                    "             they were fitted in) to the isotopologues "
+                    "that have them."
+                )
         self._corrected_targets = None
         _ctbl = parse_correction_table(correction_table)
         _apply_corrections = bool(_ctbl) or correction_mode != "hybrid_auto"
@@ -1301,17 +1327,25 @@ class MolecularOptimizer:
         print("\n  [harmonic-cd] Computing harmonic CD constants from Hessian...")
         if not self._warned_cd_unvalidated:
             self._warned_cd_unvalidated = True
+            # This used to warn that the mapping produced DJ and DK with the
+            # wrong sign (-66.9 against +37.6, -7.0 against +973.3) and DJK
+            # nine times too small. That described the old closed-form
+            # coefficient table, which cd_reduction replaced with a linear
+            # solve against the levels tau itself generates. The signs are now
+            # right on all five constants and the magnitudes are measured, so
+            # the warning says what is actually known.
             print(
-                "  [harmonic-cd] WARNING: the tau' -> Watson A-reduction mapping "
-                "is not validated.\n"
-                "                Measured against water's experimental constants it "
-                "gets DJ and DK\n"
-                "                with the WRONG SIGN (-66.9 vs +37.6, -7.0 vs +973.3) "
-                "and DJK nine\n"
-                "                times too small. These are not order-of-magnitude "
-                "estimates; treat\n"
-                "                them as diagnostics only. See "
-                "dev/tests/test_cd_mapping_validation.py."
+                "  [harmonic-cd] NOTE: validated on water only, where the "
+                "A-reduced constants\n"
+                "                come out DJ +38.2 against +37.59 (1.6% high), "
+                "DK +899 against\n"
+                "                +973.3 (7.6% low) and DJK -235 against -172.9 "
+                "(36% low) --\n"
+                "                force-field error, not mapping error, and DJK "
+                "is the most\n"
+                "                bend-sensitive of the three. One molecule is "
+                "not a validation\n"
+                "                set; see dev/tests/test_cd_mapping_validation.py."
             )
         cd_table = build_cd_table_from_hessian(
             hess_bohr,

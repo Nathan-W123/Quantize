@@ -89,6 +89,47 @@ floor of 4.1 mA, so that figure is at the resolution of the yardstick rather
 than of the engine. Sub-mA cannot be demonstrated against r_s references at
 all; that needs r_e or r_e^SE structures, and it is the binding constraint
 here rather than compute.
+
+Centrifugal distortion as fit data: a bit-exact no-op, for want of data
+-----------------------------------------------------------------------
+The ``cd`` and ``offsets+cd`` configurations switch distortion constants on as
+fit rows. Measured against ``base`` and ``offsets`` at RHF/6-31G, all nine
+molecules, at one code vintage so the comparison is clean:
+
+                         base     cd        offsets  offsets+cd
+  vinyl fluoride        18.33  18.33           6.73        6.73
+  acetyl fluoride       14.11  14.11           7.46        7.46
+  fluoroethane          10.11  10.11           7.22        7.22
+  formyl fluoride        7.16   7.16           7.33        7.33
+  fluoroacetylene       13.59  13.59           4.42        4.42
+  chlorofluoromethane   13.39  13.39          20.15       20.15
+  water                  0.56   0.56           0.65        0.65
+  ozone                  1.70   1.70           1.71        1.71
+  isocyanic acid        23.98  23.98          21.62       21.62
+  MEAN                  11.44  11.44           8.59        8.59
+
+Largest difference anywhere: 8e-9 mA. That is solver noise, not a small
+effect. The reason is that ``cd_residuals_mhz`` skips any isotopologue without
+a ``cd_observed`` block, and no reference molecule in this repository carries
+observed distortion constants -- so there are zero CD rows and the switch
+cannot do anything. It is correctly built and correctly inert.
+
+An earlier reading of this said CD *helped*, mean 12.75 -> 11.44. That was
+entirely a code-vintage artefact: the cached ``base`` rows predated the
+harmonic-term correction, and their mixed-estimation column -- which cannot
+depend on ``fit_cd`` at all -- disagreed with the same-vintage rows by up to
+3.4 mA. ME agreeing exactly between ``base`` and ``cd`` is the check that says
+the comparison above is at one vintage; it is worth re-running whenever a
+cached row is compared against a fresh one.
+
+So the gate on this feature is data, not code: published DJ/DJK/DK for the
+reference molecules, with the reduction and representation they were fitted
+in. Until then ``fit_cd_constants=True`` prints a warning saying it will do
+nothing (see MolecularOptimizer and
+dev/tests/test_centrifugal_distortion.py). Expect a small gain when the data
+arrives, in any case: distortion constants are determined mostly by the force
+field at the geometry rather than by the geometry, which is why they are
+normally used to validate a force field rather than to locate atoms.
 """
 
 from __future__ import annotations
