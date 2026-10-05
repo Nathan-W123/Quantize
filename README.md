@@ -2,16 +2,42 @@
 
 Hybrid molecular geometry inversion from rotational spectroscopy and quantum chemistry.
 
-This project estimates molecular structure (bond lengths and angles) from isotopologue rotational constants, including undersaturated cases where spectroscopy alone does not fully constrain the geometry.
+Quantize optimizes molecular structures (bond lengths and angles) for spectroscopically underdetermined systems, where the isotopologue rotational constants alone do not fix the geometry. It combines the spectroscopic data with quantum mechanics by minimizing a single joint objective function.
 
 ## Core idea
 
 - Use observed rotational constants (`A`, `B`, `C`) from one or more isotopologues.
 - Map ground-state constants onto equilibrium targets via \(B_e = B_0 + \Delta_\mathrm{vib} + \Delta_\mathrm{elec} + \Delta_\mathrm{BOB}\) (see [Ground state to equilibrium](#ground-state-to-equilibrium-b_0--b_e)).
-- Stack spectral Jacobians across isotopologues, apply **SVD** to split **range space** (spectroscopy-sensitive directions) from **null space** (directions invisible to the stacked Jacobian).
-- Use electronic-energy **gradient and Hessian** (Psi4 or ORCA) for a damped-Newton step in the null space so the structure is stabilized where data are silent.
+- Stack the σ-weighted spectral Jacobian \(J\) and residuals \(r\) across all isotopologues, and take the electronic-energy **gradient** \(g\) and **Hessian** \(H\) from Psi4 or ORCA.
+- Minimize one **joint objective**, the spectral \(\tfrac12\chi^2\) plus \(\alpha_q\) times the electronic energy, with damped Newton steps \((J^TJ + \alpha_q H + \lambda I)\,\Delta p = J^T r - \alpha_q g\). No direction is handed wholesale to either source: each carries weight in proportion to how well it determines that direction, so theory holds the structure where the data are silent and yields where they are informative.
+- Set \(\alpha_q\) through `quantum_prior_sigma_ang`, the displacement over which the quantum surface is trusted (roughly the method's geometry error; `MolecularOptimizer` defaults to 0.020 Å).
+
+An SVD-based `split` objective is also available; see [How data and theory share authority](#how-data-and-theory-share-authority).
 
 Key formulas are documented in module docstrings (see `.github/backend/spectral/`, `.github/backend/kraitchman.py`, and `.github/backend/torsion/`); primary literature references are cited inline (Gordy & Cook 1984 for spectroscopic relations).
+
+## Results
+
+Against published structures for nine molecules, with each method at its own
+best configuration ([`scripts/accuracy_upgrades_benchmark.py`](scripts/accuracy_upgrades_benchmark.py)),
+mean all-bond RMS error in mÅ:
+
+| Level of theory | Theory alone | Mixed estimation | Quantize hybrid |
+|-----------------|-------------:|-----------------:|----------------:|
+| RHF/6-31G       | 15.29 | 12.34 | **7.59** |
+| B3LYP/6-31G(d)  | 8.11  | 6.50  | **5.48** |
+
+The hybrid is best of the three on 6 of 9 molecules at RHF and 5 of 9 at B3LYP.
+Theory alone still beats it on vinyl and acetyl fluoride at both levels and on
+fluoroethane at B3LYP, and those are the molecules whose published references
+are r_s substitution structures rather than r_e. On water, the one molecule with
+a genuine r_e reference, the hybrid scores 1.36 and 4.13 mÅ against theory's
+8.14 and 10.89.
+
+Held-out prediction needs no reference structure at all. Fitted to every
+isotopologue but one, the hybrid predicts the withheld species' rotational
+constants better than theory alone on 5 of 5 molecules at B3LYP/6-31G(d), by a
+median factor of 17 ([`scripts/holdout_validation.py`](scripts/holdout_validation.py)).
 
 ## Main modules (`.github/backend/`)
 
@@ -20,9 +46,9 @@ The library lives under `.github/backend/`; `paths.ensure_repo_paths` puts
 
 | Module | Role |
 |--------|------|
-| [`backend/quantize.py`](.github/backend/quantize.py) | `MolecularOptimizer`: spectral + quantum hybrid loop |
+| [`backend/quantize.py`](.github/backend/quantize.py) | `MolecularOptimizer`: spectral + quantum hybrid loop (joint objective by default) |
 | [`backend/spectral/spectral.py`](.github/backend/spectral/spectral.py) | Inertia tensor, \(A,B,C\), Jacobians, residuals, weighting, optional conformer mixtures |
-| [`backend/spectral/SVD.py`](.github/backend/spectral/SVD.py) | `SubspaceOptimizer`: SVD split, range/null steps, joint objective option |
+| [`backend/spectral/SVD.py`](.github/backend/spectral/SVD.py) | `SubspaceOptimizer`: joint-objective step, plus the optional SVD range/null split |
 | [`backend/spectral/harmonic_alpha.py`](.github/backend/spectral/harmonic_alpha.py) | Vibration-rotation \(\alpha_r\): harmonic, Coriolis, and cubic anharmonic terms |
 | [`backend/spectral/centrifugal_distortion.py`](.github/backend/spectral/centrifugal_distortion.py) | Normal modes, \(\partial B/\partial Q\), \(\tau'\), Watson CD constants |
 | [`backend/spectral/correction_models.py`](.github/backend/spectral/correction_models.py) | Vibrational, electronic (g-tensor), and BOB corrections |
@@ -81,21 +107,28 @@ constraints, and published CO/H₂O constants — no Psi4 or ORCA needed).
 
 ## How data and theory share authority
 
-The default `split` objective partitions the parameter space hard: whatever
+`MolecularOptimizer` uses the **joint** objective by default
+(`objective_mode="joint"`, `quantum_prior_sigma_ang=0.020`): every direction
+stays contested, weighted by how well the data and the quantum surface each
+determine it.
+
+The alternative `split` objective partitions the parameter space hard: whatever
 survives the SVD rank cutoff is handed **entirely** to the spectral data, and the
 quantum surface governs only the null space. That works when the retained
 directions are well determined — but the cutoff is *relative*
 (`sv_threshold × s_max`, with `sv_min_abs` defaulting to 0), so a direction the
 data resolves only loosely is still treated as fully constrained and theory gets
-no vote in it. Water's bond angle is such a direction, and it comes out worse
-than either theory or experiment alone would give.
-
-Two ways to hand authority back:
+no vote in it. Water's bond angle is such a direction, and under `split` it comes
+out worse than either theory or experiment alone would give.
 
 | Control | Effect |
 |---------|--------|
-| `optimizer.sv_min_abs` | Absolute floor on the singular value. The Jacobian is σ-weighted, so \(1/s\) is the parameter uncertainty along a direction — the floor means "only trust what the data resolves this well". All-or-nothing per direction. |
-| `optimizer.objective_mode: joint` with `optimizer.quantum_prior_sigma_ang` | Solves \((J^TJ + \alpha_q H + \lambda I)\,\Delta p = J^T r - \alpha_q g\), leaving every direction contested and weighted by how well each source knows it. `quantum_prior_sigma_ang` is the displacement over which the quantum surface is trusted, roughly the geometry error of the method, which is what makes \(\alpha_q\) interpretable rather than an arbitrary knob. |
+| `optimizer.objective_mode: joint` with `optimizer.quantum_prior_sigma_ang` | The default. Solves \((J^TJ + \alpha_q H + \lambda I)\,\Delta p = J^T r - \alpha_q g\), leaving every direction contested and weighted by how well each source knows it. `quantum_prior_sigma_ang` is the displacement over which the quantum surface is trusted, roughly the geometry error of the method, which is what makes \(\alpha_q\) interpretable rather than an arbitrary knob. |
+| `optimizer.objective_mode: split` with `optimizer.sv_min_abs` | The SVD partition. `sv_min_abs` is an absolute floor on the singular value. The Jacobian is σ-weighted, so \(1/s\) is the parameter uncertainty along a direction — the floor means "only trust what the data resolves this well". All-or-nothing per direction. |
+
+> **Note.** The config-driven runner (`python -m cli run`) still passes
+> `objective_mode="split"` unless the config sets `optimizer.objective_mode: joint`,
+> as [`configs/example_water_semi_experimental.yaml`](configs/example_water_semi_experimental.yaml) does.
 
 ### Which objective to use depends on how much data you have
 
@@ -106,9 +139,9 @@ dataset. Two measured cases:
 |------|-------------|--------------|----------------|
 | Water, one isotopologue (`scripts/theory_vs_experiment_vs_hybrid.py`) | 3 | 3 | `joint`, `quantum_prior_sigma_ang: 0.005` |
 | Fluorobenzene, one isotopologue (`scripts/fluorobenzene_vs_published.py`) | 3 | 30 | `joint`, `quantum_prior_sigma_ang: 0.005` |
-| Fluorobenzene, eight isotopologues (`scripts/fluorobenzene_full_data.py`) | 24 | 30 | `split` (the default) |
+| Fluorobenzene, eight isotopologues (`scripts/fluorobenzene_full_data.py`) | 24 | 30 | `split` |
 | Vinyl / acetyl fluoride, fluoroethane — parent only (`scripts/monofluoro_benchmark.py`) | 3 | 12–18 | `joint`, `quantum_prior_sigma_ang: 0.005` |
-| Vinyl / acetyl fluoride, fluoroethane — all species (same script) | 18 | 12–18 | `split` (the default) |
+| Vinyl / acetyl fluoride, fluoroethane — all species (same script) | 18 | 12–18 | `split` |
 
 With few observables the split partition hands whole directions to data that
 barely resolves them, drives the residual below what the physics justifies, and
@@ -124,8 +157,8 @@ at once. Forcing `quantum_prior_sigma_ang: 0.005` there costs more than half the
 gain (8.9 mÅ), because the prior now over-constrains directions the data
 determines perfectly well.
 
-Rule of thumb: reach for the calibrated prior when the fit is undersaturated,
-and leave the default alone when it is not. `python scripts/tune_quantum_prior.py`
+Rule of thumb: keep the joint objective's calibrated prior when the fit is
+undersaturated, and try `split` when it is not. `python scripts/tune_quantum_prior.py`
 scans the value; 0.005 Å is a sparse-data result, not a validated default.
 
 ### Monofluorinated benchmark — and a caveat on the two rows above
@@ -138,6 +171,8 @@ Microwave Spectral Tables* — nothing is back-calculated from a geometry.
 `scripts/check_monofluoro_references.py` validates each species before use, and
 `scripts/build_monofluoro_report.py` turns the run's JSON into
 [`reports/monofluoro_benchmark_report.pdf`](reports/monofluoro_benchmark_report.pdf).
+This benchmark predates the vibration–rotation corrections it calls for below;
+the [Results](#results) table reflects the current engine.
 
 **The objective-choice rule above does not survive measured data.** The water
 and fluorobenzene rows use isotopologue constants *derived* from their reference
@@ -344,7 +379,7 @@ On Windows, you can instead set `orca_exe` in `BASE_SETTINGS` to your `orca.exe`
 
 ## Interpreting output
 
-- **Rank** — number of directions retained above the relative singular-value cutoff in the stacked Jacobian SVD.
+- **Rank** — number of directions retained above the relative singular-value cutoff in the stacked Jacobian SVD (a diagnostic under `joint`; under `split` it also decides which directions the data own).
 - **RMS MHz** — root-mean-square residual of rotational constants in MHz (unweighted block).
 - **\(\|\Delta x_r\|\)** — norm of the step projected onto the spectral range space.
 - **\(\|\Delta x_n\|\)** — norm of the step projected onto the null space.
