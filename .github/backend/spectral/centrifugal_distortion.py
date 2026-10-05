@@ -434,17 +434,32 @@ def compute_cd_constants(
 
     ``reduction`` is "A", "S" or "auto". Which one suits a molecule is a
     property of the molecule and not a house style: A is ill-conditioned for a
-    near-symmetric top, which is the whole reason S exists. "auto" picks
-    whichever represents the tau Hamiltonian's levels more faithfully. This
-    function was hardcoded to A until now, so every near-symmetric top got the
-    wrong one.
+    near-symmetric top, which is the whole reason S exists. "auto" chooses by
+    Ray's asymmetry parameter -- see :func:`reduction_for_asymmetry`, whose
+    docstring records why choosing by level-fit residual instead is measurably
+    wrong. This function was hardcoded to A until now, so every
+    near-symmetric top got the wrong one.
 
-    ``reduction_order`` is 4 or 6. The reduced form is fitted to the levels of
-    the tau Hamiltonian, and at order 4 it cannot represent them exactly: on
-    water's real tau the misfit is 140 MHz in A and 147 in S. Adding the
-    sextic-shaped terms takes those to 94 and 64 -- a third and a half -- and
-    the quartic constants improve with them, because those terms stop being
-    absorbed into DJ, DJK and DK.
+    ``reduction_order`` is 4 or 6, and DEFAULTS TO 4 on evidence. The reduced
+    form is fitted to the levels of the tau Hamiltonian, and at order 4 it
+    cannot represent them exactly: on water's real tau the misfit is 140 MHz
+    in A and 147 in S. Adding the sextic-shaped terms takes those to 94 and
+    64 -- a third and a half.
+
+    That improvement does not reach the constants. Against water's
+    experimental DJ/DJK/DK the mean absolute error is the same to 0.1% at
+    either order (15.1% in A, 18.2% in S), and the individual constants move
+    by at most 0.7 percentage points, two of them better and one worse:
+
+        A-reduction      DJ      DJK      DK     mean|err|
+          order 4      +1.6%   -36.1%   -7.6%      15.1%
+          order 6      +1.0%   -36.8%   -7.3%      15.1%
+
+    So the residual is not the bottleneck; tau itself is, and DJK's 36% is
+    force-field error in the most bend-sensitive of the three. This is the
+    same trap as choosing the reduction by residual, measured in the other
+    direction: a better level fit is not a better constant. Order 6 stays
+    available as a diagnostic on how much of the misfit is reduction-shaped.
 
     What order 6 is NOT: physical sextic distortion constants. Those come from
     the cubic force field, and the Hamiltonian being reduced here is purely
