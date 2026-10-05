@@ -313,3 +313,92 @@ def test_unknown_order_is_rejected(order):
     assert len(reduction_params("A", order)) in (8, 15)
     with pytest.raises(ValueError, match="order"):
         reduction_params("A", 8)
+
+
+# ── which reduction, and at what order ───────────────────────────────────────
+
+def test_reduction_is_chosen_by_asymmetry_not_by_fit_residual():
+    """The obvious criterion is the wrong one, and measurably so.
+
+    Picking whichever reduction reproduces the tau Hamiltonian's levels best
+    looks right and is not: on water the S reduction fits those levels far
+    better (64 MHz residual against A's 140) while its constants agree with
+    experiment WORSE (18.2% mean error against 15.1%). An ill-conditioned
+    reduction can fit levels well with badly determined parameters -- that is
+    what ill-conditioning is -- so the residual says nothing about whether the
+    constants mean anything. Ray's asymmetry parameter is the textbook rule and
+    it gets water right.
+    """
+    from backend.spectral.centrifugal_distortion import reduction_for_asymmetry
+
+    # kappa = -0.44, a genuinely asymmetric top
+    assert reduction_for_asymmetry([835840.29, 435351.72, 278138.70]) == "A"
+    # kappa = -0.97, near-prolate: A is ill-conditioned here
+    assert reduction_for_asymmetry([106536.1, 13349.12, 11834.45]) == "S"
+    # kappa = -0.95
+    assert reduction_for_asymmetry([64034.0, 10636.0, 9118.0]) == "S"
+
+
+def test_a_symmetric_top_never_gets_the_a_reduction():
+    """The degenerate case the rule exists for."""
+    from backend.spectral.centrifugal_distortion import reduction_for_asymmetry
+
+    assert reduction_for_asymmetry([5000.0, 5000.0, 3000.0]) == "S"   # oblate
+    assert reduction_for_asymmetry([9000.0, 3000.0, 3000.0]) == "S"   # prolate
+    assert reduction_for_asymmetry([1000.0, 1000.0, 1000.0]) == "S"   # spherical
+
+
+def test_compute_cd_constants_reports_which_reduction_it_used():
+    """It was hardcoded to A and said so in a docstring; now it is a field."""
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from backend.spectral.centrifugal_distortion import compute_cd_constants
+    from reference_molecules import H2O_MASSES, h2o_coords, h2o_hessian
+
+    coords = h2o_coords()
+    cd = compute_cd_constants(h2o_hessian(coords), coords, H2O_MASSES)
+    assert cd.reduction == "A"           # water is asymmetric
+    assert cd.reduction_order == 4
+    assert cd.reduction_residual_mhz > 0
+    assert cd.sextic == {}               # order 4 produces none
+
+
+def test_order_six_adds_sextic_shaped_terms_and_lowers_the_residual():
+    """They describe the REDUCTION, not the molecule.
+
+    Physical sextic constants come from the cubic force field; the Hamiltonian
+    being reduced here is purely quartic, so these absorb the quartic form's
+    higher-J behaviour. They do lower the misfit substantially -- 140 MHz to
+    94 on water -- which is why the option exists, but they are not sextic
+    distortion constants and must never be reported as such.
+    """
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from backend.spectral.centrifugal_distortion import compute_cd_constants
+    from reference_molecules import H2O_MASSES, h2o_coords, h2o_hessian
+
+    coords = h2o_coords()
+    hess = h2o_hessian(coords)
+    four = compute_cd_constants(hess, coords, H2O_MASSES, reduction_order=4)
+    six = compute_cd_constants(hess, coords, H2O_MASSES, reduction_order=6)
+    assert six.reduction_residual_mhz < four.reduction_residual_mhz
+    assert len(six.sextic) == 7
+    # and the quartic constants stay sane rather than being swallowed
+    assert abs(six.DJ - four.DJ) / abs(four.DJ) < 0.1
+
+
+def test_order_six_is_not_the_default():
+    """It halves the representation residual and changed agreement with
+    experiment by nothing (15.1% -> 15.1% mean error on water's DJ/DJK/DK), so
+    it has not earned a default that adds seven parameters."""
+    import inspect
+
+    from backend.spectral.centrifugal_distortion import compute_cd_constants
+
+    sig = inspect.signature(compute_cd_constants).parameters
+    assert sig["reduction_order"].default == 4
+    assert sig["reduction"].default == "auto"
