@@ -1,5 +1,5 @@
 ﻿"""
-Generic molecule runner â€” consumes a fully-specified YAML input file.
+Generic molecule runner — consumes a fully-specified YAML input file.
 
 Called by runner/run_from_config.py when the YAML contains an `elements` key.
 Can also be run directly:
@@ -213,7 +213,7 @@ def _build_geometry(cfg: dict) -> tuple[np.ndarray, list[str], list[tuple[int, i
     smiles = str(geo.get("smiles", "")).strip()
 
     if smiles:
-        # SMILES encodes bond order â†’ PubChem returns MMFF94-quality 3D geometry.
+        # SMILES encodes bond order → PubChem returns MMFF94-quality 3D geometry.
         # Reorder atoms to match the user's elements list so masses stay consistent.
         coords_pub, elems_pub = guess_geometry_molecular_input(
             identifier=smiles, pubchem_prefer="smiles"
@@ -255,7 +255,7 @@ def _build_geometry(cfg: dict) -> tuple[np.ndarray, list[str], list[tuple[int, i
         if coords.ndim != 2 or coords.shape != (len(elems), 3):
             raise ValueError(
                 f"coords_angstrom shape {coords.shape} does not match "
-                f"{len(elems)} atoms Ã— 3 columns."
+                f"{len(elems)} atoms × 3 columns."
             )
         from backend.quantum import _detect_bonds
         bonds = _detect_bonds(coords, elems)
@@ -360,7 +360,7 @@ def _compute_metrics(
     bonds: list[tuple[int, int]],
     elems: list[str],
 ) -> dict[str, float]:
-    """Bond distances (Ã…) and valence angles (deg) from the bond graph."""
+    """Bond distances (Å) and valence angles (deg) from the bond graph."""
     metrics: dict[str, float] = {}
 
     for i, j in bonds:
@@ -474,7 +474,7 @@ def _print_internal_uncertainty_summary(best: dict, cfg: dict, elems: list[str])
             f"  {r['name']:<30}  {float(r['value']):>12.6f}  {se:>12.6f}  {var:>12.6f}  {r['value_unit']:>6}  {combo}"
         )
 
-    # â”€â”€ Covariance matrix export â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Covariance matrix export ──────────────────────────────────────────────
     from backend.uncertainty.core import compute_uncertainty
     _cov, _, _, _ = compute_uncertainty(
         Jq,
@@ -486,7 +486,7 @@ def _print_internal_uncertainty_summary(best: dict, cfg: dict, elems: list[str])
     _cov_path = str(Path(_workdir) / "uncertainty_covariance.npy")
     try:
         np.save(_cov_path, _cov)
-        print(f"\n  [Uncertainty] Covariance matrix ({_cov.shape[0]}Ã—{_cov.shape[1]}) â†’ {_cov_path}")
+        print(f"\n  [Uncertainty] Covariance matrix ({_cov.shape[0]}×{_cov.shape[1]}) → {_cov_path}")
     except OSError as _exc:
         print(f"\n  [Uncertainty] Could not write covariance matrix: {_exc}")
         _cov_path = None
@@ -501,7 +501,7 @@ def _fit_scan_potential(
     Fit a Fourier potential from scan grid_point energies if fit_potential is enabled.
 
     Returns (fitted_potential_dict | None, fit_diagnostics, warnings).
-    fitted_potential_dict has keys 'v0', 'vcos', 'vsin' â€” compatible with
+    fitted_potential_dict has keys 'v0', 'vcos', 'vsin' — compatible with
     the torsion_hamiltonian.potential block format so it can be merged into tcfg.
     """
     from backend.torsion.scan_fit import (
@@ -716,7 +716,7 @@ def _run_torsion_phase2_exports(
 
     spec, symmetry_mode, label_levels = _build_torsion_spec_from_config(tcfg, abc_cm1)
 
-    # RAM-lite reliability assessment â€” runs immediately after spec construction
+    # RAM-lite reliability assessment — runs immediately after spec construction
     try:
         from backend.torsion.torsion_reliability import assess_ram_lite_reliability
         _reliability = assess_ram_lite_reliability(spec)
@@ -1443,7 +1443,7 @@ def _collect_level_rows(
 
     if _use_full_hamiltonian(spec):
         # Full coupled solver: one call per J, all K blocks simultaneously.
-        # K_values is ignored â€” the full Hamiltonian spans K = -J..+J.
+        # K_values is ignored — the full Hamiltonian spans K = -J..+J.
         # C3 symmetry labeling and block export are not available on this path.
         if symmetry_mode is not None:
             all_warnings.append(
@@ -1868,17 +1868,17 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
     run_dir = Path(str(cfg.get("_run_dir") or ".")).resolve()
     base_workdir = str(run_dir) if managed_run else str(OUTPUT_TRIALS_DIR)
 
-    # â”€â”€ Geometry â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Geometry ──────────────────────────────────────────────────────────────
     coords, elems, bonds = _build_geometry(cfg)
 
-    # â”€â”€ Isotopologues â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Isotopologues ─────────────────────────────────────────────────────────
     raw_isos = cfg.get("isotopologues")
     if not raw_isos:
         raise ValueError("At least one isotopologue is required under 'isotopologues:'.")
     spectral_model = normalize_spectral_model(str(cfg.get("spectral_model", "rigid")))
     isotopologues = [_build_isotopologue(iso, spectral_model=spectral_model) for iso in raw_isos]
 
-    # â”€â”€ Quantum chemistry â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Quantum chemistry ─────────────────────────────────────────────────────
     qsec = cfg.get("quantum", {})
     backend = str(qsec.get("backend", "orca")).strip().lower()
     spectral_only = backend == "none"
@@ -1890,7 +1890,7 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
     # fall back to the preset when the config did not name a method.
     method_preset = None if str(qsec.get("method", "")).strip() else "fast"
 
-    # â”€â”€ Rovibrational corrections (optional) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Rovibrational corrections (optional) ──────────────────────────────────
     # Canonical key: rovibrational_corrections: {mode, correction_table, ...}
     # Flat legacy keys (corrections, correction_mode, ...) are accepted as fallback.
     _rc_block = cfg.get("rovibrational_corrections") or {}
@@ -1951,12 +1951,20 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
     anharmonic_from_hessian = bool(_rc_block.get("anharmonic_from_hessian", False))
     anharmonic_fd_delta_ang = float(_rc_block.get("anharmonic_fd_delta_ang", 0.01))
     nonconvergent_policy = str(_rc_block.get("nonconvergent_policy", "warn")).strip().lower()
+    # Scheme choices that previously existed only as arguments to
+    # build_correction_table_from_hessian, so a benchmark script could pick
+    # them and a config file could not. Defaults match that function's, so
+    # reading them here changes nothing for a config that omits them.
+    harmonic_scheme = str(_rc_block.get("harmonic_scheme", "watson")).strip().lower()
+    cubic_scheme = str(_rc_block.get("cubic_scheme", "cartesian")).strip().lower()
+    freq_scale = _rc_block.get("freq_scale", 1.0)
+    lam_freq_cm = float(_rc_block.get("lam_freq_cm", 0.0))
     harmonic_cd_from_hessian = bool(_rc_block.get("harmonic_cd_from_hessian", False))
     cd_sigma_fraction = float(_rc_block.get("cd_sigma_fraction", 0.05))
     fit_cd_constants = bool(_rc_block.get("fit_cd_constants", False))
     cd_weight = float(_rc_block.get("cd_weight", 0.0))
 
-    # â”€â”€ Preset and run control â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Preset and run control ────────────────────────────────────────────────
     preset_name, preset = _resolve_preset(cfg.get("preset"))
     rng_seed = int(cfg.get("rng_seed", 42))
     write_xyz = bool(cfg.get("write_xyz", False))
@@ -1976,7 +1984,7 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
     ic_freeze_sigma_floor = float(ip_cfg.get("freeze_sigma_floor", 1e-6))
     ic_prior_adaptive = dict(ip_cfg.get("adaptive", {}) or {})
 
-    # â”€â”€ Multi-start seed geometries â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Multi-start seed geometries ───────────────────────────────────────────
     rng = np.random.default_rng(rng_seed)
     starts = [coords.copy()]
     n_atoms = len(elems)
@@ -1995,7 +2003,7 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
     ac_cfg = cfg.get("autoconfig") if isinstance(cfg.get("autoconfig"), dict) else {}
     opt_cfg = cfg.get("optimizer") if isinstance(cfg.get("optimizer"), dict) else {}
 
-    # â”€â”€ Optimizer kwargs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Optimizer kwargs ──────────────────────────────────────────────────────
     optimizer_kwargs = dict(
         quantum_backend=backend if not spectral_only else "orca",
         orca_executable=orca_exe,
@@ -2068,6 +2076,10 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
         anharmonic_from_hessian=anharmonic_from_hessian,
         anharmonic_fd_delta_ang=anharmonic_fd_delta_ang,
         nonconvergent_policy=nonconvergent_policy,
+        harmonic_scheme=harmonic_scheme,
+        cubic_scheme=cubic_scheme,
+        freq_scale=freq_scale,
+        lam_freq_cm=lam_freq_cm,
         harmonic_cd_from_hessian=harmonic_cd_from_hessian,
         cd_sigma_fraction=cd_sigma_fraction,
         fit_cd_constants=fit_cd_constants,
@@ -2149,7 +2161,7 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
     if symmetry_spec:
         print(f"[{name}] symmetry     : {symmetry_spec}")
 
-    # â”€â”€ Run â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Run ───────────────────────────────────────────────────────────────────
     results = run_multistart(
         starts=starts,
         elems=elems,
@@ -2205,7 +2217,7 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
         best_conformer_summary["conformers"] = conf_rows
     best["conformer_summary"] = best_conformer_summary
 
-    # â”€â”€ Optional XYZ output â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Optional XYZ output ───────────────────────────────────────────────────
     if write_xyz:
         xyz_path = run_dir / f"{name}_optimized.xyz"
         with open(xyz_path, "w", encoding="utf-8") as fh:
@@ -2215,13 +2227,13 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
                 fh.write(f"{e:2s}  {x:16.10f}  {y:16.10f}  {z:16.10f}\n")
         print(f"[{name}] wrote {xyz_path}")
 
-    # â”€â”€ Collect per-metric multi-start statistics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Collect per-metric multi-start statistics ─────────────────────────────
     all_metric_arrays: dict[str, list[float]] = defaultdict(list)
     for r in results:
         for k, v in r["metrics_labeled"].items():
             all_metric_arrays[k].append(v)
 
-    # â”€â”€ Results summary â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Results summary ───────────────────────────────────────────────────────
     w = 64
     print("\n" + "=" * w)
     print(f"  Inferred geometry: {name}")
@@ -2240,7 +2252,7 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
     ang_items  = [(k, v) for k, v in best_metrics.items() if k.startswith("ang(")]
 
     if dist_items:
-        print(f"  {'Bond':<26}  {'Best [Ã…]':>10}  {'Â± std':>10}")
+        print(f"  {'Bond':<26}  {'Best [Å]':>10}  {'± std':>10}")
         print("  " + "-" * 50)
         for k, v in dist_items:
             vals = all_metric_arrays.get(k, [v])
@@ -2249,7 +2261,7 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
             print(f"  {k:<26}  {v:>10.6f}  {std_str:>10}")
 
     if ang_items:
-        print(f"\n  {'Angle':<30}  {'Best [Â°]':>8}  {'Â± std':>8}")
+        print(f"\n  {'Angle':<30}  {'Best [°]':>8}  {'± std':>8}")
         print("  " + "-" * 50)
         for k, v in ang_items:
             vals = all_metric_arrays.get(k, [v])
@@ -2271,24 +2283,24 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
     if score["score"] >= 80.0:
         verdict = "strong geometry recovery"
     elif score["score"] >= 60.0:
-        verdict = "useful recovery â€” add isotopologues for tighter constraint"
+        verdict = "useful recovery — add isotopologues for tighter constraint"
     else:
         verdict = "geometry regularized by quantum prior; low spectral confidence"
     print(f"  Verdict              : {verdict}")
     print("=" * w)
 
-    # â”€â”€ Acceptance rate â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Acceptance rate ───────────────────────────────────────────────────────
     n_acc = best.get("n_accepted", 0)
     n_tot = best.get("n_iterations", 0)
     if n_tot > 0:
         ar = best.get("accept_rate", 0.0)
         print(f"  Accept rate          : {n_acc}/{n_tot} = {100.0 * ar:.1f}%")
         if ar < 0.20:
-            print("  [Warning] Low acceptance (<20%) â€” consider reducing trust_radius or raising lambda_damp.")
+            print("  [Warning] Low acceptance (<20%) — consider reducing trust_radius or raising lambda_damp.")
         elif ar > 0.95:
-            print("  [Warning] Very high acceptance (>95%) â€” optimizer may be underconstrained.")
+            print("  [Warning] Very high acceptance (>95%) — optimizer may be underconstrained.")
 
-    # â”€â”€ SVD diagnostics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── SVD diagnostics ───────────────────────────────────────────────────────
     svd = best.get("svd_summary", {})
     if svd:
         print(f"  SVD rank             : {svd.get('final_rank', 'n/a')}")
@@ -2299,10 +2311,10 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
         if sv_gap is not None:
             print(f"  SV gap (kept/next)   : {sv_gap:.3e}")
             if sv_gap < 10.0:
-                print("  [Warning] Small SV gap â€” rank boundary may be unstable; consider adjusting sv_threshold.")
+                print("  [Warning] Small SV gap — rank boundary may be unstable; consider adjusting sv_threshold.")
     print("=" * w)
 
-    # â”€â”€ Torsion skip-count summary â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Torsion skip-count summary ────────────────────────────────────────────
     sc = best.get("torsion_skip_counts", {})
     if sc and sc.get("n_skipped_total", 0) > 0:
         print(

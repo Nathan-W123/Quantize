@@ -1,0 +1,753 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Quantize</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='3' fill='%232f6fd0'/><text x='8' y='12' font-size='11' font-family='sans-serif' font-weight='700' fill='white' text-anchor='middle'>Q</text></svg>">
+<style>
+  /* Desktop-application chrome, after the Aero CFD web UI: a ribbon of grouped
+     commands, a property grid down the left, a tabbed centre, stacked panels
+     on the right, and a status bar. Light by default. */
+  :root{
+    --chrome:#eef1f7; --chrome2:#e2e7f0; --edge:#c3cbd9; --edge2:#d9e0ea;
+    --field:#fff; --ink:#1f2328; --dim:#5a6472; --head:#1b3a6b;
+    --accent:#2f6fd0; --ok:#1a7f37; --bad:#cf222e; --warn:#9a6700;
+    --mono:ui-monospace,SFMono-Regular,Consolas,Menlo,monospace;
+  }
+  :root[data-theme=dark]{
+    --chrome:#20262f; --chrome2:#1a1f27; --edge:#39424f; --edge2:#2c333d;
+    --field:#12161c; --ink:#e6edf3; --dim:#9aa5b4; --head:#cfe0ff;
+    --accent:#4493f8; --ok:#3fb950; --bad:#f85149; --warn:#d29922;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--chrome);color:var(--ink);overflow:hidden;
+    font:13px/1.45 "Segoe UI",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
+    display:flex;flex-direction:column}
+
+  /* title bar */
+  .title{display:flex;align-items:center;gap:8px;padding:5px 10px;
+    background:var(--chrome2);border-bottom:1px solid var(--edge);font-size:12.5px}
+  .title .dot{width:15px;height:15px;border-radius:3px;background:var(--accent);
+    display:grid;place-items:center;color:#fff;font-size:9px;font-weight:700}
+  .title .sp{flex:1}
+  .title button{background:transparent;border:1px solid transparent;color:var(--dim);
+    padding:2px 7px;border-radius:4px;cursor:pointer;font:inherit;font-size:11.5px}
+  .title button:hover{background:var(--chrome);border-color:var(--edge)}
+
+  /* ribbon */
+  .tabs{display:flex;gap:1px;padding:0 8px;background:var(--chrome2)}
+  .tabs .t{padding:4px 14px;font-size:12.5px;border:1px solid transparent;
+    border-bottom:0;border-radius:4px 4px 0 0;cursor:default}
+  .tabs .t.on{background:var(--chrome);border-color:var(--edge);font-weight:600}
+  .ribbon{display:flex;background:var(--chrome);border-bottom:1px solid var(--edge);
+    padding:4px 2px 0}
+  .grp{display:flex;flex-direction:column;align-items:center;
+    justify-content:space-between;border-right:1px solid var(--edge2);
+    padding:0 9px 1px;min-height:62px}
+  .grp:last-child{border-right:0}
+  .grpc{display:flex;gap:3px;align-items:flex-start;flex:1}
+  .grpn{font-size:10.5px;color:var(--dim);padding-top:2px}
+  .cmd{display:flex;flex-direction:column;align-items:center;gap:2px;width:60px;
+    padding:4px 2px;border:1px solid transparent;border-radius:4px;cursor:pointer;
+    background:none;color:var(--ink);font:inherit;font-size:11px;line-height:1.2}
+  .cmd:hover:not(:disabled){background:var(--chrome2);border-color:var(--edge)}
+  .cmd:disabled{opacity:.4;cursor:default}
+  .cmd .ic{width:26px;height:26px;display:grid;place-items:center;font-size:17px}
+  .cmd.sm{flex-direction:row;width:auto;gap:5px;padding:3px 7px}
+  .cmd.sm .ic{width:15px;height:15px;font-size:13px}
+
+  /* body: three columns */
+  .work{flex:1;display:grid;grid-template-columns:286px minmax(0,1fr) 300px;
+    min-height:0;background:var(--chrome)}
+  .pane{display:flex;flex-direction:column;min-width:0;min-height:0;
+    border-right:1px solid var(--edge)}
+  .pane:last-child{border-right:0;border-left:1px solid var(--edge)}
+  .ph{padding:4px 9px;font-weight:600;font-size:12px;background:var(--chrome2);
+    border-bottom:1px solid var(--edge);color:var(--head);display:flex;
+    align-items:center;gap:6px}
+  .ph .sp{flex:1}
+  .scroll{overflow:auto;flex:1;min-height:0;background:var(--field)}
+
+  /* property grid */
+  .grphd{display:flex;align-items:center;gap:5px;padding:3px 8px;cursor:pointer;
+    background:var(--chrome2);border-bottom:1px solid var(--edge2);
+    font-weight:600;font-size:12px;color:var(--head);user-select:none}
+  .grphd .tw{font-size:9px;width:9px;color:var(--dim)}
+  .rows{display:block}
+  .rows.hid{display:none}
+  .r{display:grid;grid-template-columns:132px minmax(0,1fr);align-items:stretch;
+    border-bottom:1px solid var(--edge2);min-height:25px}
+  .r[hidden]{display:none}
+  .r>.k{padding:3px 8px;color:var(--ink);display:flex;align-items:center;
+    border-right:1px solid var(--edge2);background:var(--chrome);font-size:12.5px}
+  .r>.v{display:flex;align-items:center;gap:0;padding:0;min-width:0}
+  .r>.v>input,.r>.v>select,.r>.v>textarea{border:0;background:transparent;
+    color:var(--ink);padding:3px 7px;width:100%;min-width:0;font:inherit;
+    font-size:12.5px;outline:0}
+  .r>.v>textarea{font-family:var(--mono);font-size:11.5px;resize:vertical;padding:4px 7px}
+  .r>.v>input[type=checkbox]{width:auto;margin:3px 7px}
+  .r>.v:focus-within{outline:2px solid var(--accent);outline-offset:-2px}
+  .r:hover>.k{background:var(--chrome2)}
+  .un{color:var(--dim);font-size:11px;padding-right:7px;white-space:nowrap}
+
+  /* description pane */
+  .desc{border-top:1px solid var(--edge);background:var(--chrome2);padding:7px 9px;
+    min-height:74px;font-size:12px;color:var(--dim)}
+  .desc b{display:block;color:var(--ink);margin-bottom:2px;font-size:12.5px}
+
+  /* centre */
+  .vtabs{display:flex;gap:1px;padding:4px 6px 0;background:var(--chrome2);
+    border-bottom:1px solid var(--edge)}
+  .vtabs .vt{padding:4px 13px;font-size:12.5px;cursor:pointer;border:1px solid transparent;
+    border-bottom:0;border-radius:4px 4px 0 0;color:var(--dim)}
+  .vtabs .vt.on{background:var(--field);border-color:var(--edge);color:var(--ink);
+    font-weight:600;margin-bottom:-1px}
+  .view{display:none;flex:1;min-height:0;overflow:auto;background:var(--field)}
+  .view.on{display:block}
+  pre{margin:0;padding:9px 11px;font-family:var(--mono);font-size:11.5px;
+    white-space:pre-wrap;word-break:break-word;color:var(--ink)}
+
+  /* results */
+  .results{border-top:1px solid var(--edge);background:var(--field);
+    max-height:230px;overflow:auto}
+  .rgrid{display:grid;grid-template-columns:1fr 1fr}
+  .rgrid>div{border-right:1px solid var(--edge2)}
+  .rgrid>div:last-child{border-right:0}
+  .rt{font-weight:600;padding:4px 9px;font-size:12px;color:var(--head);
+    border-bottom:1px solid var(--edge2)}
+  .rt span{font-weight:400;color:var(--dim)}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th,td{text-align:left;padding:3px 8px;border-bottom:1px solid var(--edge2)}
+  th{color:var(--dim);font-weight:600;background:var(--chrome)}
+  td.num{font-family:var(--mono);text-align:right}
+  .chk{display:flex;gap:6px;padding:3px 9px;align-items:flex-start;font-size:12px;
+    border-bottom:1px solid var(--edge2)}
+  .chk .i{font-size:12px;line-height:1.4}
+  .i.ok{color:var(--ok)} .i.bad{color:var(--bad)} .i.warn{color:var(--warn)}
+  .i.info{color:var(--accent)}
+
+  /* isotopologue table */
+  .isoT{font-size:11.5px}
+  .isoT th{position:sticky;top:0}
+  .isoT input{border:1px solid var(--edge2);background:var(--field);color:var(--ink);
+    padding:2px 4px;font:inherit;font-size:11.5px;width:100%;border-radius:2px}
+  .isoT td{padding:2px 4px}
+  .cbs{display:flex;gap:4px}
+  .cbs label{display:flex;gap:2px;align-items:center;color:var(--dim);font-size:11px}
+  .xbtn{background:var(--chrome2);border:1px solid var(--edge);border-radius:3px;
+    cursor:pointer;color:var(--dim);padding:1px 6px;font:inherit}
+
+  /* 3D structure viewer */
+  .sbar{display:flex;gap:10px;align-items:center;padding:5px 9px;
+    background:var(--chrome2);border-bottom:1px solid var(--edge2)}
+  .sck{display:flex;gap:4px;align-items:center;color:var(--dim);font-size:12px}
+  .sck input{width:auto}
+  /* A molecular viewer is dark in both themes. The Jmol palette was chosen
+     against a dark background -- white hydrogens and yellow sulfur vanish on
+     white -- so this one does not follow the page. */
+  /* 3Dmol positions its canvas absolutely inside this box, so it needs to be
+     a positioned block of a definite height. */
+  #mol{position:relative;width:100%;height:440px;background:#0a0e1a}
+  .legend{display:flex;gap:16px;align-items:center;padding:5px 9px;font-size:11.5px;
+    color:var(--dim);border-top:1px solid var(--edge2);border-bottom:1px solid var(--edge2);
+    flex-wrap:wrap}
+  .sw{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;
+    vertical-align:-1px}
+  #cmpTable td.d{font-family:var(--mono);text-align:right}
+  .up{color:var(--bad)} .down{color:var(--accent)}
+
+  /* right panels */
+  .rp{display:flex;flex-direction:column;border-bottom:1px solid var(--edge);
+    min-height:0}
+  .rp .b{padding:9px;font-size:12px;color:var(--dim);background:var(--field);
+    flex:1;overflow:auto;display:grid;place-items:center;min-height:62px}
+  .rp .b.fill{display:block;place-items:unset}
+
+  /* status bar */
+  .status{display:flex;align-items:center;gap:9px;padding:3px 10px;
+    background:var(--chrome2);border-top:1px solid var(--edge);font-size:11.5px;
+    color:var(--dim)}
+  .status .sp{flex:1}
+  .led{width:8px;height:8px;border-radius:50%;background:var(--dim)}
+  .led.run{background:var(--warn)} .led.ok{background:var(--ok)} .led.bad{background:var(--bad)}
+  .bar{width:170px;height:9px;border:1px solid var(--edge);border-radius:2px;
+    background:var(--field);overflow:hidden}
+  .bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .3s}
+  code{font-family:var(--mono);background:var(--chrome);padding:0 3px;border-radius:3px;
+    border:1px solid var(--edge2)}
+</style>
+
+<script src="/vendor/3Dmol-min.js"></script>
+
+<div class="title">
+  <span class="dot">Q</span><b id="docTitle">Untitled — Quantize</b>
+  <span class="sp"></span>
+  <button id="themeBtn" title="Toggle light / dark">◐ Theme</button>
+</div>
+
+<div class="tabs"><div class="t on">Home</div></div>
+
+<div class="ribbon">
+  <div class="grp"><div class="grpc">
+    <button class="cmd" id="runBtn"><span class="ic" style="color:var(--ok)">▶</span>Run</button>
+    <button class="cmd" id="stopBtn" disabled><span class="ic" style="color:var(--bad)">■</span>Stop</button>
+    <button class="cmd" id="validateBtn"><span class="ic" style="color:var(--accent)">✓</span>Validate</button>
+  </div><div class="grpn">Fit</div></div>
+
+  <div class="grp"><div class="grpc">
+    <button class="cmd" id="newBtn"><span class="ic">🗋</span>New</button>
+    <button class="cmd" id="loadBtn"><span class="ic">📂</span>Open</button>
+    <button class="cmd" id="yamlBtn"><span class="ic">💾</span>Save YAML</button>
+    <input type="file" id="loadFile" accept=".yaml,.yml,.json" hidden>
+  </div><div class="grpn">Case</div></div>
+
+  <div class="grp"><div class="grpc">
+    <button class="cmd" id="exampleBtn"><span class="ic">💧</span>Water</button>
+    <button class="cmd" id="addIso"><span class="ic">＋</span>Isotope</button>
+  </div><div class="grpn">Insert</div></div>
+
+  <div class="grp"><div class="grpc">
+    <button class="cmd sm" id="expandAll"><span class="ic">⊞</span>Expand all</button>
+    <button class="cmd sm" id="collapseAll"><span class="ic">⊟</span>Collapse all</button>
+  </div><div class="grpn">View</div></div>
+</div>
+
+<div class="work">
+  <!-- left: property grid -->
+  <div class="pane">
+    <div class="ph">Case Properties</div>
+    <div class="scroll" id="props"></div>
+    <div class="desc"><b id="descName">Case Properties</b>
+      <span id="descText">Select a property to see what it does.</span></div>
+  </div>
+
+  <!-- centre -->
+  <div class="pane" style="border-right:0">
+    <div class="vtabs">
+      <div class="vt on" data-v="iso">Isotopologues &amp; constants</div>
+      <div class="vt" data-v="struct">Structure</div>
+      <div class="vt" data-v="log">Log</div>
+      <div class="vt" data-v="yaml">Config</div>
+    </div>
+    <div class="view" id="v-log"><pre id="log">No run yet.</pre></div>
+    <div class="view" id="v-struct">
+      <div class="sbar">
+        <button class="xbtn" id="previewBtn">Preview starting structure</button>
+        <label class="sck"><input type="checkbox" id="showBefore" checked> before</label>
+        <label class="sck"><input type="checkbox" id="showAfter" checked> after</label>
+        <label class="sck"><input type="checkbox" id="spin"> spin</label>
+        <span class="u" id="structNote">drag to rotate · wheel to zoom</span>
+      </div>
+      <div id="mol"></div>
+      <div class="legend"><span><i class="sw" style="background:#9aa7bb"></i>before — the quantum starting structure</span>
+        <span><i class="sw" style="background:#2f6fd0"></i>after — where the spectra put it</span>
+        <span id="rmsdNote"></span></div>
+      <table id="cmpTable"><thead><tr><th>Coordinate</th><th>Before</th><th>After</th><th>Change</th></tr></thead><tbody></tbody></table>
+    </div>
+    <div class="view on" id="v-iso">
+      <table class="isoT"><thead><tr>
+        <th style="width:15%">Name</th><th style="width:27%">Masses (amu)</th>
+        <th style="width:13%">Components</th><th style="width:27%">Observed B₀ (MHz)</th>
+        <th style="width:15%">σ (MHz)</th><th style="width:3%"></th>
+      </tr></thead><tbody id="isoBody"></tbody></table>
+    </div>
+    <div class="view" id="v-yaml"><pre id="yamlOut">Press Save YAML, or switch here after editing, to see the config this form describes.</pre></div>
+
+    <div class="results">
+      <div class="rgrid">
+        <div><div class="rt">Fitted structure · <span id="fitState">no run yet</span></div>
+          <table id="fitTable"><tbody><tr><td class="num">—</td></tr></tbody></table></div>
+        <div><div class="rt">Pre-run checks · <span>current settings</span></div>
+          <div id="checks"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- right: stacked panels -->
+  <div class="pane">
+    <div class="rp" style="flex:1"><div class="ph">Corrections</div>
+      <div class="b" id="pCorr">no run yet</div></div>
+    <div class="rp" style="flex:1"><div class="ph">Residuals</div>
+      <div class="b" id="pResid">no run yet</div></div>
+    <div class="rp" style="flex:1;border-bottom:0"><div class="ph">Uncertainty</div>
+      <div class="b" id="pUnc">no run yet</div></div>
+  </div>
+</div>
+
+<div class="status">
+  <span class="led" id="led"></span><span id="statusText">Ready</span>
+  <span class="sp"></span>
+  <span id="runDir"></span>
+  <div class="bar"><i id="barFill"></i></div>
+  <span id="elapsed">0.0 s</span>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+let OPTS = {}, poller = null, t0 = 0;
+
+/* ── the property grid, declared as data so groups stay consistent ───────── */
+const GROUPS = [
+  ["Case", [
+    ["name", "Name", "text", {value:"quantize_run"}],
+    ["preset", "Preset", "sel"],
+    ["coordinate_mode", "Coordinates", "sel"],
+    ["rng_seed", "RNG seed", "num", {value:42}],
+  ]],
+  ["Molecule", [
+    ["elements", "Elements", "text", {value:"O H H", ph:"O H H"}],
+    ["geometry_method", "Structure from", "sel"],
+    ["smiles", "SMILES", "text", {ph:"O"}],
+    ["pubchem_identifier", "Name or CID", "text", {ph:"water"}],
+    ["bonds", "Bonds", "area", {ph:"0 1\n0 2", rows:3}],
+    ["coords_angstrom", "Coordinates", "area", {ph:"0.0 0.0 0.0", rows:3}, "Å"],
+    ["symmetry", "Point group", "text", {ph:"(detect)"}],
+  ]],
+  ["Quantum", [
+    ["quantum_backend", "Backend", "sel"],
+    ["method", "Method", "text", {ph:"(default)", list:"methodList"}],
+    ["basis", "Basis", "text", {ph:"(default)", list:"basisList"}],
+  ]],
+  ["Corrections", [
+    ["corrections_mode", "Source", "sel"],
+    ["harmonic_from_hessian", "Harmonic α", "bool", {value:true}],
+    ["anharmonic_from_hessian", "Anharmonic α", "bool", {value:true}],
+    ["nonconvergent_policy", "Non-convergent", "sel"],
+    ["electronic_correction", "Electronic (g)", "bool"],
+    ["use_builtin_bob", "BOB", "bool", {value:true}],
+    ["harmonic_scheme", "α scheme", "sel"],
+    ["cubic_scheme", "Cubic transform", "sel"],
+    ["harmonic_sigma_fraction", "Harmonic σ", "num", {ph:"0.02", step:"0.01"}],
+    ["anharmonic_fd_delta_ang", "Cubic FD step", "num", {ph:"0.01", step:"0.005"}, "Å"],
+    ["freq_scale", "Frequency scale", "num", {ph:"1.0", step:"0.005"}],
+    ["lam_freq_cm", "Large-amplitude cut", "num", {ph:"0", step:"10"}, "cm⁻¹"],
+    ["hess_recalc_every", "Hessian every", "num", {ph:"2", step:"1", min:"1"}, "updates"],
+  ]],
+  ["Centrifugal distortion", [
+    ["harmonic_cd_from_hessian", "Compute CD", "bool"],
+    ["fit_cd_constants", "CD as fit data", "bool"],
+    ["cd_weight", "CD weight", "num", {ph:"1.0", step:"0.1"}],
+    ["cd_sigma_fraction", "CD σ", "num", {ph:"0.05", step:"0.01"}],
+  ], true],
+  ["Priors", [
+    ["prior_sigma_bond", "σ bond", "num", {ph:"0.04", step:"0.01"}, "Å"],
+    ["prior_sigma_angle_deg", "σ angle", "num", {ph:"2.0", step:"0.5"}, "°"],
+    ["internal_priors_mode", "Prior mode", "sel"],
+    ["use_dihedrals", "Fit dihedrals", "bool"],
+  ], true],
+  ["Output", [
+    ["output_root", "Run root", "text", {value:"output/runs"}],
+    ["artifacts", "Write artifacts", "bool", {value:true}],
+  ], true],
+];
+const SEL_IDS = GROUPS.flatMap(g => g[1].filter(f => f[2]==="sel").map(f => f[0]));
+const FIELDS  = GROUPS.flatMap(g => g[1].map(f => f[0]));
+
+function buildProps(){
+  const host = $("#props");
+  host.innerHTML = GROUPS.map(([title, fields, collapsed]) => {
+    const rows = fields.map(([id, label, kind, o = {}, unit]) => {
+      let ctl;
+      if(kind === "sel") ctl = `<select id="${id}"></select>`;
+      else if(kind === "bool") ctl = `<input type="checkbox" id="${id}" ${o.value?"checked":""}>`;
+      else if(kind === "area") ctl = `<textarea id="${id}" rows="${o.rows||3}" placeholder="${o.ph||""}"></textarea>`;
+      else ctl = `<input id="${id}" type="${kind==="num"?"number":"text"}"`
+        + (o.value!==undefined?` value="${o.value}"`:"")
+        + (o.ph?` placeholder="${o.ph}"`:"") + (o.step?` step="${o.step}"`:"")
+        + (o.min?` min="${o.min}"`:"") + (o.list?` list="${o.list}"`:"") + ">";
+      return `<div class="r" data-f="${id}" id="row-${id}"><div class="k">${label}</div>`
+           + `<div class="v">${ctl}${unit?`<span class="un">${unit}</span>`:""}</div></div>`;
+    }).join("");
+    return `<div class="grphd" data-g="${title}"><span class="tw">${collapsed?"▶":"▼"}</span>${title}</div>`
+         + `<div class="rows${collapsed?" hid":""}" data-rows="${title}">${rows}</div>`;
+  }).join("") + `<datalist id="methodList"></datalist><datalist id="basisList"></datalist>`;
+
+  host.querySelectorAll(".grphd").forEach(h => h.addEventListener("click", () => {
+    const rows = host.querySelector(`[data-rows="${h.dataset.g}"]`);
+    rows.classList.toggle("hid");
+    h.querySelector(".tw").textContent = rows.classList.contains("hid") ? "▶" : "▼";
+  }));
+  host.querySelectorAll(".r[data-f]").forEach(row => {
+    const show = () => {
+      $("#descName").textContent = row.querySelector(".k").textContent;
+      $("#descText").textContent = (OPTS.field_help||{})[row.dataset.f]
+        || "No note for this setting yet.";
+    };
+    row.addEventListener("mouseenter", show);
+    row.addEventListener("focusin", show);
+  });
+}
+
+/* The backend list is annotated, because registration is not availability:
+   every backend imports its dependency lazily, so a name can be registered on
+   a machine where it cannot run. pyscf has no Windows wheel at all. */
+function fillBackends(){
+  const av = OPTS.backend_availability || {};
+  $("#quantum_backend").innerHTML = (OPTS.quantum_backend||[]).map(n => {
+    const a = av[n] || {};
+    const tag = a.ok === true ? "" : a.ok === false ? "  — not installed" : "  — unknown";
+    return `<option value="${n}">${n}${tag}</option>`;
+  }).join("");
+  $("#quantum_backend").value = OPTS.backend_default || "none";
+}
+
+function fill(id, values, preferred){
+  const el = $("#"+id); if(!el) return;
+  el.innerHTML = (values||[]).map(v => `<option value="${v}">${v}</option>`).join("");
+  if(preferred && (values||[]).includes(preferred)) el.value = preferred;
+}
+function datalist(id, values){
+  const el = $("#"+id); if(el) el.innerHTML = (values||[]).map(v=>`<option value="${v}">`).join("");
+}
+
+/* ── isotopologues ───────────────────────────────────────────────────────── */
+function isoRow(d){
+  d = d || {name:"", masses:"", components:["A","B","C"], obs_b0_mhz:"", sigma_mhz:""};
+  const tr = document.createElement("tr");
+  tr.innerHTML = `
+    <td><input class="iso-name" value="${d.name||""}" placeholder="H2-16O"></td>
+    <td><input class="iso-masses" value="${d.masses||""}" placeholder="15.9949 1.00783 1.00783"></td>
+    <td><div class="cbs">${["A","B","C"].map(c=>
+      `<label><input type="checkbox" class="iso-c" value="${c}" ${(d.components||[]).includes(c)?"checked":""}>${c}</label>`).join("")}</div></td>
+    <td><input class="iso-b0" value="${d.obs_b0_mhz||""}" placeholder="835840.29 435351.72 278138.70"></td>
+    <td><input class="iso-sig" value="${d.sigma_mhz||""}" placeholder="0.2 0.2 0.2"></td>
+    <td><button class="xbtn iso-del">×</button></td>`;
+  tr.querySelector(".iso-del").addEventListener("click", ()=>{ tr.remove(); refreshChecks(); });
+  return tr;
+}
+const readIsos = () => [...$("#isoBody").querySelectorAll("tr")].map(tr => ({
+  name: tr.querySelector(".iso-name").value,
+  masses: tr.querySelector(".iso-masses").value,
+  components: [...tr.querySelectorAll(".iso-c")].filter(c=>c.checked).map(c=>c.value),
+  obs_b0_mhz: tr.querySelector(".iso-b0").value,
+  sigma_mhz: tr.querySelector(".iso-sig").value,
+}));
+
+/* ── form state ──────────────────────────────────────────────────────────── */
+function readForm(){
+  const f = {};
+  for(const id of FIELDS){ const el = $("#"+id); if(el)
+    f[id] = el.type === "checkbox" ? el.checked : el.value; }
+  f.isotopologues = readIsos();
+  return f;
+}
+function writeForm(f){
+  for(const id of FIELDS){ const el = $("#"+id); if(!el || !(id in f)) continue;
+    if(el.type === "checkbox") el.checked = !!f[id];
+    else el.value = f[id] ?? ""; }
+  const body = $("#isoBody"); body.innerHTML = "";
+  (f.isotopologues||[]).forEach(d => body.appendChild(isoRow(d)));
+  syncGeom(); refreshChecks();
+}
+function syncGeom(){
+  const m = $("#geometry_method").value;
+  for(const [id, want] of [["smiles","smiles"], ["pubchem_identifier","pubchem"],
+                           ["bonds","bonds"], ["coords_angstrom","coords"]])
+    $("#row-"+id).hidden = m !== want;
+}
+
+/* ── status ──────────────────────────────────────────────────────────────── */
+function setStatus(text, kind){
+  $("#statusText").textContent = text;
+  $("#led").className = "led" + (kind ? " "+kind : "");
+}
+const post = (p, b) => fetch(p, {method:"POST", headers:{"Content-Type":"application/json"},
+  body: JSON.stringify(b)}).then(r => r.json());
+
+/* ── pre-run checks, in the spirit of Aero's ─────────────────────────────── */
+async function refreshChecks(){
+  const f = readForm(), out = [];
+  const isos = f.isotopologues || [];
+  const nObs = isos.reduce((n,i)=>n + (i.components||[]).length, 0);
+  const nPar = Math.max((f.elements||"").trim().split(/\s+/).filter(Boolean).length*3 - 6, 1);
+  out.push(nObs >= nPar
+    ? ["ok", `${nObs} constants for ~${nPar} parameters · over-determined`]
+    : ["warn", `${nObs} constants for ~${nPar} parameters · under-determined, the prior decides`]);
+  out.push(isos.length >= 2
+    ? ["ok", `${isos.length} isotopologues · substitution carries the structure`]
+    : ["warn", "1 isotopologue · no isotopic information, structure rests on the prior"]);
+  if(f.corrections_mode === "none")
+    out.push(["bad", "corrections off · B₀ fitted as if it were Bₑ, which biases the structure"]);
+  if(f.nonconvergent_policy === "drop")
+    out.push(["warn", "non-convergent components are being dropped, not flagged"]);
+  if(f.coordinate_mode === "cartesian")
+    out.push(["info", "cartesian mode · per-parameter uncertainties are not reported"]);
+  const av = (OPTS.backend_availability || {})[f.quantum_backend] || {};
+  if(av.ok === false)
+    out.unshift(["bad", `backend ${f.quantum_backend} cannot run here: `
+      + `${av.why}. ${av.hint || ""}`]);
+  else if(av.ok === true && f.quantum_backend !== "none")
+    out.push(["ok", `${f.quantum_backend} is installed`]);
+  const r = await post("/api/validate", {form: f});
+  out.unshift(r.ok ? ["ok", "config valid"] : ["bad", r.error || "invalid"]);
+  $("#checks").innerHTML = out.map(([k, t]) =>
+    `<div class="chk"><span class="i ${k}">${{ok:"✔",bad:"✖",warn:"⚠",info:"ℹ"}[k]}</span><span>${t}</span></div>`).join("");
+}
+
+/* ── commands ────────────────────────────────────────────────────────────── */
+$("#validateBtn").addEventListener("click", async () => {
+  const r = await post("/api/validate", {form: readForm()});
+  setStatus(r.ok ? "Valid — this case would run." : r.error, r.ok ? "ok" : "bad");
+  refreshChecks();
+});
+$("#yamlBtn").addEventListener("click", async () => {
+  const r = await post("/api/config", {form: readForm()});
+  if(r.error){ setStatus(r.error, "bad"); return; }
+  $("#yamlOut").textContent = r.yaml;
+  document.querySelector('.vt[data-v="yaml"]').click();
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([r.yaml], {type:"text/yaml"}));
+  a.download = ($("#name").value || "case") + ".yaml"; a.click();
+  URL.revokeObjectURL(a.href);
+  setStatus("Saved " + a.download + " — run it with: python -m cli run " + a.download, "ok");
+});
+$("#loadBtn").addEventListener("click", () => $("#loadFile").click());
+$("#loadFile").addEventListener("change", async ev => {
+  const file = ev.target.files[0]; if(!file) return;
+  const r = await post("/api/load", {text: await file.text()});
+  if(r.ok){ writeForm(r.form); $("#docTitle").textContent = file.name + " — Quantize";
+    setStatus("Opened " + file.name, "ok"); } else setStatus(r.error, "bad");
+  ev.target.value = "";
+});
+$("#newBtn").addEventListener("click", () => location.reload());
+$("#exampleBtn").addEventListener("click", () => { loadWater(); setStatus("Water example loaded"); });
+$("#addIso").addEventListener("click", () => { $("#isoBody").appendChild(isoRow());
+  document.querySelector('.vt[data-v="iso"]').click(); refreshChecks(); });
+$("#expandAll").addEventListener("click", () => setAllGroups(false));
+$("#collapseAll").addEventListener("click", () => setAllGroups(true));
+function setAllGroups(hide){
+  document.querySelectorAll("[data-rows]").forEach(r => r.classList.toggle("hid", hide));
+  document.querySelectorAll(".grphd .tw").forEach(t => t.textContent = hide ? "▶" : "▼");
+}
+$("#themeBtn").addEventListener("click", () => {
+  const dark = document.documentElement.getAttribute("data-theme") === "dark";
+  document.documentElement.setAttribute("data-theme", dark ? "light" : "dark");
+});
+document.querySelectorAll(".vt").forEach(t => t.addEventListener("click", () => {
+  document.querySelectorAll(".vt").forEach(x => x.classList.remove("on"));
+  document.querySelectorAll(".view").forEach(x => x.classList.remove("on"));
+  t.classList.add("on"); $("#v-" + t.dataset.v).classList.add("on");
+  if(t.dataset.v === "struct"){
+    if(!VIEW.data) loadStructure(LAST_RUN);
+    else if(VIEW.viewer){ VIEW.viewer.resize(); VIEW.viewer.render(); }
+    else drawMol();
+  }
+}));
+
+$("#runBtn").addEventListener("click", async () => {
+  if(poller){ clearInterval(poller); poller = null; }
+  $("#log").textContent = ""; document.querySelector('.vt[data-v="log"]').click();
+  const r = await post("/api/run", {form: readForm()});
+  if(!r.ok){ setStatus(r.error, "bad"); return; }
+  $("#runBtn").disabled = true; $("#stopBtn").disabled = false;
+  setStatus("Running…", "run"); t0 = Date.now();
+  let since = 0;
+  poller = setInterval(async () => {
+    $("#elapsed").textContent = ((Date.now()-t0)/1000).toFixed(1) + " s";
+    const p = await (await fetch(`/api/progress?id=${r.id}&since=${since}`)).json();
+    if(p.text){ $("#log").textContent += p.text; since = p.length;
+      $("#v-log").scrollTop = $("#v-log").scrollHeight;
+      $("#barFill").style.width = Math.min(95, 5 + since/120) + "%"; }
+    if(p.run_dir) $("#runDir").textContent = p.run_dir;
+    if(p.done){
+      clearInterval(poller); poller = null;
+      $("#runBtn").disabled = false; $("#stopBtn").disabled = true;
+      $("#barFill").style.width = "100%";
+      setStatus(p.error ? p.error : "Finished", p.error ? "bad" : "ok");
+      $("#fitState").textContent = p.error ? "failed" : "see Structure tab";
+      if(!p.error){
+        LAST_RUN = r.id;
+        loadResults(r.id);
+        loadStructure(r.id).then(() =>
+          document.querySelector('.vt[data-v="struct"]').click());
+      }
+    }
+  }, 700);
+});
+
+/* ── 3D structure viewer ─────────────────────────────────────────────────── */
+/* 3Dmol.js, vendored under web/vendor so it loads with no network. A canvas 2D
+   renderer was tried first and the geometry was right, but the lighting was
+   not: real specular shading is what makes a ball-and-stick picture read as
+   solid, and approximating it with radial gradients looked like fuzzy discs.
+   Settings follow HF-SCF-Engine's MolecularViewer exactly -- sphere scale 0.3,
+   stick radius 0.12, colorscheme Jmol, background 0x0a0e1a. */
+const VIEW = {viewer:null, data:null, spin:false};
+
+function xyzBlock(set){
+  return `${set.elements.length}\n\n` + set.elements.map((e, i) =>
+    `${e} ${set.coords[i].map(v => v.toFixed(6)).join(" ")}`).join("\n");
+}
+
+function drawMol(){
+  const d = VIEW.data; if(!d) return;
+  if(!VIEW.viewer){
+    if(typeof $3Dmol === "undefined"){
+      $("#structNote").textContent = "3Dmol failed to load from /vendor";
+      return;
+    }
+    VIEW.viewer = $3Dmol.createViewer($("#mol"),
+      {backgroundColor:"0x0a0e1a", antialias:true});
+  }
+  const v = VIEW.viewer;
+  v.clear();
+  const showBefore = $("#showBefore").checked, showAfter = $("#showAfter").checked;
+
+  // With no fitted structure there is nothing to contrast against, so the
+  // starting one is drawn solid rather than as a ghost of nothing.
+  if(!d.after){
+    if(showBefore || showAfter){
+      v.addModel(xyzBlock(d.before), "xyz");
+      v.setStyle({}, {stick:{radius:0.12, colorscheme:"Jmol"},
+                      sphere:{scale:0.3, colorscheme:"Jmol"}});
+    }
+  } else {
+    if(showBefore){
+      v.addModel(xyzBlock(d.before), "xyz");
+      v.setStyle({model:-1}, {stick:{radius:0.07, color:"0x7c8798", opacity:0.55},
+                              sphere:{scale:0.18, color:"0x7c8798", opacity:0.55}});
+    }
+    if(showAfter){
+      v.addModel(xyzBlock(d.after), "xyz");
+      v.setStyle({model:-1}, {stick:{radius:0.12, colorscheme:"Jmol"},
+                              sphere:{scale:0.3, colorscheme:"Jmol"}});
+    }
+  }
+  v.zoomTo();
+  v.render();
+  v.spin(VIEW.spin ? "y" : false);
+}
+
+(function wireViewer(){
+  for(const id of ["showBefore","showAfter"]) $("#"+id).addEventListener("change", drawMol);
+  $("#spin").addEventListener("change", e => {
+    VIEW.spin = e.target.checked;
+    if(VIEW.viewer) VIEW.viewer.spin(VIEW.spin ? "y" : false);
+  });
+  addEventListener("resize", () => { if(VIEW.viewer) VIEW.viewer.resize(); });
+})();
+
+async function loadStructure(runId){
+  $("#structNote").textContent = "building…";
+  const r = await post("/api/structure", {form: readForm(), run_id: runId || ""});
+  if(!r.ok){ $("#structNote").textContent = r.error; return; }
+  VIEW.data = r;
+  $("#structNote").textContent = "drag to rotate · wheel to zoom";
+  const haveAfter = !!r.after;
+  document.querySelectorAll(".legend span").forEach((s, i) => {
+    if(i < 2) s.style.display = haveAfter ? "" : "none"; });
+  $("#rmsdNote").textContent = haveAfter
+    ? `superposed on the starting structure · RMSD ${(r.rmsd*1000).toFixed(1)} mÅ`
+    : "starting structure · run the fit to compare it with the result";
+  const tb = $("#cmpTable tbody");
+  if(r.comparison){
+    tb.innerHTML = r.comparison.rows.map(row => {
+      const f = row.unit === "Å" ? 4 : 2;
+      const dd = row.unit === "Å" ? (row.delta*1000).toFixed(2) + " mÅ"
+                                  : row.delta.toFixed(3) + " °";
+      const cls = Math.abs(row.delta) < 1e-9 ? "" : row.delta > 0 ? "up" : "down";
+      return `<tr><td>${row.label}</td><td class="d">${row.before.toFixed(f)}</td>`
+           + `<td class="d">${row.after.toFixed(f)}</td>`
+           + `<td class="d ${cls}">${row.delta > 0 ? "+" : ""}${dd}</td></tr>`;
+    }).join("");
+  } else {
+    tb.innerHTML = `<tr><td colspan="4" style="color:var(--dim)">`
+      + `Run the fit to compare the starting structure with the fitted one.</td></tr>`;
+  }
+  drawMol();
+}
+$("#previewBtn").addEventListener("click", () => loadStructure(LAST_RUN));
+let LAST_RUN = "";
+
+/* ── the right-hand panels ───────────────────────────────────────────────── */
+/* These were frames with "no run yet" in them and nothing behind. Each one is
+   fed by an export the run already writes, read back from the run directory so
+   the panel shows the numbers that were actually written rather than a second
+   copy of them. */
+function panelTable(rows, cols){
+  if(!rows.length) return '<div style="padding:4px">nothing recorded</div>';
+  return `<table>${"<thead><tr>" + cols.map(c=>`<th>${c[0]}</th>`).join("") + "</tr></thead>"}`
+    + "<tbody>" + rows.map(r => "<tr>" + cols.map(c =>
+        `<td class="${c[2]||""}">${c[1](r)}</td>`).join("") + "</tr>").join("")
+    + "</tbody></table>";
+}
+const n = (v, d) => (v === null || v === undefined) ? "—" : v.toFixed(d);
+
+async function loadResults(runId){
+  const r = await post("/api/results", {run_id: runId});
+  if(!r.ok){ return; }
+  for(const el of ["pCorr","pResid","pUnc"]) $("#"+el).classList.add("fill");
+
+  $("#pCorr").innerHTML = panelTable(r.corrections, [
+    ["", x => `${x.iso} ${x.comp}`],
+    ["Δ MHz", x => n(x.delta, 1), "num"],
+    ["Bₑ MHz", x => n(x.be, 1), "num"]]);
+
+  // Residuals in units of sigma: A runs to hundreds of GHz and C to tens, so
+  // raw MHz cannot be compared between components.
+  $("#pResid").innerHTML =
+    `<div style="padding:3px 0 5px;color:var(--dim)">rms pull `
+    + `<b style="color:var(--ink)">${n(r.rms_pull, 2)}</b>`
+    + ` · max ${n(r.max_pull, 2)} <span style="font-size:11px">(≈1 is a fit `
+    + `consistent with its stated σ)</span></div>`
+    + panelTable(r.residuals, [
+        ["", x => `${x.iso} ${x.comp}`],
+        ["resid MHz", x => n(x.resid, 1), "num"],
+        ["pull", x => n(x.pull, 2), "num"]]);
+
+  $("#pUnc").innerHTML = panelTable(r.uncertainty, [
+    ["Coordinate", x => x.name],
+    ["Value", x => `${n(x.value, 4)} ${x.unit}`, "num"],
+    ["± 1σ", x => n(x.std_err, 4), "num"],
+    ["Prior", x => `<span style="font-size:10.5px">${x.sensitivity || ""}</span>`]]);
+
+  // the fitted-structure table under the viewport, too
+  $("#fitTable").innerHTML = "<tbody>" + r.uncertainty.map(u =>
+    `<tr><td>${u.name}</td><td class="num">${n(u.value, 4)}</td>`
+    + `<td class="num">± ${n(u.std_err, 4)} ${u.unit}</td></tr>`).join("") + "</tbody>";
+  $("#fitState").textContent = `${r.uncertainty.length} parameters`;
+}
+
+
+/* ── boot ────────────────────────────────────────────────────────────────── */
+function loadWater(){
+  writeForm({
+    name:"water", preset:"BALANCED", coordinate_mode:"internal", rng_seed:42,
+    elements:"O H H", geometry_method:"smiles", smiles:"O", symmetry:"",
+    quantum_backend:"pyscf_hf", method:"b3lyp", basis:"cc-pvtz",
+    corrections_mode:"hybrid_auto", harmonic_from_hessian:true,
+    anharmonic_from_hessian:true, nonconvergent_policy:"warn",
+    use_builtin_bob:true, harmonic_scheme:"watson", cubic_scheme:"cartesian",
+    internal_priors_mode:"soft", output_root:"output/runs", artifacts:true,
+    isotopologues:[
+      {name:"H2-16O", masses:"15.99491461956 1.00782503207 1.00782503207",
+       components:["A","B","C"], obs_b0_mhz:"835840.29 435351.72 278138.70",
+       sigma_mhz:"0.20 0.20 0.20"},
+      {name:"D2-16O", masses:"15.99491461956 2.0141017778 2.0141017778",
+       components:["A","B","C"], obs_b0_mhz:"462278.30 218038.50 145258.50",
+       sigma_mhz:"0.20 0.20 0.20"}],
+  });
+  $("#docTitle").textContent = "water — Quantize";
+}
+
+(async () => {
+  OPTS = await (await fetch("/api/options")).json();
+  buildProps();
+  for(const id of SEL_IDS) fill(id, OPTS[id]);
+  fill("preset", OPTS.preset, "BALANCED");
+  fill("coordinate_mode", OPTS.coordinate_mode, "internal");
+  fillBackends();
+  fill("corrections_mode", OPTS.corrections_mode, "hybrid_auto");
+  fill("nonconvergent_policy", OPTS.nonconvergent_policy, "warn");
+  fill("internal_priors_mode", OPTS.internal_priors_mode, "soft");
+  fill("harmonic_scheme", OPTS.harmonic_scheme, "watson");
+  fill("cubic_scheme", OPTS.cubic_scheme, "cartesian");
+  fill("geometry_method", OPTS.geometry_method, "smiles");
+  datalist("methodList", OPTS.suggested_methods);
+  datalist("basisList", OPTS.suggested_bases);
+  $("#geometry_method").addEventListener("change", syncGeom);
+  $("#props").addEventListener("change", refreshChecks);
+  loadWater();
+  setStatus("Ready · " + (OPTS.quantum_backend||[]).length + " backends");
+})();
+</script>

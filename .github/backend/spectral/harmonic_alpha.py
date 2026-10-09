@@ -67,6 +67,38 @@ _bk_mode_derivatives = _bk_mode_derivatives
 # of resonance stands, the inference from it did not.
 _DEGENERACY_TOL_CM2 = 1.0
 
+#: Two modes closer than this in frequency (cm^-1) are reported as a Coriolis
+#: resonance. REPORTED ONLY -- see the loop below for why nothing is done
+#: about them.
+#:
+#: The _DEGENERACY_TOL_CM2 guard above is on omega^2 at 1 cm^-2, so it fires
+#: only for exact symmetry degeneracy; a pair a few cm^-1 apart passes through
+#: it with a denominator small enough that its single term dwarfs every other
+#: term in the sum. Surveyed at HF/6-31G across the reference set, each
+#: molecule's largest Coriolis term measured against its own median:
+#:
+#:     fluoroacetylene   0.00 cm-1 apart   zeta 1.000   8.5e10x median
+#:     acetyl fluoride   3.41             0.312          544x
+#:     isocyanic acid    5.50             0.992         8436x
+#:     formyl fluoride  26.72             0.286           12x
+#:     fluoroethane     68.20             0.584          102x
+#:
+#: Only fluoroacetylene's exact pair was being caught by the omega^2 guard.
+#: Acetyl fluoride and isocyanic acid, 3.4 and 5.5 cm^-1 apart, were not --
+#: and it was tempting to read that against the fact that those are two of
+#: the molecules the engine does worst on. The measurement below says that
+#: reading is wrong: the terms are individually huge and collectively
+#: harmless, because they cancel in pairs. So this threshold selects what
+#: gets *named* in the diagnostics, not what gets changed, and 10 cm^-1 is
+#: simply a clean gap between the two near-resonant cases and the
+#: next-closest pair at 26.7.
+_CORIOLIS_RESONANCE_CM = 10.0
+
+#: zeta^2 below this is not worth reporting -- the coupling is what turns a
+#: small denominator into a large term, and an uncoupled pair contributes
+#: nothing however close its partners are in frequency.
+_CORIOLIS_ZETA2_FLOOR = 1e-4
+
 #: How the harmonic term's second derivative is obtained.
 #:
 #:   "watson"         the (3/4) mu a mu a mu coefficient of Watson's expansion,
@@ -131,6 +163,7 @@ def compute_harmonic_alpha(
     linear_pair_coeff=None,
     lam_freq_cm: float = 0.0,
     freq_scale: float = 1.0,
+    coriolis_resonance_cm: float = _CORIOLIS_RESONANCE_CM,
     harmonic_scheme: str = "watson",
 ):
     """
@@ -185,6 +218,11 @@ def compute_harmonic_alpha(
                     so the correct statement about such a mode's α is not a
                     number but an interval. 0 (default) disables the treatment
                     and keeps the perturbative value at face value.
+    coriolis_resonance_cm : frequency gap (cm⁻¹) below which a Coriolis pair is
+                    listed in ``info["coriolis_resonances"]``. Purely a
+                    reporting threshold — α and σ are identical whatever it is
+                    set to — so it is here to let a caller widen or narrow the
+                    diagnostic, not to tune the physics.
     nm_sigma_fraction : fractional uncertainty applied to the correction when
                     the normal-mode cubic term is present and its own noise
                     diagnostic is clean -- the B3LYP-literature scale for VPT2
@@ -249,6 +287,7 @@ def compute_harmonic_alpha(
             {
                 "near_degen_skips": 0,
                 "anharmonic_status": "no_modes",
+                "n_vib": 0,
                 "warning": (
                     f"no vibrational modes above {min_freq_cm} cm-1; "
                     "alpha is undetermined, not zero"
@@ -352,6 +391,25 @@ def compute_harmonic_alpha(
                 if abs(omega_cm[i] - omega_cm[j]) < 2.0:
                     pair_partner[i] = j
                     pair_partner[j] = i
+    # Coriolis resonances are DETECTED AND REPORTED, and deliberately not
+    # treated. Deperturbing them was implemented first and then measured, and
+    # the measurement says not to.
+    #
+    # A near-degenerate pair's two terms carry denominators omega_r^2-omega_s^2
+    # and omega_s^2-omega_r^2, so they are equal and opposite and cancel in the
+    # sum that actually reaches B_0. Individually they are enormous --
+    # isocyanic acid's pair, 5.5 cm^-1 apart with zeta 0.992, contributes a
+    # term 8436 times that molecule's median -- and the cancellation survives
+    # anyway. Nudging one partner by 1 cm^-1 moves alpha_A by 83 MHz out of
+    # 6,534,832, which is 0.001%; acetyl fluoride's pair does not move alpha at
+    # all, to the printed precision, for nudges up to 5 cm^-1.
+    #
+    # So removing the terms changed alpha by 47 parts in 6.5 million, while
+    # carrying their magnitude as sigma inflated it from 20 MHz to 592 million
+    # -- seven orders of magnitude of claimed ignorance about a quantity
+    # measured to be insensitive. The pairs are worth knowing about, so they
+    # are reported; the value and the width are left alone.
+    resonant_pairs = []
     for r in range(n_vib):
         wr2 = omega_cm[r] ** 2
         for K in range(3):
@@ -364,7 +422,20 @@ def compute_harmonic_alpha(
                 if abs(denom) < _DEGENERACY_TOL_CM2:
                     near_degen_skips += 1
                     continue
-                cor += zeta[K, r, s] ** 2 * (3.0 * wr2 + ws2) / denom
+                z2 = zeta[K, r, s] ** 2
+                term = z2 * (3.0 * wr2 + ws2) / denom
+                if (r < s
+                        and abs(omega_cm[r] - omega_cm[s]) < coriolis_resonance_cm
+                        and z2 > _CORIOLIS_ZETA2_FLOOR):
+                    resonant_pairs.append({
+                        "modes": (int(r), int(s)),
+                        "omega_cm": (float(omega_cm[r]), float(omega_cm[s])),
+                        "separation_cm": float(abs(omega_cm[r] - omega_cm[s])),
+                        "zeta": float(abs(zeta[K, r, s])),
+                        "component": "ABC"[K],
+                        "term_cm": float(term),
+                    })
+                cor += term
             alpha_cor_cm[K, r] = -2.0 * B_e_cm[K] ** 2 / omega_cm[r] * cor
             if (linear_pair_coeff is not None and r in pair_partner
                     and K in (1, 2)):
@@ -577,7 +648,16 @@ def compute_harmonic_alpha(
         sigma_vals,
         {
             "near_degen_skips": near_degen_skips,
+            #: Near-degenerate Coriolis pairs, with the frequencies and
+            #: coupling that make them resonant. Diagnostic only: neither
+            #: alpha nor sigma is altered on their account.
+            "coriolis_resonances": resonant_pairs,
             "anharmonic_status": anh_status,
+            #: Vibrational modes that survived the positive-eigenvalue cut in
+            #: normal_modes. A drop in this count between two geometries means
+            #: the surface went unstable in between, which is the signal that
+            #: an off-minimum alpha should not be trusted.
+            "n_vib": int(n_vib),
             "alpha_centrifugal_mhz": {
                 k: float(alpha_cent.sum(axis=1)[i]) for i, k in enumerate(labels)
             },
@@ -926,6 +1006,7 @@ def build_correction_table_from_hessian(
         else "alpha from Hessian (harmonic + Coriolis only; anharmonic term omitted)"
     )
     statuses: list[str] = []
+    n_vib_seen: list[int] = []
     lam_report: dict = {}
     nonconvergent: dict = {}
     dropped: dict = {}
@@ -962,6 +1043,7 @@ def build_correction_table_from_hessian(
             harmonic_scheme=harmonic_scheme,
         )
         total_near_degen_skips += res_info.get("near_degen_skips", 0)
+        n_vib_seen.append(int(res_info.get("n_vib", 0)))
         lam_here = list(res_info.get("lam_modes_cm", []))
         if lam_here:
             lam_report[name] = {
@@ -1015,6 +1097,9 @@ def build_correction_table_from_hessian(
         table[name] = entries
     return table, {
         "total_near_degen_skips": total_near_degen_skips,
+        #: Fewest vibrational modes any isotopologue kept. Compared between
+        #: geometries to catch a surface that has gone unstable.
+        "n_vib": min(n_vib_seen) if n_vib_seen else 0,
         "anharmonic_statuses": statuses,
         "nonconvergent": nonconvergent,
         "nonconvergent_policy": policy,
@@ -1029,3 +1114,357 @@ def build_correction_table_from_hessian(
         # this they are indistinguishable after the fact.
         "harmonic_scheme": str(harmonic_scheme).strip().lower(),
     }
+
+
+# ── Correction self-consistency ──────────────────────────────────────────────
+#
+# alpha is expanded about the quantum minimum x_QM and then frozen, but the
+# joint objective exists to move the geometry OFF x_QM -- the spectra pull it
+# towards the true equilibrium. So the frozen correction is applied at a
+# geometry it was never expanded about, and alpha is not flat in between.
+#
+# Measured on water at B3LYP/cc-pVTZ, force field held fixed and only the
+# expansion point moved:
+#
+#     d(correction)/dr      A +273.5   B  +42.1   C  +16.4  MHz per mA
+#     d(correction)/dtheta  A -2266.9  B +341.6   C   -9.9  MHz per deg
+#
+# and the optimiser moves -2.97 mA, which is worth -787 MHz on A. Against a
+# correction error of +2825 MHz that is 28% of the gap -- the same order as
+# the force-field-quality floor, and unlike that floor it costs two alpha
+# evaluations rather than a correlated force field.
+#
+# Two things make this cheap. The optimiser travels essentially one direction,
+# so a DIRECTIONAL derivative suffices and the cost is two alpha evaluations
+# whatever the molecule's size, rather than the 2(3N-6) a full gradient would
+# need. And the extrapolated table is an ordinary correction table with
+# shifted alpha_sum_mhz, so every consumer -- parse_correction_table, the
+# optimiser, the geomeTRIC bridge -- is untouched.
+#
+# What is NOT done here, deliberately: alpha is not recomputed AT the fitted
+# geometry. VPT2 expands about a stationary point, and the fitted geometry is
+# not one; a Hessian there carries a residual gradient that contaminates the
+# normal-mode analysis at first order. Here the expansion stays at x_QM and
+# only the SLOPE is measured off-stationary, so that contamination enters the
+# final correction multiplied by the displacement -- second order rather than
+# first.
+
+#: Largest displacement the first-order extrapolation is trusted over, in
+#: Angstrom. Beyond it the table is left alone.
+#:
+#: This is a validity limit, not a tuning knob: alpha(x) is expanded to first
+#: order, so it is only good while the displacement is small, and nothing in
+#: the derivation says what "small" is. Measured across 12 molecule/level
+#: pairs, the answer changes sign around here -- mean bond error -7% for
+#: displacements under 20 mA (n=4) against +61% over it (n=8), and every one
+#: of the three worst regressions (water at 60 mA +285%, ozone at 30 mA +141%,
+#: isocyanic acid at 324 mA +108%) is on the far side.
+#:
+#: The number is where the measured evidence turns, on 12 points, so treat it
+#: as a guard rail rather than a calibrated constant. The principle behind it
+#: -- a first-order expansion stops being valid at some displacement -- is not
+#: in doubt; only the exact crossing point is.
+_MAX_TRACK_DISTANCE_ANG = 0.020
+
+#: How alpha is carried from the quantum minimum to the fitted geometry.
+#:
+#:   "direct"    -- rebuild the table AT the fitted geometry. One alpha
+#:                  evaluation, and no extrapolation at all: it is the wanted
+#:                  quantity rather than an approximation to it.
+#:   "linear"    -- first order from the slope measured at +-step/2. Two alpha
+#:                  evaluations, and it predicts at a distance twice the
+#:                  sampled half-width, so it extrapolates.
+#:   "quadratic" -- second order from those same points plus the centre. Same
+#:                  two evaluations as "linear"; less truncation error.
+#:
+#: On "direct" and VPT2's stationary-point requirement: adding a linear term
+#: to a potential moves its minimum without changing ANY derivative of order
+#: two or higher. So the Hessian and cubic constants at the fitted geometry
+#: are exactly those of a surface that IS stationary there, and the alpha
+#: built from them is that surface's alpha -- a molecule whose equilibrium is
+#: our best estimate of the true one, carrying the best force constants we
+#: have. What the gradient does affect is the rotation/vibration separation,
+#: which is why "direct" additionally checks that the mode count held.
+#:
+#: MEASURED, 9 molecules at HF/6-31G with the distance gate off, displacements
+#: 15-324 mA, against the untracked fit:
+#:
+#:                    mean bond   median bond   median angle   alpha evals
+#:     linear            +24%        -2.0%         +20.5%           2
+#:     direct             -9%        -4.2%          +9.6%           1
+#:     quadratic         -14%        -2.3%         +12.5%           2
+#:
+#: The mean is carried almost entirely by isocyanic acid at 324 mA, where
+#: linear blows up (+108%) while direct (-23%) and quadratic (-45%) beat the
+#: untracked fit. Drop that one molecule and all three land within 1% of each
+#: other, so the mean overstates the difference badly. The medians are the
+#: honest summary, and on them "direct" wins on both bond and angle while
+#: costing half what the other two cost.
+#:
+#: So "direct" is the default: best median on both measures, cheapest, and the
+#: only one that is the wanted quantity rather than an approximation to it.
+#: "quadratic" is better when the displacement is large, though that rests on
+#: a single molecule. "linear" is kept because measurements on file were made
+#: with it, not because it is recommended -- "direct" beats it on every
+#: measure at half the cost.
+#:
+#: What none of them fix: every scheme makes the mean angle WORSE at this
+#: level, and the two best-determined molecules (water at 0.38 mA, ozone at
+#: 1.66) degrade under all three. At B3LYP/cc-pVTZ, where displacements are
+#: 4-20 mA rather than 15-324, linear improved water's angle by 33% and
+#: ozone's by 85%. The level of theory matters more than the scheme does.
+_SCHEMES = ("direct", "linear", "quadratic")
+
+#: Fraction of the applied shift carried as added uncertainty. The shift is a
+#: first-order estimate whose remainder is the second-order term; measured on
+#: water that term is 126 MHz against a 787 MHz shift, i.e. 16%, so 25% is
+#: that rounded up rather than a free parameter.
+_SLOPE_SIGMA_FRACTION = 0.25
+
+
+def _as_flat_direction(direction, n_atoms):
+    """Normalise a direction given as (N,3) or (3N,) to a unit (N,3) array."""
+    vec = np.asarray(direction, dtype=float).reshape(n_atoms, 3)
+    norm = float(np.linalg.norm(vec))
+    if norm <= 0.0:
+        raise ValueError("direction has zero length")
+    return vec / norm, norm
+
+
+def alpha_directional_derivative(
+    hessian_fn,
+    coords_ang,
+    isotopologues,
+    direction,
+    step_ang: float | None = None,
+    base_table=None,
+    **table_kw,
+):
+    """d(alpha_sum)/ds along one Cartesian direction, in MHz per Angstrom.
+
+    ``direction`` is a displacement, shaped (N,3) or (3N,); its length is used
+    as the step unless ``step_ang`` overrides it. The derivative is a central
+    difference about ``coords_ang``, so two correction tables are built --
+    independent of how many atoms or isotopologues are involved.
+
+    Returns ``(slopes, info)`` where ``slopes[iso_name][component]`` is the
+    slope in MHz per Angstrom. A component is present only if both displaced
+    tables produced it, so anything the nonconvergent policy dropped on either
+    side is simply absent and the caller leaves it unshifted.
+
+    Pass ``base_table`` -- alpha at ``coords_ang`` itself -- to also get the
+    second derivative in ``info["curvatures"]``, in MHz per Angstrom squared.
+    The two displaced points plus the centre are three points on a line, which
+    is exactly enough for a curvature, so this costs no extra quantum
+    chemistry: it reuses evaluations the first derivative already paid for.
+    """
+    coords = np.asarray(coords_ang, dtype=float)
+    unit, length = _as_flat_direction(direction, coords.shape[0])
+    step = float(step_ang) if step_ang is not None else length
+    if step <= 0.0:
+        raise ValueError("step_ang must be positive")
+
+    half = 0.5 * step
+    plus = coords + half * unit
+    minus = coords - half * unit
+    table_plus, _ = build_correction_table_from_hessian(
+        hessian_fn(plus), plus, isotopologues, hessian_fn=hessian_fn, **table_kw)
+    table_minus, _ = build_correction_table_from_hessian(
+        hessian_fn(minus), minus, isotopologues, hessian_fn=hessian_fn, **table_kw)
+
+    slopes: dict = {}
+    for name, entries_plus in table_plus.items():
+        entries_minus = table_minus.get(name, {})
+        for comp, spec_plus in entries_plus.items():
+            spec_minus = entries_minus.get(comp)
+            if spec_minus is None:
+                continue
+            d = (float(spec_plus["alpha_sum_mhz"])
+                 - float(spec_minus["alpha_sum_mhz"])) / step
+            slopes.setdefault(name, {})[comp] = d
+
+    curvatures: dict = {}
+    if base_table is not None:
+        # Central second difference over the same three points. The displaced
+        # ones sit at +-step/2, so the interval is step/2, not step.
+        half_sq = (0.5 * step) ** 2
+        for name, entries_plus in table_plus.items():
+            entries_minus = table_minus.get(name, {})
+            entries_zero = base_table.get(name, {})
+            for comp, spec_plus in entries_plus.items():
+                spec_minus, spec_zero = entries_minus.get(comp), entries_zero.get(comp)
+                if spec_minus is None or spec_zero is None:
+                    continue
+                curvatures.setdefault(name, {})[comp] = (
+                    float(spec_plus["alpha_sum_mhz"])
+                    - 2.0 * float(spec_zero["alpha_sum_mhz"])
+                    + float(spec_minus["alpha_sum_mhz"])) / half_sq
+
+    return slopes, {"step_ang": step, "direction_unit": unit,
+                    "curvatures": curvatures or None}
+
+
+def extrapolate_correction_table(
+    table,
+    slopes,
+    distance_ang: float,
+    curvatures=None,
+    slope_sigma_fraction: float = _SLOPE_SIGMA_FRACTION,
+):
+    """A correction table moved along the measured slope by ``distance_ang``.
+
+    The result is an ordinary correction table -- same keys, same schema -- so
+    it drops straight into anything that already consumes one. Components with
+    no measured slope are copied through unchanged.
+
+    sigma grows by ``slope_sigma_fraction`` of the applied shift, in
+    quadrature: the shift is first order and its remainder is the second-order
+    term, which the extrapolation does not model.
+    """
+    out: dict = {}
+    shifted = 0
+    for name, entries in table.items():
+        new_entries: dict = {}
+        for comp, spec in entries.items():
+            new_spec = dict(spec)
+            slope = slopes.get(name, {}).get(comp)
+            if slope is not None:
+                shift = float(slope) * float(distance_ang)
+                if curvatures is not None:
+                    curv = curvatures.get(name, {}).get(comp)
+                    if curv is not None:
+                        shift += 0.5 * float(curv) * float(distance_ang) ** 2
+                new_spec["alpha_sum_mhz"] = float(spec["alpha_sum_mhz"]) + shift
+                sigma = float(spec.get("sigma_mhz", 0.0) or 0.0)
+                # The table's sigma is on the correction (0.5*alpha_sum), so
+                # the shift is halved to match before going into quadrature.
+                extra = abs(0.5 * shift) * float(slope_sigma_fraction)
+                new_spec["sigma_mhz"] = float(np.hypot(sigma, extra))
+                note = str(spec.get("notes", "") or "")
+                new_spec["notes"] = (
+                    f"{note}; expansion point tracked {1000 * distance_ang:+.2f} mA "
+                    f"to the fitted geometry ({shift:+.1f} MHz on alpha)").lstrip("; ")
+                shifted += 1
+            new_entries[comp] = new_spec
+        out[name] = new_entries
+    return out, {"components_shifted": shifted,
+                 "distance_ang": float(distance_ang)}
+
+
+def self_consistent_correction_table(
+    hessian_fn,
+    coords_ang,
+    isotopologues,
+    fit_fn,
+    passes: int = 2,
+    scheme: str = "direct",
+    min_step_ang: float = 1e-4,
+    max_distance_ang: float | None = None,
+    slope_sigma_fraction: float = _SLOPE_SIGMA_FRACTION,
+    **table_kw,
+):
+    """Correction table whose expansion point follows where the fit lands.
+
+    ``fit_fn(table) -> coords`` runs the caller's fit and returns the fitted
+    geometry; everything else is handled here. The loop is:
+
+      1. Build the table at ``coords_ang`` -- the quantum stationary point.
+      2. Fit, and see how far the fit moved.
+      3. Measure d(alpha)/ds along that displacement (two alpha evaluations,
+         once -- the direction barely changes between passes).
+      4. Re-extrapolate the ORIGINAL table by the new distance and fit again.
+
+    Step 4 always extrapolates from the table built at the stationary point,
+    never from the previous extrapolation, so error does not compound across
+    passes and the VPT2 expansion stays where it is allowed to be.
+
+    Two passes is the default because the second-order term is small: on water
+    the first pass shifts A by -787 MHz and the induced re-fit is worth +126
+    MHz, so a third pass would move A by ~20 MHz.
+
+    Returns ``(table, info)``; ``info["geometries"]`` is the fitted geometry
+    after each pass, so the caller can check it converged rather than assume.
+    """
+    if passes < 1:
+        raise ValueError("passes must be at least 1")
+    scheme = str(scheme).strip().lower()
+    if scheme not in _SCHEMES:
+        raise ValueError(f"Unknown scheme '{scheme}'. Valid: {sorted(_SCHEMES)}")
+    if max_distance_ang is None:
+        # The gate contains truncation error, so it belongs to the schemes that
+        # extrapolate. "direct" does not, and measurement agrees: across the 9
+        # molecules its outcome correlates with displacement at only -0.17,
+        # against -0.94 with how good the untracked fit already was. Gating it
+        # on distance would be gating on the wrong variable -- and it is the
+        # scheme that came through 324 mA intact.
+        max_distance_ang = (float("inf") if scheme == "direct"
+                            else _MAX_TRACK_DISTANCE_ANG)
+    coords = np.asarray(coords_ang, dtype=float)
+    base_table, base_info = build_correction_table_from_hessian(
+        hessian_fn(coords), coords, isotopologues, hessian_fn=hessian_fn, **table_kw)
+
+    table = base_table
+    slopes: dict | None = None
+    curvatures: dict | None = None
+    skipped: float | None = None
+    unstable: tuple | None = None
+    n_vib_base = int(base_info.get("n_vib", 0))
+    geometries: list = []
+    distances: list = []
+    for _ in range(passes):
+        fitted = np.asarray(fit_fn(table), dtype=float)
+        geometries.append(fitted)
+        step = fitted - coords
+        distance = float(np.linalg.norm(step))
+        distances.append(distance)
+        if distance < float(min_step_ang):
+            break
+        if distance > float(max_distance_ang):
+            # Too far for a first-order model. Leaving the table alone is the
+            # conservative failure: it gives back exactly the untracked answer
+            # rather than a correction extrapolated past where it was measured.
+            skipped = float(distance)
+            table = base_table
+            break
+        if scheme == "direct":
+            # One alpha evaluation, at the geometry the answer is used at.
+            candidate, cand_info = build_correction_table_from_hessian(
+                hessian_fn(fitted), fitted, isotopologues,
+                hessian_fn=hessian_fn, **table_kw)
+            n_vib_here = int(cand_info.get("n_vib", 0))
+            if n_vib_here < n_vib_base:
+                # The surface lost a mode between the two geometries, so the
+                # fitted point is past where this force field is a minimum at
+                # all. Fall back rather than trust an alpha built on it.
+                unstable = (n_vib_base, n_vib_here)
+                table = base_table
+                break
+            table = candidate
+        else:
+            if slopes is None:
+                slopes, deriv_info = alpha_directional_derivative(
+                    hessian_fn, coords, isotopologues, step,
+                    base_table=(base_table if scheme == "quadratic" else None),
+                    **table_kw)
+                curvatures = deriv_info.get("curvatures")
+            table, _ = extrapolate_correction_table(
+                base_table, slopes, distance, curvatures=curvatures,
+                slope_sigma_fraction=slope_sigma_fraction)
+
+    info = dict(base_info)
+    info.update({
+        "self_consistent_passes": len(geometries),
+        "geometries": geometries,
+        "distances_ang": distances,
+        "slopes": slopes,
+        # Not None when the fit moved further than the expansion is good for,
+        # in which case the table handed back is the untracked one.
+        "skipped_beyond_ang": skipped,
+        "max_distance_ang": float(max_distance_ang),
+        "scheme": scheme,
+        "curvatures": curvatures,
+        #: (modes at the minimum, modes at the fitted geometry) when "direct"
+        #: bailed out because the surface lost one; None otherwise.
+        "unstable_modes": unstable,
+    })
+    return table, info

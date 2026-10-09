@@ -113,12 +113,12 @@ from backend.spectral.centrifugal_distortion import (
 )
 from backend.spectral.correction_models import RovibCorrection
 
-# h / (8Ï€Â² Â· amu Â· Ã…Â²) â†’ MHz; converts principal moments [amuÂ·Ã…Â²] to rotational constants [MHz]
+# h / (8π² · amu · Å²) → MHz; converts principal moments [amu·Å²] to rotational constants [MHz]
 _INERTIA_TO_MHZ = (constants.h / (8 * np.pi**2 * constants.atomic_mass * (1e-10)**2)) * 1e-6
 
 
 def _inertia_tensor(coords, masses):
-    """Inertia tensor (3Ã—3) in amuÂ·Ã…Â², centered at center of mass."""
+    """Inertia tensor (3×3) in amu·Å², centered at center of mass."""
     cm = np.dot(masses, coords) / masses.sum()
     r = coords - cm
     r2 = np.einsum("ij,ij->i", r, r)
@@ -134,7 +134,7 @@ def _principal_moments(coords, masses):
 
 def _rotational_constants(coords, masses):
     """
-    Rotational constants A â‰¥ B â‰¥ C in MHz from Cartesian coords (Ã…) and masses (amu).
+    Rotational constants A ≥ B ≥ C in MHz from Cartesian coords (Å) and masses (amu).
     Returns shape (3,).
     """
     eigvals = np.sort(np.linalg.eigvalsh(_inertia_tensor(coords, masses)))
@@ -166,8 +166,8 @@ def _jacobian_full(coords, masses, delta):
 
 def _jacobian_full_analytic(coords, masses, delta, degeneracy_rel_tol=1e-4):
     """
-    Full (3 Ã— 3N) Jacobian âˆ‚(A,B,C)/âˆ‚(flat x) in MHz/Ã… using dÎ»/dx = v^T (dI/dx) v
-    for principal moments Î» of the inertia tensor (same ordering as ``_rotational_constants``).
+    Full (3 × 3N) Jacobian ∂(A,B,C)/∂(flat x) in MHz/Å using dλ/dx = v^T (dI/dx) v
+    for principal moments λ of the inertia tensor (same ordering as ``_rotational_constants``).
 
     Falls back to finite differences when moments are nearly degenerate or non-positive
     (linear / pathological geometries).
@@ -373,7 +373,7 @@ class SpectralEngine:
         Step scale used only when the Jacobian falls back to finite differences
         (``analytic_jacobian=False`` or near-degenerate principal moments).
     analytic_jacobian : bool
-        If True (default), use the analytic inertia derivative for âˆ‚(A,B,C)/âˆ‚x.
+        If True (default), use the analytic inertia derivative for ∂(A,B,C)/∂x.
     jacobian_degeneracy_tol : float
         If relative gaps between sorted principal moments are below this, use FD.
     """
@@ -839,10 +839,10 @@ class SpectralEngine:
 
     def jacobian(self, coords, masses, component_indices=None):
         """
-        (3 Ã— 3N) Jacobian âˆ‚(A,B,C)/âˆ‚(xâ‚,yâ‚,zâ‚,â€¦,xâ‚™,yâ‚™,zâ‚™).
+        (3 × 3N) Jacobian ∂(A,B,C)/∂(x₁,y₁,z₁,…,xₙ,yₙ,zₙ).
         Uses an analytic inertia derivative by default; finite differences when
         ``analytic_jacobian`` is False or when principal moments are nearly degenerate.
-        Units: MHz / Ã….
+        Units: MHz / Å.
         """
         coords = np.asarray(coords, dtype=float)
         masses = np.asarray(masses, dtype=float)
@@ -859,9 +859,9 @@ class SpectralEngine:
 
     def residuals(self, coords, masses, obs_constants, alpha_constants=None, component_indices=None, delta_total_constants=None):
         """
-        Î”(A,B,C) = target equilibrium constants âˆ’ calculated constants in MHz.
-        If ``delta_total_constants`` are supplied, applies Be â‰ˆ B0 + Î´_total.
-        Otherwise, if alpha_constants are supplied, applies Be â‰ˆ B0 + 0.5 * alpha.
+        Δ(A,B,C) = target equilibrium constants − calculated constants in MHz.
+        If ``delta_total_constants`` are supplied, applies Be ≈ B0 + δ_total.
+        Otherwise, if alpha_constants are supplied, applies Be ≈ B0 + 0.5 * alpha.
         """
         if alpha_constants is None:
             alpha_constants = np.zeros(len(obs_constants))
@@ -931,7 +931,7 @@ class SpectralEngine:
 
     def stacked(self, coords):
         """
-        Stacked (3k Ã— 3N) Jacobian and (3k,) residual vector across all k isotopologues.
+        Stacked (3k × 3N) Jacobian and (3k,) residual vector across all k isotopologues.
         The SVD of the Jacobian determines which structural parameters are experimentally
         constrained vs. assigned to the quantum null space.
         """
@@ -1007,7 +1007,7 @@ class SpectralEngine:
     def stacked_unweighted(self, coords):
         """
         Return unweighted stacked Jacobian and residual vector in physical units.
-        Jacobian units: MHz/Ã…, residual units: MHz.
+        Jacobian units: MHz/Å, residual units: MHz.
         """
         coords = np.asarray(coords, dtype=float)
         J_blocks, r_blocks = [], []

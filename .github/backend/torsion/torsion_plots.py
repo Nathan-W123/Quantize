@@ -1,7 +1,7 @@
 ﻿"""
 Optional matplotlib-based plots for torsion/LAM results.
 
-All functions are safe to import when matplotlib is unavailable â€” they raise
+All functions are safe to import when matplotlib is unavailable — they raise
 ImportError only when actually called.  Use ``try_import=False`` to suppress
 the guard and require matplotlib to be present.
 """
@@ -33,12 +33,12 @@ def plot_torsion_potential(
     title: Optional[str] = None,
     show: bool = False,
 ) -> Optional[Path]:
-    """Plot the torsion potential V(Î±) with optional wavefunction overlays.
+    """Plot the torsion potential V(α) with optional wavefunction overlays.
 
     Parameters
     ----------
     spec : TorsionHamiltonianSpec
-    n_points : number of Î± grid points (0 to 2Ï€)
+    n_points : number of α grid points (0 to 2π)
     n_wavefunctions : number of eigenfunctions to overlay (0 = potential only)
     output_path : save figure to this path if given
     title : optional figure title
@@ -60,9 +60,9 @@ def plot_torsion_potential(
         V += vs * np.sin(k * alpha)
 
     fig, ax = plt.subplots(figsize=(7, 4))
-    ax.plot(np.degrees(alpha), V, "k-", lw=1.5, label="V(Î±)")
-    ax.set_xlabel("Torsion angle Î± (degrees)")
-    ax.set_ylabel("Potential (cmâ»Â¹)")
+    ax.plot(np.degrees(alpha), V, "k-", lw=1.5, label="V(α)")
+    ax.set_xlabel("Torsion angle α (degrees)")
+    ax.set_ylabel("Potential (cm⁻¹)")
 
     if n_wavefunctions > 0:
         out = solve_ram_lite_levels(spec, J=0, K=0, n_levels=n_wavefunctions)
@@ -80,7 +80,7 @@ def plot_torsion_potential(
                         psi_alpha += psi[j] * np.cos(m * alpha)
                     scale = 0.3 * (V.max() - V.min()) / (np.abs(psi_alpha).max() + 1e-12)
                     ax.plot(np.degrees(alpha), e0 + scale * psi_alpha,
-                            lw=0.8, label=f"vt={i} ({e0:.1f} cmâ»Â¹)")
+                            lw=0.8, label=f"vt={i} ({e0:.1f} cm⁻¹)")
 
     ax.legend(fontsize=8)
     if title:
@@ -112,14 +112,14 @@ def plot_torsion_wavefunctions(
     title: Optional[str] = None,
     show: bool = False,
 ) -> Optional[Path]:
-    """Plot torsion probability densities |Ïˆ_vt(Î±)|Â² on top of the potential.
+    """Plot torsion probability densities |ψ_vt(α)|² on top of the potential.
 
     Parameters
     ----------
     spec : TorsionHamiltonianSpec
     n_levels : number of torsional levels to plot
     J, K : rotational quantum numbers for solve_ram_lite_levels
-    n_points : Î± grid resolution
+    n_points : α grid resolution
     output_path : save figure here if given
     title : figure title
     show : call plt.show()
@@ -145,7 +145,7 @@ def plot_torsion_wavefunctions(
     m_vals = list(out.get("m_vals", []))
 
     fig, ax = plt.subplots(figsize=(7, 5))
-    ax.plot(np.degrees(alpha), V, "k-", lw=1.5, label="V(Î±)", zorder=5)
+    ax.plot(np.degrees(alpha), V, "k-", lw=1.5, label="V(α)", zorder=5)
     ax.axhline(0, color="gray", lw=0.4, ls="--")
 
     colors = plt.cm.tab10.colors  # type: ignore[attr-defined]
@@ -162,10 +162,10 @@ def plot_torsion_wavefunctions(
             prob = np.abs(prob)
             scale = 0.25 * (V.max() - V.min()) / (prob.max() + 1e-12)
             ax.fill_between(np.degrees(alpha), e0, e0 + scale * prob,
-                            alpha=0.35, color=color, label=f"vt={i} ({e0:.1f} cmâ»Â¹)")
+                            alpha=0.35, color=color, label=f"vt={i} ({e0:.1f} cm⁻¹)")
 
-    ax.set_xlabel("Torsion angle Î± (degrees)")
-    ax.set_ylabel("Energy (cmâ»Â¹)")
+    ax.set_xlabel("Torsion angle α (degrees)")
+    ax.set_ylabel("Energy (cm⁻¹)")
     ax.legend(fontsize=8, loc="upper right")
     if title:
         ax.set_title(title)
@@ -219,7 +219,7 @@ def plot_tunneling_splitting_table(
     ax.bar(vt_vals, split_cm1, color=colors, edgecolor="k", linewidth=0.6)
     ax.axhline(0, color="k", lw=0.8)
     ax.set_xlabel("Torsional level vt")
-    ax.set_ylabel("Aâ€“E splitting (cmâ»Â¹)")
+    ax.set_ylabel("A–E splitting (cm⁻¹)")
     ax.set_xticks(vt_vals)
     if title:
         ax.set_title(title)

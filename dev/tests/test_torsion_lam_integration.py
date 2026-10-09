@@ -15,7 +15,7 @@ from backend.torsion.torsion_lam_integration import (
 )
 
 
-# â”€â”€ classify_constant_source â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── classify_constant_source ──────────────────────────────────────────────────
 
 class TestClassifyConstantSource:
     def test_no_config_is_rigid(self):
@@ -52,7 +52,7 @@ class TestClassifyConstantSource:
         assert classify_constant_source("bad") == "rigid"
 
 
-# â”€â”€ remove_torsional_alpha_contributions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── remove_torsional_alpha_contributions ─────────────────────────────────────
 
 class TestRemoveTorsionalAlphaContributions:
     def test_single_mode_subtracted(self):
@@ -90,7 +90,7 @@ class TestRemoveTorsionalAlphaContributions:
         np.testing.assert_allclose(result, alpha[:3] - mode[:3], atol=1e-12)
 
 
-# â”€â”€ lam_uncertainty_contribution â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── lam_uncertainty_contribution ─────────────────────────────────────────────
 
 class TestLamUncertaintyContribution:
     def test_zero_rms_gives_zero_uncertainty(self):
@@ -120,7 +120,7 @@ class TestLamUncertaintyContribution:
             lam_uncertainty_contribution(1.0, 0)
 
 
-# â”€â”€ combine_lam_corrections â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── combine_lam_corrections ───────────────────────────────────────────────────
 
 class TestCombineLamCorrections:
     def test_no_corrections_leaves_B_unchanged(self):
@@ -163,7 +163,7 @@ class TestCombineLamCorrections:
         assert result["source"] == "globally_fit"
 
 
-# â”€â”€ lam_correction_report â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── lam_correction_report ─────────────────────────────────────────────────────
 
 class TestLamCorrectionReport:
     def test_minimal_call(self):
@@ -209,7 +209,7 @@ class TestLamCorrectionReport:
             assert k in report
 
 
-# â”€â”€ format_lam_report_for_summary â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── format_lam_report_for_summary ─────────────────────────────────────────────
 
 class TestFormatLamReportForSummary:
     def test_arrays_become_lists(self):

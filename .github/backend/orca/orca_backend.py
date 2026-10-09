@@ -25,7 +25,7 @@ from backend.spectral.rovib_corrections import resolve_alpha_components
 from backend.registry import register_backend
 
 
-# â”€â”€ Executable discovery â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Executable discovery ──────────────────────────────────────────────────────
 
 def _find_orca(executable):
     """
@@ -53,7 +53,7 @@ def _find_orca(executable):
     )
 
 
-# â”€â”€ Backend class â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Backend class ─────────────────────────────────────────────────────────────
 
 @register_backend
 class OrcaBackend(QuantumBackend):
@@ -90,7 +90,7 @@ class OrcaBackend(QuantumBackend):
             self._exe = None
             print(f"Note: {e}\nCall load_orca() to use pre-computed files.")
 
-    # â”€â”€ File paths â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── File paths ─────────────────────────────────────────────────────────────
 
     def _inp_path(self):
         return os.path.join(self.workdir, "quantize_orca.inp")
@@ -118,7 +118,7 @@ class OrcaBackend(QuantumBackend):
         safe = "".join(ch if ch.isalnum() or ch in ("-", "_", ".") else "_" for ch in str(label))
         return os.path.join(self.workdir, f"quantize_orca_rovib_{safe}.out")
 
-    # â”€â”€ Input generation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Input generation ───────────────────────────────────────────────────────
 
     def _write_input(self, coords, job="hessian"):
         if job == "hessian":
@@ -190,7 +190,7 @@ class OrcaBackend(QuantumBackend):
         with open(self._iso_rovib_inp_path(label), "w") as f:
             f.write("\n".join(lines))
 
-    # â”€â”€ Execution â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Execution ──────────────────────────────────────────────────────────────
 
     def _exec(self):
         if self._exe is None:
@@ -280,13 +280,13 @@ class OrcaBackend(QuantumBackend):
             "Files present:\n"
             f"{listing}\n\n"
             "Common causes: (1) spaces in the full path to the job directory break some ORCA "
-            "helpers â€” clone the repo to a path without spaces, or use this codebase version "
+            "helpers — clone the repo to a path without spaces, or use this codebase version "
             "that invokes ORCA with a relative input name; (2) academic license allows only "
-            "one ORCA job â€” use max_workers=1; (3) see quantize_orca.out below.\n"
+            "one ORCA job — use max_workers=1; (3) see quantize_orca.out below.\n"
             f"--- tail of quantize_orca.out ---\n{out_tail}"
         )
 
-    # â”€â”€ QuantumBackend interface â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── QuantumBackend interface ───────────────────────────────────────────────
 
     def run_hessian(self, coords_ang: np.ndarray) -> HessianResult:
         """Full Freq job: returns energy, gradient, and Hessian."""
@@ -347,7 +347,7 @@ class OrcaBackend(QuantumBackend):
             print(f"  [ORCA] cheap_opt failed: {exc}")
             return None
 
-    # â”€â”€ Rovib helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Rovib helpers ──────────────────────────────────────────────────────────
 
     def _run_rovib_shared(self, coords_ang, isotopologues):
         """Single VPT2 job; broadcast alpha to all isotopologues."""
@@ -475,7 +475,7 @@ class OrcaBackend(QuantumBackend):
                         print(
                             f"  [ORCA] WARNING: Fermi/Darling-Dennison resonance detected "
                             f"in VPT2 output for '{label}'.\n"
-                            "  [ORCA]   Alpha constants may be unreliable â€” "
+                            "  [ORCA]   Alpha constants may be unreliable — "
                             "consider supplying alpha_mhz manually."
                         )
                     if parsed.parse_status == "parse_failed":
