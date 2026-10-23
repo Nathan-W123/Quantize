@@ -1,7 +1,27 @@
+# Core numerics. Everything in backend/ runs on these alone.
 numpy>=1.20
 scipy>=1.7
-scikit-optimize>=0.9.0
-pytest>=7.0
 PyYAML>=6.0
+
+# The quantum backend. WITHOUT THIS THE ENGINE HAS NO REAL PHYSICS: every
+# benchmark, every correction and every test that touches an electronic
+# structure goes through dev/pyscf_backend.py, which imports pyscf. It was
+# missing from this file until now, so a fresh checkout could install
+# "all the dependencies" and still not run a single benchmark -- and CI,
+# which installs from this file, could not have run those tests either.
+pyscf>=2.3
+
+# Optimisation, fitting and figures
+scikit-optimize>=0.9.0
 matplotlib>=3.7
+
+# Reporting. reportlab renders scripts/build_methods_pdf.py; the equations in
+# it are typeset by matplotlib's mathtext because this project assumes no
+# LaTeX installation.
+reportlab>=4.0
+
+# Browser and desktop interfaces
 streamlit>=1.35
+
+# Tests
+pytest>=7.0

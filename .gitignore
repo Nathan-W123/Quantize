@@ -35,7 +35,13 @@ multistart_runs/
 energy_minimize_runs/
 bayes_tune_ocs_orca/
 
-# Local generated output (runs, benchmarks, QM scratch)
+# Local generated output (runs, benchmarks, QM scratch).
+#
+# Benchmark RESULTS are not scratch -- one accuracy-upgrades sweep is hours of
+# CPU -- so they are archived into reports/accuracy_upgrades/, which is
+# tracked. Run scripts/archive_benchmark_results.py and commit the output
+# rather than leaving a number that cost hours sitting in an ignored
+# directory.
 output/*
 !output/.gitkeep
 !output/**/.gitkeep

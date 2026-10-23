@@ -1,0 +1,52 @@
+{
+  "water": {
+    "base": {
+      "theory_rms_ma": 8.138458191084164,
+      "me_rms_ma": 0.16990185395715507,
+      "hybrid_rms_ma": 0.5595029052806177,
+      "theory_rms_deg": 7.065135310263727,
+      "me_rms_deg": 0.06579366309001955,
+      "hybrid_rms_deg": 0.24646377671268738,
+      "n_species": 2,
+      "sigma_x_ang": 0.02,
+      "track_distances_ang": null,
+      "track_scheme": null,
+      "fit_cd": false,
+      "cd_weight": 0.0,
+      "track_skipped_beyond_ang": null,
+      "track_unstable_modes": null,
+      "corr_level": "hf/6-31g",
+      "bob": false,
+      "defect_scale": false,
+      "harmonic_scheme": "watson",
+      "lam_modes_cm": [],
+      "g_tensor": null,
+      "g_per_isotopologue": false,
+      "loo_offsets_ma": null
+    },
+    "corr": {
+      "theory_rms_ma": 8.138458191084164,
+      "me_rms_ma": 0.2924731467048858,
+      "hybrid_rms_ma": 0.1592329439485951,
+      "theory_rms_deg": 7.065135310263727,
+      "me_rms_deg": 0.3108100010786359,
+      "hybrid_rms_deg": 0.1813585753172049,
+      "n_species": 2,
+      "sigma_x_ang": 0.02,
+      "track_distances_ang": null,
+      "track_scheme": null,
+      "fit_cd": false,
+      "cd_weight": 0.0,
+      "track_skipped_beyond_ang": null,
+      "track_unstable_modes": null,
+      "corr_level": "mp2/cc-pvtz",
+      "bob": false,
+      "defect_scale": false,
+      "harmonic_scheme": "watson",
+      "lam_modes_cm": [],
+      "g_tensor": null,
+      "g_per_isotopologue": false,
+      "loo_offsets_ma": null
+    }
+  }
+}

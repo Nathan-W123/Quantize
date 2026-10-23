@@ -195,6 +195,9 @@ TRACK_MAX = None
 #: Weight on the distortion rows relative to the rotational constants. 1.0
 #: trusts them as stated; the sweep below is what says whether that is right.
 CD_WEIGHT = 1.0
+#: Stamped into every result row so vintages can never be compared by accident.
+#: Filled in main() once git has been consulted.
+VINTAGE = "unknown"
 WANT_CONFIGS: list[str] = []
 _args: list[str] = []
 for _tok in sys.argv[1:]:
@@ -341,6 +344,70 @@ for _cfg in CONFIGS.values():
     _cfg.setdefault("fit_cd", False)
 
 
+def code_vintage() -> str:
+    """The commit this result was produced by, or "dirty"/"unknown".
+
+    WHY THIS EXISTS. Results accumulate in one JSON across many runs, and a
+    configuration already present is skipped rather than recomputed. That makes
+    the file a mix of vintages, and comparing a cached row against a fresh one
+    silently compares two different programs.
+
+    It has already produced a wrong published conclusion. Switching
+    centrifugal-distortion constants on as fit data appeared to improve the
+    nine-molecule mean from 12.75 to 11.44 mA. It does nothing at all -- the
+    switch is a bit-exact no-op for want of observed constants -- and the
+    entire apparent gain was that the cached ``base`` rows predated a
+    correction to the harmonic alpha term. The tell was that those rows'
+    mixed-estimation column, which cannot depend on the switch under test,
+    disagreed with the fresh rows by up to 3.4 mA.
+
+    A dirty tree returns "<sha>-dirty": an uncommitted edit means the row
+    cannot be reproduced from any commit, and saying so is more useful than
+    attributing it to the last one.
+    """
+    import subprocess
+    try:
+        sha = subprocess.run(
+            ["git", "-C", str(_ROOT), "rev-parse", "--short", "HEAD"],
+            capture_output=True, text=True, timeout=10, check=True,
+        ).stdout.strip()
+        dirty = subprocess.run(
+            ["git", "-C", str(_ROOT), "status", "--porcelain"],
+            capture_output=True, text=True, timeout=10, check=True,
+        ).stdout.strip()
+        return f"{sha}-dirty" if dirty else sha
+    except Exception:
+        return "unknown"
+
+
+def warn_on_mixed_vintages(out: dict, current: str) -> None:
+    """Say loudly when a results file mixes code vintages.
+
+    Not an error: re-running nine molecules to refresh one row is often not
+    what the user wants, and an older row is still a valid record of what that
+    code did. What is never acceptable is comparing across vintages without
+    knowing it, so the warning names the rows and what to do about them.
+    """
+    stale: dict[str, list[str]] = {}
+    for key, rec in out.items():
+        for cfg, entry in rec.items():
+            seen = entry.get("code_vintage") if isinstance(entry, dict) else None
+            if seen != current:
+                stale.setdefault(seen or "unstamped", []).append(f"{key}:{cfg}")
+    if not stale:
+        return
+    print(f"\n  [vintage] this run is {current}; the results file also holds:")
+    for vintage, rows in sorted(stale.items()):
+        shown = ", ".join(rows[:4]) + (" ..." if len(rows) > 4 else "")
+        print(f"            {vintage:<18} {len(rows):>3} rows   {shown}")
+    print("            DO NOT compare across these. Delete the stale rows and")
+    print("            re-run them, or compare only within one vintage. A"
+          " cached row")
+    print("            from older code has already produced one wrong"
+          " conclusion here;")
+    print("            see code_vintage() for which.\n")
+
+
 def electronic_shifted_isotopologues(isos, g_tensor, total_mass_amu):
     """Isotopologues with the electronic correction folded into the constants.
 
@@ -436,6 +503,8 @@ def theory_geometries(pool):
 
 
 def main() -> None:
+    global VINTAGE
+    VINTAGE = code_vintage()
     pool = (list(MOLECULES) + list(MOLECULES_SET2)
             + [WATER_SET[0], OZONE, ISOCYANIC_ACID])
     wanted = _args or [m.key for m in pool]
@@ -449,6 +518,8 @@ def main() -> None:
 
     print(f"  {METHOD.upper()}/{BASIS}, sigma_x = {SIGMA_X_ANG} A")
     print(f"  configs: {', '.join(configs)}")
+    print(f"  code vintage: {VINTAGE}")
+    warn_on_mixed_vintages(out, VINTAGE)
     if CORR_METHOD or CORR_BASIS:
         print(f"  corrections level: {CORR_METHOD or METHOD}/{CORR_BASIS or BASIS}")
     print()
@@ -610,6 +681,9 @@ def main() -> None:
                                  fit_cd=cfg["fit_cd"], cd_weight=CD_WEIGHT)
 
             entry = {
+                #: The commit that produced this row. Compare only within one
+                #: vintage; see code_vintage().
+                "code_vintage": VINTAGE,
                 "theory_rms_ma": rms_bond_error(mol, prior)[0],
                 "me_rms_ma": rms_bond_error(mol, me_geom)[0],
                 "hybrid_rms_ma": rms_bond_error(mol, hyb)[0],
