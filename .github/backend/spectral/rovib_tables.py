@@ -13,7 +13,7 @@ Two CSV layouts are supported, distinguished by their column names:
 
        isotopologue,component,delta_vib_MHz,sigma_delta_vib_MHz,source,method,basis,status
 
-   Each row contributes a vibrational delta directly (Be â‰ˆ B0 + delta_vib).
+   Each row contributes a vibrational delta directly (Be ≈ B0 + delta_vib).
 
 Both layouts are validated; on any error, a :class:`ValueError` with a clear
 message is raised.  The loader returns a ``dict[str, RovibCorrection]`` keyed

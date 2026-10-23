@@ -221,15 +221,15 @@ def guess_staggered_methanol(
     center=True,
 ):
     """
-    Staggered CHâ‚ƒOH geometry (C_s), atom order **C, O, H, H, H, Ho** with Ho the
+    Staggered CH₃OH geometry (C_s), atom order **C, O, H, H, H, Ho** with Ho the
     hydroxyl hydrogen bonded to O.
 
     The methyl takes three vertices of a regular tetrahedron around C (fourth
-    vertex is the Câ€“O bond); the OH bond is placed in a plane defined by the Câ†’O
-    axis and a perpendicular so **âˆ COH â‰ˆ angle_coh_deg** (gas-phase ~108.7Â°).
+    vertex is the C–O bond); the OH bond is placed in a plane defined by the C→O
+    axis and a perpendicular so **∠COH ≈ angle_coh_deg** (gas-phase ~108.7°).
 
-    Bond lengths default near equilibrium gas-phase / microwave-derived râ‚€ values
-    (order Ã…): CO ~1.43, CH ~1.09, OH ~0.96.
+    Bond lengths default near equilibrium gas-phase / microwave-derived r₀ values
+    (order Å): CO ~1.43, CH ~1.09, OH ~0.96.
 
     This avoids ``guess_geometry(...)``, whose greedy placement often yields
     distorted methyl angles unsuitable as an optimization seed.
@@ -274,9 +274,9 @@ def guess_staggered_methanol(
 
 def guess_planar_formaldehyde(r_co=1.205, r_ch=1.111, angle_hch_deg=116.13):
     """
-    Planar Hâ‚‚CO (Câ‚‚áµ¥) guess; atom order **O, C, H, H** matching experimental fits.
+    Planar H₂CO (C₂ᵥ) guess; atom order **O, C, H, H** matching experimental fits.
 
-    Orientation: C at origin, O on +z; hydrogens symmetric in the yz plane (âˆ HCH â‰ˆ angle_hch_deg).
+    Orientation: C at origin, O on +z; hydrogens symmetric in the yz plane (∠HCH ≈ angle_hch_deg).
     Defaults align with NIST CCCBDB experimental geometry for formaldehyde (Cas No. 50-00-0).
     """
     half = 0.5 * np.radians(float(angle_hch_deg))
@@ -291,16 +291,16 @@ def guess_planar_formaldehyde(r_co=1.205, r_ch=1.111, angle_hch_deg=116.13):
 
 def guess_planar_benzene(r_cc=1.3971, r_ch=1.0804):
     """
-    Planar D6h benzene in the xy plane (standard orientation: Ïƒh = xy).
+    Planar D6h benzene in the xy plane (standard orientation: σh = xy).
 
-    Carbons sit on a regular hexagon at circumradius R = r_cc (Ã…); hydrogens lie
+    Carbons sit on a regular hexagon at circumradius R = r_cc (Å); hydrogens lie
     outward along the same radial directions at distance (r_cc + r_ch) from the
     origin (COM at origin for equal masses).
 
-    Atom order: C0â€¦C5 clock-wise, then H0â€¦H5 with Hi bonded to Ci.
+    Atom order: C0…C5 clock-wise, then H0…H5 with Hi bonded to Ci.
 
     Default bond lengths match equilibrium values inferred by In Heo et al., RSC Adv.
-    2022, 12, 21406â€“21416 (doi:10.1039/D2RA03431J) from rotational Raman data.
+    2022, 12, 21406–21416 (doi:10.1039/D2RA03431J) from rotational Raman data.
     """
     coords = np.zeros((12, 3))
     for i in range(6):
@@ -324,10 +324,10 @@ def guess_geometry_molecular_input(
     """
     Unified geometry guess for arbitrary input.
 
-    **1. Explicit connectivity** â€” supply ``elems`` and ``bonds`` (same contract as
+    **1. Explicit connectivity** — supply ``elems`` and ``bonds`` (same contract as
     :func:`guess_geometry`). Good offline when you have a bond graph.
 
-    **2. PubChem 3-D** â€” supply ``identifier`` only: compound **name**, numeric **CID**, or
+    **2. PubChem 3-D** — supply ``identifier`` only: compound **name**, numeric **CID**, or
     **SMILES**. Requires internet; uses MMFF94-relaxed PubChem conformers
     (``record_type=3d``). For ``prefer="auto"``: all-digit strings resolve as CID;
     otherwise SMILES is tried first, then name.
@@ -339,12 +339,12 @@ def guess_geometry_molecular_input(
     center
         If True (default), subtract the centroid so the molecule sits near the origin.
     pubchem_prefer
-        ``auto`` | ``cid`` | ``smiles`` | ``name`` â€” passed to PubChem resolution.
+        ``auto`` | ``cid`` | ``smiles`` | ``name`` — passed to PubChem resolution.
 
     Returns
     -------
     coords : ndarray, shape (N, 3)
-        Cartesian coordinates in Ã….
+        Cartesian coordinates in Å.
     elems : list of str
         Element symbols in the same order as coordinate rows.
     """

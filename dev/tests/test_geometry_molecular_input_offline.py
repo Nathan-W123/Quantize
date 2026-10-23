@@ -1,6 +1,6 @@
 ﻿"""Cheap ORCA-relaxed seeds (skipped when ORCA is missing).
 
-The alias parity cell below stays graph-only â€” it does **not** call ORCA.
+The alias parity cell below stays graph-only — it does **not** call ORCA.
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ def test_initial_guess_ocs_after_cheap_opt(ocs_cheap_relaxed_guess):
 
 
 def test_alias_matches_direct_import():
-    """Coarse molecular_input only (bond graph)â€”no QM step."""
+    """Coarse molecular_input only (bond graph)—no QM step."""
     from backend.conformers.geometryguess import guess_geometry_molecular_input
 
     a = initial_guess(None, elems=["N", "H"], bonds=[(0, 1)], center=False)

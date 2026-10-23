@@ -151,7 +151,7 @@ def torsion_geometry_jacobian(
 
     Returns
     -------
-    J_out : (n_levels, 3*N) float array â€” columns ordered [x0,y0,z0, x1,y1,z1, ...]
+    J_out : (n_levels, 3*N) float array — columns ordered [x0,y0,z0, x1,y1,z1, ...]
     """
     coords = np.asarray(coords_ang, dtype=float)
     masses = np.asarray(masses_amu, dtype=float)

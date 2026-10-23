@@ -349,7 +349,7 @@ def test_quantum_thermal_average_returns_populations():
     assert np.isclose(np.sum(out["state_populations"]), 1.0, atol=1e-12)
 
 
-# â”€â”€ Phase 5: conformer Boltzmann averaging â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Phase 5: conformer Boltzmann averaging ────────────────────────────────────
 
 def _make_conformer(abc, energy_cm1):
     """Helper: rigid-body ConformerTorsionSpec with given constants and energy."""
@@ -363,7 +363,7 @@ class TestConformerTorsionAverage:
     """Phase 5 conformer-plus-torsion Boltzmann weighting tests."""
 
     def test_equal_energy_gives_equal_weights(self):
-        """Two conformers at the same energy â†’ 50/50 Boltzmann weight."""
+        """Two conformers at the same energy → 50/50 Boltzmann weight."""
         c1 = _make_conformer([4.0, 0.9, 0.8], 0.0)
         c2 = _make_conformer([4.2, 0.95, 0.85], 0.0)
         out = conformer_torsion_average([c1, c2], temperature_K=298.15)
@@ -372,7 +372,7 @@ class TestConformerTorsionAverage:
         assert np.isclose(w[1], 0.5, atol=1e-10)
 
     def test_equal_energy_averaged_constants_are_midpoint(self):
-        """50/50 Boltzmann â†’ averaged constants = arithmetic mean of the two sets."""
+        """50/50 Boltzmann → averaged constants = arithmetic mean of the two sets."""
         abc1 = np.array([4.0, 0.9, 0.8])
         abc2 = np.array([4.2, 0.95, 0.85])
         c1 = _make_conformer(abc1, 0.0)
@@ -383,7 +383,7 @@ class TestConformerTorsionAverage:
 
     def test_high_energy_conformer_weight_vanishes(self):
         """Conformer at >> kT above minimum contributes negligible weight."""
-        # kT at 300 K â‰ˆ 208.5 cm^-1; 5000 cm^-1 >> kT
+        # kT at 300 K ≈ 208.5 cm^-1; 5000 cm^-1 >> kT
         c1 = _make_conformer([4.0, 0.9, 0.8], 0.0)
         c2 = _make_conformer([5.0, 1.2, 1.1], 5000.0)
         out = conformer_torsion_average([c1, c2], temperature_K=300.0)
@@ -391,7 +391,7 @@ class TestConformerTorsionAverage:
         assert w[1] < 1e-6, f"High-energy conformer weight should vanish; got {w[1]:.2e}"
 
     def test_high_energy_conformer_result_matches_low_energy(self):
-        """When one conformer dominates, result â‰ˆ that conformer's constants."""
+        """When one conformer dominates, result ≈ that conformer's constants."""
         abc1 = np.array([4.0, 0.9, 0.8])
         c1 = _make_conformer(abc1, 0.0)
         c2 = _make_conformer([5.0, 1.2, 1.1], 5000.0)
@@ -399,7 +399,7 @@ class TestConformerTorsionAverage:
         assert np.allclose(out["averaged_constants"], abc1, atol=1e-4)
 
     def test_single_conformer_weight_is_one(self):
-        """Single conformer â†’ weight = 1, result = its constants, scatter = 0."""
+        """Single conformer → weight = 1, result = its constants, scatter = 0."""
         abc = np.array([4.0, 0.9, 0.8])
         out = conformer_torsion_average([_make_conformer(abc, 0.0)], temperature_K=300.0)
         assert np.isclose(out["conformer_weights"][0], 1.0)
@@ -407,7 +407,7 @@ class TestConformerTorsionAverage:
         assert np.allclose(out["uncertainty_breakdown"]["sigma_conformer_scatter"], 0.0, atol=1e-12)
 
     def test_scatter_uncertainty_grows_with_spread(self):
-        """Larger spread between conformer constants â†’ larger sigma_conformer_scatter."""
+        """Larger spread between conformer constants → larger sigma_conformer_scatter."""
         c_narrow1 = _make_conformer([4.0, 0.9, 0.8], 0.0)
         c_narrow2 = _make_conformer([4.01, 0.901, 0.801], 0.0)
         c_wide1 = _make_conformer([4.0, 0.9, 0.8], 0.0)
@@ -460,7 +460,7 @@ class TestConformerTorsionAverage:
         assert np.isclose(out["temperature_K"], T)
 
     def test_sigma_total_matches_quadrature(self):
-        """sigma_total = sqrt(sigma_torsionÂ² + sigma_scatterÂ²)."""
+        """sigma_total = sqrt(sigma_torsion² + sigma_scatter²)."""
         out = conformer_torsion_average(
             [_make_conformer([4.0, 0.9, 0.8], 0.0),
              _make_conformer([4.5, 1.0, 0.9], 100.0)],
@@ -485,7 +485,7 @@ class TestConformerTorsionAverage:
             conformer_torsion_average([], temperature_K=298.15)
 
     def test_nonpositive_temperature_raises(self):
-        """temperature_K â‰¤ 0 must raise ValueError."""
+        """temperature_K ≤ 0 must raise ValueError."""
         c = _make_conformer([4.0, 0.9, 0.8], 0.0)
         with pytest.raises(ValueError, match="temperature_K"):
             conformer_torsion_average([c], temperature_K=0.0)

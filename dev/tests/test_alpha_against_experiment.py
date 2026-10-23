@@ -448,3 +448,52 @@ def test_the_harmonic_term_is_no_longer_negligible_on_water_b():
         h2o_hessian(coords), coords, H2O_MASSES, hessian_fn=h2o_hessian,
         harmonic_scheme="eigenvalue_fd")[3]["alpha_centrifugal_mhz"]["B"]
     assert abs(harm) > 5.0 * abs(old_harm)
+
+
+# ── Coriolis resonance diagnostic ────────────────────────────────────────────
+#
+# These pin the one property that justifies reporting resonances without
+# treating them: the threshold is inert. If a future change makes alpha or
+# sigma depend on coriolis_resonance_cm, that is a physics change and these
+# fail, which is the intended alarm -- the survey in harmonic_alpha says the
+# resonant terms cancel in pairs, so a treatment that moves alpha needs its
+# own evidence rather than inheriting this one's.
+
+def test_coriolis_resonance_threshold_does_not_change_alpha_or_sigma():
+    coords = h2o_coords()
+    hess = h2o_hessian(coords)
+    narrow, _, sig_narrow, _ = compute_harmonic_alpha(
+        hess, coords, H2O_MASSES, coriolis_resonance_cm=0.0
+    )
+    wide, _, sig_wide, _ = compute_harmonic_alpha(
+        hess, coords, H2O_MASSES, coriolis_resonance_cm=1.0e9
+    )
+    for k in ("A", "B", "C"):
+        assert wide[k] == pytest.approx(narrow[k], rel=0.0, abs=0.0)
+        assert sig_wide[k] == pytest.approx(sig_narrow[k], rel=0.0, abs=0.0)
+
+
+def test_coriolis_resonances_are_reported_with_frequencies_and_coupling():
+    """A threshold wide enough to catch everything reports the coupled pairs."""
+    coords = h2o_coords()
+    hess = h2o_hessian(coords)
+    _, _, _, info = compute_harmonic_alpha(
+        hess, coords, H2O_MASSES, coriolis_resonance_cm=1.0e9
+    )
+    pairs = info["coriolis_resonances"]
+    assert pairs, "a 1e9 cm-1 window must catch water's Coriolis pairs"
+    for entry in pairs:
+        r, s = entry["modes"]
+        assert r < s, "each pair reported once, lower mode first"
+        assert entry["component"] in ("A", "B", "C")
+        assert entry["separation_cm"] == pytest.approx(
+            abs(entry["omega_cm"][0] - entry["omega_cm"][1])
+        )
+        assert entry["zeta"] > 0.0
+
+
+def test_water_has_no_coriolis_resonance_at_the_default_threshold():
+    """Water's closest pair is 99 cm-1 apart, so nothing should be flagged."""
+    coords = h2o_coords()
+    _, _, _, info = compute_harmonic_alpha(h2o_hessian(coords), coords, H2O_MASSES)
+    assert info["coriolis_resonances"] == []

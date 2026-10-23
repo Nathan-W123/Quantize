@@ -23,7 +23,7 @@ def _make_c3_spec(F=27.6, rho=0.0, V3=-186.8, n_basis=10):
                                   potential=pot, n_basis=n_basis, units="cm-1")
 
 
-# â”€â”€ wang_transformation_c3 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── wang_transformation_c3 ────────────────────────────────────────────────────
 
 class TestWangTransformationC3:
     def test_unitary(self):
@@ -66,7 +66,7 @@ class TestWangTransformationC3:
         )
 
 
-# â”€â”€ c3_symmetry_block_energies â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── c3_symmetry_block_energies ────────────────────────────────────────────────
 
 class TestC3SymmetryBlockEnergies:
     def test_returns_required_keys(self):
@@ -91,7 +91,7 @@ class TestC3SymmetryBlockEnergies:
             assert len(e) <= 3
 
     def test_e1_e2_degenerate_for_symmetric_potential(self):
-        """Pure C3 potential â†’ E1 and E2 ground state energies should match."""
+        """Pure C3 potential → E1 and E2 ground state energies should match."""
         spec = _make_c3_spec(rho=0.0)
         out = c3_symmetry_block_energies(spec, J=0, K=0, n_levels_per_block=3)
         E1 = out["E1"]["energies_cm-1"]
@@ -109,7 +109,7 @@ class TestC3SymmetryBlockEnergies:
             assert E_A[0] <= E_E[0]
 
 
-# â”€â”€ predict_tunneling_splitting â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── predict_tunneling_splitting ───────────────────────────────────────────────
 
 class TestPredictTunnelingSplitting:
     def test_returns_list_of_dicts(self):
@@ -148,7 +148,7 @@ class TestPredictTunnelingSplitting:
         assert split > 1e-6
 
 
-# â”€â”€ symmetry_selection_rules â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── symmetry_selection_rules ──────────────────────────────────────────────────
 
 class TestSymmetrySelectionRules:
     def test_A_A_allowed(self):
@@ -250,7 +250,7 @@ class TestC2SymmetryMode:
         assert any("non-2-fold" in w for w in res["warnings"])
 
 
-# â”€â”€ symmetry_purity_table â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── symmetry_purity_table ─────────────────────────────────────────────────────
 
 class TestSymmetryPurityTable:
     def test_length_matches_n_levels(self):
@@ -272,14 +272,14 @@ class TestSymmetryPurityTable:
             assert 0.0 <= row["purity"] <= 1.0 + 1e-10
 
     def test_high_barrier_gives_high_purity(self):
-        """Very high barrier â†’ eigenstates nearly pure A or E."""
+        """Very high barrier → eigenstates nearly pure A or E."""
         spec = _make_c3_spec(V3=-1000.0)
         rows = symmetry_purity_table(spec, J=0, K=0, n_levels=3)
         for row in rows:
             assert row["purity"] > 0.9
 
 
-# â”€â”€ tunneling_splitting_to_csv_rows â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── tunneling_splitting_to_csv_rows ──────────────────────────────────────────
 
 class TestTunnelingSplittingToCsvRows:
     def test_formats_floats_as_strings(self):

@@ -14,7 +14,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from backend.spectral.cd_reduction import a_reduction_from_tau
+from backend.spectral.cd_reduction import (
+    best_reduction,
+    reduction_from_tau,
+    reduction_residual_mhz,
+)
 from typing import Any
 
 import numpy as np
@@ -353,6 +357,18 @@ class CDConstants:
     DK: float = 0.0
     delta_J: float = 0.0
     delta_K: float = 0.0
+    #: S-reduction's asymmetry parameters, where A uses delta_J and delta_K.
+    #: Both sets are carried so a caller can see which reduction produced the
+    #: numbers rather than having to infer it.
+    d1: float = 0.0
+    d2: float = 0.0
+    reduction: str = "A"
+    reduction_order: int = 4
+    reduction_residual_mhz: float = 0.0
+    #: Sextic-shaped parameters from the reduction, when order 6 was used.
+    #: These describe the REDUCTION, not the molecule -- physical sextic
+    #: constants need the cubic force field and this Hamiltonian is quartic.
+    sextic: dict[str, float] = field(default_factory=dict)
     source: str = "harmonic_hessian"
     method: str = "harmonic_VR"
     sigma: dict[str, float] = field(default_factory=dict)
@@ -375,6 +391,34 @@ class CDConstants:
         return np.array(out, dtype=float)
 
 
+#: |kappa| above this is "near-symmetric" and takes the S reduction. Watson's
+#: A reduction has a parameter combination that becomes indeterminate as a top
+#: approaches symmetry, which is the whole reason S exists; 0.9 is the usual
+#: place to draw it.
+_KAPPA_NEAR_SYMMETRIC = 0.9
+
+
+def reduction_for_asymmetry(abc_mhz) -> str:
+    """"A" or "S" from Ray's asymmetry parameter.
+
+    kappa = (2B - A - C) / (A - C), running from -1 (prolate) to +1 (oblate).
+
+    Choosing by asymmetry rather than by how well each reduction reproduces the
+    tau Hamiltonian's levels, which was the obvious thing to try and is wrong.
+    Measured on water: the S reduction represents the levels far better (64 MHz
+    residual against A's 140) and yet its constants agree with experiment
+    WORSE (18.2% mean error against 15.1%). A reduction can fit levels well
+    with badly determined parameters -- that is exactly what ill-conditioning
+    means -- so the fit residual says nothing about whether the constants are
+    meaningful.
+    """
+    a, b, c = (float(x) for x in abc_mhz)
+    if abs(a - c) < 1e-12:
+        return "S"
+    kappa = (2.0 * b - a - c) / (a - c)
+    return "S" if abs(kappa) >= _KAPPA_NEAR_SYMMETRIC else "A"
+
+
 def compute_cd_constants(
     hess_bohr: np.ndarray,
     coords_ang: np.ndarray,
@@ -382,9 +426,45 @@ def compute_cd_constants(
     min_freq_cm: float = 50.0,
     fd_delta: float = 0.05,
     sigma_fraction: float = 0.05,
+    reduction: str = "auto",
+    reduction_order: int = 4,
 ) -> CDConstants:
     """
     Harmonic CD constants from Hessian and equilibrium geometry.
+
+    ``reduction`` is "A", "S" or "auto". Which one suits a molecule is a
+    property of the molecule and not a house style: A is ill-conditioned for a
+    near-symmetric top, which is the whole reason S exists. "auto" chooses by
+    Ray's asymmetry parameter -- see :func:`reduction_for_asymmetry`, whose
+    docstring records why choosing by level-fit residual instead is measurably
+    wrong. This function was hardcoded to A until now, so every
+    near-symmetric top got the wrong one.
+
+    ``reduction_order`` is 4 or 6, and DEFAULTS TO 4 on evidence. The reduced
+    form is fitted to the levels of the tau Hamiltonian, and at order 4 it
+    cannot represent them exactly: on water's real tau the misfit is 140 MHz
+    in A and 147 in S. Adding the sextic-shaped terms takes those to 94 and
+    64 -- a third and a half.
+
+    That improvement does not reach the constants. Against water's
+    experimental DJ/DJK/DK the mean absolute error is the same to 0.1% at
+    either order (15.1% in A, 18.2% in S), and the individual constants move
+    by at most 0.7 percentage points, two of them better and one worse:
+
+        A-reduction      DJ      DJK      DK     mean|err|
+          order 4      +1.6%   -36.1%   -7.6%      15.1%
+          order 6      +1.0%   -36.8%   -7.3%      15.1%
+
+    So the residual is not the bottleneck; tau itself is, and DJK's 36% is
+    force-field error in the most bend-sensitive of the three. This is the
+    same trap as choosing the reduction by residual, measured in the other
+    direction: a better level fit is not a better constant. Order 6 stays
+    available as a diagnostic on how much of the misfit is reduction-shaped.
+
+    What order 6 is NOT: physical sextic distortion constants. Those come from
+    the cubic force field, and the Hamiltonian being reduced here is purely
+    quartic, so these parameters describe the reduction rather than the
+    molecule. They are reported as such and never written into a correction.
 
     Parameters
     ----------
@@ -410,7 +490,15 @@ def compute_cd_constants(
     dB1_mhz, _ = bk_mode_derivatives(coords, masses, L_mw, omega_cm, fd_delta, B0_ref)
     dB1_cm = dB1_mhz * _MHZ_TO_CM
     tau_cm = tau_prime_from_dB1_cm(dB1_cm, omega_cm)
-    cd_mhz = a_reduction_from_tau(B0_ref, tau_cm * _CM_TO_MHZ)
+    tau_mhz = tau_cm * _CM_TO_MHZ
+    red = str(reduction or "auto").strip().upper()
+    order = int(reduction_order)
+    if red == "AUTO":
+        red = reduction_for_asymmetry(B0_ref)
+    if True:
+        cd_mhz = reduction_from_tau(B0_ref, tau_mhz, reduction=red, order=order)
+        resid = reduction_residual_mhz(B0_ref, tau_mhz, reduction=red,
+                                       order=order)
     # Validated against H2-16O's measured constants on the analytic water PES:
     # DJ +38.2 vs +37.59, DK +899 vs +973.3, DJK -235 vs -172.9 -- correct
     # signs and the right magnitudes, where the previous closed-form mapping
@@ -419,21 +507,32 @@ def compute_cd_constants(
     # value and DJK is the most bend-sensitive of the three), so sigma is set
     # from the measured agreement rather than floored at 100%.
     sigma = {
-        k: max(abs(cd_mhz[k]) * max(sigma_fraction, _CD_REDUCTION_ACCURACY), 0.01)
-        for k in CD_NAMES
+        k: max(abs(v) * max(sigma_fraction, _CD_REDUCTION_ACCURACY), 0.01)
+        for k, v in cd_mhz.items()
+        if k not in ("A", "B", "C") and not k.startswith(("Phi", "phi", "H_", "h"))
     }
     return CDConstants(
         DJ=cd_mhz["DJ"],
         DJK=cd_mhz["DJK"],
         DK=cd_mhz["DK"],
-        delta_J=cd_mhz["delta_J"],
-        delta_K=cd_mhz["delta_K"],
+        # A names its asymmetry parameters delta_J/delta_K and S names them
+        # d1/d2; only one pair exists in any given reduction.
+        delta_J=cd_mhz.get("delta_J", 0.0),
+        delta_K=cd_mhz.get("delta_K", 0.0),
+        d1=cd_mhz.get("d1", 0.0),
+        d2=cd_mhz.get("d2", 0.0),
+        reduction=red,
+        reduction_order=order,
+        reduction_residual_mhz=float(resid),
+        sextic={k: float(v) for k, v in cd_mhz.items()
+                if k.startswith(("Phi", "phi", "H_", "h"))},
         source="harmonic_hessian",
         method="harmonic_VR_numerical_reduction",
         sigma=sigma,
         notes=(
-            "Harmonic tau' -> Watson A-reduction, by numerical reduction "
-            "(backend.spectral.cd_reduction). Validated against H2-16O."
+            f"Harmonic tau' -> Watson {red}-reduction, by numerical reduction "
+            f"(backend.spectral.cd_reduction); representation residual "
+            f"{resid:.2e} MHz. Validated against H2-16O."
         ),
     )
 
@@ -445,6 +544,8 @@ def build_cd_table_from_hessian(
     min_freq_cm: float = 50.0,
     fd_delta: float = 0.05,
     sigma_fraction: float = 0.05,
+    reduction: str = "auto",
+    reduction_order: int = 4,
 ) -> dict[str, CDConstants]:
     """One :class:`CDConstants` per isotopologue name."""
     table: dict[str, CDConstants] = {}
@@ -457,6 +558,8 @@ def build_cd_table_from_hessian(
             hess_bohr,
             coords_ang,
             masses,
+            reduction=reduction,
+            reduction_order=reduction_order,
             min_freq_cm=min_freq_cm,
             fd_delta=fd_delta,
             sigma_fraction=sigma_fraction,

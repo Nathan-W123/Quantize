@@ -3,12 +3,12 @@ Bayesian optimization for Quantize geometry workflows.
 
 Two common uses:
 
-1. **Hybrid optimizer hyperparameters** â€” tune ``MolecularOptimizer`` knobs
+1. **Hybrid optimizer hyperparameters** — tune ``MolecularOptimizer`` knobs
    (trust region, LM damping, SVD cutoff, quantum weight, finite-difference
    step, etc.) to minimize final rotational-constant RMS after ``run()``.
    Requires repeated QM calls (Psi4/ORCA); keep ``n_calls`` modest.
 
-2. **Initial-guess relaxation** â€” tune spring/repulsion parameters in
+2. **Initial-guess relaxation** — tune spring/repulsion parameters in
    ``geometryguess._relax_geometry`` against a cheap surrogate (default:
    mean squared bond-length strain after relaxation). No QM in the loop.
 

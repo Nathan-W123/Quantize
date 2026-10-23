@@ -110,3 +110,54 @@ def test_watson_cd_from_tau_symmetric():
     cd = watson_a_reduction_cd_from_tau_cm(tau)
     assert set(cd.keys()) == set(CD_NAMES)
     assert np.isfinite(cd["DJ"])
+
+
+# ── the switch must not be silently inert ────────────────────────────────────
+
+def _cd_iso(with_observations: bool) -> dict:
+    iso = {
+        "name": "H2-16O",
+        "masses": _water_masses().tolist(),
+        "obs_constants": [835840.0, 435350.0, 278140.0],
+        "sigma_constants": [100.0, 100.0, 100.0],
+        "component_indices": [0, 1, 2],
+    }
+    if with_observations:
+        iso["cd_observed"] = {"DJ": 37.59, "DJK": -172.9, "DK": 973.3}
+    return iso
+
+
+def test_cd_fitting_without_observations_says_so(capsys):
+    """fit_cd_constants with nothing to fit against is a no-op, and used to be
+    a silent one.
+
+    cd_residuals_mhz skips every isotopologue without a cd_observed block, so
+    switching CD fitting on across a reference set that carries only A/B/C
+    changes the fitted geometry by nothing at all -- measured at 8e-9 mA on
+    nine molecules, which is solver noise. A feature that reports no error and
+    does nothing costs whoever tries it next a full benchmark run to discover.
+    """
+    from backend.quantize import MolecularOptimizer
+
+    MolecularOptimizer(
+        elems=["O", "H", "H"],
+        coords=_water_coords(),
+        isotopologues=[_cd_iso(with_observations=False)],
+        fit_cd_constants=True,
+        cd_weight=1.0,
+    )
+    out = capsys.readouterr().out
+    assert "no isotopologue" in out and "NO effect" in out
+
+
+def test_cd_fitting_with_observations_is_quiet(capsys):
+    from backend.quantize import MolecularOptimizer
+
+    MolecularOptimizer(
+        elems=["O", "H", "H"],
+        coords=_water_coords(),
+        isotopologues=[_cd_iso(with_observations=True)],
+        fit_cd_constants=True,
+        cd_weight=1.0,
+    )
+    assert "NO effect" not in capsys.readouterr().out

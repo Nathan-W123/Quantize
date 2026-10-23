@@ -29,7 +29,7 @@ MOLECULE_ORCA_DEFAULTS = {
 }
 
 # Spectral objective: ``rigid`` = fit Watson A,B,C from principal moments; ``internal_rotor_bc``
-# = methanol may fit B,C only (proxy â€” see backend/spectral_model.py). Methanol default is ``rigid``.
+# = methanol may fit B,C only (proxy — see backend/spectral_model.py). Methanol default is ``rigid``.
 MOLECULE_SPECTRAL_MODEL_DEFAULTS = {
     "methanol": "rigid",
     "water": "rigid",
@@ -43,7 +43,7 @@ MOLECULE_SPECTRAL_MODEL_DEFAULTS = {
 
 
 BASE_SETTINGS = {
-    # None â†’ resolve ``orca`` on PATH (macOS/Linux). Windows users may set ORCA_EXE or paste a path here.
+    # None → resolve ``orca`` on PATH (macOS/Linux). Windows users may set ORCA_EXE or paste a path here.
     # Per-run ORCA overrides without editing this file: set ``QUANTIZE_ORCA_METHOD`` /
     # ``QUANTIZE_ORCA_BASIS`` (see ``run_from_config.py``), or ``ORCA_METHOD`` / ``ORCA_BASIS``.
     "orca_exe": _default_orca_executable(),
@@ -51,10 +51,10 @@ BASE_SETTINGS = {
     "use_quantum_prior": True,
     "write_xyz": False,
     "default_preset": "BALANCED",
-    # Global ORCA overrides: None â†’ use MOLECULE_ORCA_DEFAULTS for the selected molecule.
+    # Global ORCA overrides: None → use MOLECULE_ORCA_DEFAULTS for the selected molecule.
     "orca_method": None,
     "orca_basis": None,
-    # None â†’ use MOLECULE_SPECTRAL_MODEL_DEFAULTS for the selected molecule.
+    # None → use MOLECULE_SPECTRAL_MODEL_DEFAULTS for the selected molecule.
     "spectral_model": None,
 }
 

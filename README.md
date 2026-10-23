@@ -291,7 +291,58 @@ pip install -r requirements.txt
 
 On Windows, activate with `.venv\Scripts\activate` or `Activate.ps1`.
 
+### Choosing a quantum backend
+
+`requirements.txt` does **not** install one. It covers the spectral side only,
+so a fresh install can build and validate a case but cannot produce the
+gradients and Hessians a fit needs. Pick one of:
+
+| Backend | Install | Platforms |
+| --- | --- | --- |
+| `pyscf_hf` (HF + DFT; what the benchmarks use) | `pip install pyscf` | **Linux and macOS only** |
+| `orca` (reaches MP2 and CCSD(T)) | install ORCA, put it on `PATH` | Linux, macOS, Windows |
+| `psi4` | `conda install -c conda-forge psi4` | Linux, macOS |
+| `none` | nothing | anywhere — spectral-only, no fit |
+
+**pyscf on Windows.** There is no Windows wheel, and `pip install pyscf` falls
+back to building from source, which needs the MSVC toolchain and still fails
+because the C extensions assume POSIX. Use **WSL**:
+
+```bash
+wsl --install                      # then, in the Ubuntu shell:
+sudo apt update && sudo apt install -y python3-pip
+cd /mnt/c/Users/<you>/Quantize     # your existing Windows clone
+pip install -r requirements.txt pyscf
+python3 webui.py                   # reachable at localhost:8018 from Windows
+```
+
+Working from `/mnt/c` keeps one clone, so a Windows editor still edits it and
+`output/runs` stays visible in Explorer; imports are slower there, so clone
+into `~` instead if that matters.
+
+The web UI marks a backend `— not installed` in its Backend dropdown and
+refuses to start a run on one, rather than failing at the first Hessian.
+
 ## Running
+
+### Browser UI
+
+```bash
+python3 webui.py            # http://localhost:8018
+python3 webui.py --port 9000
+```
+
+Build a case from dropdowns, validate it, run it with a live log, and read the
+result back. Standard library only — no Flask, no Qt, no display server — so it
+works over SSH and in containers.
+
+It is not a separate pipeline. The form builds the same config a YAML file
+loads to and runs it through the same validator and runner, **Save YAML** gives
+a file that runs unchanged under `python -m cli run`, **Open** loads a
+hand-written one into the form, and every run writes its own `input.yaml` beside
+its results. The structure can come from a SMILES string, a PubChem name or CID,
+a bond list, or typed coordinates — the starting geometry only has to be in the
+right basin.
 
 From the project root, the config-first interface is:
 

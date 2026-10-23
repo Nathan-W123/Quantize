@@ -40,7 +40,7 @@ from runner.run_from_config import main as run_from_config_main
 from runner.usability import ConfigError, load_config, rebuild_report_from_run_dir, validate_config
 
 
-# â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _print_config_summary(cfg: dict) -> None:
     mode = str(cfg.get("coordinate_mode", "internal"))
@@ -111,7 +111,7 @@ def _load_torsion_spec_from_cfg_path(config_path: Path):
     return spec, th
 
 
-# â”€â”€ lam-scan subcommand â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── lam-scan subcommand ───────────────────────────────────────────────────────
 
 def _cmd_lam_scan(args) -> int:
     """Fit Fourier potential from a CSV scan file and print coefficients."""
@@ -186,7 +186,7 @@ def _cmd_lam_scan(args) -> int:
     return 0
 
 
-# â”€â”€ lam-fit subcommand â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── lam-fit subcommand ────────────────────────────────────────────────────────
 
 def _cmd_lam_fit(args) -> int:
     """Fit RAM-lite parameters to observed levels or transitions from a config."""
@@ -229,13 +229,13 @@ def _cmd_lam_fit(args) -> int:
     for name, val_i, val_f in zip(
         result["param_names"], result["param_values_init"], result["param_values"]
     ):
-        print(f"  {name:<12} : {float(val_i):+.6f}  â†’  {float(val_f):+.6f} cm^-1")
+        print(f"  {name:<12} : {float(val_i):+.6f}  →  {float(val_f):+.6f} cm^-1")
     for w in result.get("warnings", []):
         print(f"  [warning] {w}")
     return 0
 
 
-# â”€â”€ lam-diagnose subcommand â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── lam-diagnose subcommand ───────────────────────────────────────────────────
 
 def _cmd_lam_diagnose(args) -> int:
     """Display LAM diagnostics: tunneling splitting, purity, basis convergence."""
@@ -294,7 +294,7 @@ def _cmd_lam_diagnose(args) -> int:
     return 0
 
 
-# â”€â”€ uncertainty subcommand â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── uncertainty subcommand ───────────────────────────────────────────────────
 
 #: The legacy sampling stack duplicated the v2 one -- both implemented bootstrap
 #: resampling and adaptive Metropolis, reachable from the same command, and could
@@ -554,7 +554,7 @@ def _cmd_benchmark(args) -> int:
     return 0
 
 
-# â”€â”€ main entry point â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── main entry point ──────────────────────────────────────────────────────────
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="quantize", description="Quantize command-line interface.")

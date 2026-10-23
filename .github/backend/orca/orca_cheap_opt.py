@@ -2,7 +2,7 @@
 Single-point ORCA **geometry optimization** using a lightweight method/basis.
 
 Intended only for **cheap initial guesses** before expensive hybrid inversion. Not
-spectroscopic ``râ‚‘``: a fast surrogate minimum on the HF/DFTB-composite PES you choose.
+spectroscopic ``rₑ``: a fast surrogate minimum on the HF/DFTB-composite PES you choose.
 
 Requires a working ORCA install (same discovery rules as ``MolecularOptimizer``).
 """
@@ -94,7 +94,7 @@ _RE_CART_SYMBOL_FIRST = re.compile(
 
 
 def parse_xyz_trajectory_last(path: Path) -> tuple[list[str], np.ndarray]:
-    """Return elems, coords (NÃ—3 Ã…) using the **last** frame of a multi-structure ``.xyz`` file."""
+    """Return elems, coords (N×3 Å) using the **last** frame of a multi-structure ``.xyz`` file."""
     text = path.read_text(encoding="utf-8", errors="ignore").strip().splitlines()
     if not text:
         raise ValueError(f"Empty xyz: {path}")
@@ -251,18 +251,18 @@ def minimize_geometry_cheap_orca(
     center: bool = False,
 ) -> tuple[np.ndarray, list[str]]:
     """
-    Run one ORCA ``Opt`` job and return the optimized Cartesians (Ã…).
+    Run one ORCA ``Opt`` job and return the optimized Cartesians (Å).
 
     Parameters
     ----------
     coords
-        (N, 3) Ã… â€” starting guess.
+        (N, 3) Å — starting guess.
     elems
         Element symbols aligned with coords.
     workdir
         Fresh directory recommended (isolates xyz/out/err).
     orca_executable
-        None â†’ same resolution as ``MolecularOptimizer``.
+        None → same resolution as ``MolecularOptimizer``.
     opt_bang_line
         ORCA preamble after ``"!"`` (excluding the ``!``), e.g. ``"HF-3c Opt TightSCF"``.
     center
