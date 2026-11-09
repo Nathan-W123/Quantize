@@ -66,9 +66,10 @@ from backend.spectral.prior_widths import (  # noqa: E402
 )
 
 #: Distinguishes "the caller said nothing" from "the caller said None".
-#: They are not the same: None is a documented request for SubspaceOptimizer's
-#: legacy alpha_quantum heuristic (see SVD.py, which branches on it), and the
-#: YAML runner passes it deliberately. Only silence means "calibrate from the
+#: They are not the same: None is a documented request for the legacy
+#: alpha_quantum heuristic in place of the calibrated weight (SubspaceOptimizer
+#: branches on it in _effective_quantum_weight), and the YAML runner passes it
+#: deliberately. Only silence means "calibrate from the
 #: level of theory". Collapsing the two switched every None-passing caller onto
 #: the calibrated-weight objective, which the end-to-end water test caught.
 _PRIOR_SIGMA_UNSET = object()
@@ -746,8 +747,10 @@ class MolecularOptimizer:
         # until now those measurements lived in a benchmark script while the
         # engine shipped one flat constant. Every benchmark passed sigma_x
         # explicitly and got the calibrated value; every CLI and browser run
-        # took the flat 0.020, which at B3LYP/cc-pVTZ is five times looser than
-        # the measurement supports. See spectral.prior_widths.
+        # took the flat 0.020. Through the joint objective -- the engine's
+        # main solver -- that reaches alpha_q as 1/sigma_x^2, so at
+        # B3LYP/cc-pVTZ the shipped engine weighted the quantum prior 25 times
+        # more weakly than the benchmarked one. See spectral.prior_widths.
         if quantum_prior_sigma_ang is _PRIOR_SIGMA_UNSET:
             _lvl = level_for_backend(
                 quantum_backend, orca_method, orca_basis,

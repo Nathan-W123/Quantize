@@ -138,3 +138,35 @@ def test_an_explicit_none_keeps_the_legacy_heuristic():
         "an explicit None was overwritten by the calibrated value"
     )
     assert said == "", "calibration spoke over an explicit None"
+
+
+def test_the_quantum_weight_goes_as_one_over_sigma_squared():
+    """Why calibrating sigma_x matters more than its size suggests.
+
+    The joint objective is the engine's main solver, and sigma_x sets the
+    balance in it through alpha_q = 1 / (0.5 * lambda_bar * sigma_x^2). The
+    square is the point: B3LYP/cc-pVTZ's 0.004 against the flat 0.020 is five
+    times in sigma_x and twenty-five times in how hard the quantum prior pulls.
+    """
+    import dev.analytic_water_backend  # noqa: F401
+    from backend.registry import get_backend
+    from backend.spectral.SVD import SubspaceOptimizer
+
+    r, theta = 0.95785, np.radians(104.508)
+    coords = np.array([
+        [0.0, 0.0, 0.0],
+        [r * np.sin(theta / 2), r * np.cos(theta / 2), 0.0],
+        [-r * np.sin(theta / 2), r * np.cos(theta / 2), 0.0],
+    ])
+    hess = get_backend("analytic_water")(elems=["O", "H", "H"]).run_hessian(
+        coords).hessian_bohr
+
+    def alpha_q(sigma):
+        return SubspaceOptimizer(
+            objective_mode="joint",
+            quantum_prior_sigma_ang=sigma)._calibrated_alpha_q(hess)
+
+    ratio = alpha_q(PRIOR_SIGMA_BY_LEVEL[("b3lyp", "cc-pvtz")]) / alpha_q(
+        DEFAULT_PRIOR_SIGMA_ANG)
+    assert ratio == pytest.approx((0.020 / 0.004) ** 2, rel=1e-6)
+    assert ratio == pytest.approx(25.0, rel=1e-6)

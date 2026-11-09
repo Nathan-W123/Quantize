@@ -10,14 +10,35 @@ That number depends on the level and on nothing else, and this repository has
 measured it. The values below are the all-bond RMS error of each level against
 published reference structures over the benchmark set.
 
+WHERE IT ENTERS. The engine's main solver is the JOINT objective: the spectral
+chi-square and the quantum surface are minimised together, every direction
+contested, weighted by how well each source knows it. sigma_x is what sets that
+balance. SubspaceOptimizer._calibrated_alpha_q turns it into the quantum
+weight,
+
+    alpha_q = 1 / (0.5 * lambda_bar * sigma_x^2)
+
+with lambda_bar a typical curvature of the electronic Hessian. Note the SQUARE:
+a factor of 5 in sigma_x is a factor of 25 in how hard the quantum prior pulls.
+The SVD-based `split` objective is the alternative, not the default; sigma_x
+reaches it only through the singular-value floor sv_min_abs = 1/sigma_x, which
+is linear.
+
 THE PROBLEM THIS MODULE FIXES. Those measurements lived in
 scripts/mixed_estimation_baseline.py, a benchmark script, while the engine
 itself shipped one flat constant for every level. Every benchmark passed
 sigma_x explicitly and got the calibrated value; every CLI and browser run took
-the flat 0.020. At B3LYP/cc-pVTZ that is a prior five times looser than the
-measurement supports, so the fit leaned on the data in directions where theory
-was the better witness. The shipped engine and the benchmarked engine were not
-the same engine.
+the flat 0.020. Measured on water's analytic Hessian, that is the difference
+between these quantum weights in the joint solve:
+
+    flat default      sigma_x 0.0200   alpha_q 1.29e4    1.0x
+    b3lyp/6-31g(d)    sigma_x 0.0070   alpha_q 1.06e5    8.2x
+    b3lyp/cc-pvtz     sigma_x 0.0040   alpha_q 3.23e5   25.0x
+
+So at B3LYP/cc-pVTZ the shipped engine weighted the quantum prior
+twenty-five times more weakly than the benchmarked one, and leaned on the data
+in directions where theory was the better witness. They were not the same
+engine.
 
 WHAT A WRONG sigma_x COSTS, measured. Too loose and the quantum term stops
 holding the directions the spectrum cannot see. Too tight is worse: water's
