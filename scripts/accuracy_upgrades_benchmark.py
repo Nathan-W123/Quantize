@@ -899,6 +899,18 @@ def main() -> None:
                 "theory_rms_deg": rms_angle_error(mol, prior)[0],
                 "me_rms_deg": rms_angle_error(mol, me_geom)[0],
                 "hybrid_rms_deg": rms_angle_error(mol, hyb)[0],
+                # WHAT THE ERROR IS MEASURED AGAINST. Only an r_e reference
+                # scores the engine alone: it is the quantity the engine
+                # targets. An r_s or effective reference carries a
+                # vibrational-averaging offset from r_e, so part of any error
+                # against it belongs to the yardstick -- which is why ozone's
+                # 1.00 mA sits at the resolution of its reference rather than
+                # of the engine. Recorded per row because that caveat was
+                # previously only a paragraph in this file's docstring, and a
+                # number read out of the JSON carried no trace of it.
+                "reference_type": str(getattr(mol, "structure_type", "effective")),
+                "reference_is_equilibrium": bool(
+                    getattr(mol, "structure_type", "effective") == "r_e"),
                 "n_species": len(isos),
                 "sigma_x_ang": float(sigma_x),
                 # How far the fit travelled off the expansion point, and so
@@ -941,9 +953,14 @@ def main() -> None:
             out[mol.key] = rec
             out_path.parent.mkdir(parents=True, exist_ok=True)
             out_path.write_text(json.dumps(out, indent=2), encoding="utf-8")
+            # The reference type rides on the printed line too. "vs r_e" is
+            # the engine's own error; anything else shares the error with the
+            # yardstick, and a figure read off a terminal should say which.
+            _ref = str(getattr(mol, "structure_type", "effective"))
             print(f"  {mol.name:<22} {name:<9} theory {entry['theory_rms_ma']:6.2f}"
                   f"   ME {entry['me_rms_ma']:6.2f}"
-                  f"   hybrid {entry['hybrid_rms_ma']:6.2f} mA", flush=True)
+                  f"   hybrid {entry['hybrid_rms_ma']:6.2f} mA"
+                  f"   vs {_ref}", flush=True)
         print(f"    ({(time.time() - t0) / 60:.1f} min)", flush=True)
 
     print(f"\n  written to {out_path}")

@@ -156,6 +156,31 @@ class ReferenceMolecule:
     species: list[Isotopologue]
     structure_source: str
     constants_source: str
+    #: What KIND of structure the reference is, which sets the floor any error
+    #: measured against it can mean. Taken from what the cited source states,
+    #: never inferred:
+    #:
+    #:   "r_e"       equilibrium. The quantity this engine actually targets,
+    #:               so an error against it is the engine's own.
+    #:   "r_s"       substitution (Kraitchman). Carries a vibrational-averaging
+    #:               offset from r_e, so part of any error measured against it
+    #:               belongs to the yardstick.
+    #:   "effective" the r_0/r_s family, where the cited source as recorded here
+    #:               does not state which. Same caveat as r_s; the distinction
+    #:               between them is not what limits the comparison.
+    #:
+    #: WHY THERE IS NO NUMERIC FLOOR FIELD. A per-molecule r_s floor cannot be
+    #: computed from the final geometry. The Costain rule sigma(|z|) = 0.0015/|z|
+    #: diverges for an atom on a principal axis, and in these small, mostly
+    #: planar molecules nearly every atom is on one: propagating it through the
+    #: bonds of all nine references puts every bond against the 1 Ang cap and
+    #: returns 852 mA for ozone, where the figure the benchmark docstring quotes
+    #: from the literature is 4.1 mA. Two orders of magnitude, in the direction
+    #: that would make every row look meaningless. A real floor needs the
+    #: substitution data and the structure determination's own constraints, not
+    #: the coordinates it produced. So the TYPE is recorded, which is a fact,
+    #: and the floor is left to the per-molecule prose that has it.
+    structure_type: str = "effective"
     bonds: dict = field(default_factory=dict)
     angles: dict = field(default_factory=dict)
 
@@ -633,6 +658,7 @@ WATER = ReferenceMolecule(
         "(Csaszar et al., J. Chem. Phys. 122, 214305 (2005); consistent with "
         "Hoy & Bunker via NIST CCCBDB)"
     ),
+    structure_type="r_e",
     constants_source="NIST CCCBDB experimental rotational constants (H2O, D2O)",
     bonds={"O-H": [(0, 1), (0, 2)]},
     angles={"H-O-H": [(1, 0, 2)]},
@@ -777,6 +803,7 @@ OZONE = ReferenceMolecule(
                      (94768.2, 11886.5, 10536.9), (1, 1, 1)),
     ],
     structure_source="r_s structure, r(O-O) = 1.2717 A, angle 116.78 deg",
+    structure_type="r_s",
     constants_source="NBS Monograph 70 Vol. IV p.402 (entry 1840)",
     bonds={"O-O": [(0, 1), (0, 2)]},
     angles={"O-O-O": [(1, 0, 2)]},
@@ -890,6 +917,7 @@ ISOCYANIC_ACID = ReferenceMolecule(
         Isotopologue("303 DNCO", {1: M_D}, (None, 10313.61, 10079.67)),
     ],
     structure_source="r_s structure (Jones, Shoolery, Shulman & Yost 1950)",
+    structure_type="r_s",
     constants_source="NBS Monograph 70 Vol. IV p.69 (entry 300)",
     bonds={"N-H": [(0, 1)], "N-C": [(0, 2)], "C-O": [(2, 3)]},
     angles={"H-N-C": [(1, 0, 2)], "N-C-O": [(0, 2, 3)]},
