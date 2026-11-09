@@ -251,3 +251,113 @@ def rotational_constants_cm(coords_ang, masses_amu) -> np.ndarray:
     I_g = np.sort(eigvals)
     out = np.where(I_g > 1e-12, _INERTIA_TO_CM / np.where(I_g > 1e-12, I_g, 1.0), 0.0)
     return out.astype(float)
+
+
+#: Bond length / covalent-radii sum above which a bond is treated as single.
+#: See find_rotors for the measurements that place it.
+_SINGLE_BOND_RATIO = 0.93
+
+
+def find_rotors(coords_ang, elements, bonds=None, max_top_atoms: int = 6,
+                single_bond_ratio: float = _SINGLE_BOND_RATIO):
+    """Internal-rotation candidates in a molecule, found from connectivity.
+
+    WHY AUTO-DETECT. The benchmark needs the axis, the dihedral and the fold
+    for every molecule it scores, and hand-entering four atom indices per
+    molecule is both tedious and a silent-error channel: a transposed pair
+    gives a perfectly well-formed scan of the wrong coordinate.
+
+    WHAT COUNTS AS A ROTOR. A SINGLE bond, not in a ring, with at least two
+    atoms on each side so a dihedral exists, and a top small enough to be a
+    top rather than half a molecule (``max_top_atoms``).
+
+    The single-bond test is by length against the covalent-radii sum, because
+    connectivity alone cannot see bond order and the first version of this
+    function happily reported a rotor about vinyl fluoride's C=C and
+    fluoroacetylene's C#C -- bonds about which nothing turns at any accessible
+    energy, and which a scan would answer by breaking the molecule. Measured
+    across the reference set, the separation is wide:
+
+        acetyl fluoride   C-C   1.503 A / 1.520   ratio 0.989   single
+        fluoroethane      C-C   1.505 / 1.520     ratio 0.990   single
+        chlorofluorometh. C-Cl  1.759 / 1.780     ratio 0.988   single
+        methanol          C-O   1.425 / 1.420     ratio 1.003   single
+        vinyl fluoride    C=C   1.329 / 1.520     ratio 0.874   double
+        formyl fluoride   C=O   1.181 / 1.420     ratio 0.832   double
+
+    so the 0.93 default sits in an empty gap with margin on both sides. Two
+    consequences worth knowing: an aromatic ring bond (ratio about 0.92) is
+    excluded, which the ring test would do anyway, and an amide C-N (about
+    0.905) is excluded, which is deliberate -- its barrier is tens of
+    kJ/mol and it is not a near-free rotor -- but means this will not find
+    one for you.
+
+    The fold is read off
+    the top's own symmetry, not off the barrier: three equivalent terminal
+    atoms on the pivot give fold 3, two give fold 2, anything else gives fold
+    1 and should be treated as a general internal rotation rather than a
+    symmetric top. That distinction is the one the nuclear-spin weights care
+    about -- see torsion_symmetry on nitromethane, whose SIX-fold barrier
+    comes from a THREE-fold top.
+
+    Returns a list of dicts, largest fold first then smallest top, each with
+    'frame_atom', 'top_atom', 'dihedral' (m, o, p, n), 'top_indices',
+    'symmetry_number' and 'equivalent_terminal'. Empty when there is nothing
+    to turn, which is the common case and not an error.
+    """
+    coords = np.asarray(coords_ang, dtype=float)
+    elements = [str(e).strip().capitalize() for e in elements]
+    if bonds is None:
+        bonds = _bonds(coords, elements)
+
+    nbrs = defaultdict(set)
+    for i, j in bonds:
+        nbrs[i].add(j)
+        nbrs[j].add(i)
+
+    out = []
+    for frame_atom, top_atom in bonds:
+        length = float(np.linalg.norm(coords[frame_atom] - coords[top_atom]))
+        radii = (_COV_RADIUS.get(elements[frame_atom], 0.77)
+                 + _COV_RADIUS.get(elements[top_atom], 0.77))
+        if radii > 0 and length / radii < float(single_bond_ratio):
+            continue                           # multiple bond: nothing turns
+        for o, p in ((frame_atom, top_atom), (top_atom, frame_atom)):
+            try:
+                top = top_atoms(coords, elements, o, p, bonds=bonds)
+            except ValueError:
+                continue                       # ring bond, or same atom
+            if len(top) < 2 or len(top) > int(max_top_atoms):
+                continue
+            frame_side = [i for i in range(len(elements)) if i not in top]
+            if len(frame_side) < 2:
+                continue                       # no m atom to define a dihedral
+
+            # The top's terminal atoms hanging off the pivot, which is what
+            # sets the fold.
+            attached = sorted(nbrs[p] - {o})
+            if not attached:
+                continue
+            kinds = {}
+            for a in attached:
+                kinds.setdefault((elements[a], len(nbrs[a])), []).append(a)
+            biggest = max(kinds.values(), key=len)
+            fold = len(biggest) if len(biggest) in (2, 3) else 1
+
+            # m from the frame, n from the top: pick neighbours of o and p so
+            # the dihedral is a real one rather than a collinear accident.
+            m_candidates = sorted(nbrs[o] - {p})
+            if not m_candidates:
+                continue
+            m = m_candidates[0]
+            n = biggest[0]
+            out.append({
+                "frame_atom": int(o),
+                "top_atom": int(p),
+                "dihedral": (int(m), int(o), int(p), int(n)),
+                "top_indices": top,
+                "symmetry_number": int(fold),
+                "equivalent_terminal": tuple(int(a) for a in biggest),
+            })
+    out.sort(key=lambda d: (-d["symmetry_number"], len(d["top_indices"])))
+    return out

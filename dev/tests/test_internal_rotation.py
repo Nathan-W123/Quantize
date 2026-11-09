@@ -27,7 +27,9 @@ import pytest
 
 from backend.torsion.internal_rotation import (
     _INERTIA_TO_CM,
+    _SINGLE_BOND_RATIO,
     dihedral_angle,
+    find_rotors,
     internal_rotation_constants,
     rotational_constants_cm,
     top_atoms,
@@ -374,3 +376,104 @@ class TestDihedralAngle:
         np.testing.assert_allclose(sorted(seen), sorted([-150.0, -90.0, -30.0,
                                                          30.0, 90.0, 150.0]),
                                    atol=1e-9)
+
+
+# ── find_rotors ──────────────────────────────────────────────────────────────
+
+class TestFindRotors:
+    """Auto-detection, so the benchmark needs no hand-entered atom indices."""
+
+    def test_finds_the_methyl_and_the_hydroxyl_in_methanol(self):
+        coords, elements, _ = _methanol()
+        rotors = find_rotors(coords, elements)
+        axes = {(r["frame_atom"], r["top_atom"]) for r in rotors}
+        assert (1, 0) in axes            # O frame, methyl top
+        assert (0, 1) in axes            # C frame, hydroxyl top
+        methyl = next(r for r in rotors if r["top_atom"] == 0)
+        assert methyl["symmetry_number"] == 3
+        assert methyl["top_indices"] == (0, 2, 3, 4)
+        assert methyl["equivalent_terminal"] == (2, 3, 4)
+
+    def test_three_fold_comes_first(self):
+        # Sorted fold-descending, so a caller taking rotors[0] gets the
+        # symmetric top rather than the hydroxyl.
+        coords, elements, _ = _methanol()
+        assert find_rotors(coords, elements)[0]["symmetry_number"] == 3
+
+    def test_the_dihedral_is_a_real_one(self):
+        # All four atoms distinct, the middle pair is the axis, and the angle
+        # is finite -- a collinear pick would give nan or zero derivative.
+        coords, elements, _ = _methanol()
+        for r in find_rotors(coords, elements):
+            m, o, p, n = r["dihedral"]
+            assert len({m, o, p, n}) == 4
+            assert (o, p) == (r["frame_atom"], r["top_atom"])
+            assert np.isfinite(dihedral_angle(coords, m, o, p, n))
+
+    def test_the_dihedral_turns_with_the_top(self):
+        # The detected dihedral must actually measure the detected rotor.
+        from backend.torsion.torsion_scan_qm import rotate_top
+        coords, elements, _ = _methanol()
+        for r in find_rotors(coords, elements):
+            m, o, p, n = r["dihedral"]
+            before = dihedral_angle(coords, m, o, p, n)
+            turned = rotate_top(coords, r["top_indices"],
+                                r["frame_atom"], r["top_atom"], 20.0)
+            got = (dihedral_angle(turned, m, o, p, n) - before + 180.0) % 360.0 - 180.0
+            assert abs(got) == pytest.approx(20.0, abs=1e-8)
+
+    def test_a_double_bond_is_not_a_rotor(self):
+        # Ethene: nothing turns about C=C. Connectivity alone cannot tell, so
+        # this is the bond-length test doing its job. The first version of
+        # find_rotors reported a fold-2 rotor here.
+        coords = np.array([[0.0, 0.0, 0.0], [1.329, 0.0, 0.0],
+                           [-0.577, 0.927, 0.0], [-0.577, -0.927, 0.0],
+                           [1.906, 0.927, 0.0], [1.906, -0.927, 0.0]])
+        elements = ["C", "C", "H", "H", "H", "H"]
+        assert find_rotors(coords, elements) == []
+
+    def test_a_single_bond_of_the_same_atoms_is_a_rotor(self):
+        # Ethane, same elements and same connectivity pattern as ethene
+        # above; only the C-C length differs. Controls the previous test
+        # against the possibility that something else excluded it.
+        coords = np.array([[0.0, 0.0, 0.0], [1.526, 0.0, 0.0],
+                           [-0.363, 1.027, 0.0], [-0.363, -0.513, 0.889],
+                           [-0.363, -0.513, -0.889],
+                           [1.889, -1.027, 0.0], [1.889, 0.513, 0.889],
+                           [1.889, 0.513, -0.889]])
+        elements = ["C", "C", "H", "H", "H", "H", "H", "H"]
+        rotors = find_rotors(coords, elements)
+        assert rotors, "ethane has a C-C rotor"
+        assert rotors[0]["symmetry_number"] == 3
+
+    def test_a_ring_bond_is_not_a_rotor(self):
+        # Cyclopropane. Excluded by top_atoms' ring test rather than the
+        # length test, but the outcome is what matters to a caller.
+        coords = np.array([[0.0, 0.0, 0.0], [1.51, 0.0, 0.0], [0.755, 1.308, 0.0],
+                           [-0.56, -0.77, 0.63], [-0.56, -0.77, -0.63],
+                           [2.07, -0.77, 0.63], [2.07, -0.77, -0.63],
+                           [1.035, 1.90, 0.63], [1.035, 1.90, -0.63]])
+        elements = ["C", "C", "C", "H", "H", "H", "H", "H", "H"]
+        for r in find_rotors(coords, elements):
+            assert set(r["dihedral"][1:3]) not in ({0, 1}, {1, 2}, {0, 2})
+
+    def test_a_molecule_with_nothing_to_turn_gives_an_empty_list(self):
+        # Water. Empty is the answer, not an error.
+        coords = np.array([[0.0, 0.0, 0.0], [0.9572, 0.0, 0.0],
+                           [-0.2400, 0.9266, 0.0]])
+        assert find_rotors(coords, ["O", "H", "H"]) == []
+
+    def test_max_top_atoms_excludes_half_a_molecule(self):
+        coords = np.array([[0.0, 0.0, 0.0], [1.526, 0.0, 0.0],
+                           [-0.363, 1.027, 0.0], [-0.363, -0.513, 0.889],
+                           [-0.363, -0.513, -0.889],
+                           [1.889, -1.027, 0.0], [1.889, 0.513, 0.889],
+                           [1.889, 0.513, -0.889]])
+        elements = ["C", "C", "H", "H", "H", "H", "H", "H"]
+        assert find_rotors(coords, elements, max_top_atoms=2) == []
+
+    def test_the_threshold_sits_in_an_empty_gap(self):
+        # Recorded so a later tweak is made against the measurements rather
+        # than by taste: single bonds in the reference set sit at 0.988-1.003
+        # and multiple bonds at 0.83-0.87.
+        assert 0.88 < _SINGLE_BOND_RATIO < 0.98
