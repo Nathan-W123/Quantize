@@ -37,6 +37,38 @@ MP2 is a real rung on the ladder rather than a consolation prize.
 
 The gradient is analytic in every case, so ``optimise`` is cheap at all four
 methods even where the Hessian is not.
+
+WHERE THE TIME ACTUALLY GOES, measured rather than assumed (2026-11-09,
+cProfile over a full water fit at HF/6-31G with the Hessians already warm):
+
+    total                       1.78 s
+      run_hessian               1.01 s   <- pyscf
+      run_gradient              0.61 s   <- pyscf
+      SCF kernel                0.72 s   <- pyscf
+      integrals (intor/get_jk)  0.52 s   <- pyscf
+      Quantize's own Python      0.002 s
+
+So essentially all of it is quantum chemistry, and the engine's own code does
+not register. THE EFFICIENCY LEVER IS THE NUMBER OF QM CALLS, NOT THE SPEED OF
+ANY PYTHON IN THIS REPOSITORY. Two things follow, and they are written down
+here because both are easy to get wrong in opposite directions:
+
+1. Do not micro-optimise the numpy in the correction chain. Measured,
+   coriolis_alpha_cm is 0.46 ms at 18 modes against Hessians of 0.1-10 s, so
+   vectorising its triple loop would buy something like 0.05 s across a
+   multi-hour run while rewriting physics that is currently derived and
+   verified. That is a cost, not a saving.
+
+2. The QM call pattern here is already minimal, so do not "fix" it either.
+   Verified by counting real SCF runs: a gradient and a Hessian at the SAME
+   geometry share one SCF (1 run, 2 cache hits), and a repeated gradient at
+   that geometry drops from 0.907 s to 0.095 s. The _cache holds one geometry
+   because the optimiser revisits the current point for both, _last_dm chains
+   the converged density into the NEXT geometry, and the benchmark asks for a
+   fresh Hessian only every tenth step.
+
+What was genuinely being recomputed was Hessians across SEPARATE RUNS, which
+is what backend/spectral/hessian_cache.py now fixes.
 """
 
 from __future__ import annotations
