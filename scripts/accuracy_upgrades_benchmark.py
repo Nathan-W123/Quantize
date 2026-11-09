@@ -167,6 +167,7 @@ from backend.spectral.electronic_g import (  # noqa: E402
     g_tensors_for_isotopologues,
     rotational_g_tensor,
 )
+from backend.spectral.hessian_cache import HessianCache  # noqa: E402
 from backend.spectral.harmonic_alpha import (  # noqa: E402
     build_correction_table_from_hessian,
     self_consistent_correction_table,
@@ -201,6 +202,7 @@ CD_WEIGHT = 1.0
 #: Filled in main() once git has been consulted.
 VINTAGE = "unknown"
 WANT_CONFIGS: list[str] = []
+HESSIAN_CACHE = True
 _args: list[str] = []
 for _tok in sys.argv[1:]:
     if _tok.startswith("method="):
@@ -217,6 +219,8 @@ for _tok in sys.argv[1:]:
         TRACK_MAX = float(_tok.split("=", 1)[1])
     elif _tok.startswith("harmonic="):
         HARMONIC_SCHEME = _tok.split("=", 1)[1]
+    elif _tok == "no_hessian_cache":
+        HESSIAN_CACHE = False
     elif _tok.startswith("configs="):
         WANT_CONFIGS = _tok.split("=", 1)[1].split(",")
     else:
@@ -234,6 +238,14 @@ LAM_FREQ_CM = 350.0
 #: rotor it carries V3 and V6 and nothing it cannot distinguish; see
 #: torsion_scan_qm on why asking for more aliases rather than refuses.
 TORSION_SCAN_POINTS = 12
+
+#: Where Hessians are cached between runs, and whether to. On by default: a
+#: Hessian is a deterministic function of (level, elements, geometry), so a hit
+#: is the same matrix the run would have computed, and the only cost of the
+#: cache is disk. Pass `no_hessian_cache` to turn it off for a clean timing.
+#: HESSIAN_CACHE itself is declared above the argument loop and set by it --
+#: assigning it here too would clobber the flag, since this block runs after.
+HESSIAN_CACHE_DIR = _ROOT / "output" / "hessian_cache"
 
 #: Harmonic frequency scale factor. 1.0 disables it. Left off by default:
 #: measured against water's experimental harmonic frequencies, RHF/6-31G is
@@ -694,12 +706,23 @@ def main() -> None:
         theory_coords = np.asarray(theory[mol.key]["coords"], dtype=float)
         backend = get_backend("pyscf_hf")(elems=list(mol.elems),
                                           method=METHOD, basis=BASIS)
+        # Two cache layers. The dict is the per-molecule one this script has
+        # always had; the disk cache behind it survives the process, which is
+        # what makes an interrupted run resumable. See hessian_cache on why a
+        # Hessian is keyed by level, elements and geometry but NOT by mass --
+        # one cached matrix serves every isotopologue, which is most of the
+        # saving.
         hess_cache: dict = {}
+        hess_disk = HessianCache(HESSIAN_CACHE_DIR, method=METHOD, basis=BASIS,
+                                 elements=list(mol.elems),
+                                 enabled=HESSIAN_CACHE)
+        _hess_disk_fn = hess_disk.wrap(
+            lambda c, _b=backend: _b.run_hessian(c).hessian_bohr)
 
-        def hessian_fn(coords_ang, _b=backend, _c=hess_cache):
+        def hessian_fn(coords_ang, _c=hess_cache, _f=_hess_disk_fn):
             key = np.asarray(coords_ang, dtype=float).round(9).tobytes()
             if key not in _c:
-                _c[key] = _b.run_hessian(coords_ang).hessian_bohr
+                _c[key] = _f(coords_ang)
             return _c[key]
 
         # The correction level, when it is allowed to differ from the geometry
@@ -730,10 +753,23 @@ def main() -> None:
             with contextlib.redirect_stdout(io.StringIO()):
                 corr_geom = corr_backend.optimise(start_geometry(mol))
 
-        def corr_hessian_fn(coords_ang, _b=corr_backend, _c=corr_cache):
+        # The expensive one. A correlated level has no analytic Hessian, so
+        # each costs 6N gradients and the normal_mode cubic scheme needs
+        # 2*n_vib of them -- about 288 MP2/cc-pVTZ gradients, an hour, for
+        # formyl fluoride. Twice in one session that hour was lost to an
+        # interruption because the only cache was in memory.
+        corr_disk = HessianCache(HESSIAN_CACHE_DIR,
+                                 method=CORR_METHOD or METHOD,
+                                 basis=CORR_BASIS or BASIS,
+                                 elements=list(mol.elems),
+                                 enabled=HESSIAN_CACHE)
+        _corr_disk_fn = corr_disk.wrap(
+            lambda c, _b=corr_backend: _b.run_hessian(c).hessian_bohr)
+
+        def corr_hessian_fn(coords_ang, _c=corr_cache, _f=_corr_disk_fn):
             key = np.asarray(coords_ang, dtype=float).round(9).tobytes()
             if key not in _c:
-                _c[key] = _b.run_hessian(coords_ang).hessian_bohr
+                _c[key] = _f(coords_ang)
             return _c[key]
 
         # Offsets, leave-one-out, and the geometry they produce.

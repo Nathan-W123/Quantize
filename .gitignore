@@ -59,3 +59,7 @@ quantize_orca.out
 quantize_orca.err
 quantize_orca_rovib.out
 quantize_orca.vpt2
+
+# Cached Hessians. Deterministic given (level, elements, geometry), so they are
+# reproducible rather than precious; they are also large and machine-local.
+output/hessian_cache/
