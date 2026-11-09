@@ -1856,6 +1856,24 @@ class MolecularOptimizer:
         (14.6 mA against 10.9), so it should be switched on only where it has
         been shown to help. Enable with chi2_rescale=True.
 
+        MEASURED AGAIN, 2026-11-09, because an audit flagged that every
+        benchmark passes chi2_rescale=True while this ships False and that
+        looked like the same shipped-versus-benchmarked gap that cubic_scheme
+        turned out to be. It is not; the default here is deliberate.
+
+        Forced to fire -- threshold set to 1e-6, confirmed firing with dof >= 1
+        and reduced chi-square of 0.24, 0.032 and 0.0014 -- it moved the fitted
+        geometry by less than 0.005 mA on water, ozone and formyl fluoride at
+        RHF/6-31G. It rescales the SPECTRAL sigmas only (spectral.scale_sigma),
+        leaving the quantum prior width alone, so it can genuinely shift the
+        data-versus-prior balance and on these three it simply does not change
+        where the fit lands.
+
+        So the benchmarks have been enabling a switch that does nothing on the
+        molecules they run, and the one case where it is known to do something
+        it makes the structure worse. Leaving it off is the supported choice,
+        not an oversight.
+
         A converged fit whose reduced chi-square is far above one is telling you
         the stated uncertainties were optimistic: the model cannot represent the
         data to the precision claimed. Continuing to weight the data at that
