@@ -30,6 +30,7 @@ from backend.torsion.internal_rotation import (
     _SINGLE_BOND_RATIO,
     dihedral_angle,
     find_rotors,
+    torsional_mode_overlaps,
     internal_rotation_constants,
     rotational_constants_cm,
     top_atoms,
@@ -477,3 +478,136 @@ class TestFindRotors:
         # than by taste: single bonds in the reference set sit at 0.988-1.003
         # and multiple bonds at 0.83-0.87.
         assert 0.88 < _SINGLE_BOND_RATIO < 0.98
+
+
+# ── torsional_mode_overlaps ──────────────────────────────────────────────────
+
+class TestTorsionalModeOverlaps:
+    """Naming the torsional mode by projection rather than by frequency.
+
+    A frequency cutoff is only safe while the torsion is the lowest mode. The
+    projection says which mode it IS, so a low skeletal bend cannot be
+    mistaken for it and have its alpha silently removed.
+    """
+
+    @staticmethod
+    def _modes():
+        """A synthetic mass-weighted mode set containing the torsion exactly.
+
+        Built by Gram-Schmidt from the torsional displacement itself plus
+        random vectors, with translations and rotations projected out, so one
+        column IS the torsion and the rest are orthogonal to it. That makes
+        the expected answer exact rather than approximate.
+        """
+        coords, elements, masses = _methanol()
+        n = coords.shape[0]
+        sqrt_m = np.sqrt(masses)
+
+        origin = coords[1]
+        axis = coords[0] - origin
+        axis = axis / np.linalg.norm(axis)
+        d = np.zeros((n, 3))
+        idx = [0, 2, 3, 4]
+        d[idx] = np.cross(axis, coords[idx] - origin)
+        q = (d * sqrt_m[:, None]).ravel()
+
+        rigid = []
+        for ax in range(3):
+            t = np.zeros((n, 3)); t[:, ax] = 1.0
+            rigid.append((t * sqrt_m[:, None]).ravel())
+        com = (masses[:, None] * coords).sum(0) / masses.sum()
+        rel = coords - com
+        for ax in range(3):
+            e = np.zeros(3); e[ax] = 1.0
+            rigid.append((np.cross(e, rel) * sqrt_m[:, None]).ravel())
+        # Orthonormal basis for the rigid span, by SVD. Subtracting the six
+        # vectors one at a time does not remove their span -- they are not
+        # mutually orthogonal outside the principal-axis frame -- which is the
+        # bug this helper shared with the module until both were fixed.
+        U, sv, _ = np.linalg.svd(np.column_stack(rigid), full_matrices=False)
+        rigid_basis = [U[:, i] for i in range(U.shape[1])
+                       if sv[i] > 1e-10 * max(float(sv.max()), 1.0)]
+        for v in rigid_basis:
+            q = q - np.dot(q, v) * v
+        q = q / np.linalg.norm(q)
+
+        basis = list(rigid_basis) + [q]
+        rng = np.random.default_rng(0)
+        cols = [q]
+        while len(cols) < 3 * n - 6:
+            v = rng.normal(size=3 * n)
+            for b in basis + cols[1:]:
+                v = v - np.dot(v, b) * b
+            nv = np.linalg.norm(v)
+            if nv > 1e-8:
+                cols.append(v / nv)
+        return coords, elements, masses, np.column_stack(cols)
+
+    def test_identifies_the_torsional_column_exactly(self):
+        coords, elements, masses, L = self._modes()
+        overlaps, info = torsional_mode_overlaps(coords, masses, L, 1, 0,
+                                                 (0, 2, 3, 4))
+        assert info["best"] == 0
+        assert info["best_overlap"] == pytest.approx(1.0, abs=1e-10)
+
+    def test_other_modes_have_no_torsional_character(self):
+        coords, elements, masses, L = self._modes()
+        overlaps, _ = torsional_mode_overlaps(coords, masses, L, 1, 0,
+                                              (0, 2, 3, 4))
+        assert np.max(overlaps[1:]) < 1e-10
+
+    def test_captured_sums_to_one_for_a_complete_basis(self):
+        coords, elements, masses, L = self._modes()
+        _, info = torsional_mode_overlaps(coords, masses, L, 1, 0, (0, 2, 3, 4))
+        assert info["captured"] == pytest.approx(1.0, abs=1e-10)
+
+    def test_overlaps_never_exceed_one(self):
+        coords, elements, masses, L = self._modes()
+        overlaps, _ = torsional_mode_overlaps(coords, masses, L, 1, 0,
+                                              (0, 2, 3, 4))
+        assert np.all(overlaps >= 0.0) and np.all(overlaps <= 1.0 + 1e-12)
+
+    def test_translation_and_rotation_are_projected_out(self):
+        # Without the projection a rigid rotation of the top overlaps the
+        # three rotational zero modes, and then every mode looks partly
+        # torsional. Handing it ONLY the rigid vectors must give nothing.
+        coords, elements, masses, _ = self._modes()
+        n = coords.shape[0]
+        sqrt_m = np.sqrt(masses)
+        rigid = []
+        for ax in range(3):
+            t = np.zeros((n, 3)); t[:, ax] = 1.0
+            rigid.append((t * sqrt_m[:, None]).ravel())
+        com = (masses[:, None] * coords).sum(0) / masses.sum()
+        for ax in range(3):
+            e = np.zeros(3); e[ax] = 1.0
+            rigid.append((np.cross(e, coords - com) * sqrt_m[:, None]).ravel())
+        L = np.column_stack([v / np.linalg.norm(v) for v in rigid])
+        overlaps, info = torsional_mode_overlaps(coords, masses, L, 1, 0,
+                                                 (0, 2, 3, 4))
+        assert info["captured"] < 1e-10
+
+    def test_either_group_names_the_same_mode(self):
+        """Turning the methyl and turning the hydroxyl are ONE coordinate.
+
+        Once overall rotation is projected out, "rotate the methyl by +theta"
+        and "rotate the hydroxyl by -theta" are the same displacement, so the
+        two torsional directions are nearly parallel and both name the same
+        normal mode. The same fact makes I_red symmetric between the groups
+        (test_either_group_may_be_called_the_top); seen here as an overlap
+        rather than as a moment.
+        """
+        coords, elements, masses, L = self._modes()
+        methyl, m_info = torsional_mode_overlaps(coords, masses, L, 1, 0,
+                                                 (0, 2, 3, 4))
+        hydroxyl, h_info = torsional_mode_overlaps(coords, masses, L, 0, 1,
+                                                   (1, 5))
+        assert m_info["best"] == h_info["best"] == 0
+        assert methyl[0] == pytest.approx(1.0, abs=1e-10)
+        assert hydroxyl[0] > 0.99
+
+    def test_a_vanishing_displacement_is_rejected(self):
+        # A "top" lying on its own axis has no torsional motion at all.
+        coords, elements, masses, L = self._modes()
+        with pytest.raises(ValueError, match="vanishes"):
+            torsional_mode_overlaps(coords, masses, L, 1, 0, (0,))

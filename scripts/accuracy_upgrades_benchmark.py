@@ -516,7 +516,11 @@ def torsion_replacement_for(mol, coords_ang, backend, freq_cm=LAM_FREQ_CM,
     geometry the correction is being expanded about, because the potential a
     torsional average needs is that level's own.
     """
-    from backend.torsion.internal_rotation import find_rotors
+    from backend.spectral.centrifugal_distortion import normal_modes
+    from backend.torsion.internal_rotation import (
+        find_rotors,
+        torsional_mode_overlaps,
+    )
     from backend.torsion.torsion_lam_integration import torsion_replacement_from_scan
     from backend.torsion.torsion_scan_qm import relaxed_torsion_scan, spec_from_scan
 
@@ -527,6 +531,26 @@ def torsion_replacement_for(mol, coords_ang, backend, freq_cm=LAM_FREQ_CM,
 
     rotor = rotors[0]
     masses = np.asarray(mol.masses, dtype=float)
+
+    # WHICH MODE IS REPLACED, decided by projection and not by frequency.
+    # Handing the replacement a freq_cm cutoff makes it cover every mode below
+    # that, which is safe only while the torsion is the only one down there.
+    # It is, for both rotor molecules at HF/6-31G -- 149.0 and 260.3 cm^-1 with
+    # nothing else under 350 -- but a low skeletal bend in some other molecule
+    # would have had its alpha removed and never added back. Projecting the
+    # normal modes onto a rigid rotation of the top names the mode instead:
+    # overlap 0.997 for both, with 0.999 of the torsional motion inside the
+    # vibrational space.
+    with contextlib.redirect_stdout(io.StringIO()):
+        omega_cm, L_mw = normal_modes(backend.run_hessian(coords).hessian_bohr,
+                                      masses)
+    overlaps, ov_info = torsional_mode_overlaps(
+        coords, masses, L_mw, rotor["frame_atom"], rotor["top_atom"],
+        rotor["top_indices"])
+    if ov_info["best_overlap"] < 0.7:
+        return None, {"reason": "no normal mode is clearly the torsion",
+                      "best_overlap": ov_info["best_overlap"],
+                      "best_mode_cm": float(omega_cm[ov_info["best"]])}
     with contextlib.redirect_stdout(io.StringIO()):
         scan, scan_info = relaxed_torsion_scan(
             backend._energy_gradient, coords, list(mol.elems),
@@ -540,7 +564,7 @@ def torsion_replacement_for(mol, coords_ang, backend, freq_cm=LAM_FREQ_CM,
         replacement, rep_info = torsion_replacement_from_scan(
             list(mol.elems), scan, spec, coords, masses,
             symmetry_number=rotor["symmetry_number"],
-            mode_indices=(), freq_cm=float(freq_cm))
+            mode_indices=(int(ov_info["best"]),), freq_cm=float(freq_cm))
 
     # A scan whose constraint slipped is a potential at unknown angles, which
     # would be worse than no treatment because it would look like one.
@@ -555,6 +579,11 @@ def torsion_replacement_for(mol, coords_ang, backend, freq_cm=LAM_FREQ_CM,
         "all_converged": bool(scan_info["all_converged"]),
         "max_dihedral_error_deg": float(scan_info["max_dihedral_error_deg"]),
         "n_harmonics_used": spec_info["n_harmonics_used"],
+        "mode_index": int(ov_info["best"]),
+        "mode_freq_cm": float(omega_cm[ov_info["best"]]),
+        "mode_overlap": float(ov_info["best_overlap"]),
+        "torsional_motion_captured": float(ov_info["captured"]),
+        "modes_below_freq_cm": int(sum(1 for w in omega_cm if w < float(freq_cm))),
         "alpha_mhz": {k: float(v) for k, v in replacement.alpha_mhz.items()},
         "sigma_mhz": {k: float(v) for k, v in replacement.sigma_mhz.items()},
         "freq_cm": float(freq_cm),

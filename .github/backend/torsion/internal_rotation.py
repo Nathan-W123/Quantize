@@ -361,3 +361,101 @@ def find_rotors(coords_ang, elements, bonds=None, max_top_atoms: int = 6,
             })
     out.sort(key=lambda d: (-d["symmetry_number"], len(d["top_indices"])))
     return out
+
+
+def torsional_mode_overlaps(coords_ang, masses_amu, L_mw, frame_atom: int,
+                            top_atom: int, top_indices):
+    """How much each normal mode looks like turning the top. One per mode.
+
+    WHY THIS IS NEEDED. A TorsionReplacement removes the perturbative alpha of
+    the modes it covers and substitutes its own. Selecting those modes by a
+    frequency cutoff -- everything below ``freq_cm``, which is what
+    ``lam_freq_cm`` does -- is safe only if the torsion is the ONLY mode down
+    there. For acetyl fluoride and fluoroethane at HF/6-31G it happens to be
+    (149.0 and 260.3 cm^-1, nothing else below 350), so the cutoff worked, but
+    it worked by luck: a molecule with a low skeletal bend would have had that
+    bend's alpha deleted and only the torsion's added back, losing a real
+    contribution silently.
+
+    Projecting instead makes the selection say what it means. The torsional
+    displacement is a rigid rotation of the top about the axis,
+
+        d_i = lambda x (r_i - r_origin)   for i in the top, 0 on the frame
+
+    with overall translation and rotation projected out -- otherwise the
+    displacement overlaps the three rotational zero modes and every mode looks
+    partly torsional. Mass-weighted and normalised, its overlap with each
+    normal mode is that mode's torsional character, and the squares sum to at
+    most 1.
+
+    Parameters
+    ----------
+    L_mw : (3N, n_vib) mass-weighted normal-mode columns, as
+        ``centrifugal_distortion.normal_modes`` returns.
+
+    Returns
+    -------
+    (overlaps, info). ``overlaps`` is (n_vib,) with values in [0, 1].
+    ``info`` carries 'best' (the index of the most torsional mode),
+    'best_overlap', and 'captured' (the summed square over all modes, which
+    says how much of the torsional motion the vibrational space holds at all).
+    """
+    coords = np.asarray(coords_ang, dtype=float)
+    masses = np.asarray(masses_amu, dtype=float)
+    L_mw = np.asarray(L_mw, dtype=float)
+    n_atoms = coords.shape[0]
+
+    origin = coords[int(frame_atom)]
+    axis = coords[int(top_atom)] - origin
+    axis = axis / np.linalg.norm(axis)
+
+    d = np.zeros((n_atoms, 3))
+    idx = [int(i) for i in top_indices]
+    d[idx] = np.cross(axis, coords[idx] - origin)
+
+    # Mass-weight, then remove translation and rotation. A rigid rotation of
+    # part of the molecule carries net angular momentum, and leaving it in
+    # makes the displacement overlap the rotational zero modes.
+    sqrt_m = np.sqrt(masses)
+    q = (d * sqrt_m[:, None]).ravel()
+
+    rigid = []
+    for ax in range(3):
+        t = np.zeros((n_atoms, 3))
+        t[:, ax] = 1.0
+        rigid.append((t * sqrt_m[:, None]).ravel())
+    com = (masses[:, None] * coords).sum(0) / masses.sum()
+    rel = coords - com
+    for ax in range(3):
+        e = np.zeros(3)
+        e[ax] = 1.0
+        r = np.cross(e, rel)
+        rigid.append((r * sqrt_m[:, None]).ravel())
+    # ORTHONORMALISE BEFORE PROJECTING. The six rigid vectors are not
+    # mutually orthogonal -- the three rotations are only orthogonal to each
+    # other in the principal-axis frame, and this is whatever frame the caller
+    # handed in -- so subtracting each in turn does NOT remove their span, and
+    # q keeps a rotational component that then shows up as spurious torsional
+    # character in rotation-like modes. An SVD gives an orthonormal basis for
+    # the span regardless of conditioning, including the degenerate case of a
+    # linear molecule, where one rotation vector vanishes.
+    R = np.column_stack(rigid)
+    U, sv, _ = np.linalg.svd(R, full_matrices=False)
+    keep = U[:, sv > 1e-10 * max(float(sv.max()), 1.0)]
+    q = q - keep @ (keep.T @ q)
+
+    nq = np.linalg.norm(q)
+    if nq < 1e-10:
+        raise ValueError(
+            "the torsional displacement vanishes once translation and "
+            "rotation are removed; the top or the axis is wrong"
+        )
+    q = q / nq
+
+    overlaps = np.abs(L_mw.T @ q)
+    best = int(np.argmax(overlaps))
+    return overlaps.astype(float), {
+        "best": best,
+        "best_overlap": float(overlaps[best]),
+        "captured": float(np.sum(overlaps ** 2)),
+    }
