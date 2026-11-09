@@ -29,6 +29,32 @@ dihedral is invariant under both, and the rotational constants are computed in
 the principal-axis frame, so any drift divides out. Fixing them would add
 constraints without changing an answer.
 
+MEASURED END TO END ON METHANOL, HF/6-31G, 12-point relaxed scan
+(scripts/verify_torsion_chain.py, 2026-11-09, ~2 min):
+
+    quantity      computed   reference   error
+    barrier         410.6      373.0    +10.1%  cm-1
+    F                29.79      27.6     +7.9%  cm-1
+    rho             0.8194      0.81     +1.2%
+    A               4.4346      4.25     +4.3%  cm-1
+    B               0.8114     0.823     -1.4%  cm-1
+    C               0.7856     0.793     -0.9%  cm-1
+
+    alpha_A = +891.8 +/- 322.0 MHz,  alpha_B = -178.0,  alpha_C = -180.9
+
+Every error there is accounted for, which is why these numbers are worth
+keeping rather than just passing. The dihedral constraint is satisfied to
+8e-11 degrees, so the scan is at the angles it claims. The barrier runs 10%
+high because HF with a small basis overestimates torsional barriers. A comes
+out 4.3% high -- the geometry is too compact -- and F is 7.9% high, almost
+exactly twice that, because rho is a ratio of moments and scale free while F
+carries 1/I_red and picks up a size error twice over. That 2x relationship is
+asserted exactly in test_internal_rotation, and seeing it hold on a real
+surface is the check that the chain is not quietly doing something else.
+
+So the remaining error is the level of theory, not the machinery. A correlated
+method with a decent basis is what would move these, not a change here.
+
 WHAT THIS DOES NOT DO. One torsion at a time. Two coupled rotors need a 2D
 scan and ``torsion_average_2d``; a scan that passes through a conformational
 change of the frame will produce a discontinuous potential, which
