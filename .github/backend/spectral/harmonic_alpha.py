@@ -14,6 +14,17 @@ Two contributions are included (Watson 1968):
 
 Watson sign convention:  B_0^K = B_e^K − ½ Σ_r α_r^K
 
+WHAT IS CITED AND WHAT IS DERIVED. Every numeric constant in this chain is
+pinned by something checkable, because each time one was taken on a citation
+alone it eventually turned out to be wrong (the cubic scheme, the prior widths,
+the C3 nuclear spin weights). The harmonic term's constants come from the
+Watson convention and exact inertia derivatives (test_alpha_invariants); the
+anharmonic term's from Dunham and Pekeris; the Coriolis term's 3 and 2 are
+derived from the Watson Hamiltonian by an independent second-order sum over
+states, with no closed form assumed (test_coriolis_alpha_derivation). The
+references below are where the formulae come from, not the authority they
+rest on.
+
 References:
   Watson, J. K. G.  Mol. Phys. 15 (1968) 479.
   Papoušek, D.; Aliev, M. R.  Molecular Vibrational-Rotational Spectra (1982).
@@ -198,6 +209,112 @@ class TorsionReplacement:
         if self.freq_cm > 0.0:
             return [r for r in range(len(omega_cm)) if omega_cm[r] < float(self.freq_cm)]
         return []
+
+
+def coriolis_alpha_cm(omega_cm, zeta, B_e_cm,
+                      degeneracy_tol_cm2: float = _DEGENERACY_TOL_CM2):
+    """alpha^Coriolis for all three principal components, in cm^-1.
+
+    THE CLOSED FORM, AND WHERE ITS CONSTANTS COME FROM.
+
+        alpha_r^{xi,Cor} = -(2 B_xi^2 / w_r)
+                           Sum_{s != r} (zeta^xi_{rs})^2
+                                        (3 w_r^2 + w_s^2)/(w_r^2 - w_s^2)
+
+    The two bare numbers in it -- the 3 in (3w_r^2 + w_s^2) and the 2 in the
+    prefactor -- used to be here on the authority of a citation and nothing
+    else, which is how the rest of this module has repeatedly been wrong. They
+    are now derived, in test_coriolis_alpha_derivation, by summing second-order
+    perturbation theory over states for the Coriolis operator
+
+        Pi_xi = Sum_{r<s} zeta^xi_{rs} [ (w_s/w_r)^(1/2) q_r p_s
+                                       - (w_r/w_s)^(1/2) q_s p_r ]
+
+    with no closed form assumed. Both numbers fall out of the identity
+    (w_r+w_s)^3 - (w_r-w_s)^3 = 2 w_s (3 w_r^2 + w_s^2): the cube difference IS
+    the 3, and it arises because the |v_r=1> state reaches |2_r 1_s> and
+    |0_r 1_s> where the ground state reaches only |1_r 1_s>.
+
+    The derivation also establishes two properties this function relies on.
+    The sum over s is genuinely additive -- different (r,s) pairs reach
+    orthogonal intermediate states, so there are no cross terms -- and pairs
+    (s,t) that do not involve r contribute equally to B_0 and to B_{1_r} and
+    so cancel out of alpha_r entirely.
+
+    Parameters
+    ----------
+    omega_cm : (n_vib,) harmonic frequencies, cm^-1.
+    zeta : (3, n_vib, n_vib) Coriolis coupling constants, dimensionless. The
+        first axis is the principal axis of the rotational constant being
+        corrected: rotation about xi is what couples the two modes, so the
+        zeta superscript and B subscript are the same axis.
+    B_e_cm : (3,) equilibrium rotational constants, cm^-1.
+    degeneracy_tol_cm2 : terms whose |w_r^2 - w_s^2| falls below this are
+        skipped rather than divided by. See the module header on why a skip is
+        the right treatment and a deperturbation is not.
+
+    Returns
+    -------
+    (alpha_cor_cm, near_degen_skips) : (3, n_vib) array in cm^-1, and the
+        number of terms skipped for a near-vanishing denominator.
+    """
+    omega_cm = np.asarray(omega_cm, dtype=float)
+    zeta = np.asarray(zeta, dtype=float)
+    B_e_cm = np.asarray(B_e_cm, dtype=float)
+    n_vib = omega_cm.size
+
+    alpha_cor_cm = np.zeros((3, n_vib))
+    near_degen_skips = 0
+    for r in range(n_vib):
+        wr2 = omega_cm[r] ** 2
+        for K in range(3):
+            cor = 0.0
+            for s in range(n_vib):
+                if s == r:
+                    continue
+                denom = wr2 - omega_cm[s] ** 2
+                if abs(denom) < degeneracy_tol_cm2:
+                    near_degen_skips += 1
+                    continue
+                cor += (zeta[K, r, s] ** 2
+                        * (3.0 * wr2 + omega_cm[s] ** 2) / denom)
+            alpha_cor_cm[K, r] = -2.0 * B_e_cm[K] ** 2 / omega_cm[r] * cor
+    return alpha_cor_cm, near_degen_skips
+
+
+def coriolis_resonant_pairs(omega_cm, zeta, resonance_cm: float,
+                            zeta2_floor: float = _CORIOLIS_ZETA2_FLOOR,
+                            degeneracy_tol_cm2: float = _DEGENERACY_TOL_CM2):
+    """Near-degenerate, strongly coupled Coriolis pairs, for reporting only.
+
+    Detection, never treatment: see the module header for the measurement that
+    says deperturbing these makes alpha worse and its width absurd.
+    """
+    omega_cm = np.asarray(omega_cm, dtype=float)
+    zeta = np.asarray(zeta, dtype=float)
+    n_vib = omega_cm.size
+
+    pairs = []
+    for r in range(n_vib):
+        wr2 = omega_cm[r] ** 2
+        for K in range(3):
+            for s in range(r + 1, n_vib):
+                ws2 = omega_cm[s] ** 2
+                denom = wr2 - ws2
+                if abs(denom) < degeneracy_tol_cm2:
+                    continue
+                z2 = zeta[K, r, s] ** 2
+                if (abs(omega_cm[r] - omega_cm[s]) < resonance_cm
+                        and z2 > zeta2_floor):
+                    pairs.append({
+                        "modes": (int(r), int(s)),
+                        "omega_cm": (float(omega_cm[r]), float(omega_cm[s])),
+                        "separation_cm": float(abs(omega_cm[r] - omega_cm[s])),
+                        "zeta": float(abs(zeta[K, r, s])),
+                        "component": "ABC"[K],
+                        "term_cm": float(z2 * (3.0 * wr2 + ws2) / denom),
+                    })
+    return pairs
 
 
 def compute_harmonic_alpha(
@@ -423,8 +540,8 @@ def compute_harmonic_alpha(
     #   α_r^{ξ,Cor} = -(2 B_ξ²/ω_r) Σ_{s≠r} (ζ^{(ξ)}_{rs})² (3ω_r²+ω_s²)/(ω_r²-ω_s²)
     # The ζ superscript is the SAME principal axis as the rotational constant
     # being corrected: rotation about ξ is what couples the two modes.
-    alpha_cor_cm = np.zeros((3, n_vib))
-    near_degen_skips = 0
+    # See ``coriolis_alpha_cm`` for where the 3 and the 2 come from; they are
+    # derived, not cited.
     # Degenerate-bend pairs of a linear molecule. The generic Coriolis sum
     # skips the intra-pair term (its denominator is zero by symmetry), but for
     # a linear molecule that term is not negligible noise -- it is the
@@ -462,36 +579,16 @@ def compute_harmonic_alpha(
     # -- seven orders of magnitude of claimed ignorance about a quantity
     # measured to be insensitive. The pairs are worth knowing about, so they
     # are reported; the value and the width are left alone.
-    resonant_pairs = []
-    for r in range(n_vib):
-        wr2 = omega_cm[r] ** 2
-        for K in range(3):
-            cor = 0.0
-            for s in range(n_vib):
-                if s == r:
-                    continue
-                ws2 = omega_cm[s] ** 2
-                denom = wr2 - ws2
-                if abs(denom) < _DEGENERACY_TOL_CM2:
-                    near_degen_skips += 1
-                    continue
-                z2 = zeta[K, r, s] ** 2
-                term = z2 * (3.0 * wr2 + ws2) / denom
-                if (r < s
-                        and abs(omega_cm[r] - omega_cm[s]) < coriolis_resonance_cm
-                        and z2 > _CORIOLIS_ZETA2_FLOOR):
-                    resonant_pairs.append({
-                        "modes": (int(r), int(s)),
-                        "omega_cm": (float(omega_cm[r]), float(omega_cm[s])),
-                        "separation_cm": float(abs(omega_cm[r] - omega_cm[s])),
-                        "zeta": float(abs(zeta[K, r, s])),
-                        "component": "ABC"[K],
-                        "term_cm": float(term),
-                    })
-                cor += term
-            alpha_cor_cm[K, r] = -2.0 * B_e_cm[K] ** 2 / omega_cm[r] * cor
-            if (linear_pair_coeff is not None and r in pair_partner
-                    and K in (1, 2)):
+    alpha_cor_cm, near_degen_skips = coriolis_alpha_cm(
+        omega_cm, zeta, B_e_cm, degeneracy_tol_cm2=_DEGENERACY_TOL_CM2)
+    resonant_pairs = coriolis_resonant_pairs(
+        omega_cm, zeta, coriolis_resonance_cm,
+        zeta2_floor=_CORIOLIS_ZETA2_FLOOR,
+        degeneracy_tol_cm2=_DEGENERACY_TOL_CM2)
+
+    if linear_pair_coeff is not None:
+        for r in pair_partner:
+            for K in (1, 2):
                 # perpendicular components only: for a linear molecule the
                 # A-like eigenvalue is not a rotational constant at all.
                 alpha_cor_cm[K, r] += (float(linear_pair_coeff)
