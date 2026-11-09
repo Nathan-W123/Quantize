@@ -387,6 +387,7 @@ class MolecularOptimizer:
         cubic_scheme="cartesian",
         freq_scale=1.0,
         lam_freq_cm=0.0,
+        torsion_replacement=None,
         defect_bias_scale=False,
         harmonic_cd_from_hessian=False,
         cd_sigma_fraction=0.05,
@@ -436,6 +437,13 @@ class MolecularOptimizer:
         self._cubic_scheme = str(cubic_scheme or "cartesian").strip().lower()
         self._freq_scale = freq_scale
         self._lam_freq_cm = max(float(lam_freq_cm or 0.0), 0.0)
+        # An explicitly computed torsional contribution, replacing the
+        # perturbative alpha for the modes it covers. This is the only route by
+        # which the torsion package reaches the optimiser: until now the full
+        # torsion-rotation Hamiltonian, the averaging and the fitter were
+        # reachable only from runner/run_generic.py, so none of that physics
+        # could be scored by any benchmark, all of which run through this class.
+        self._torsion_replacement = torsion_replacement
         self._defect_bias_scale = bool(defect_bias_scale)
         self._harmonic_cd_from_hessian = bool(harmonic_cd_from_hessian)
         self._warned_cd_unvalidated = False
@@ -1207,6 +1215,7 @@ class MolecularOptimizer:
             cubic_scheme=self._cubic_scheme,
             freq_scale=self._freq_scale,
             lam_freq_cm=self._lam_freq_cm,
+            torsion_replacement=self._torsion_replacement,
         )
         for status in dict.fromkeys(_res_info.get("anharmonic_statuses", [])):
             if status not in ("cubic_fd", "not_requested"):

@@ -497,3 +497,109 @@ def test_water_has_no_coriolis_resonance_at_the_default_threshold():
     coords = h2o_coords()
     _, _, _, info = compute_harmonic_alpha(h2o_hessian(coords), coords, H2O_MASSES)
     assert info["coriolis_resonances"] == []
+
+
+# ── Explicit torsional contributions ─────────────────────────────────────────
+#
+# A torsional mode can be handled two ways. lam_freq_cm widens sigma to the
+# full size of the mode's alpha and leaves the value alone, which is an honest
+# refusal to believe a number. TorsionReplacement instead removes that alpha
+# and puts a computed one in its place. These pin the arithmetic of the second,
+# because the failure mode it is exposed to -- counting the torsional
+# contribution twice, once perturbatively and once explicitly -- produces a
+# plausible number rather than an error.
+
+def _water_alpha(**kw):
+    coords = h2o_coords()
+    alpha, _, sigma, info = compute_harmonic_alpha(
+        h2o_hessian(coords), coords, H2O_MASSES, **kw)
+    return alpha, sigma, info
+
+
+def test_no_replacement_leaves_alpha_and_sigma_untouched():
+    """The seven benchmark molecules without rotors must not move."""
+    a0, s0, i0 = _water_alpha()
+    a1, s1, i1 = _water_alpha(torsion_replacement=None)
+    for k in ("A", "B", "C"):
+        assert a1[k] == a0[k]
+        assert s1[k] == s0[k]
+    assert i1["torsion_replaced_modes"] == []
+
+
+def test_removing_a_mode_changes_alpha_and_says_which():
+    from backend.spectral.harmonic_alpha import TorsionReplacement
+
+    base, _, _ = _water_alpha()
+    removed, _, info = _water_alpha(
+        torsion_replacement=TorsionReplacement(alpha_mhz={}, mode_indices=(0,)))
+    assert info["torsion_replaced_modes"] == [0]
+    assert any(removed[k] != base[k] for k in ("A", "B", "C")), (
+        "removing a mode's alpha changed nothing -- the column was not zeroed"
+    )
+
+
+def test_putting_back_exactly_what_was_removed_reproduces_the_original():
+    """The round trip that proves the contribution is counted once, not twice.
+
+    Remove mode 0's alpha, measure what vanished, then hand that same quantity
+    back as the computed contribution. If removal and addition are each applied
+    once the original sum returns exactly; if the removal were skipped the
+    result would be the original plus the mode again.
+    """
+    from backend.spectral.harmonic_alpha import TorsionReplacement
+
+    base, _, _ = _water_alpha()
+    removed, _, _ = _water_alpha(
+        torsion_replacement=TorsionReplacement(alpha_mhz={}, mode_indices=(0,)))
+    vanished = {k: base[k] - removed[k] for k in ("A", "B", "C")}
+    assert any(abs(v) > 1.0 for v in vanished.values()), "mode 0 carries no alpha"
+
+    restored, _, _ = _water_alpha(
+        torsion_replacement=TorsionReplacement(alpha_mhz=vanished, mode_indices=(0,)))
+    for k in ("A", "B", "C"):
+        assert restored[k] == pytest.approx(base[k], rel=1e-12), (
+            f"{k}: round trip gave {restored[k]} against {base[k]}"
+        )
+
+
+def test_the_supplied_contribution_enters_additively():
+    from backend.spectral.harmonic_alpha import TorsionReplacement
+
+    zero, _, _ = _water_alpha(
+        torsion_replacement=TorsionReplacement(alpha_mhz={}, mode_indices=(0,)))
+    offset = {"A": 1234.0, "B": -56.0, "C": 7.0}
+    shifted, _, _ = _water_alpha(
+        torsion_replacement=TorsionReplacement(alpha_mhz=offset, mode_indices=(0,)))
+    for k, v in offset.items():
+        assert shifted[k] - zero[k] == pytest.approx(v, rel=1e-9)
+
+
+def test_sigma_comes_from_the_averaging_not_from_the_discarded_magnitude():
+    """A replaced mode must not also be widened by lam_freq_cm.
+
+    Widening twice would be the quiet failure: sigma would carry both the
+    averaging uncertainty and the full magnitude of the alpha that was removed,
+    so a treatment meant to BUY precision would cost it instead.
+    """
+    from backend.spectral.harmonic_alpha import TorsionReplacement
+
+    coords = h2o_coords()
+    omega_all = compute_harmonic_alpha(h2o_hessian(coords), coords, H2O_MASSES)[3]
+    n_vib = omega_all["n_vib"]
+    assert n_vib >= 1
+
+    wide = 1.0e6  # a threshold that catches every mode
+    lam_only, s_lam, i_lam = _water_alpha(lam_freq_cm=wide)
+    assert i_lam["lam_modes_cm"], "sanity: lam should have caught modes"
+
+    both, s_both, i_both = _water_alpha(
+        lam_freq_cm=wide,
+        torsion_replacement=TorsionReplacement(
+            alpha_mhz={}, sigma_mhz={"A": 10.0, "B": 10.0, "C": 10.0},
+            mode_indices=tuple(range(n_vib))),
+    )
+    assert i_both["lam_modes_cm"] == [], "replaced modes were widened twice"
+    for k in ("A", "B", "C"):
+        assert s_both[k] < s_lam[k], (
+            f"{k}: replacing should narrow sigma, got {s_both[k]} vs {s_lam[k]}"
+        )

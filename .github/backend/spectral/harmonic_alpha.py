@@ -21,6 +21,8 @@ References:
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
+
 import numpy as np
 
 from backend.spectral.centrifugal_distortion import (
@@ -148,6 +150,56 @@ _LINEAR_PAIR_HALF_RANGE = 0.5
 _NONCONVERGENT_POLICIES = {"warn", "inflate", "drop"}
 
 
+@dataclass(frozen=True)
+class TorsionReplacement:
+    """A computed torsional contribution that REPLACES the perturbative one.
+
+    VPT2 expands in the vibrational coordinate about equilibrium. A methyl
+    torsion sits at 100-250 cm^-1, its zero-point amplitude is tens of degrees,
+    and alpha_r goes as 1/omega_r, so it is simultaneously one of the largest
+    single contributions to the sum and the one the expansion is least entitled
+    to make. ``lam_freq_cm`` answers that by widening sigma to the full size of
+    the contribution -- an honest refusal, but it leaves the same number sitting
+    in the VALUE while declaring it unknown in the width.
+
+    This is the other answer: compute the contribution from a torsional
+    potential and put that in instead. The perturbative alpha for the named
+    modes is removed from every term it entered -- value, cancellation
+    diagnostic and per-term breakdown -- and ``alpha_mhz`` is added in its
+    place, with ``sigma_mhz`` from the averaging rather than from the discarded
+    magnitude. Removing before adding is the anti-double-counting rule
+    torsion_lam_integration states: a torsional mode treated explicitly must not
+    also be carried perturbatively.
+
+    Attributes
+    ----------
+    alpha_mhz : {K: float} contribution to Sigma_r alpha_r^K, in MHz, in the
+        SAME convention as the rest of this module: B_0 = B_e - (1/2) Sigma
+        alpha. A torsional average that gives a shift Delta_B in a rotational
+        constant therefore enters as alpha = -2 * Delta_B.
+    sigma_mhz : {K: float} uncertainty on that contribution, in MHz. Combined in
+        quadrature with the series-truncation sigma.
+    mode_indices : which normal modes this replaces. When None the modes are
+        chosen by ``freq_cm``, which is the same selection ``lam_freq_cm``
+        makes, so the two treatments always act on the same set.
+    freq_cm : frequency below which a mode counts as torsional, used only when
+        ``mode_indices`` is None.
+    """
+
+    alpha_mhz: dict
+    sigma_mhz: dict = field(default_factory=dict)
+    mode_indices: tuple = ()
+    freq_cm: float = 0.0
+
+    def modes_for(self, omega_cm) -> list:
+        """The normal modes this replacement covers, at one geometry."""
+        if self.mode_indices:
+            return [int(r) for r in self.mode_indices]
+        if self.freq_cm > 0.0:
+            return [r for r in range(len(omega_cm)) if omega_cm[r] < float(self.freq_cm)]
+        return []
+
+
 def compute_harmonic_alpha(
     hess_bohr: np.ndarray,
     coords_ang: np.ndarray,
@@ -164,6 +216,7 @@ def compute_harmonic_alpha(
     lam_freq_cm: float = 0.0,
     freq_scale: float = 1.0,
     coriolis_resonance_cm: float = _CORIOLIS_RESONANCE_CM,
+    torsion_replacement: "TorsionReplacement | None" = None,
     harmonic_scheme: str = "watson",
 ):
     """
@@ -485,8 +538,32 @@ def compute_harmonic_alpha(
             except Exception as exc:                  # noqa: BLE001 - degrade, don't abort
                 anh_status = f"failed: {type(exc).__name__}: {exc}"
 
+    # A torsional mode handled explicitly is removed here, before any sum is
+    # taken, so it disappears from the value, the cancellation diagnostic and
+    # every per-term breakdown at once. Zeroing the column is what makes that
+    # one edit instead of several: alpha_total, alpha_sum, cancel_sum and the
+    # alpha_*_mhz entries in info are all built from these three arrays.
+    torsion_modes: list[int] = []
+    if torsion_replacement is not None:
+        torsion_modes = [r for r in torsion_replacement.modes_for(omega_cm)
+                         if 0 <= r < n_vib]
+        if torsion_modes:
+            idx = np.asarray(torsion_modes, dtype=int)
+            alpha_cent[:, idx] = 0.0
+            alpha_cor[:, idx] = 0.0
+            alpha_anh[:, idx] = 0.0
+
     alpha_total = alpha_cent + alpha_cor + alpha_anh
     alpha_sum = alpha_total.sum(axis=1)
+
+    # ...and the computed contribution goes in its place. Added after the
+    # removal rather than instead of it, so that a replacement covering no
+    # modes is still applied: the caller asked for this contribution, and
+    # silently dropping it because the mode selection missed would be the kind
+    # of no-op this project has already been bitten by.
+    if torsion_replacement is not None:
+        for i, k in enumerate(labels):
+            alpha_sum[i] += float(torsion_replacement.alpha_mhz.get(k, 0.0))
 
     # Uncertainty on a truncated perturbation series is estimated by the size of
     # the last term retained -- here the cubic contribution. A flat fraction of
@@ -634,11 +711,29 @@ def compute_harmonic_alpha(
     lam_modes: list[float] = []
     lam_sigma = {k: 0.0 for k in labels}
     if float(lam_freq_cm) > 0.0:
-        lam_idx = [r for r in range(n_vib) if omega_cm[r] < float(lam_freq_cm)]
+        # A mode already replaced by an explicit torsional contribution is not
+        # widened again here. Its alpha column was zeroed above, so the band
+        # would come out zero anyway; excluding it by index says why, and keeps
+        # lam_modes an honest record of what THIS treatment acted on.
+        lam_idx = [r for r in range(n_vib)
+                   if omega_cm[r] < float(lam_freq_cm) and r not in torsion_modes]
         lam_modes = [float(omega_cm[r]) for r in lam_idx]
         for i, k in enumerate(labels):
             band = float(np.abs(alpha_total[i, lam_idx]).sum()) if lam_idx else 0.0
             lam_sigma[k] = band
+            if band > 0.0:
+                sigma_vals[k] = float(np.hypot(sigma_vals[k], band))
+
+    # The replacement's own uncertainty, in quadrature with the truncation
+    # sigma. This is the half of the trade that makes the treatment worth
+    # having: lam_freq_cm buys honesty by widening sigma to the full size of
+    # the contribution, whereas a computed average is allowed to claim the
+    # precision the averaging actually has.
+    torsion_sigma = {k: 0.0 for k in labels}
+    if torsion_replacement is not None:
+        for k in labels:
+            band = abs(float(torsion_replacement.sigma_mhz.get(k, 0.0)))
+            torsion_sigma[k] = band
             if band > 0.0:
                 sigma_vals[k] = float(np.hypot(sigma_vals[k], band))
 
@@ -648,6 +743,16 @@ def compute_harmonic_alpha(
         sigma_vals,
         {
             "near_degen_skips": near_degen_skips,
+            #: Normal modes whose perturbative alpha was removed and replaced
+            #: by an explicitly computed torsional contribution, with that
+            #: contribution and its uncertainty. Empty when no replacement was
+            #: supplied, in which case alpha and sigma are untouched.
+            "torsion_replaced_modes": list(torsion_modes),
+            "torsion_alpha_mhz": (
+                dict(torsion_replacement.alpha_mhz)
+                if torsion_replacement is not None else {}
+            ),
+            "torsion_sigma_mhz": torsion_sigma,
             #: Near-degenerate Coriolis pairs, with the frequencies and
             #: coupling that make them resonant. Diagnostic only: neither
             #: alpha nor sigma is altered on their account.
@@ -942,6 +1047,7 @@ def build_correction_table_from_hessian(
     linear_pair_coeff=None,
     lam_freq_cm: float = 0.0,
     freq_scale: float = 1.0,
+    torsion_replacement: "TorsionReplacement | None" = None,
     harmonic_scheme: str = "watson",
 ) -> tuple[dict, dict]:
     """
@@ -1039,6 +1145,7 @@ def build_correction_table_from_hessian(
             mode_derivs=mode_derivs,
             linear_pair_coeff=linear_pair_coeff,
             lam_freq_cm=lam_freq_cm,
+            torsion_replacement=torsion_replacement,
             freq_scale=freq_scale,
             harmonic_scheme=harmonic_scheme,
         )
