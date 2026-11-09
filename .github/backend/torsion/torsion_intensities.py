@@ -314,9 +314,12 @@ def compute_torsion_line_list(
 
                     sel = symmetry_selection_rules(s_lo, s_hi, rotor_fold=int(rotor_fold))
                     verdict = sel.get("allowed")
-                    # `None` means the rules are not implemented for this rotor,
-                    # not that the transition is permitted. Treating it as
-                    # allowed (which `is not False` does) silently emits
+                    # `None` means the verdict is unavailable -- the species
+                    # labels do not belong to this fold, or the fold itself is
+                    # not a rotor -- not that the transition is permitted. Any
+                    # fold >= 2 now gets a real answer, so this is a label
+                    # mismatch rather than a missing implementation. Treating
+                    # it as allowed (which `is not False` does) silently emits
                     # forbidden lines at full strength. Keep that behaviour --
                     # dropping them would be a different guess -- but record it
                     # and say so once, so an intensity list can be trusted or
@@ -325,9 +328,10 @@ def compute_torsion_line_list(
                     rules_known = verdict is not None
                     if not rules_known:
                         _warn_once(
-                            f"selection rules not implemented for rotor_fold="
-                            f"{int(rotor_fold)}; transitions are being treated as "
-                            f"allowed and intensities are upper bounds"
+                            f"no selection-rule verdict for symmetry labels "
+                            f"{s_lo!r} -> {s_hi!r} on a C{int(rotor_fold)} rotor "
+                            f"({sel.get('reason')}); transitions are being "
+                            f"treated as allowed and intensities are upper bounds"
                         )
 
                     ls = float(ME2[vt_hi, vt_lo])
@@ -338,16 +342,19 @@ def compute_torsion_line_list(
                         nsw = nuclear_spin_weight(s_lo, rotor_fold=int(rotor_fold))
                         weight_known = True
                     except ValueError:
-                        # Only C2 and C3 rotors have spin-weight tables. A
-                        # default of 1 for everything makes every species
-                        # equally abundant, which is wrong for any other fold.
+                        # Folds 2, 3, 4 and 6 are derived at import; anything
+                        # else, or a label that is not a species of this fold,
+                        # lands here. A default of 1 for everything makes every
+                        # species equally abundant, which is wrong whenever the
+                        # species differ in spin statistics -- which is the
+                        # only reason to be computing this at all.
                         nsw = 1
                         weight_known = False
                         _warn_once(
-                            f"nuclear spin weights not implemented for "
-                            f"rotor_fold={int(rotor_fold)} (symmetry {s_lo!r}); "
-                            f"defaulting every species to weight 1, so relative "
-                            f"intensities between symmetry species are wrong"
+                            f"no nuclear spin weight for symmetry {s_lo!r} on a "
+                            f"C{int(rotor_fold)} rotor; defaulting every species "
+                            f"to weight 1, so relative intensities between "
+                            f"symmetry species are wrong"
                         )
 
                     rel_int = float(nsw) * ls * float(HL) if allowed else 0.0

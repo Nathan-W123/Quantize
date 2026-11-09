@@ -44,7 +44,9 @@ def _free_rotor_spec(F=27.6, n_basis=10):
 
 class TestNuclearSpinWeight:
     def test_c3_a_species(self):
-        assert nuclear_spin_weight("A", rotor_fold=3) == 1
+        # Three equivalent protons, I = 1/2: the totally symmetric spin
+        # functions number (1/3)[2^3 + 2*2^gcd(1,3)] = (8 + 2 + 2)/3 = 4.
+        assert nuclear_spin_weight("A", rotor_fold=3) == 4
 
     def test_c3_e_species(self):
         assert nuclear_spin_weight("E", rotor_fold=3) == 2
@@ -53,10 +55,12 @@ class TestNuclearSpinWeight:
         assert nuclear_spin_weight("E1", rotor_fold=3) == 2
         assert nuclear_spin_weight("E2", rotor_fold=3) == 2
 
-    def test_c3_ratio_a_e_is_1_to_2(self):
+    def test_c3_ratio_a_e_is_2_to_1(self):
+        # A:E = 4:2 per E component (methanol, Lees & Baker 1968). A is the
+        # heavier modification, not the lighter one.
         w_A = nuclear_spin_weight("A", rotor_fold=3)
         w_E = nuclear_spin_weight("E", rotor_fold=3)
-        assert w_E / w_A == pytest.approx(2.0)
+        assert w_A / w_E == pytest.approx(2.0)
 
     def test_c2_a_species(self):
         assert nuclear_spin_weight("A", rotor_fold=2) == 1
@@ -73,7 +77,7 @@ class TestNuclearSpinWeight:
             nuclear_spin_weight("A", rotor_fold=5)
 
     def test_lowercase_label_normalised(self):
-        assert nuclear_spin_weight("a", rotor_fold=3) == 1
+        assert nuclear_spin_weight("a", rotor_fold=3) == 4
         assert nuclear_spin_weight("e", rotor_fold=3) == 2
 
 
@@ -257,7 +261,7 @@ class TestComputeTorsionLineList:
                 assert ln["relative_intensity"] > 0.0
 
     def test_nuclear_spin_weight_values(self):
-        """All A-symmetry lower states get nsw=1, E-symmetry get nsw=2."""
+        """C3 rotor: A-symmetry lower states get nsw=4, E-symmetry get nsw=2."""
         spec = _make_spec()
         lines = compute_torsion_line_list(
             spec, J_values=[0, 1], K_values=[0], n_levels=4, symmetry_mode="c3"
@@ -265,7 +269,7 @@ class TestComputeTorsionLineList:
         for ln in lines:
             s = str(ln["symmetry_lo"]).upper()
             if s == "A":
-                assert ln["nuclear_spin_weight"] == 1
+                assert ln["nuclear_spin_weight"] == 4
             elif s in ("E", "E1", "E2"):
                 assert ln["nuclear_spin_weight"] == 2
 

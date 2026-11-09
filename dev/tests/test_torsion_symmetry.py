@@ -6,8 +6,11 @@ import numpy as np
 import pytest
 
 from backend.torsion.torsion_symmetry import (
+    _spin_function_counts,
     c3_symmetry_block_energies,
+    nuclear_spin_weights,
     predict_tunneling_splitting,
+    species_label,
     symmetry_purity_table,
     symmetry_selection_rules,
     tunneling_splitting_to_csv_rows,
@@ -21,6 +24,86 @@ def _make_c3_spec(F=27.6, rho=0.0, V3=-186.8, n_basis=10):
     pot = TorsionFourierPotential(v0=186.1, vcos={3: V3}, units="cm-1")
     return TorsionHamiltonianSpec(F=F, rho=rho, A=4.25, B=0.823, C=0.793,
                                   potential=pot, n_basis=n_basis, units="cm-1")
+
+
+
+# ── Nuclear-spin weights, derived rather than tabulated ──────────────────────
+
+class TestNuclearSpinWeightDerivation:
+    """The two anchors the module's derivation comment claims.
+
+    The character projection is only trustworthy if it reproduces values that
+    were established independently of it. These are those values.
+    """
+
+    def test_reproduces_the_c2_weights_this_module_already_had(self):
+        # ANCHOR 1. The old hard-coded C2 entry was A:B = 1:3, and it was
+        # right: two protons give one singlet (symmetric under exchange, so it
+        # pairs with the antisymmetric rotational species) and three triplet
+        # states. The derivation has to land on exactly that.
+        assert nuclear_spin_weights(2, spin=0.5) == {"A": 1, "B": 3}
+
+    def test_reproduces_published_methanol_c3_weights(self):
+        # ANCHOR 2. Three protons: an I=3/2 quartet (4 states, totally
+        # symmetric) and two I=1/2 doublets (2 each, one per E component).
+        # A:E = 4:2 per component is the methanol convention; the old C3
+        # table said 1:2, inverting which modification is heavier.
+        w = nuclear_spin_weights(3, spin=0.5)
+        assert w["A"] == 4
+        assert w["E1"] == 2 and w["E2"] == 2
+        assert w["E"] == 2
+
+    @pytest.mark.parametrize("n", [1, 2, 3, 4, 5, 6, 7, 8])
+    def test_counts_exhaust_the_spin_space(self, n):
+        # Every product spin state belongs to exactly one species, so the
+        # counts must sum to (2I+1)^n. This is the invariant that would catch
+        # a sign or normalisation slip in the projection.
+        counts = _spin_function_counts(n, spin=0.5)
+        assert sum(counts.values()) == 2 ** n
+        assert all(c >= 0 for c in counts.values())
+
+    @pytest.mark.parametrize("n", [2, 3, 4, 5, 6])
+    def test_conjugate_species_have_equal_counts(self, n):
+        # a_k and a_{n-k} are complex conjugates of a real quantity, so the
+        # two halves of a degenerate E pair must carry the same weight.
+        counts = _spin_function_counts(n, spin=0.5)
+        for k in range(1, n):
+            assert counts[k] == counts[(-k) % n]
+
+    @pytest.mark.parametrize("n,spin", [(3, 1.0), (2, 1.0), (3, 1.5)])
+    def test_higher_spin_also_exhausts_the_space(self, n, spin):
+        # Deuterated tops (I=1) and heavier nuclei go through the same formula.
+        d = int(round(2 * spin + 1))
+        assert sum(_spin_function_counts(n, spin=spin).values()) == d ** n
+
+    def test_weights_cover_every_species_of_the_fold(self):
+        for n in (2, 3, 4, 6):
+            w = nuclear_spin_weights(n, spin=0.5)
+            for k in range(n):
+                assert species_label(k, n) in w
+
+    def test_fermion_statistics_pick_the_right_total_species(self):
+        # An n-cycle is even iff n is odd, so the total wavefunction carries
+        # k=0 for odd n and k=n/2 for even n. A consequence: for odd n the
+        # A torsional species takes the totally symmetric spin count, while
+        # for even n it is B that does.
+        c3 = _spin_function_counts(3, spin=0.5)
+        assert nuclear_spin_weights(3, spin=0.5)["A"] == c3[0]
+        c2 = _spin_function_counts(2, spin=0.5)
+        assert nuclear_spin_weights(2, spin=0.5)["B"] == c2[0]
+
+    def test_species_label_names_b_only_for_even_folds(self):
+        assert species_label(0, 3) == "A"
+        assert species_label(1, 2) == "B"
+        assert species_label(3, 6) == "B"
+        assert species_label(1, 3) == "E1"
+        assert species_label(2, 3) == "E2"
+        # Odd folds have no k = n/2, so no B.
+        assert "B" not in {species_label(k, 5) for k in range(5)}
+
+    def test_rejects_spinless_nuclei(self):
+        with pytest.raises(ValueError):
+            _spin_function_counts(3, spin=0.0)
 
 
 # ── wang_transformation_c3 ────────────────────────────────────────────────────
@@ -171,9 +254,26 @@ class TestSymmetrySelectionRules:
         result = symmetry_selection_rules("E1", "A", rotor_fold=3)
         assert result["allowed"] is False
 
-    def test_unknown_rotor_fold(self):
-        result = symmetry_selection_rules("A", "A", rotor_fold=5)
+    def test_rotor_fold_below_two_is_undefined(self):
+        # A one-fold "rotor" has no torsional symmetry species to speak of.
+        result = symmetry_selection_rules("A", "A", rotor_fold=1)
         assert result["allowed"] is None
+
+    def test_unknown_label_for_fold(self):
+        # A C2 rotor has no E species: k = n/2 is the non-degenerate B.
+        result = symmetry_selection_rules("E1", "A", rotor_fold=2)
+        assert result["allowed"] is None
+
+    def test_arbitrary_fold_is_handled(self):
+        # The k = +/- k' rule needs no per-fold table, so an uncommon fold
+        # such as C5 works: A <-> A is allowed, A <-> E1 is not.
+        assert symmetry_selection_rules("A", "A", rotor_fold=5)["allowed"] is True
+        assert symmetry_selection_rules("A", "E1", rotor_fold=5)["allowed"] is False
+
+    def test_degenerate_pair_allowed_but_distinct_pairs_not(self):
+        # C6: E1 and E5 are complex conjugates (one species), E1 and E2 are not.
+        assert symmetry_selection_rules("E1", "E5", rotor_fold=6)["allowed"] is True
+        assert symmetry_selection_rules("E1", "E2", rotor_fold=6)["allowed"] is False
 
     def test_case_insensitive(self):
         result = symmetry_selection_rules("a", "e", rotor_fold=3)
