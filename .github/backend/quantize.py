@@ -60,6 +60,22 @@ from backend.spectral.spectral import default_sigma_constants, defect_model_sigm
 #:
 #: `scripts/estimate_theory_error.py` estimates the right value for a molecule
 #: with no known structure, from the spread between two levels of theory.
+from backend.spectral.prior_widths import (  # noqa: E402
+    level_for_backend,
+    prior_sigma_for_level,
+)
+
+#: Distinguishes "the caller said nothing" from "the caller said None".
+#: They are not the same: None is a documented request for SubspaceOptimizer's
+#: legacy alpha_quantum heuristic (see SVD.py, which branches on it), and the
+#: YAML runner passes it deliberately. Only silence means "calibrate from the
+#: level of theory". Collapsing the two switched every None-passing caller onto
+#: the calibrated-weight objective, which the end-to-end water test caught.
+_PRIOR_SIGMA_UNSET = object()
+
+#: Fallback when the level of theory has no calibrated width. See
+#: spectral.prior_widths for the calibrated table and why an unmeasured level
+#: falls back to the loosest value rather than an interpolated one.
 DEFAULT_QUANTUM_PRIOR_SIGMA_ANG = 0.020
 
 #: Guards on chi-square rescaling. Below this many degrees of freedom the ratio
@@ -305,7 +321,12 @@ class MolecularOptimizer:
         prior_target_coords=None,
         isotropic_prior=False,
         alpha_quantum=1.0,
-        quantum_prior_sigma_ang=DEFAULT_QUANTUM_PRIOR_SIGMA_ANG,
+        # Unset means "calibrate from the level of theory" (see
+        # spectral.prior_widths); an explicit None still means the legacy
+        # heuristic. It previously defaulted to the flat constant, which made
+        # "the caller said nothing" indistinguishable from "the caller asked
+        # for 0.020", so the calibration below could never fire.
+        quantum_prior_sigma_ang=_PRIOR_SIGMA_UNSET,
         prior_class_sigma=None,
         robust_loss="none",
         robust_param=1.0,
@@ -719,6 +740,32 @@ class MolecularOptimizer:
         # "fit" left 4 MHz cross-species residuals and C-F 22 mA wrong where
         # a direct least-squares on the same six numbers leaves 0.04 MHz and
         # 2.5 mA.
+        # Calibrate the prior width to the level of theory when the caller did
+        # not state one. sigma_x is an estimate of this level's own geometry
+        # error, and the repository has measured that for several levels -- but
+        # until now those measurements lived in a benchmark script while the
+        # engine shipped one flat constant. Every benchmark passed sigma_x
+        # explicitly and got the calibrated value; every CLI and browser run
+        # took the flat 0.020, which at B3LYP/cc-pVTZ is five times looser than
+        # the measurement supports. See spectral.prior_widths.
+        if quantum_prior_sigma_ang is _PRIOR_SIGMA_UNSET:
+            _lvl = level_for_backend(
+                quantum_backend, orca_method, orca_basis,
+                psi4_method, psi4_basis)
+            _sig, _calibrated = prior_sigma_for_level(
+                *_lvl, default=DEFAULT_QUANTUM_PRIOR_SIGMA_ANG)
+            # Assign in BOTH branches. Everything downstream expects a float
+            # here, and it always got one while the default was the flat
+            # constant; leaving the uncalibrated path unassigned handed
+            # SubspaceOptimizer a None it had never seen.
+            quantum_prior_sigma_ang = _sig
+            if _calibrated:
+                print(f"  [prior] sigma_x = {_sig:.4f} A, calibrated for "
+                      f"{_lvl[0]}/{_lvl[1]}")
+            else:
+                print(f"  [prior] sigma_x = {_sig:.4f} A, the uncalibrated "
+                      f"default ({_lvl[0]}/{_lvl[1]} has not been benchmarked)")
+
         if sv_min_abs is None:
             if spectral_only:
                 sv_min_abs = 0.0
