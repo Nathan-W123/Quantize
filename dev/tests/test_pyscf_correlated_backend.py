@@ -55,8 +55,41 @@ def test_correlated_methods_are_recognised_not_treated_as_functionals():
     for method in ("mp2", "ccsd", "ccsd(t)"):
         backend = get_backend("pyscf_hf")(elems=ELEMS, method=method, basis="sto-3g")
         assert backend.correlated, f"{method} not recognised as correlated"
-        assert backend._tight, "a differenced gradient needs tight convergence"
     assert not get_backend("pyscf_hf")(elems=ELEMS, method="b3lyp").correlated
+
+
+def test_tight_convergence_is_scoped_to_the_difference_quotient():
+    """Tight SCF must be off by default and on only during the FD sweep.
+
+    The first version set it for every correlated call. Tight convergence is
+    reachable near a minimum and often is not at the distorted geometries an
+    optimiser visits getting there, so demanding 1e-11 everywhere made
+    optimise() abort with "SCF did not converge even with the second-order
+    solver" and killed a five-molecule benchmark at its first geometry. The
+    tolerance exists for the difference quotient and only that needs it.
+    """
+    backend = get_backend("pyscf_hf")(elems=ELEMS, method="mp2", basis="sto-3g")
+    assert backend._tight is False, "tight convergence must not be on by default"
+
+    seen = []
+    original = backend._energy_gradient
+
+    def spy(coords):
+        seen.append(backend._tight)
+        return original(coords)
+
+    backend._energy_gradient = spy
+    backend._fd_hessian(WATER)
+    assert seen and all(seen), "the FD sweep did not run under tight convergence"
+    assert backend._tight is False, "tight convergence leaked past the sweep"
+
+
+def test_correlated_geometry_optimisation_converges():
+    """The path the scoping bug broke. Cheap basis; the point is that it runs."""
+    backend = get_backend("pyscf_hf")(elems=ELEMS, method="mp2", basis="sto-3g")
+    relaxed = backend.optimise(WATER)
+    assert relaxed.shape == WATER.shape
+    assert np.isfinite(relaxed).all()
 
 
 def test_correlation_removes_the_bend_stiffness_that_biases_alpha():

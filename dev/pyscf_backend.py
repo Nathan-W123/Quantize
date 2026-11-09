@@ -70,7 +70,7 @@ _FD_STEP_BOHR = 0.01
 #: mode, where the absolute noise is the largest fraction of the eigenvalue.
 #: Tightening by three orders fixes it; see test_pyscf_correlated_backend.py,
 #: which pins the agreement.
-_TIGHT_SCF_CONV = 1e-12
+_TIGHT_SCF_CONV = 1e-11
 _TIGHT_SCF_CONV_GRAD = 1e-9
 _TIGHT_CC_CONV = 1e-9
 
@@ -91,10 +91,19 @@ class PySCFBackend(QuantumBackend):
         #: path. Anything not named here is still handed to dft.RKS as an xc
         #: string, which is what lets arbitrary functionals through untouched.
         self.correlated = self.method in _CORRELATED
-        #: Tighten SCF/CC convergence when a gradient will be differenced.
-        #: Always on for correlated methods, since their Hessian is always a
-        #: finite difference; switched on temporarily by _fd_hessian otherwise.
-        self._tight = self.correlated
+        #: Tighten SCF/CC convergence only while a gradient is being
+        #: differenced. _fd_hessian switches this on for its sweep and restores
+        #: it afterwards.
+        #:
+        #: It must NOT be on by default for correlated methods, which was the
+        #: first version. Tight convergence is reachable near a minimum and
+        #: often is not at the distorted geometries an optimiser visits on its
+        #: way there, so demanding 1e-12 everywhere made optimise() abort with
+        #: "SCF did not converge even with the second-order solver" and killed
+        #: a five-molecule benchmark at its first geometry. The tolerance
+        #: exists for the difference quotient, and only the difference quotient
+        #: needs it.
+        self._tight = False
         self.basis = str(basis or "sto-3g").strip() or "sto-3g"
         self.charge = int(charge)
         self.spin = int(multiplicity) - 1
