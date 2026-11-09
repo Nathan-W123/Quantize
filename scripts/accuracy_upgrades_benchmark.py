@@ -134,9 +134,11 @@ normally used to validate a force field rather than to locate atoms.
 
 from __future__ import annotations
 
+import atexit
 import contextlib
 import io
 import json
+import os
 import sys
 import time
 from collections import defaultdict
@@ -226,6 +228,12 @@ SIGMA_X_ANG = _SIGMA_X_BY_LEVEL.get((METHOD.lower(), BASIS.lower()), 0.020)
 #: in this set land at 200-300 cm-1; the next modes up are ordinary bends well
 #: above 400, so the threshold is not sitting on top of a cluster.
 LAM_FREQ_CM = 350.0
+
+#: Grid points for a relaxed torsional scan in the "torsion" configuration.
+#: 12 over a full turn resolves harmonics up to order 6, so for a three-fold
+#: rotor it carries V3 and V6 and nothing it cannot distinguish; see
+#: torsion_scan_qm on why asking for more aliases rather than refuses.
+TORSION_SCAN_POINTS = 12
 
 #: Harmonic frequency scale factor. 1.0 disables it. Left off by default:
 #: measured against water's experimental harmonic frequencies, RHF/6-31G is
@@ -335,6 +343,25 @@ CONFIGS = {
            "fit_cd": True},
     "offsets+cd": {"offsets": True, "elec": False, "lam": False, "corr": False,
                    "fit_cd": True},
+    # The torsional mode treated explicitly instead of perturbatively.
+    #
+    # Compare against "lam", not against "base": both act on exactly the same
+    # modes -- everything below LAM_FREQ_CM, since the replacement is handed
+    # the same freq_cm -- and they are the two answers to the same problem. A
+    # methyl torsion sits at 100-250 cm^-1 with a zero-point amplitude of tens
+    # of degrees, and alpha goes as 1/omega, so it is both one of the largest
+    # terms in the sum and the one VPT2 is least entitled to. "lam" keeps the
+    # perturbative value and widens sigma to its full size, an honest refusal
+    # that leaves the suspect number in the value. "torsion" computes the
+    # contribution from a relaxed scan and puts that in instead.
+    #
+    # Only acetyl fluoride and fluoroethane have rotors; find_rotors reports
+    # none for the other seven, and those molecules fall back to the
+    # untreated table so the row is still comparable.
+    "torsion": {"offsets": False, "elec": False, "lam": False, "corr": False,
+                "torsion": True},
+    "offsets+torsion": {"offsets": True, "elec": False, "lam": False,
+                        "corr": False, "torsion": True},
 }
 for _cfg in CONFIGS.values():
     _cfg.setdefault("bob", False)
@@ -342,6 +369,7 @@ for _cfg in CONFIGS.values():
     _cfg.setdefault("track", False)
     _cfg.setdefault("scheme", "linear")
     _cfg.setdefault("fit_cd", False)
+    _cfg.setdefault("torsion", False)
 
 
 def code_vintage() -> str:
@@ -474,6 +502,65 @@ def hybrid_fit(mol, isos, prior_coords, ctbl, sigma_x_ang,
         return opt.run()
 
 
+def torsion_replacement_for(mol, coords_ang, backend, freq_cm=LAM_FREQ_CM,
+                            n_points=TORSION_SCAN_POINTS):
+    """A computed torsional contribution for ``mol``, or None if it has no rotor.
+
+    The rotor is found from connectivity rather than hand-entered per
+    molecule: four transposed atom indices give a well-formed scan of the
+    wrong coordinate with nothing in the output to say so. ``freq_cm`` is
+    LAM_FREQ_CM, so the replaced modes are exactly the ones the "lam"
+    configuration widens, which is what makes the two rows comparable.
+
+    The scan runs at the level of whichever backend is handed in, at the
+    geometry the correction is being expanded about, because the potential a
+    torsional average needs is that level's own.
+    """
+    from backend.torsion.internal_rotation import find_rotors
+    from backend.torsion.torsion_lam_integration import torsion_replacement_from_scan
+    from backend.torsion.torsion_scan_qm import relaxed_torsion_scan, spec_from_scan
+
+    coords = np.asarray(coords_ang, dtype=float)
+    rotors = find_rotors(coords, list(mol.elems))
+    if not rotors:
+        return None, {"reason": "no internal rotor found"}
+
+    rotor = rotors[0]
+    masses = np.asarray(mol.masses, dtype=float)
+    with contextlib.redirect_stdout(io.StringIO()):
+        scan, scan_info = relaxed_torsion_scan(
+            backend._energy_gradient, coords, list(mol.elems),
+            rotor["dihedral"], n_points=int(n_points),
+            top_indices=rotor["top_indices"])
+        spec, spec_info = spec_from_scan(
+            coords, masses, list(mol.elems), scan,
+            frame_atom=rotor["frame_atom"], top_atom=rotor["top_atom"],
+            symmetry_number=rotor["symmetry_number"],
+            top_indices=rotor["top_indices"])
+        replacement, rep_info = torsion_replacement_from_scan(
+            list(mol.elems), scan, spec, coords, masses,
+            symmetry_number=rotor["symmetry_number"],
+            mode_indices=(), freq_cm=float(freq_cm))
+
+    # A scan whose constraint slipped is a potential at unknown angles, which
+    # would be worse than no treatment because it would look like one.
+    if not scan_info["dihedral_within_tol"]:
+        return None, {"reason": "scan constraint slipped",
+                      "max_dihedral_error_deg": scan_info["max_dihedral_error_deg"]}
+    return replacement, {
+        "rotor": {k: v for k, v in rotor.items() if k != "top_indices"},
+        "top_indices": list(rotor["top_indices"]),
+        "barrier_cm": scan_info["barrier_cm"],
+        "F_cm": float(spec.F), "rho": float(spec.rho),
+        "all_converged": bool(scan_info["all_converged"]),
+        "max_dihedral_error_deg": float(scan_info["max_dihedral_error_deg"]),
+        "n_harmonics_used": spec_info["n_harmonics_used"],
+        "alpha_mhz": {k: float(v) for k, v in replacement.alpha_mhz.items()},
+        "sigma_mhz": {k: float(v) for k, v in replacement.sigma_mhz.items()},
+        "freq_cm": float(freq_cm),
+    }
+
+
 def theory_geometries(pool):
     """Theory geometry per molecule, plus each one's bond-class offsets.
 
@@ -513,6 +600,43 @@ def main() -> None:
 
     tag = f"{METHOD}_{BASIS}".replace("/", "-").replace("(", "").replace(")", "")
     out_path = _ROOT / "output" / f"accuracy_upgrades_{tag}.json"
+
+    # ONE RUN PER RESULTS FILE. Every run loads the whole file at startup, adds
+    # rows and writes the whole thing back after each molecule. Two runs on the
+    # same tag therefore do not interleave -- the second to write silently
+    # discards whatever the first added since it loaded. The tag depends only on
+    # method and basis, so two runs that differ in `configs` (which is exactly
+    # how one would try to add a configuration to an existing set) collide.
+    #
+    # Nearly done by hand while an MP2 run was in flight, which is the only
+    # reason this guard exists. The lock carries the pid so a stale one left by
+    # a killed run can be told from a live one and cleared.
+    lock_path = out_path.with_suffix(".lock")
+    if lock_path.exists():
+        holder = lock_path.read_text(encoding="utf-8").strip()
+        pid = holder.split()[0] if holder else ""
+        alive = False
+        if pid.isdigit():
+            try:
+                os.kill(int(pid), 0)
+                alive = True
+            except (OSError, ProcessLookupError):
+                alive = False
+        if alive:
+            raise SystemExit(
+                f"another run already holds {out_path.name} ({holder}).\n"
+                f"Results files are rewritten whole, so a second run would "
+                f"discard the first one's rows. Wait for it, or use a "
+                f"different method=/basis= tag.\n"
+                f"If that process is gone, delete {lock_path}."
+            )
+        print(f"  [lock] clearing stale lock from {holder}")
+        lock_path.unlink()
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path.write_text(f"{os.getpid()} {' '.join(sys.argv[1:])}",
+                         encoding="utf-8")
+    atexit.register(lambda: lock_path.unlink(missing_ok=True))
+
     out = json.loads(out_path.read_text(encoding="utf-8")) \
         if out_path.exists() else {}
 
@@ -600,21 +724,36 @@ def main() -> None:
         # Hessian cache is shared, so the second lam variant is nearly free.
         tables: dict = {}
 
-        def table_for(coords, lam, corr, _tabs=tables):
+        # Torsional replacements, one per (geometry, level). The scan is the
+        # expensive part, so it is computed once and shared by every
+        # configuration that asks for it.
+        torsions: dict = {}
+
+        def torsion_for(coords, corr, _t=torsions):
+            at = np.asarray(corr_geom if corr else coords, dtype=float)
+            key = (at.round(8).tobytes(), bool(corr))
+            if key not in _t:
+                be = corr_backend if corr else backend
+                _t[key] = torsion_replacement_for(mol, at, be)
+            return _t[key]
+
+        def table_for(coords, lam, corr, torsion=False, _tabs=tables):
             # When the corrections come from another level they are evaluated
             # at that level's own equilibrium, not at `coords`.
             at = np.asarray(corr_geom if corr else coords, dtype=float)
-            key = (at.round(8).tobytes(), bool(lam), bool(corr))
+            key = (at.round(8).tobytes(), bool(lam), bool(corr), bool(torsion))
             if key not in _tabs:
                 hfn = corr_hessian_fn if corr else hessian_fn
                 isos_local = build_isotopologues(mol, None)
+                replacement = torsion_for(coords, corr)[0] if torsion else None
                 with contextlib.redirect_stdout(io.StringIO()):
                     _tabs[key] = build_correction_table_from_hessian(
                         hfn(at), at, isos_local, hessian_fn=hfn,
                         cubic_scheme="normal_mode",
                         lam_freq_cm=LAM_FREQ_CM if lam else 0.0,
                         freq_scale=FREQ_SCALE,
-                        harmonic_scheme=HARMONIC_SCHEME)
+                        harmonic_scheme=HARMONIC_SCHEME,
+                        torsion_replacement=replacement)
             return _tabs[key]
 
         g_tensor = None
@@ -641,7 +780,10 @@ def main() -> None:
                 raise SystemExit(
                     "configs including 'corr' need corr_method=/corr_basis= "
                     "so the correction level differs from the geometry level")
-            ctbl, info = table_for(prior, cfg["lam"], cfg["corr"])
+            ctbl, info = table_for(prior, cfg["lam"], cfg["corr"],
+                                   torsion=cfg["torsion"])
+            torsion_info = (torsion_for(prior, cfg["corr"])[1]
+                            if cfg["torsion"] else None)
             targets = corrected_targets(mol, isos, ctbl,
                                         bob_params=bob_params,
                                         coords_ang=prior,
@@ -671,7 +813,9 @@ def main() -> None:
                         cubic_scheme="normal_mode",
                         lam_freq_cm=LAM_FREQ_CM if cfg["lam"] else 0.0,
                         freq_scale=FREQ_SCALE,
-                        harmonic_scheme=HARMONIC_SCHEME)
+                        harmonic_scheme=HARMONIC_SCHEME,
+                        torsion_replacement=(torsion_for(prior, cfg["corr"])[0]
+                                             if cfg["torsion"] else None))
                 hyb = _fit(tracked)
                 ctbl = tracked
             else:
@@ -702,6 +846,14 @@ def main() -> None:
                     if track_info else None),
                 "track_scheme": track_info["scheme"] if track_info else None,
                 "fit_cd": bool(cfg["fit_cd"]),
+                # What the torsional treatment actually did, or why it did
+                # nothing. A row that silently fell back to the untreated
+                # table and a row that was treated must be distinguishable
+                # after the fact; cd_observed taught that lesson already.
+                "torsion": bool(cfg["torsion"]),
+                "torsion_applied": bool(cfg["torsion"] and torsion_info is not None
+                                        and "rotor" in torsion_info),
+                "torsion_info": torsion_info,
                 "cd_weight": float(CD_WEIGHT) if cfg["fit_cd"] else 0.0,
                 "track_skipped_beyond_ang": (
                     track_info["skipped_beyond_ang"] if track_info else None),
