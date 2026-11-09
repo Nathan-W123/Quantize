@@ -406,7 +406,33 @@ class MolecularOptimizer:
         anharmonic_fd_delta_ang=0.01,
         nonconvergent_policy="warn",
         harmonic_scheme="watson",
-        cubic_scheme="cartesian",
+    #: normal_mode, not cartesian, and the difference is not small. Both compute the
+    #: same cubic force field; they differ in how it is sampled and therefore in how
+    #: well it is known. The Cartesian tensor takes raw coordinate displacements,
+    #: which mix in rotation and use one step for every mode; the normal-mode route
+    #: displaces along each mode with a ZPE-scaled step, which is what keeps the cubic
+    #: term meaningful on a noisy surface. The code has said "preferred" in
+    #: compute_harmonic_alpha's docstring since it was written.
+    #:
+    #: It also earns a different sigma. The normal-mode path gets a calibrated
+    #: nm_sigma_fraction of the cancellation sum plus its own measured noise; the
+    #: Cartesian path is floored at the FULL magnitude of the anharmonic term.
+    #: Measured on water:
+    #:
+    #:     cartesian     alpha_A -8411   sigma 35720 / 7965 / 7703
+    #:     normal_mode   alpha_A -8344   sigma 11352 / 2792 / 1541
+    #:
+    #: The same alpha to 0.8%, carried with three to five times the uncertainty. The
+    #: fit weights every target by 1/sigma^2, so that is nine to twenty-five times
+    #: less weight on the corrections -- the default threw away most of what the
+    #: correction chain had computed.
+    #:
+    #: Every benchmark in this repository passed cubic_scheme="normal_mode"
+    #: explicitly, so none of them ever exercised the default, and the shipped engine
+    #: was not the one the results came from. It is also the cheaper of the two:
+    #: 2*n_vib Hessians against 6N. It degrades to cartesian on its own when there
+    #: are no isotopologues to build the mode decomposition from.
+        cubic_scheme="normal_mode",
         freq_scale=1.0,
         lam_freq_cm=0.0,
         torsion_replacement=None,
@@ -456,7 +482,7 @@ class MolecularOptimizer:
         # frequency scaling and the large-amplitude cut were all unreachable
         # from the CLI and the web UI.
         self._harmonic_scheme = str(harmonic_scheme or "watson").strip().lower()
-        self._cubic_scheme = str(cubic_scheme or "cartesian").strip().lower()
+        self._cubic_scheme = str(cubic_scheme or "normal_mode").strip().lower()
         self._freq_scale = freq_scale
         self._lam_freq_cm = max(float(lam_freq_cm or 0.0), 0.0)
         # An explicitly computed torsional contribution, replacing the
