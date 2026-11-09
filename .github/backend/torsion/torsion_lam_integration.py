@@ -277,3 +277,98 @@ def format_lam_report_for_summary(report: dict) -> dict:
         else:
             out[k] = v
     return out
+
+
+# ── Torsional averaging -> a replacement the correction chain accepts ────────
+
+def torsion_replacement_from_scan(
+    elements,
+    scan,
+    spec,
+    reference_coords,
+    masses=None,
+    *,
+    state_index: int = 0,
+    symmetry_number: int = 1,
+    mode_indices=(),
+    freq_cm: float = 0.0,
+):
+    """Turn a torsional scan into a TorsionReplacement for compute_harmonic_alpha.
+
+    This is the last link in the chain. The torsion package can already solve a
+    hindered rotor and average the rotational constants over its wavefunction;
+    harmonic_alpha can already accept a computed torsional contribution in
+    place of the perturbative one. Nothing converted between them, so the
+    averaging could not reach the correction and the treatment could not be
+    scored.
+
+    THE CONVERSION, which is where this would go silently wrong. Averaging
+    returns <B_K>, the expectation over the torsional state, in MHz. The
+    reference constants B_K(ref) are evaluated at the geometry alpha is
+    expanded about. Watson's convention is
+
+        B_0 = B_e - (1/2) sum_r alpha_r
+
+    so a mode's contribution to the ground-state constant is -(1/2) alpha, and
+    the averaged minus reference shift IS that contribution:
+
+        <B_K> - B_K(ref) = -(1/2) alpha_K^torsion
+        alpha_K^torsion  = -2 (<B_K> - B_K(ref))
+
+    The sign is checkable without trusting the algebra. Averaging over a floppy
+    coordinate samples geometries spread away from the minimum, which raises
+    the moments of inertia and so LOWERS B. <B> < B_ref makes alpha positive,
+    and positive alpha means B_0 < B_e, which is what a vibrationally averaged
+    constant does. A dropped minus sign would make the correction push the
+    fitted structure the wrong way by twice its own size.
+
+    Parameters
+    ----------
+    elements, scan, spec, masses, state_index, symmetry_number
+        Passed to :func:`average_torsion_scan_quantum`.
+    reference_coords : (N, 3) geometry alpha is expanded about, in Angstrom.
+        The reference constants are computed from it with the same function the
+        scan grid uses, so the subtraction cannot pick up a convention
+        difference between two routes to "the rotational constants".
+    mode_indices, freq_cm
+        Which normal modes the result replaces. Forwarded unchanged; see
+        :class:`TorsionReplacement`.
+
+    Returns
+    -------
+    (TorsionReplacement, dict) -- the replacement, and the averaging result it
+    came from, so a caller can report the weights, the torsional energies and
+    any warnings the scan raised rather than only the number.
+    """
+    import numpy as _np
+
+    from backend.spectral.harmonic_alpha import TorsionReplacement
+    from backend.spectral.spectral import _rotational_constants
+    from backend.torsion.torsion_average import average_torsion_scan_quantum
+
+    if masses is None:
+        from backend.torsion.torsion_average import _masses_from_elements
+        masses = _masses_from_elements(list(elements))
+    masses = _np.asarray(masses, dtype=float).ravel()
+
+    result = average_torsion_scan_quantum(
+        elements, scan, spec, masses=masses,
+        state_index=state_index, symmetry_number=symmetry_number)
+
+    averaged = _np.asarray(result["averaged_constants"], dtype=float).ravel()[:3]
+    reference = _np.asarray(
+        _rotational_constants(_np.asarray(reference_coords, dtype=float), masses),
+        dtype=float).ravel()[:3]
+
+    alpha = -2.0 * (averaged - reference)
+    sigma = 2.0 * _np.abs(
+        _np.asarray(result["sigma_averaged"], dtype=float).ravel()[:3])
+
+    labels = ("A", "B", "C")
+    replacement = TorsionReplacement(
+        alpha_mhz={k: float(alpha[i]) for i, k in enumerate(labels)},
+        sigma_mhz={k: float(sigma[i]) for i, k in enumerate(labels)},
+        mode_indices=tuple(int(m) for m in mode_indices),
+        freq_cm=float(freq_cm),
+    )
+    return replacement, result
