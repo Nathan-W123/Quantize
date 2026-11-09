@@ -8,8 +8,10 @@ This project estimates molecular structure (bond lengths and angles) from isotop
 
 - Use observed rotational constants (`A`, `B`, `C`) from one or more isotopologues.
 - Map ground-state constants onto equilibrium targets via \(B_e = B_0 + \Delta_\mathrm{vib} + \Delta_\mathrm{elec} + \Delta_\mathrm{BOB}\) (see [Ground state to equilibrium](#ground-state-to-equilibrium-b_0--b_e)).
-- Stack spectral Jacobians across isotopologues, apply **SVD** to split **range space** (spectroscopy-sensitive directions) from **null space** (directions invisible to the stacked Jacobian).
-- Use electronic-energy **gradient and Hessian** (Psi4 or ORCA) for a damped-Newton step in the null space so the structure is stabilized where data are silent.
+- Stack spectral Jacobians across isotopologues and solve the **joint objective** (the default), which contests every direction between the two sources at once:
+  \[(J^TJ + \alpha_q H + \lambda I)\,\Delta p = J^T r - \alpha_q g\]
+  with the electronic-energy **gradient and Hessian** \(g, H\) (Psi4 or ORCA) entering as a quantum prior whose weight \(\alpha_q\) is set by how far the quantum surface is trusted. No direction is handed wholly to either source.
+- An **SVD**-based `split` objective is also available, which partitions the parameter space instead: **range space** (spectroscopy-sensitive directions) goes entirely to the data, **null space** (directions invisible to the stacked Jacobian) entirely to a damped-Newton step on the quantum surface. It wins only when the data are plentiful enough to resolve the retained directions on their own — see [How data and theory share authority](#how-data-and-theory-share-authority).
 
 Key formulas are documented in module docstrings (see `.github/backend/spectral/`, `.github/backend/kraitchman.py`, and `.github/backend/torsion/`); primary literature references are cited inline (Gordy & Cook 1984 for spectroscopic relations).
 
@@ -22,7 +24,7 @@ The library lives under `.github/backend/`; `paths.ensure_repo_paths` puts
 |--------|------|
 | [`backend/quantize.py`](.github/backend/quantize.py) | `MolecularOptimizer`: spectral + quantum hybrid loop |
 | [`backend/spectral/spectral.py`](.github/backend/spectral/spectral.py) | Inertia tensor, \(A,B,C\), Jacobians, residuals, weighting, optional conformer mixtures |
-| [`backend/spectral/SVD.py`](.github/backend/spectral/SVD.py) | `SubspaceOptimizer`: SVD split, range/null steps, joint objective option |
+| [`backend/spectral/SVD.py`](.github/backend/spectral/SVD.py) | `SubspaceOptimizer`: runs both objectives — the joint solve the engine defaults to, and the SVD range/null split. Named for the split it was written for first. |
 | [`backend/spectral/harmonic_alpha.py`](.github/backend/spectral/harmonic_alpha.py) | Vibration-rotation \(\alpha_r\): harmonic, Coriolis, and cubic anharmonic terms |
 | [`backend/spectral/centrifugal_distortion.py`](.github/backend/spectral/centrifugal_distortion.py) | Normal modes, \(\partial B/\partial Q\), \(\tau'\), Watson CD constants |
 | [`backend/spectral/correction_models.py`](.github/backend/spectral/correction_models.py) | Vibrational, electronic (g-tensor), and BOB corrections |
@@ -81,21 +83,33 @@ constraints, and published CO/H₂O constants — no Psi4 or ORCA needed).
 
 ## How data and theory share authority
 
-The default `split` objective partitions the parameter space hard: whatever
-survives the SVD rank cutoff is handed **entirely** to the spectral data, and the
-quantum surface governs only the null space. That works when the retained
-directions are well determined — but the cutoff is *relative*
+**The engine solves the joint objective by default** (`MolecularOptimizer`'s
+`objective_mode="joint"`). Every direction is contested between the data and the
+quantum surface, weighted by how well each source knows it:
+
+\[(J^TJ + \alpha_q H + \lambda I)\,\Delta p = J^T r - \alpha_q g\]
+
+The alternative `split` objective partitions the parameter space hard instead:
+whatever survives the SVD rank cutoff is handed **entirely** to the spectral
+data, and the quantum surface governs only the null space. That works when the
+retained directions are well determined — but the cutoff is *relative*
 (`sv_threshold × s_max`, with `sv_min_abs` defaulting to 0), so a direction the
 data resolves only loosely is still treated as fully constrained and theory gets
-no vote in it. Water's bond angle is such a direction, and it comes out worse
-than either theory or experiment alone would give.
+no vote in it. Water's bond angle is such a direction, and under `split` it comes
+out worse than either theory or experiment alone would give. That failure is why
+`joint` is the default and not the option.
 
-Two ways to hand authority back:
+(`SubspaceOptimizer`, the inner class in `SVD.py`, still defaults to `split` on
+its own constructor for backwards compatibility. Nothing calls it directly;
+`MolecularOptimizer` passes `joint` down. If you instantiate it yourself, set
+`objective_mode` explicitly.)
+
+Two ways to hand authority back under `split`:
 
 | Control | Effect |
 |---------|--------|
 | `optimizer.sv_min_abs` | Absolute floor on the singular value. The Jacobian is σ-weighted, so \(1/s\) is the parameter uncertainty along a direction — the floor means "only trust what the data resolves this well". All-or-nothing per direction. |
-| `optimizer.objective_mode: joint` with `optimizer.quantum_prior_sigma_ang` | Solves \((J^TJ + \alpha_q H + \lambda I)\,\Delta p = J^T r - \alpha_q g\), leaving every direction contested and weighted by how well each source knows it. `quantum_prior_sigma_ang` is the displacement over which the quantum surface is trusted, roughly the geometry error of the method, which is what makes \(\alpha_q\) interpretable rather than an arbitrary knob. |
+| `optimizer.objective_mode: joint` (the default) with `optimizer.quantum_prior_sigma_ang` | Solves \((J^TJ + \alpha_q H + \lambda I)\,\Delta p = J^T r - \alpha_q g\), leaving every direction contested and weighted by how well each source knows it. `quantum_prior_sigma_ang` is the displacement over which the quantum surface is trusted, roughly the geometry error of the method, which is what makes \(\alpha_q\) interpretable rather than an arbitrary knob. |
 
 ### Which objective to use depends on how much data you have
 
@@ -106,9 +120,9 @@ dataset. Two measured cases:
 |------|-------------|--------------|----------------|
 | Water, one isotopologue (`scripts/theory_vs_experiment_vs_hybrid.py`) | 3 | 3 | `joint`, `quantum_prior_sigma_ang: 0.005` |
 | Fluorobenzene, one isotopologue (`scripts/fluorobenzene_vs_published.py`) | 3 | 30 | `joint`, `quantum_prior_sigma_ang: 0.005` |
-| Fluorobenzene, eight isotopologues (`scripts/fluorobenzene_full_data.py`) | 24 | 30 | `split` (the default) |
+| Fluorobenzene, eight isotopologues (`scripts/fluorobenzene_full_data.py`) | 24 | 30 | `split` |
 | Vinyl / acetyl fluoride, fluoroethane — parent only (`scripts/monofluoro_benchmark.py`) | 3 | 12–18 | `joint`, `quantum_prior_sigma_ang: 0.005` |
-| Vinyl / acetyl fluoride, fluoroethane — all species (same script) | 18 | 12–18 | `split` (the default) |
+| Vinyl / acetyl fluoride, fluoroethane — all species (same script) | 18 | 12–18 | `split` |
 
 With few observables the split partition hands whole directions to data that
 barely resolves them, drives the residual below what the physics justifies, and
@@ -124,9 +138,13 @@ at once. Forcing `quantum_prior_sigma_ang: 0.005` there costs more than half the
 gain (8.9 mÅ), because the prior now over-constrains directions the data
 determines perfectly well.
 
-Rule of thumb: reach for the calibrated prior when the fit is undersaturated,
-and leave the default alone when it is not. `python scripts/tune_quantum_prior.py`
-scans the value; 0.005 Å is a sparse-data result, not a validated default.
+Rule of thumb: the default `joint` solve is the right starting point, and it is
+the only one of the two that works when the fit is undersaturated — which is the
+case this engine exists for. Switch to `split` only with a full isotopologue set,
+where the data can carry the retained directions by itself.
+`python scripts/tune_quantum_prior.py` scans `quantum_prior_sigma_ang`; 0.005 Å
+is a sparse-data result, not a validated default, and
+`backend/spectral/prior_widths.py` sets it per level of theory when you do not.
 
 ### Monofluorinated benchmark — and a caveat on the two rows above
 
@@ -395,7 +413,7 @@ On Windows, you can instead set `orca_exe` in `BASE_SETTINGS` to your `orca.exe`
 
 ## Interpreting output
 
-- **Rank** — number of directions retained above the relative singular-value cutoff in the stacked Jacobian SVD.
+- **Rank** — number of directions retained above the relative singular-value cutoff in the stacked Jacobian SVD. A `split`-objective quantity, as are the two step-norm entries below it; under the default `joint` solve there is no range/null partition to report.
 - **RMS MHz** — root-mean-square residual of rotational constants in MHz (unweighted block).
 - **\(\|\Delta x_r\|\)** — norm of the step projected onto the spectral range space.
 - **\(\|\Delta x_n\|\)** — norm of the step projected onto the null space.
