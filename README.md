@@ -2,18 +2,42 @@
 
 Hybrid molecular geometry inversion from rotational spectroscopy and quantum chemistry.
 
-This project estimates molecular structure (bond lengths and angles) from isotopologue rotational constants, including undersaturated cases where spectroscopy alone does not fully constrain the geometry.
+Quantize optimizes molecular structures (bond lengths and angles) for spectroscopically underdetermined systems, where the isotopologue rotational constants alone do not fix the geometry. It combines the spectroscopic data with quantum mechanics by minimizing a single joint objective function.
 
 ## Core idea
 
 - Use observed rotational constants (`A`, `B`, `C`) from one or more isotopologues.
-- Map ground-state constants onto equilibrium targets via \(B_e = B_0 + \Delta_\mathrm{vib} + \Delta_\mathrm{elec} + \Delta_\mathrm{BOB}\) (see [Ground state to equilibrium](#ground-state-to-equilibrium-b_0--b_e)).
-- Stack spectral Jacobians across isotopologues and solve the **joint objective** (the default), which contests every direction between the two sources at once:
-  \[(J^TJ + \alpha_q H + \lambda I)\,\Delta p = J^T r - \alpha_q g\]
-  with the electronic-energy **gradient and Hessian** \(g, H\) (Psi4 or ORCA) entering as a quantum prior whose weight \(\alpha_q\) is set by how far the quantum surface is trusted. No direction is handed wholly to either source.
-- An **SVD**-based `split` objective is also available, which partitions the parameter space instead: **range space** (spectroscopy-sensitive directions) goes entirely to the data, **null space** (directions invisible to the stacked Jacobian) entirely to a damped-Newton step on the quantum surface. It wins only when the data are plentiful enough to resolve the retained directions on their own — see [How data and theory share authority](#how-data-and-theory-share-authority).
+- Map ground-state constants onto equilibrium targets via $B_e = B_0 + \Delta_\mathrm{vib} + \Delta_\mathrm{elec} + \Delta_\mathrm{BOB}$ (see [Ground state to equilibrium](#ground-state-to-equilibrium-b_0-to-b_e)).
+- Stack the σ-weighted spectral Jacobian $J$ and residuals $r$ across all isotopologues, and take the electronic-energy **gradient** $g$ and **Hessian** $H$ from Psi4 or ORCA.
+- Minimize one **joint objective**, the spectral $\tfrac12\chi^2$ plus $\alpha_q$ times the electronic energy, with damped Newton steps $`(J^TJ + \alpha_q H + \lambda I)\,\Delta p = J^T r - \alpha_q g`$. No direction is handed wholesale to either source: each carries weight in proportion to how well it determines that direction, so theory holds the structure where the data are silent and yields where they are informative.
+- Set $\alpha_q$ through `quantum_prior_sigma_ang`, the displacement over which the quantum surface is trusted (roughly the method's geometry error; `MolecularOptimizer` defaults to 0.020 Å).
+
+An SVD-based `split` objective is also available; see [How data and theory share authority](#how-data-and-theory-share-authority).
 
 Key formulas are documented in module docstrings (see `.github/backend/spectral/`, `.github/backend/kraitchman.py`, and `.github/backend/torsion/`); primary literature references are cited inline (Gordy & Cook 1984 for spectroscopic relations).
+
+## Results
+
+Against published structures for nine molecules, with each method at its own
+best configuration ([`scripts/accuracy_upgrades_benchmark.py`](scripts/accuracy_upgrades_benchmark.py)),
+mean all-bond RMS error in mÅ:
+
+| Level of theory | Theory alone | Mixed estimation | Quantize hybrid |
+|-----------------|-------------:|-----------------:|----------------:|
+| RHF/6-31G       | 15.29 | 12.34 | **7.59** |
+| B3LYP/6-31G(d)  | 8.11  | 6.50  | **5.48** |
+
+The hybrid is best of the three on 6 of 9 molecules at RHF and 5 of 9 at B3LYP.
+Theory alone still beats it on vinyl and acetyl fluoride at both levels and on
+fluoroethane at B3LYP, and those are the molecules whose published references
+are r_s substitution structures rather than r_e. On water, the one molecule with
+a genuine r_e reference, the hybrid scores 1.36 and 4.13 mÅ against theory's
+8.14 and 10.89.
+
+Held-out prediction needs no reference structure at all. Fitted to every
+isotopologue but one, the hybrid predicts the withheld species' rotational
+constants better than theory alone on 5 of 5 molecules at B3LYP/6-31G(d), by a
+median factor of 17 ([`scripts/holdout_validation.py`](scripts/holdout_validation.py)).
 
 ## Main modules (`.github/backend/`)
 
@@ -22,13 +46,13 @@ The library lives under `.github/backend/`; `paths.ensure_repo_paths` puts
 
 | Module | Role |
 |--------|------|
-| [`backend/quantize.py`](.github/backend/quantize.py) | `MolecularOptimizer`: spectral + quantum hybrid loop |
-| [`backend/spectral/spectral.py`](.github/backend/spectral/spectral.py) | Inertia tensor, \(A,B,C\), Jacobians, residuals, weighting, optional conformer mixtures |
-| [`backend/spectral/SVD.py`](.github/backend/spectral/SVD.py) | `SubspaceOptimizer`: runs both objectives — the joint solve the engine defaults to, and the SVD range/null split. Named for the split it was written for first. |
-| [`backend/spectral/harmonic_alpha.py`](.github/backend/spectral/harmonic_alpha.py) | Vibration-rotation \(\alpha_r\): harmonic, Coriolis, and cubic anharmonic terms |
-| [`backend/spectral/centrifugal_distortion.py`](.github/backend/spectral/centrifugal_distortion.py) | Normal modes, \(\partial B/\partial Q\), \(\tau'\), Watson CD constants |
+| [`backend/quantize.py`](.github/backend/quantize.py) | `MolecularOptimizer`: spectral + quantum hybrid loop (joint objective by default) |
+| [`backend/spectral/spectral.py`](.github/backend/spectral/spectral.py) | Inertia tensor, $A,B,C$, Jacobians, residuals, weighting, optional conformer mixtures |
+| [`backend/spectral/SVD.py`](.github/backend/spectral/SVD.py) | `SubspaceOptimizer`: joint-objective step, plus the optional SVD range/null split |
+| [`backend/spectral/harmonic_alpha.py`](.github/backend/spectral/harmonic_alpha.py) | Vibration-rotation $\alpha_r$: harmonic, Coriolis, and cubic anharmonic terms |
+| [`backend/spectral/centrifugal_distortion.py`](.github/backend/spectral/centrifugal_distortion.py) | Normal modes, $\partial B/\partial Q$, $\tau'$, Watson CD constants |
 | [`backend/spectral/correction_models.py`](.github/backend/spectral/correction_models.py) | Vibrational, electronic (g-tensor), and BOB corrections |
-| [`backend/spectral/rovib_corrections.py`](.github/backend/spectral/rovib_corrections.py) | Resolves all corrections into \(B_e^{SE}\) targets with provenance |
+| [`backend/spectral/rovib_corrections.py`](.github/backend/spectral/rovib_corrections.py) | Resolves all corrections into $B_e^{SE}$ targets with provenance |
 | [`backend/quantum.py`](.github/backend/quantum.py) | ORCA parsers; Wilson **B**-matrix; primitive internal-coordinate derivatives |
 | [`backend/psi4/Psi4.py`](.github/backend/psi4/Psi4.py) | Psi4 energy / gradient / Hessian with unit conversion to Å |
 | [`backend/internal/internal_prior.py`](.github/backend/internal/internal_prior.py) | Optional internal-coordinate priors stacked with the spectral block |
@@ -39,36 +63,36 @@ The library lives under `.github/backend/`; `paths.ensure_repo_paths` puts
 | [`backend/autoconfig.py`](.github/backend/autoconfig.py) | Adaptive trust region / damping / weight policy from diagnostics |
 | [`backend/kraitchman.py`](.github/backend/kraitchman.py) | Kraitchman single-substitution rs coordinates, planar moments, inertial defects (auto-run; see `exports/kraitchman_rs.csv` and the report section) |
 
-## Ground state to equilibrium (\(B_0 \to B_e\))
+## Ground state to equilibrium ($B_0 \to B_e$)
 
-Fitting a geometry to observed \(B_0\) directly conflates structure with
+Fitting a geometry to observed $B_0$ directly conflates structure with
 zero-point motion. The correction chain maps the observed constants onto
 semi-experimental equilibrium targets:
 
-\[ B_e = B_0 + \Delta_\mathrm{vib} + \Delta_\mathrm{elec} + \Delta_\mathrm{BOB} \]
+$$B_e = B_0 + \Delta_\mathrm{vib} + \Delta_\mathrm{elec} + \Delta_\mathrm{BOB}$$
 
-**\(\Delta_\mathrm{vib} = \tfrac12 \sum_r \alpha_r\)**, with \(\alpha_r\) built from three terms
+**$\Delta_\mathrm{vib} = \tfrac12 \sum_r \alpha_r$**, with $\alpha_r$ built from three terms
 (Mills 1972; Papoušek & Aliev 1982):
 
 | Term | Source | Enabled by |
 |------|--------|-----------|
-| Harmonic \(\langle Q_r^2\rangle\,\partial^2 B/\partial Q_r^2\) | Cartesian Hessian | `harmonic_from_hessian` |
-| Coriolis \(\zeta^{(\xi)}_{rs}\) coupling | Normal-mode eigenvectors | `harmonic_from_hessian` |
-| Anharmonic \(\phi_{rrs}\) (cubic) | Finite-difference cubic force field | `anharmonic_from_hessian` |
+| Harmonic $`\langle Q_r^2\rangle\,\partial^2 B/\partial Q_r^2`$ | Cartesian Hessian | `harmonic_from_hessian` |
+| Coriolis $\zeta^{(\xi)}_{rs}$ coupling | Normal-mode eigenvectors | `harmonic_from_hessian` |
+| Anharmonic $\phi_{rrs}$ (cubic) | Finite-difference cubic force field | `anharmonic_from_hessian` |
 
 The anharmonic term is **not** a small refinement — it is usually the largest of
 the three and carries the opposite sign to the harmonic term. For CO the
-harmonic term alone gives \(\alpha = -0.0103\ \mathrm{cm^{-1}}\) against an observed
-\(+0.0175\); adding the cubic term reproduces the Dunham/Pekeris value to 0.1%.
-It costs \(6N\) extra Hessian evaluations, so it is opt-in; when it is off, the
-reported \(\alpha\) uncertainty is widened to 100%.
+harmonic term alone gives $\alpha = -0.0103\ \mathrm{cm^{-1}}$ against an observed
+$+0.0175$; adding the cubic term reproduces the Dunham/Pekeris value to 0.1%.
+It costs $6N$ extra Hessian evaluations, so it is opt-in; when it is off, the
+reported $\alpha$ uncertainty is widened to 100%.
 
-**\(\Delta_\mathrm{elec} = -(m_e/m_p)\, g_\alpha B_0\)** requires the rotational
-g-tensor via `g_tensor`. Without it the code falls back to a crude \(1/M_\mathrm{total}\)
+**$`\Delta_\mathrm{elec} = -(m_e/m_p)\, g_\alpha B_0`$** requires the rotational
+g-tensor via `g_tensor`. Without it the code falls back to a crude $1/M_\mathrm{total}$
 estimate that is roughly an order of magnitude too small and has the wrong sign
-whenever \(g < 0\) (as for OCS), so that path reports 100% uncertainty.
+whenever $g < 0$ (as for OCS), so that path reports 100% uncertainty.
 
-**\(\Delta_\mathrm{BOB}\)** uses per-element Watson u-parameters. The built-ins are
+**$\Delta_\mathrm{BOB}$** uses per-element Watson u-parameters. The built-ins are
 order-of-magnitude estimates; supply `bob_params` for sub-milliångström work.
 
 See [`configs/example_water_semi_experimental.yaml`](configs/example_water_semi_experimental.yaml)
@@ -76,40 +100,35 @@ for a complete worked example, and `dev/tests/test_alpha_against_experiment.py`
 for the validation suite (closed-form Dunham/Pekeris results, C₂ᵥ symmetry
 constraints, and published CO/H₂O constants — no Psi4 or ORCA needed).
 
-> **Known limitation.** The \(\tau' \to\) Watson A-reduction mapping in
+> **Known limitation.** The $\tau' \to$ Watson A-reduction mapping in
 > `centrifugal_distortion.py` is unvalidated and does not reproduce published
 > constants. `compute_cd_constants` reports 100% uncertainty accordingly, and
 > `fit_cd_constants` defaults to off.
 
 ## How data and theory share authority
 
-**The engine solves the joint objective by default** (`MolecularOptimizer`'s
-`objective_mode="joint"`). Every direction is contested between the data and the
-quantum surface, weighted by how well each source knows it:
+`MolecularOptimizer` uses the **joint** objective by default
+(`objective_mode="joint"`, `quantum_prior_sigma_ang=0.020`): every direction
+stays contested, weighted by how well the data and the quantum surface each
+determine it.
 
-\[(J^TJ + \alpha_q H + \lambda I)\,\Delta p = J^T r - \alpha_q g\]
-
-The alternative `split` objective partitions the parameter space hard instead:
-whatever survives the SVD rank cutoff is handed **entirely** to the spectral
-data, and the quantum surface governs only the null space. That works when the
-retained directions are well determined — but the cutoff is *relative*
+The alternative `split` objective partitions the parameter space hard: whatever
+survives the SVD rank cutoff is handed **entirely** to the spectral data, and the
+quantum surface governs only the null space. That works when the retained
+directions are well determined — but the cutoff is *relative*
 (`sv_threshold × s_max`, with `sv_min_abs` defaulting to 0), so a direction the
 data resolves only loosely is still treated as fully constrained and theory gets
 no vote in it. Water's bond angle is such a direction, and under `split` it comes
-out worse than either theory or experiment alone would give. That failure is why
-`joint` is the default and not the option.
-
-(`SubspaceOptimizer`, the inner class in `SVD.py`, still defaults to `split` on
-its own constructor for backwards compatibility. Nothing calls it directly;
-`MolecularOptimizer` passes `joint` down. If you instantiate it yourself, set
-`objective_mode` explicitly.)
-
-Two ways to hand authority back under `split`:
+out worse than either theory or experiment alone would give.
 
 | Control | Effect |
 |---------|--------|
-| `optimizer.sv_min_abs` | Absolute floor on the singular value. The Jacobian is σ-weighted, so \(1/s\) is the parameter uncertainty along a direction — the floor means "only trust what the data resolves this well". All-or-nothing per direction. |
-| `optimizer.objective_mode: joint` (the default) with `optimizer.quantum_prior_sigma_ang` | Solves \((J^TJ + \alpha_q H + \lambda I)\,\Delta p = J^T r - \alpha_q g\), leaving every direction contested and weighted by how well each source knows it. `quantum_prior_sigma_ang` is the displacement over which the quantum surface is trusted, roughly the geometry error of the method, which is what makes \(\alpha_q\) interpretable rather than an arbitrary knob. |
+| `optimizer.objective_mode: joint` with `optimizer.quantum_prior_sigma_ang` | The default. Solves $`(J^TJ + \alpha_q H + \lambda I)\,\Delta p = J^T r - \alpha_q g`$, leaving every direction contested and weighted by how well each source knows it. `quantum_prior_sigma_ang` is the displacement over which the quantum surface is trusted, roughly the geometry error of the method, which is what makes $\alpha_q$ interpretable rather than an arbitrary knob. |
+| `optimizer.objective_mode: split` with `optimizer.sv_min_abs` | The SVD partition. `sv_min_abs` is an absolute floor on the singular value. The Jacobian is σ-weighted, so $1/s$ is the parameter uncertainty along a direction — the floor means "only trust what the data resolves this well". All-or-nothing per direction. |
+
+> **Note.** The config-driven runner (`python -m cli run`) still passes
+> `objective_mode="split"` unless the config sets `optimizer.objective_mode: joint`,
+> as [`configs/example_water_semi_experimental.yaml`](configs/example_water_semi_experimental.yaml) does.
 
 ### Which objective to use depends on how much data you have
 
@@ -138,13 +157,13 @@ at once. Forcing `quantum_prior_sigma_ang: 0.005` there costs more than half the
 gain (8.9 mÅ), because the prior now over-constrains directions the data
 determines perfectly well.
 
-Rule of thumb: the default `joint` solve is the right starting point, and it is
-the only one of the two that works when the fit is undersaturated — which is the
-case this engine exists for. Switch to `split` only with a full isotopologue set,
-where the data can carry the retained directions by itself.
-`python scripts/tune_quantum_prior.py` scans `quantum_prior_sigma_ang`; 0.005 Å
-is a sparse-data result, not a validated default, and
-`backend/spectral/prior_widths.py` sets it per level of theory when you do not.
+Rule of thumb: keep the joint objective's calibrated prior when the fit is
+undersaturated, and try `split` when it is not. `python scripts/tune_quantum_prior.py`
+scans the value; 0.005 Å is a sparse-data result, not a validated default.
+[`backend/spectral/prior_widths.py`](.github/backend/spectral/prior_widths.py)
+carries a per-level table (HF/6-31G 0.020 Å, B3LYP/6-31G(d) 0.007, B3LYP/cc-pVTZ
+0.004) and `MolecularOptimizer` uses it when `quantum_prior_sigma_ang` is left
+unset, so the width follows the level of theory rather than a single default.
 
 ### Monofluorinated benchmark — and a caveat on the two rows above
 
@@ -156,6 +175,8 @@ Microwave Spectral Tables* — nothing is back-calculated from a geometry.
 `scripts/check_monofluoro_references.py` validates each species before use, and
 `scripts/build_monofluoro_report.py` turns the run's JSON into
 [`reports/monofluoro_benchmark_report.pdf`](reports/monofluoro_benchmark_report.pdf).
+This benchmark predates the vibration–rotation corrections it calls for below;
+the [Results](#results) table reflects the current engine.
 
 **The objective-choice rule above does not survive measured data.** The water
 and fluorobenzene rows use isotopologue constants *derived* from their reference
@@ -195,7 +216,7 @@ A self-contained torsion-rotation pipeline handles molecules with an internal me
 |--------|------|
 | [`backend/torsion/torsion_hamiltonian.py`](.github/backend/torsion/torsion_hamiltonian.py) | `TorsionHamiltonianSpec`, Fourier potential matrix, `solve_ram_lite_levels`, `torsion_probability_density` |
 | [`backend/torsion/torsion_rot_hamiltonian.py`](.github/backend/torsion/torsion_rot_hamiltonian.py) | Full J-block torsion-rotation Hamiltonian with centrifugal distortion |
-| [`backend/torsion/torsion_symmetry.py`](.github/backend/torsion/torsion_symmetry.py) | C3 block decomposition (A/E1/E2), tunneling splittings, fold-general selection rules, derived nuclear-spin weights |
+| [`backend/torsion/torsion_symmetry.py`](.github/backend/torsion/torsion_symmetry.py) | C3 block decomposition (A/E1/E2), tunneling splittings, selection rules, nuclear-spin weights |
 | [`backend/torsion/torsion_average.py`](.github/backend/torsion/torsion_average.py) | Quantum and Boltzmann torsion-scan averaging of A/B/C constants; rigorous uncertainty propagation |
 | [`backend/torsion/torsion_intensities.py`](.github/backend/torsion/torsion_intensities.py) | `⟨ψ\|cos(α)\|ψ⟩` matrix elements, Hönl-London factors, complete line-list generation |
 | [`backend/torsion/torsion_fitter.py`](.github/backend/torsion/torsion_fitter.py) | Damped Gauss-Newton fitting to levels, transitions, or joint levels + rotational constants |
@@ -209,7 +230,7 @@ A self-contained torsion-rotation pipeline handles molecules with an internal me
 
 **Scan averaging with uncertainty propagation** — `torsion_average` weights torsion-scan geometries by the quantum probability density |ψ(α)|² of any eigenstate (or a thermal mixture), producing effective A/B/C constants with rigorously propagated uncertainties from both grid-point measurement errors (Hessian-diagonal σ) and representational scatter.
 
-**Line intensities** — `torsion_intensities` computes |⟨ψ_hi|cos(α)|ψ_lo⟩|² transition dipole matrix elements, applies Hönl-London factors (symmetric-top approximation), applies nuclear-spin statistical weights derived by character projection for C2/C3/C4/C6 tops (A:E = 4:2 per E component for CH₃), and exports a complete sorted line list as CSV. Selection rules (A↔A, E↔E allowed; A↔E forbidden) are enforced automatically.
+**Line intensities** — `torsion_intensities` computes |⟨ψ_hi|cos(α)|ψ_lo⟩|² transition dipole matrix elements, applies Hönl-London factors (symmetric-top approximation), applies C3 nuclear-spin statistical weights (A:E = 1:2 for CH₃), and exports a complete sorted line list as CSV. Selection rules (A↔A, E↔E allowed; A↔E forbidden) are enforced automatically.
 
 **Parameter fitting** — `torsion_fitter` provides three fitting modes:
 - `fit_torsion_to_levels` — fit to observed torsional level energies
@@ -274,58 +295,7 @@ pip install -r requirements.txt
 
 On Windows, activate with `.venv\Scripts\activate` or `Activate.ps1`.
 
-### Choosing a quantum backend
-
-`requirements.txt` does **not** install one. It covers the spectral side only,
-so a fresh install can build and validate a case but cannot produce the
-gradients and Hessians a fit needs. Pick one of:
-
-| Backend | Install | Platforms |
-| --- | --- | --- |
-| `pyscf_hf` (HF + DFT; what the benchmarks use) | `pip install pyscf` | **Linux and macOS only** |
-| `orca` (reaches MP2 and CCSD(T)) | install ORCA, put it on `PATH` | Linux, macOS, Windows |
-| `psi4` | `conda install -c conda-forge psi4` | Linux, macOS |
-| `none` | nothing | anywhere — spectral-only, no fit |
-
-**pyscf on Windows.** There is no Windows wheel, and `pip install pyscf` falls
-back to building from source, which needs the MSVC toolchain and still fails
-because the C extensions assume POSIX. Use **WSL**:
-
-```bash
-wsl --install                      # then, in the Ubuntu shell:
-sudo apt update && sudo apt install -y python3-pip
-cd /mnt/c/Users/<you>/Quantize     # your existing Windows clone
-pip install -r requirements.txt pyscf
-python3 webui.py                   # reachable at localhost:8018 from Windows
-```
-
-Working from `/mnt/c` keeps one clone, so a Windows editor still edits it and
-`output/runs` stays visible in Explorer; imports are slower there, so clone
-into `~` instead if that matters.
-
-The web UI marks a backend `— not installed` in its Backend dropdown and
-refuses to start a run on one, rather than failing at the first Hessian.
-
 ## Running
-
-### Browser UI
-
-```bash
-python3 webui.py            # http://localhost:8018
-python3 webui.py --port 9000
-```
-
-Build a case from dropdowns, validate it, run it with a live log, and read the
-result back. Standard library only — no Flask, no Qt, no display server — so it
-works over SSH and in containers.
-
-It is not a separate pipeline. The form builds the same config a YAML file
-loads to and runs it through the same validator and runner, **Save YAML** gives
-a file that runs unchanged under `python -m cli run`, **Open** loads a
-hand-written one into the form, and every run writes its own `input.yaml` beside
-its results. The structure can come from a SMILES string, a PubChem name or CID,
-a bond list, or typed coordinates — the starting geometry only has to be in the
-right basin.
 
 From the project root, the config-first interface is:
 
@@ -345,7 +315,7 @@ Run `python -m cli --help` for the full list.
 
 Ready-to-run config examples:
 
-- `configs/example_water_semi_experimental.yaml` — full \(B_0 \to B_e\) correction chain
+- `configs/example_water_semi_experimental.yaml` — full $B_0 \to B_e$ correction chain
 - `configs/example_water.yaml`
 - `configs/example_OCS.yaml`
 - `configs/example_CO2.yaml`
@@ -413,14 +383,14 @@ On Windows, you can instead set `orca_exe` in `BASE_SETTINGS` to your `orca.exe`
 
 ## Interpreting output
 
-- **Rank** — number of directions retained above the relative singular-value cutoff in the stacked Jacobian SVD. A `split`-objective quantity, as are the two step-norm entries below it; under the default `joint` solve there is no range/null partition to report.
+- **Rank** — number of directions retained above the relative singular-value cutoff in the stacked Jacobian SVD (a diagnostic under `joint`; under `split` it also decides which directions the data own).
 - **RMS MHz** — root-mean-square residual of rotational constants in MHz (unweighted block).
-- **\(\|\Delta x_r\|\)** — norm of the step projected onto the spectral range space.
-- **\(\|\Delta x_n\|\)** — norm of the step projected onto the null space.
-- **\(\|g_n\|\)** — norm of the gradient projected onto the null space (hybrid mode).
-- **\(\|\Delta E\|\)** — magnitude of energy change between iterations (Hartree).
+- **$`\|\Delta x_r\|`$** — norm of the step projected onto the spectral range space.
+- **$`\|\Delta x_n\|`$** — norm of the step projected onto the null space.
+- **$`\|g_n\|`$** — norm of the gradient projected onto the null space (hybrid mode).
+- **$`\|\Delta E\|`$** — magnitude of energy change between iterations (Hartree).
 
-If rank stays low and residuals plateau, add more informative isotopologues and/or check consistency of \(B_0\), \(\alpha\), and uncertainties \(\sigma\).
+If rank stays low and residuals plateau, add more informative isotopologues and/or check consistency of $B_0$, $\alpha$, and uncertainties $\sigma$.
 
 ## Notes
 
