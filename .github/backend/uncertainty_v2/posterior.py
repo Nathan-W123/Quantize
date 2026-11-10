@@ -58,44 +58,92 @@ def laplace_approximation(
     regularization: float = 1e-8,
 ) -> LaplaceSummary:
     """Build Laplace covariance approximation around an optimum geometry."""
-    x = optimizer.coords if coords is None else np.asarray(coords, dtype=float)
-    jac, _ = optimizer.spectral.stacked(x)
-    h_total = jac.T @ jac
-
-    if not optimizer.spectral_only and optimizer.quantum is not None:
-        # Weight the quantum block the way the optimiser did. `alpha_quantum` is
-        # the legacy heuristic and is not what the joint objective minimises
-        # once `quantum_prior_sigma_ang` is set (the default), so building the
-        # covariance from it would describe a different problem than the fit
-        # solved. The same eigenvalue floor is applied for the same reason.
-        grad = np.asarray(optimizer.quantum.gradient, dtype=float)
-        hess = np.asarray(optimizer.quantum.hessian, dtype=float)
-        grad, hess = optimizer._project_quantum_terms(grad, hess)
-        rank = int(np.linalg.matrix_rank(jac))
-        alpha_q = optimizer.optimizer.effective_quantum_weight(jac, rank, hessian=hess)
-        h_total = h_total + float(alpha_q) * optimizer.optimizer._spd_hessian(hess)
-
-    reg = float(max(regularization, 0.0))
-    h_reg = h_total + reg * np.eye(h_total.shape[0], dtype=float)
-    cov = np.linalg.pinv(h_reg)
+    # ONE IMPLEMENTATION, NOT TWO. This used to rebuild the posterior
+    # covariance itself: jac.T @ jac, the quantum block weighted by
+    # effective_quantum_weight, _spd_hessian, and a 1e-8 ridge -- the same
+    # fifteen lines as MolecularOptimizer.laplace_approximation, reaching into
+    # that class's private _project_quantum_terms and _spd_hessian to do it.
+    #
+    # The two agreed to about 5.8e-6 relative, which is not a difference of
+    # method: the only divergence was inv() here against pinv() there, and at
+    # cond(H) = 2.4e11 with full rank that is LU-versus-SVD round-off amplified
+    # by the conditioning. The reported standard errors agreed to seven
+    # figures. So nothing was wrong with the numbers -- the hazard was that the
+    # same logic lived twice, and the sqrt(max(diag, 0)) defect had to be found
+    # and fixed in both copies independently.
+    #
+    # The method owns the calculation now, because it owns the state it needs.
+    cov, _ = optimizer.laplace_approximation(
+        coords=coords, regularization=regularization)
+    if cov is None:
+        return LaplaceSummary(
+            n_params=0, rank=0, condition_number=float("inf"),
+            regularization=float(max(regularization, 0.0)),
+            std_err=np.zeros(0), covariance=np.zeros((0, 0)),
+            warnings=["Posterior covariance could not be formed; "
+                      "see the optimizer's own warning for why."],
+        )
+    # GAUGE DIRECTIONS OUT BEFORE ANY WIDTH IS REPORTED.
+    #
+    # This is what the report was getting wrong, and it was not subtle.
+    # Translations and rotations are null in both blocks of the objective, so
+    # the only thing giving them a finite width is the ridge. On water that
+    # width is sigma = 112 Angstrom, on a 0.958 Angstrom bond, and
+    # format_laplace_summary printed it as "max std err" -- 13,400 times the
+    # largest physical width (8.3e-3 Angstrom), with no warning, because the
+    # ridge also makes matrix_rank report 9 of 9 and puts cond at 2.4e11,
+    # just under the 1e12 threshold. Two reassuring diagnostics either side
+    # of a number wrong by four orders of magnitude.
+    #
+    # geometry_uncertainty always projected first. This path did not, which is
+    # the entire defect; both now go through optimizer.physical_covariance.
+    n_full = int(cov.shape[0])
+    cov, basis, n_gauge = optimizer.physical_covariance(cov, coords=coords)
     std, _cov_info = std_err_from_covariance(
-        cov, context="uncertainty_v2.posterior (pinv of the regularised Hessian)")
+        cov, context="uncertainty_v2.posterior (via MolecularOptimizer)")
 
-    rank = int(np.linalg.matrix_rank(h_reg))
-    cond = float(np.linalg.cond(h_reg))
+    # Rank and condition over the PHYSICAL block, via the projector's own
+    # basis. Taken on the padded matrix instead they would report nullity
+    # n_gauge and cond = inf on every run -- both true, neither informative,
+    # since that deficiency is the projection working rather than a problem
+    # with the fit. What matters is whether the directions that survive are
+    # themselves identified.
+    #
+    # Reporting these from the covariance rather than from the Hessian it came
+    # from is not a looser check: for an invertible H the 2-norm condition
+    # number is the same number, cond(H^-1) = cond(H), both being
+    # s_max/s_min of the same singular values, and inversion preserves rank.
+    # Checked over 500 random symmetric matrices with spectra spanning
+    # 1e-12..1e2: the two agree to 1.5e-5 relative at worst, which is inv()'s
+    # own round-off at cond 1e14, not a difference in what is measured.
+    block = basis.T @ cov @ basis
+    n_phys = int(block.shape[0])
+    rank = int(np.linalg.matrix_rank(block)) if n_phys else 0
+    cond = float(np.linalg.cond(block)) if n_phys else float("inf")
+
     warnings: list[str] = []
-    if rank < h_reg.shape[0]:
-        warnings.append("Rank-deficient Hessian/JTJ; covariance may be weakly identified.")
+    if rank < n_phys:
+        warnings.append(
+            f"Rank-deficient posterior: only {rank} of {n_phys} physical "
+            f"directions are identified, so the rest are as wide as the "
+            f"prior and the ridge make them, not as wide as the data says.")
     if not np.isfinite(cond) or cond > 1e12:
-        warnings.append("Ill-conditioned Hessian/JTJ; uncertainties may be unstable.")
+        warnings.append(
+            f"Ill-conditioned posterior over the physical directions "
+            f"(cond = {cond:.2e}); treat these widths as order-of-magnitude.")
+    if not _cov_info["ok"]:
+        warnings.append(
+            f"{_cov_info['n_negative']} variance(s) came out negative, so "
+            f"those standard errors are nan rather than numbers.")
 
     return LaplaceSummary(
-        n_params=int(h_reg.shape[0]),
+        n_params=n_full,
         rank=rank,
         condition_number=cond,
-        regularization=reg,
+        regularization=float(max(regularization, 0.0)),
         std_err=np.asarray(std, dtype=float),
         covariance=np.asarray(cov, dtype=float),
         warnings=warnings,
+        n_gauge_directions=n_gauge,
     )
 

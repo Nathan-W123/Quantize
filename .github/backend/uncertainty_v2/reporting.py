@@ -30,10 +30,17 @@ def format_posterior_state(state: PosteriorState) -> str:
 
 
 def format_laplace_summary(summary: LaplaceSummary) -> str:
+    n_phys = summary.n_params - summary.n_gauge_directions
     lines = [
         "Laplace approximation",
-        f"  n params         : {summary.n_params}",
-        f"  rank             : {summary.rank}",
+        f"  n params         : {summary.n_params}"
+        + (f" ({n_phys} physical, {summary.n_gauge_directions} rigid-body"
+           f" removed)" if summary.n_gauge_directions else ""),
+        # Rank and condition describe the physical directions only; saying so
+        # on the line matters, because "rank 3" beside "n params 9" otherwise
+        # reads as a rank-deficient fit when it is a projected one.
+        f"  rank             : {summary.rank}"
+        + (f" of {n_phys} physical" if summary.n_gauge_directions else ""),
         f"  condition number : {summary.condition_number:.3e}",
         f"  regularization   : {summary.regularization:.3e}",
         f"  mean std err     : {float(summary.std_err.mean()):.6e}",

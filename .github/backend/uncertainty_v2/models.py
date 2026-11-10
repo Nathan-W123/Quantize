@@ -103,6 +103,11 @@ class LaplaceSummary:
     std_err: np.ndarray
     covariance: np.ndarray
     warnings: list[str] = field(default_factory=list)
+    # Rigid-body directions removed before any width was reported. `rank` and
+    # `condition_number` describe the remaining n_params - n_gauge_directions
+    # physical directions, not the padded matrix: the nullity is structural,
+    # so reporting it as rank deficiency or as cond = inf says nothing.
+    n_gauge_directions: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -113,6 +118,7 @@ class LaplaceSummary:
             "std_err": np.asarray(self.std_err, dtype=float).tolist(),
             "covariance": np.asarray(self.covariance, dtype=float).tolist(),
             "warnings": list(self.warnings),
+            "n_gauge_directions": self.n_gauge_directions,
         }
 
 

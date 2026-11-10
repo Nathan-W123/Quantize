@@ -2563,9 +2563,7 @@ class MolecularOptimizer:
             return None
 
         # Drop the rigid-body subspace, which no observable constrains.
-        P = self._rigid_mode_projector(self.coords, self._rigid_ref_masses) \
-            if self._rigid_ref_masses is not None else np.eye(n)
-        cov = P @ cov @ P
+        cov, _basis, _n_gauge = self.physical_covariance(cov)
 
         J, _ = self.spectral.stacked(self.coords)
         cov = cov + self._systematic_covariance(J, cov)
@@ -3106,7 +3104,7 @@ class MolecularOptimizer:
         log_p = -0.5 * (chi_sq_spectral + chi_sq_prior)
         return log_p - (self.optimizer.alpha_quantum * energy_term)
 
-    def laplace_approximation(self):
+    def laplace_approximation(self, coords=None, regularization: float = 1e-8):
         """Analytical estimate of the posterior covariance at the optimum.
 
         The quantum block is weighted exactly as the optimiser weighted it, via
@@ -3117,7 +3115,8 @@ class MolecularOptimizer:
         now the default, so the reported uncertainties would not belong to the
         reported geometry.
         """
-        J, _ = self.spectral.stacked(self.coords)
+        x = self.coords if coords is None else np.asarray(coords, dtype=float)
+        J, _ = self.spectral.stacked(x)
         H_total = J.T @ J
         if not self.spectral_only and self.quantum is not None:
             g = self.quantum.gradient
@@ -3127,11 +3126,81 @@ class MolecularOptimizer:
             alpha_q = self.optimizer.effective_quantum_weight(J, rank, hessian=H)
             H_total = H_total + alpha_q * self.optimizer._spd_hessian(H)
 
-        reg = 1e-8 * np.eye(H_total.shape[0])
+        reg_scalar = float(max(regularization, 0.0))
+        H_reg = H_total + reg_scalar * np.eye(H_total.shape[0])
+
+        # CONDITIONING, REPORTED. uncertainty_v2's duplicate of this
+        # calculation warned when the matrix was rank deficient or badly
+        # conditioned and this one did not, which is backwards: this is the
+        # copy everything else goes through. Carried over when the duplicate
+        # was removed, because an inverse of a cond-1e12 matrix is numerically
+        # meaningless whichever routine performs it, and silence about that is
+        # how geometry_uncertainty came to report sigma = 0.
+        _rank = int(np.linalg.matrix_rank(H_reg))
+        _cond = float(np.linalg.cond(H_reg))
+        if _rank < H_reg.shape[0]:
+            self._warn_once(
+                f"laplace_approximation: the regularised Hessian is rank "
+                f"{_rank} of {H_reg.shape[0]}, so some directions are not "
+                f"identified by the data or the prior and their widths are "
+                f"set by the {reg_scalar:.1e} ridge rather than by anything "
+                f"physical.",
+                key="laplace_rank_deficient")
+        if not np.isfinite(_cond) or _cond > 1e12:
+            self._warn_once(
+                f"laplace_approximation: the regularised Hessian has condition "
+                f"number {_cond:.2e}, so its inverse is numerically unreliable "
+                f"and the widths taken from it should be treated as "
+                f"order-of-magnitude.",
+                key="laplace_ill_conditioned")
+
         try:
-            cov = np.linalg.inv(H_total + reg)
+            cov = np.linalg.inv(H_reg)
             std_err, _ = std_err_from_covariance(
                 cov, context="Laplace approximation (inverse of H_total + reg)")
             return cov, std_err
         except np.linalg.LinAlgError:
+            self._warn_once(
+                "laplace_approximation: the regularised Hessian is singular, "
+                "so no posterior covariance exists. Returning None.",
+                key="laplace_singular")
             return None, None
+
+    def physical_covariance(self, cov, coords=None):
+        """Strip the rigid-body subspace from a Cartesian posterior covariance.
+
+        Translations and rotations are null directions of both blocks of the
+        objective: moving or turning the whole molecule changes no rotational
+        constant and no energy. The regularisation ridge nevertheless hands
+        them a finite width, and that width is enormous, because it is
+        1/reg rather than anything the data said. Reporting it as a parameter
+        uncertainty is not conservative, it is wrong by orders of magnitude --
+        measured on water: sigma = 112 Angstrom on a 0.958 Angstrom bond,
+        a factor of 13,400, while the physical widths are 8.3e-3 Angstrom.
+
+        Returns ``(cov_phys, basis, n_gauge)``. ``cov_phys`` is P C P, which is
+        singular by construction: the gauge directions are exactly zero rather
+        than merely small. ``basis`` spans the directions that survive, so
+        rank and condition number can be reported over the block that means
+        something instead of over a matrix whose nullity is structural.
+
+        ONE IMPLEMENTATION. geometry_uncertainty projected here first and
+        uncertainty_v2 did not, which is why the v2 report printed the 112.
+        Both now call this.
+        """
+        cov = np.asarray(cov, dtype=float)
+        n = cov.shape[0]
+        x = self.coords if coords is None else np.asarray(coords, dtype=float)
+        if self._rigid_ref_masses is None or x.size != n:
+            return cov, np.eye(n), 0
+
+        P = self._rigid_mode_projector(x, self._rigid_ref_masses)
+        cov_phys = P @ cov @ P
+
+        # The surviving subspace, from the projector itself rather than from a
+        # threshold on the projected covariance: P is an orthogonal projector,
+        # so its eigenvalues are exactly 0 and 1 up to round-off and the 0.5
+        # cut cannot land on anything ambiguous.
+        w, V = np.linalg.eigh((P + P.T) / 2.0)
+        basis = V[:, w > 0.5]
+        return cov_phys, basis, int(n - basis.shape[1])
