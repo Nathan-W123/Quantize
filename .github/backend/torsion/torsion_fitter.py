@@ -31,6 +31,8 @@ from typing import Optional
 
 import numpy as np
 
+from backend.covariance_checks import std_err_from_covariance
+
 from backend.torsion.torsion_average import (
     TorsionScan,
     average_torsion_scan_quantum,
@@ -274,7 +276,8 @@ def _uncertainty_from_jacobian(
     chi2 = float(np.sum(weights[:n_obs] * residuals[:n_obs] ** 2))
     scale = chi2 / dof
     covariance = inv_normal * scale
-    std_err = np.sqrt(np.maximum(np.diag(covariance), 0.0))
+    std_err, _cov_info = std_err_from_covariance(
+        covariance, context="torsion_fitter (normal matrix inverse, chi2 scaled)")
     denom = np.outer(std_err, std_err)
     with np.errstate(divide="ignore", invalid="ignore"):
         correlation = np.where(denom > 0.0, covariance / denom, 0.0)

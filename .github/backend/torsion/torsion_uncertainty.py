@@ -278,6 +278,15 @@ def covariance_from_normal_matrix(
     cov = (evecs * inv_evals) @ evecs.T
     cov = 0.5 * (cov + cov.T)
 
+    # DELIBERATELY NOT routed through covariance_checks, and this is the one
+    # place in the repository where that clamp is unambiguously right. The
+    # covariance above is built from an eigendecomposition with eigenvalues at
+    # or below `thresh` masked out of the inverse, so it is positive
+    # semi-definite by construction and the deficient directions are already
+    # reported in `warnings`. Nothing here can be negative except round-off.
+    # Six other sites had the same line without that guarantee; see
+    # backend/covariance_checks.py. This is the pattern they should move
+    # towards -- fixing the matrix beats reporting on it.
     std_err = np.sqrt(np.maximum(np.diag(cov), 0.0))
     return {
         "covariance": cov,

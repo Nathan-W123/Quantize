@@ -12,6 +12,8 @@ Main entry point:
 from __future__ import annotations
 
 import numpy as np
+
+from backend.covariance_checks import std_err_from_covariance
 from typing import Optional
 
 
@@ -99,7 +101,8 @@ def compute_uncertainty(
             chi2_scale = chi2_red
             cov = cov * chi2_scale
 
-    std_err = np.sqrt(np.maximum(np.diag(cov), 0.0))
+    std_err, _cov_info = std_err_from_covariance(
+        cov, context="uncertainty.core (J^T W J + reg, then chi2 scaling)")
     half_width = 1.96 * std_err
     ci_95 = np.column_stack([-half_width, half_width])
     return cov, std_err, ci_95, chi2_scale

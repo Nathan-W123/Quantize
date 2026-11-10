@@ -28,6 +28,8 @@ import io
 
 import numpy as np
 
+from backend.covariance_checks import std_err_from_covariance
+
 from backend.spectral.spectral import (
     DEFAULT_SIGMA_FLOOR_REL,
     SpectralEngine,
@@ -2399,7 +2401,8 @@ class MolecularOptimizer:
         JTJ = J.T @ J
         reg = 1e-8 * np.eye(JTJ.shape[0])
         cov = np.linalg.pinv(JTJ + reg)
-        param_std = np.sqrt(np.maximum(np.diag(cov), 0.0))
+        param_std, _ = std_err_from_covariance(
+            cov, context="parameter report (pinv of J^T J + reg)")
 
         print("\n" + "=" * 52)
         print("  Final Structure Report")
@@ -2683,10 +2686,21 @@ class MolecularOptimizer:
             # quadrature to the total; they are diagnostics, not a partition.
             g_null = null_frac @ g
             g_range = g - g_null
-            self._last_sigma_split[name] = (
-                float(np.sqrt(max(g_range @ cov @ g_range, 0.0))),
-                float(np.sqrt(max(g_null @ cov @ g_null, 0.0))),
-            )
+            # Same clamp question as the total above, on two projections of
+            # it. These are diagnostics rather than reported widths, and the
+            # indefinite-covariance guard earlier in this method has already
+            # refused anything badly broken, so a round-off clamp is all that
+            # is needed here -- but it is nan rather than 0 for the same
+            # reason: a zero split would read as "this source contributes no
+            # uncertainty", which is a claim, not an absence.
+            _split = []
+            for _g in (g_range, g_null):
+                _v = float(_g @ cov @ _g)
+                _scale = float(np.abs(_g) @ np.abs(cov) @ np.abs(_g))
+                _split.append(float("nan")
+                              if _v < -_VAR_NEGATIVE_REL_TOL * max(_scale, _TINY)
+                              else float(np.sqrt(max(_v, 0.0))))
+            self._last_sigma_split[name] = (_split[0], _split[1])
             # How much of this coordinate the spectrum cannot see. 1.0 means the
             # value came from the quantum surface and nothing else -- which is
             # the honest caveat to attach to a structure nobody can check, and
@@ -3116,7 +3130,8 @@ class MolecularOptimizer:
         reg = 1e-8 * np.eye(H_total.shape[0])
         try:
             cov = np.linalg.inv(H_total + reg)
-            std_err = np.sqrt(np.maximum(np.diag(cov), 0.0))
+            std_err, _ = std_err_from_covariance(
+                cov, context="Laplace approximation (inverse of H_total + reg)")
             return cov, std_err
         except np.linalg.LinAlgError:
             return None, None

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from backend.covariance_checks import std_err_from_covariance
+
 from backend.quantize import MolecularOptimizer
 
 from .models import LaplaceSummary, PosteriorState
@@ -76,7 +78,8 @@ def laplace_approximation(
     reg = float(max(regularization, 0.0))
     h_reg = h_total + reg * np.eye(h_total.shape[0], dtype=float)
     cov = np.linalg.pinv(h_reg)
-    std = np.sqrt(np.maximum(np.diag(cov), 0.0))
+    std, _cov_info = std_err_from_covariance(
+        cov, context="uncertainty_v2.posterior (pinv of the regularised Hessian)")
 
     rank = int(np.linalg.matrix_rank(h_reg))
     cond = float(np.linalg.cond(h_reg))
