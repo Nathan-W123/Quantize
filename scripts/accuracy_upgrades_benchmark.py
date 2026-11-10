@@ -169,6 +169,7 @@ from backend.spectral.electronic_g import (  # noqa: E402
 )
 from backend.spectral.hessian_cache import HessianCache  # noqa: E402
 from backend.spectral.harmonic_alpha import (  # noqa: E402
+    MULTIREFERENCE_SIGMA_SCALE,
     build_correction_table_from_hessian,
     self_consistent_correction_table,
 )
@@ -830,9 +831,20 @@ def main() -> None:
                 hfn = corr_hessian_fn if corr else hessian_fn
                 isos_local = build_isotopologues(mol, None)
                 replacement = torsion_for(coords, corr)[0] if torsion else None
+                # ACT ON THE PROBE, don't just record it. nm_sigma_fraction is
+                # a literature VPT2 scale from well-behaved closed-shell
+                # molecules; measured against the correction's own spread over
+                # three bases it covers water on every constant (1.28x-4.76x)
+                # and covers ozone on NONE of them (0.84x, 0.44x, 0.37x). The
+                # probe separates those two cases, so where it fires the
+                # uncertainty is widened rather than left overconfident.
+                _mr = (diag.get("multireference") or {}) if RUN_DIAGNOSTICS else {}
+                _sig_scale = (MULTIREFERENCE_SIGMA_SCALE
+                              if _mr.get("flagged") else 1.0)
                 with contextlib.redirect_stdout(io.StringIO()):
                     _tabs[key] = build_correction_table_from_hessian(
                         hfn(at), at, isos_local, hessian_fn=hfn,
+                        sigma_scale=_sig_scale,
                         cubic_scheme="normal_mode",
                         lam_freq_cm=LAM_FREQ_CM if lam else 0.0,
                         freq_scale=FREQ_SCALE,

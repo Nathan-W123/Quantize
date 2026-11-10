@@ -1130,6 +1130,32 @@ def _anharmonic_alpha(cubic_cart, masses, L_mw, vib_evals, dB1_mhz, zpe_amp,
     )
 
 
+#: How much wider the correction's uncertainty has to be for a molecule with
+#: multireference character. ``nm_sigma_fraction`` is a B3LYP-literature VPT2
+#: scale, and literature VPT2 benchmarks are built from well-behaved
+#: closed-shell molecules, so it describes the error for that kind of molecule
+#: and not for one where a single determinant is the wrong starting point.
+#:
+#: MEASURED, by asking whether the stated sigma covers the spread the
+#: correction shows when the force field changes (HF at 6-31G, cc-pVDZ and
+#: cc-pVTZ) -- the margin sigma/spread per rotational constant:
+#:
+#:                     max|t2|      A       B       C
+#:     water            0.047    1.28x   3.20x   4.76x    covered
+#:     ozone            0.186    0.84x   0.44x   0.37x    NOT covered
+#:
+#: Water is covered on every constant; ozone fails on every constant and on
+#: all five of its isotopologues, by up to 2.7x. Ozone's A correction even
+#: changes SIGN across those bases (+113.5, -749.3, -892.9 MHz), so at the
+#: cheapest level it is not directionally determined at all.
+#:
+#: 3.0 covers ozone's worst case (0.37x needs 2.7x) with a little margin. It
+#: is an empirical floor measured on one flagged molecule, not a derived
+#: bound -- the honest fix is a force field that does not need it, and the
+#: multireference probe exists to say when that is required.
+MULTIREFERENCE_SIGMA_SCALE = 3.0
+
+
 def build_correction_table_from_hessian(
     hess_bohr: np.ndarray,
     coords_ang: np.ndarray,
@@ -1137,6 +1163,11 @@ def build_correction_table_from_hessian(
     min_freq_cm: float = 50.0,
     fd_delta: float = 0.05,
     sigma_fraction: float = 0.02,
+    #: Multiplies the uncertainty on every correction this table reports, and
+    #: nothing else -- the corrections themselves are untouched. Pass
+    #: MULTIREFERENCE_SIGMA_SCALE when the multireference probe has flagged
+    #: the molecule. 1.0 leaves the literature scale alone.
+    sigma_scale: float = 1.0,
     hessian_fn=None,
     fd_delta_cubic: float = 0.01,
     nonconvergent_policy: str = "warn",
@@ -1204,6 +1235,13 @@ def build_correction_table_from_hessian(
     carried as uncertainty rather than as a value. Set it above the torsional
     fundamental for molecules with an internal rotor.
     """
+    _sigma_scale = float(sigma_scale)
+    if not np.isfinite(_sigma_scale) or _sigma_scale < 1.0:
+        # Below 1.0 it would NARROW a literature-calibrated uncertainty on the
+        # strength of nothing, which is the one thing this must not do.
+        raise ValueError(
+            f"sigma_scale must be finite and >= 1.0, got {sigma_scale!r}")
+
     policy = str(nonconvergent_policy or "warn").strip().lower()
     if policy not in _NONCONVERGENT_POLICIES:
         raise ValueError(
@@ -1300,8 +1338,14 @@ def build_correction_table_from_hessian(
             # parse_correction_table defines sigma_mhz as the uncertainty on the
             # correction itself, and the correction is delta = 0.5*alpha_sum
             # (vpt2_delta_b), so the alpha uncertainty is halved to match.
-            sigma_mhz = 0.5 * sigma[comp]
+            # sigma_scale widens the uncertainty without touching the
+            # correction. See MULTIREFERENCE_SIGMA_SCALE for the measurement
+            # that says when it is needed.
+            sigma_mhz = 0.5 * sigma[comp] * _sigma_scale
             note = notes
+            if _sigma_scale != 1.0:
+                note = (f"{note}; sigma widened x{_sigma_scale:g} for "
+                        f"force-field trust")
             if lam_here:
                 note = (
                     f"{note}; large-amplitude modes at "
