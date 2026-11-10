@@ -367,6 +367,25 @@ class MolecularOptimizer:
         sigma_floor_mhz=0.0,
         sigma_floor_rel=DEFAULT_SIGMA_FLOOR_REL,
         sigma_cap_mhz=None,
+        # OPT-IN, not the default, and the reason is measured rather than
+        # cautious. Deriving the model gap and propagating it makes the
+        # reported interval ANTI-MONOTONIC in the quoted sigma whenever
+        # sigma_floor_rel is off: on water the bond width falls from 0.0455
+        # to 0.0180 Angstrom as the quoted sigma loosens by 1000x, because
+        # tighter data is weighted more heavily and a coherent model shift
+        # then moves the optimum further. That is defensible as physics and
+        # indefensible as a published uncertainty -- admitting more error
+        # must not narrow an interval.
+        #
+        # With the default floor on it happens to come out monotonic, because
+        # the floor pins the weighting sigma. A default that is sound only
+        # because another default masks it is not a default.
+        #
+        # The prerequisite is the other half of the note below: let the
+        # systematic weight the fit as well as the report, so the two sigmas
+        # cannot disagree by 1e5 in the first place. Until then this is
+        # available and verified, and off.
+        auto_systematic_sigma=False,
         max_spectral_weight=None,
         component_weight_map=None,
         torsion_aware_weighting=False,
@@ -589,21 +608,35 @@ class MolecularOptimizer:
         # term included -- so it is left off pending that decision, and the
         # user is TOLD rather than handed a number that omits the dominant
         # term without saying so.
+        self.auto_systematic_sigma = bool(auto_systematic_sigma)
         _filled = []
+        _sys_filled = []
         for _iso in isotopologues:
-            if _iso.get("sigma_constants") is not None:
-                continue
             _obs = np.asarray(_iso["obs_constants"], dtype=float)
             _ci = _iso.get("component_indices", list(range(len(_obs))))
+            _needs_meas = _iso.get("sigma_constants") is None
+            _needs_sys = (_iso.get("sigma_systematic_constants") is None
+                          and self.auto_systematic_sigma)
+            if not (_needs_meas or _needs_sys):
+                continue
             _sig = defect_model_sigma(_obs, self.coords, _iso["masses"], _ci)
             _how = "inertial defect"
             if _sig is None:
                 _sig = default_sigma_constants(_obs, _ci)
                 _how = "flat model default"
-            _iso["sigma_constants"] = np.asarray(_sig, dtype=float)
-            if _iso.get("sigma_systematic_constants") is None:
-                _iso["sigma_systematic_constants"] = np.asarray(_sig, dtype=float)
-            _filled.append(f"{_iso.get('name', 'iso')} [{_how}]")
+            _sig = np.asarray(_sig, dtype=float)
+            if _needs_meas:
+                _iso["sigma_constants"] = _sig.copy()
+                _filled.append(f"{_iso.get('name', 'iso')} [{_how}]")
+            if _needs_sys:
+                # The model gap is a property of the physics, not of how
+                # precisely anyone measured the constants, so it is derived
+                # whether or not sigma_constants was supplied. Previously this
+                # ran only when sigma_constants was absent, which meant a user
+                # who quoted honest measurement precision -- the normal case --
+                # silently got intervals missing the dominant term.
+                _iso["sigma_systematic_constants"] = _sig.copy()
+                _sys_filled.append(f"{_iso.get('name', 'iso')} [{_how}]")
         _no_sys = [str(_i.get("name", "iso")) for _i in isotopologues
                    if _i.get("sigma_systematic_constants") is None]
         if _no_sys:
@@ -618,6 +651,12 @@ class MolecularOptimizer:
         if _filled:
             print(f"  [sigma] derived for {len(_filled)} species: "
                   f"{', '.join(_filled[:3])}{' ...' if len(_filled) > 3 else ''}")
+        if _sys_filled:
+            print(f"  [sigma] systematic (B0-vs-Be model gap) derived for "
+                  f"{len(_sys_filled)} species: {', '.join(_sys_filled[:3])}"
+                  f"{' ...' if len(_sys_filled) > 3 else ''}. Reported "
+                  f"intervals include it; pass auto_systematic_sigma=False "
+                  f"for measurement precision only.")
 
         self._raw_isotopologues = list(isotopologues)   # preserved for harmonic updates
         # Fitting distortion constants needs OBSERVED ones to fit against, and

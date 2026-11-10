@@ -68,7 +68,10 @@ def _fit(sys_frac=None, sigma_mhz=0.2, **kw):
     opt = MolecularOptimizer(
         elems=["O", "H", "H"], coords=_coords(), isotopologues=isos,
         quantum_backend="analytic_water", use_autoconfig=False, max_iter=3,
-        quantum_prior_sigma_ang=0.02, **kw)
+        quantum_prior_sigma_ang=0.02,
+        # Explicit, so the "no systematic" baseline stays a real baseline
+        # whichever way the auto-derivation default goes later.
+        auto_systematic_sigma=False, **kw)
     with contextlib.redirect_stdout(io.StringIO()):
         opt.run()
         unc = opt.geometry_uncertainty()
