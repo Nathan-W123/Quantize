@@ -51,6 +51,21 @@ TWO SIGNALS, because they fail for different reasons.
    This catches a bad force field that the multireference check misses, since
    a level can be wrong for reasons other than multireference character.
 
+WHERE THIS LIVES, AND WHAT THAT MEANS. This is benchmark tooling, next to the
+benchmark that uses it, not part of the shipped engine. The consequence is
+worth stating plainly rather than leaving implicit: a caller who uses
+``build_correction_table_from_hessian`` directly gets NO force-field warning.
+Only runs that go through accuracy_upgrades_benchmark do.
+
+That was a deliberate choice over wiring it into the correction path. The
+multireference probe costs an MP2 calculation -- seconds for a four-atom
+molecule and not seconds for a large one -- so putting it in the engine's hot
+path would have meant an opt-in flag there anyway, and the engine does not
+otherwise reach for electronic structure it was not asked for. If a library
+user ever needs the warning, the functions are importable as they stand; the
+move to make then is to call them from the correction path, not to rewrite
+them.
+
 WHAT THESE DO NOT DO. Neither says which level is RIGHT. A flag means the
 correction is not to be trusted at face value, not that the other level is
 better. For ozone the cheaper HF/6-31G happens to score better, but its own nu3

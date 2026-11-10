@@ -1,4 +1,4 @@
-"""Tests for backend/spectral/force_field_diagnostics.py.
+"""Tests for scripts/force_field_diagnostics.py.
 
 The diagnostics exist because the engine once used a force field whose ozone
 nu3 was 101% wrong and reported a confident number. So the thing to test is
@@ -18,7 +18,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from backend.spectral.force_field_diagnostics import (
+from scripts.force_field_diagnostics import (
     FREQUENCY_DISAGREEMENT_WARN,
     MULTIREFERENCE_T2_WARN,
     frequency_disagreement,

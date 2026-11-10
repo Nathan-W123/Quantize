@@ -167,10 +167,6 @@ from backend.spectral.electronic_g import (  # noqa: E402
     g_tensors_for_isotopologues,
     rotational_g_tensor,
 )
-from backend.spectral.force_field_diagnostics import (  # noqa: E402
-    frequency_disagreement,
-    multireference_diagnostic,
-)
 from backend.spectral.hessian_cache import HessianCache  # noqa: E402
 from backend.spectral.harmonic_alpha import (  # noqa: E402
     build_correction_table_from_hessian,
@@ -182,6 +178,10 @@ from dev.monofluoro_references import (  # noqa: E402
     MOLECULES_SET2,
     OZONE,
     WATER_SET,
+)
+from scripts.force_field_diagnostics import (  # noqa: E402
+    frequency_disagreement,
+    multireference_diagnostic,
 )
 from scripts.mixed_estimation_baseline import (  # noqa: E402
     _SIGMA_X_BY_LEVEL,

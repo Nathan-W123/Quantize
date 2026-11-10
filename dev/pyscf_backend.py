@@ -106,6 +106,13 @@ _TIGHT_SCF_CONV = 1e-11
 _TIGHT_SCF_CONV_GRAD = 1e-9
 _TIGHT_CC_CONV = 1e-9
 
+#: How far any one Cartesian may move from the starting geometry during
+#: ``optimise``, in Angstrom. Bounds L-BFGS-B's otherwise unbounded first step.
+#: 0.5 Ang is roughly ten times the largest displacement a real optimisation
+#: from a sensible guess makes (ozone's MP2 run moves 0.038 Ang), and far short
+#: of the 1.0 Ang excursion that broke CCSD(T) on ozone.
+_OPT_MAX_DISPLACEMENT_ANG = 0.5
+
 
 @register_backend
 class PySCFBackend(QuantumBackend):
@@ -343,27 +350,62 @@ class PySCFBackend(QuantumBackend):
 
     # ── Convenience for the "theory alone" leg ───────────────────────────────
 
-    def optimise(self, coords_ang, max_steps: int = 200, gtol: float = 2e-5):
+    def optimise(self, coords_ang, max_steps: int = 200, gtol: float = 2e-5,
+                 max_displacement_ang: float = _OPT_MAX_DISPLACEMENT_ANG):
         """Relax the geometry on the PES alone, with no experimental input.
 
-        L-BFGS on Cartesians using the analytic gradient. PySCF's own driver
+        L-BFGS-B on Cartesians using the analytic gradient. PySCF's own driver
         needs geomeTRIC, which has no wheel here, and for a rigid aromatic this
         converges perfectly well without one.
+
+        EVERY COORDINATE IS BOXED, and that is not cosmetic. L-BFGS-B's first
+        trial step is a plain gradient step with no curvature information, and
+        with a large initial gradient it can overshoot enormously. Measured on
+        ozone at CCSD(T)/cc-pVDZ: step 0 at r = 1.233 Ang, step 1 at
+        r = 2.215 Ang with the angle collapsed from 120 to 85 degrees -- a
+        nearly dissociated molecule. CCSD does not converge there, the backend
+        raised, and the whole benchmark run died on its second energy
+        evaluation.
+
+        A box of ``max_displacement_ang`` around the STARTING geometry is
+        enough to stop that. It costs nothing in practice because a geometry
+        optimisation from a sensible guess moves atoms by hundredths of an
+        Angstrom, not tenths; ozone's MP2 optimisation travels 0.038 Ang per
+        atom at most. A bound that is actually reached means the guess was
+        wrong or the surface is not what was expected, so it is reported rather
+        than silently returned.
+
+        This matters more the more expensive the method. An excursion to a
+        dissociated geometry wastes one SCF at HF and can waste minutes, or
+        fail outright, at CCSD(T) -- which is exactly where robustness is worth
+        most.
         """
         from scipy.optimize import minimize
 
         from backend.quantum import ANG_TO_BOHR
 
-        shape = np.asarray(coords_ang, dtype=float).shape
+        start = np.asarray(coords_ang, dtype=float)
+        shape = start.shape
+        x0 = start.ravel()
 
         def fun(flat):
             energy, grad_bohr = self._energy_gradient(flat.reshape(shape))
             # Hartree/Bohr -> Hartree/Angstrom
             return energy, grad_bohr * ANG_TO_BOHR
 
+        d = abs(float(max_displacement_ang))
+        bounds = [(v - d, v + d) for v in x0] if d > 0 else None
+
         sol = minimize(
-            fun, np.asarray(coords_ang, dtype=float).ravel(), jac=True,
-            method="L-BFGS-B",
+            fun, x0, jac=True, method="L-BFGS-B", bounds=bounds,
             options={"maxiter": max_steps, "gtol": gtol, "ftol": 1e-14},
         )
+        if bounds is not None:
+            hit = np.abs(sol.x - x0) > d - 1e-9
+            if np.any(hit):
+                print(f"  [optimise] WARNING: {int(np.sum(hit))} of {x0.size} "
+                      f"coordinates reached the +/-{d} Ang step bound, so this "
+                      f"geometry is at the edge of the trust region rather "
+                      f"than at a stationary point. The starting guess is "
+                      f"probably wrong for this level of theory.", flush=True)
         return sol.x.reshape(shape)
