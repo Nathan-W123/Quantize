@@ -1,14 +1,14 @@
 ﻿"""
 Geometry seeds used in behavioural tests flow through::
 
-    coarse guess (bond graph / PubChem) â†’ :func:`backend.orca_cheap_opt.minimize_geometry_cheap_orca`
+    coarse guess (bond graph / PubChem) → :func:`backend.orca_cheap_opt.minimize_geometry_cheap_orca`
 
 If ORCA is not installed, tests marked ``@pytest.mark.orca`` are skipped unless you set
 ``ORCA_EXE`` / PATH and rerun.
 
 Environment:
 
-* ``QUANTIZE_CHEAP_OPT_KEYWORD`` â€” ORCA preamble after ``!`` (default ``HF-3c Opt TightSCF``).
+* ``QUANTIZE_CHEAP_OPT_KEYWORD`` — ORCA preamble after ``!`` (default ``HF-3c Opt TightSCF``).
 
 For coarse connectivity / PubChem only (no QM), continue to call
 ``guess_geometry_molecular_input`` directly in unit-parse tests or the alias parity test.

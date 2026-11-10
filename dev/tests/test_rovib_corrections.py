@@ -7,7 +7,7 @@ Acceptance criteria from the plan:
   - Missing corrections: engine warns and records uncorrected components
   - Isotope specificity: different isotopologues carry different corrections
   - Electronic correction: -(m_e/M_total)*B_obs subtracted from B_e,SE
-  - BOB correction: -Î£_a (m_e/m_a)*u_a subtracted, isotope-mass-scaled
+  - BOB correction: -Σ_a (m_e/m_a)*u_a subtracted, isotope-mass-scaled
 """
 
 import numpy as np
@@ -27,7 +27,7 @@ from backend.spectral.rovib_corrections import (
 )
 
 
-# â”€â”€ Fixtures â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Fixtures ──────────────────────────────────────────────────────────────────
 
 def _water_isotopologues():
     return [
@@ -65,7 +65,7 @@ def _water_correction_table():
     }
 
 
-# â”€â”€ correction_models tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── correction_models tests ───────────────────────────────────────────────────
 
 class TestCorrectionModels:
     def test_vpt2_delta_b_formula(self):
@@ -75,7 +75,7 @@ class TestCorrectionModels:
         assert vpt2_delta_b(0.0) == pytest.approx(0.0)
 
     def test_propagate_sigma_quadrature(self):
-        # sigma_eff = sqrt(0.2^2 + 100^2) â‰ˆ 100.0002
+        # sigma_eff = sqrt(0.2^2 + 100^2) ≈ 100.0002
         result = propagate_sigma(0.2, 100.0)
         assert result == pytest.approx(np.sqrt(0.2**2 + 100.0**2))
 
@@ -103,11 +103,11 @@ class TestCorrectionModels:
             parse_correction_table({"H2-16O": {"A": {"sigma_mhz": 1.0}}})
 
 
-# â”€â”€ Formula sign test (acceptance criterion) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Formula sign test (acceptance criterion) ──────────────────────────────────
 
 class TestFormulaSigns:
     def test_alpha_sum_gives_correct_be(self):
-        """Known alpha table â†’ Be = B0 + 0.5*alpha for each component."""
+        """Known alpha table → Be = B0 + 0.5*alpha for each component."""
         isos = _water_isotopologues()
         targets = resolve_corrections(isos, correction_table=None)
 
@@ -123,7 +123,7 @@ class TestFormulaSigns:
             )
 
     def test_user_delta_applied_directly(self):
-        """delta_mhz entry â†’ Be = B0 + delta_mhz."""
+        """delta_mhz entry → Be = B0 + delta_mhz."""
         isos = [
             {
                 "name": "test_iso",
@@ -140,7 +140,7 @@ class TestFormulaSigns:
         assert targets[0].value_mhz == pytest.approx(1000.0 + 250.0)
 
     def test_alpha_sum_mhz_entry(self):
-        """alpha_sum_mhz entry â†’ delta = 0.5 * alpha_sum."""
+        """alpha_sum_mhz entry → delta = 0.5 * alpha_sum."""
         isos = [
             {
                 "name": "test_iso",
@@ -156,7 +156,7 @@ class TestFormulaSigns:
         assert targets[0].value_mhz == pytest.approx(1000.0 + 250.0)
 
 
-# â”€â”€ Uncertainty propagation (acceptance criterion) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Uncertainty propagation (acceptance criterion) ────────────────────────────
 
 class TestUncertaintyPropagation:
     def test_sigma_eff_quadrature(self):
@@ -191,7 +191,7 @@ class TestUncertaintyPropagation:
                 "alpha_constants": [0.0],
             }
         ]
-        # No sigma_mhz in spec â†’ fraction applies
+        # No sigma_mhz in spec → fraction applies
         ctbl = {"test_iso": {"B": {"delta_mhz": 200.0}}}
         targets = resolve_corrections(isos, correction_table=ctbl, sigma_vib_fraction=0.1)
         sigma_vib = 200.0 * 0.1  # = 20.0
@@ -199,7 +199,7 @@ class TestUncertaintyPropagation:
         assert targets[0].sigma_mhz == pytest.approx(expected)
 
 
-# â”€â”€ Isotope specificity (acceptance criterion) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Isotope specificity (acceptance criterion) ────────────────────────────────
 
 class TestIsotopeSpecificity:
     def test_different_deltas_per_isotopologue(self):
@@ -231,7 +231,7 @@ class TestIsotopeSpecificity:
             assert list(corr["component_indices"]) == list(orig["component_indices"])
 
 
-# â”€â”€ apply_corrections_to_isotopologues â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── apply_corrections_to_isotopologues ───────────────────────────────────────
 
 class TestApplyCorrections:
     def test_alpha_zeroed_after_apply(self):
@@ -265,7 +265,7 @@ class TestApplyCorrections:
         assert isos[0]["obs_constants"][0] == pytest.approx(original_b0)
 
 
-# â”€â”€ Missing corrections (acceptance criterion) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Missing corrections (acceptance criterion) ────────────────────────────────
 
 class TestMissingCorrections:
     def test_no_correction_flag(self):
@@ -323,7 +323,7 @@ class TestMissingCorrections:
         assert len(flagged) > 0
 
 
-# â”€â”€ correction_summary smoke test â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── correction_summary smoke test ─────────────────────────────────────────────
 
 def test_correction_summary_runs():
     isos = _water_isotopologues()
@@ -334,7 +334,7 @@ def test_correction_summary_runs():
     assert "Be,SE" in s or "delta" in s.lower()
 
 
-# â”€â”€ Electronic mass correction â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Electronic mass correction ─────────────────────────────────────────────────
 
 class TestElectronicCorrection:
     def test_formula_sign_negative(self):
@@ -356,7 +356,7 @@ class TestElectronicCorrection:
         assert d2 == pytest.approx(2 * d1, rel=1e-10)
 
     def test_scales_inversely_with_mass(self):
-        """Heavier molecule â†’ smaller magnitude correction."""
+        """Heavier molecule → smaller magnitude correction."""
         d_light = electronic_delta_b(435000.0, 18.0)
         d_heavy = electronic_delta_b(435000.0, 36.0)
         assert abs(d_heavy) == pytest.approx(abs(d_light) / 2, rel=1e-10)
@@ -475,7 +475,7 @@ class TestElectronicCorrection:
         assert d18 / d16 == pytest.approx(b18 / b16, rel=1e-8)
 
 
-# â”€â”€ Born-Oppenheimer Breakdown correction â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Born-Oppenheimer Breakdown correction ─────────────────────────────────────
 
 class TestBOBCorrection:
     def test_formula_sign_positive_u(self):
@@ -526,7 +526,7 @@ class TestBOBCorrection:
         """Elements without BOB params contribute nothing to the correction."""
         elems = ["O", "H", "H"]
         masses = [16.0, 1.0, 1.0]
-        # Only O in bob_params â€” H contributes zero
+        # Only O in bob_params — H contributes zero
         bob_params = {"O": {"B": 0.01}}
         delta_partial, _ = bob_delta_b(elems, masses, "B", bob_params, 1000.0)
         expected = -1000.0 * (M_ELECTRON_AMU / 16.0) * 0.01
@@ -550,7 +550,7 @@ class TestBOBCorrection:
         assert ratio == pytest.approx(2.01410 / 1.00783, rel=1e-4)
 
     def test_sigma_propagation(self):
-        """sigma_bob = sqrt(Î£_a ((m_e/m_a)*sigma_u_a)^2)."""
+        """sigma_bob = sqrt(Σ_a ((m_e/m_a)*sigma_u_a)^2)."""
         elems = ["O", "H"]
         masses = [16.0, 1.0]
         bob_params = {
@@ -598,11 +598,11 @@ class TestBOBCorrection:
         by_iso = {t.isotopologue_label: t for t in targets if t.component == "B"}
         b16 = next(r.delta_mhz for r in by_iso["H2-16O"].correction_records if r.method == "BOB")
         b18 = next(r.delta_mhz for r in by_iso["H2-18O"].correction_records if r.method == "BOB")
-        # O-16 vs O-18: heavier O-18 â†’ smaller magnitude O contribution â†’ smaller |delta_bob|
+        # O-16 vs O-18: heavier O-18 → smaller magnitude O contribution → smaller |delta_bob|
         assert abs(b18) < abs(b16)
 
 
-# â”€â”€ Combined corrections end-to-end â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Combined corrections end-to-end ───────────────────────────────────────────
 
 class TestCombinedCorrections:
     def test_all_three_record_types_present(self):

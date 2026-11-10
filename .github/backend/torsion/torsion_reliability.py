@@ -50,12 +50,12 @@ def assess_ram_lite_reliability(spec: TorsionHamiltonianSpec) -> TorsionReliabil
       - Any centrifugal distortion constant > 1% of min(A, B, C)
 
     'low':
-      - V/F < 2  (nearly free rotor â€” basis and convergence degrade)
+      - V/F < 2  (nearly free rotor — basis and convergence degrade)
       - n_basis < max Fourier harmonic order (basis inadequate)
 
     'moderate':
-      - |B âˆ’ C| > 0.1 Ã— B  (strong asymmetry â€” K-mixing matters)
-      - |Ï| > 0.95  (near-axis rotor â€” FÂ·(mâˆ’ÏK)Â² approximation degrades)
+      - |B − C| > 0.1 × B  (strong asymmetry — K-mixing matters)
+      - |ρ| > 0.95  (near-axis rotor — F·(m−ρK)² approximation degrades)
 
     'high':
       - None of the above triggered
@@ -80,14 +80,14 @@ def assess_ram_lite_reliability(spec: TorsionHamiltonianSpec) -> TorsionReliabil
     barrier = _potential_barrier(spec)
     v_over_f = barrier / F if F > 0.0 else float("inf")
 
-    # â”€â”€ Criterion 1: nearly free rotor â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Criterion 1: nearly free rotor ───────────────────────────────────────
     if v_over_f < 2.0:
         flags.append(
             f"V/F = {v_over_f:.2f} < 2: nearly free rotor; "
             "basis completeness and Fourier convergence may degrade."
         )
 
-    # â”€â”€ Criterion 2: basis inadequacy â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Criterion 2: basis inadequacy ────────────────────────────────────────
     all_n = [int(n) for n in spec.potential.vcos.keys() if int(n) > 0]
     all_n += [int(n) for n in (spec.potential.vsin or {}).keys() if int(n) > 0]
     max_n = max(all_n, default=0)
@@ -97,21 +97,21 @@ def assess_ram_lite_reliability(spec: TorsionHamiltonianSpec) -> TorsionReliabil
             "the basis is inadequate; increase n_basis."
         )
 
-    # â”€â”€ Criterion 3: strong asymmetry â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Criterion 3: strong asymmetry ─────────────────────────────────────────
     if B > 0.0 and abs(B - C) > 0.1 * B:
         flags.append(
-            f"B âˆ’ C = {abs(B - C):.4f} cmâ»Â¹ > 0.1 Ã— B ({0.1 * B:.4f}): "
+            f"B − C = {abs(B - C):.4f} cm⁻¹ > 0.1 × B ({0.1 * B:.4f}): "
             "strong asymmetric-top character; K-mixing between torsional states may be significant."
         )
 
-    # â”€â”€ Criterion 4: near-axis rotor â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Criterion 4: near-axis rotor ──────────────────────────────────────────
     if rho > 0.95:
         flags.append(
-            f"Ï = {rho:.3f} > 0.95: near-axis internal rotor; "
-            "the FÂ·(m âˆ’ ÏK)Â² kinetic approximation degrades for large K."
+            f"ρ = {rho:.3f} > 0.95: near-axis internal rotor; "
+            "the F·(m − ρK)² kinetic approximation degrades for large K."
         )
 
-    # â”€â”€ Criterion 5: centrifugal distortion dominance â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Criterion 5: centrifugal distortion dominance ────────────────────────
     cd_names = ("DJ", "DJK", "DK", "d1", "d2")
     cd_vals = {name: float(getattr(spec, name, 0.0) or 0.0) for name in cd_names}
     large_cd: list[str] = []
@@ -128,7 +128,7 @@ def assess_ram_lite_reliability(spec: TorsionHamiltonianSpec) -> TorsionReliabil
             "RAM-lite may be inadequate for high-J transitions."
         )
 
-    # â”€â”€ Assign score â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Assign score ──────────────────────────────────────────────────────────
     if large_cd:
         score = "unreliable"
         error_bound = float("inf")

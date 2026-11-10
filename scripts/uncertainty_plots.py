@@ -16,7 +16,7 @@ def plot_coordinate_distributions(cloud_xyz, elems, output_dir, use_dihedrals=Fa
             data = np.degrees(data)
             unit = "deg"
         else:
-            unit = "Ã…"
+            unit = "Å"
             
         plt.figure(figsize=(6, 4))
         plt.hist(data, bins=30, color='skyblue', edgecolor='black', alpha=0.7)

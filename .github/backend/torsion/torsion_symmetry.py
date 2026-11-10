@@ -10,15 +10,18 @@ Implements:
 
 Cn symmetry labeling convention
 ---------------------------------
-C3 rotor: m mod 3 == 0 â†’ A species
-          m mod 3 == 1 â†’ E1 species
-          m mod 3 == 2 â†’ E2 species
+C3 rotor: m mod 3 == 0 → A species
+          m mod 3 == 1 → E1 species
+          m mod 3 == 2 → E2 species
 A and E have different nuclear spin statistics; A<->E transitions are forbidden.
 E1 and E2 are degenerate for symmetric potentials.
 """
 
 from __future__ import annotations
 
+import re
+
+from math import gcd
 from typing import Optional
 
 import numpy as np
@@ -34,16 +37,112 @@ from backend.torsion.torsion_hamiltonian import (
 _C3_RESIDUE_LABEL: dict[int, str] = {0: "A", 1: "E1", 2: "E2"}
 _C3_LABEL_RESIDUE: dict[str, int] = {"A": 0, "E1": 1, "E2": 2, "E": 1}
 
-# Nuclear-spin statistical weights by rotor fold
-# C3 (CH3): spin-1/2 protons â†’ A:E = 1:2
-# C2 (CH2): spin-1/2 protons â†’ A:B = 1:3
-C3_NUCLEAR_SPIN_WEIGHTS: dict[str, int] = {"A": 1, "E": 2, "E1": 2, "E2": 2}
-C2_NUCLEAR_SPIN_WEIGHTS: dict[str, int] = {"A": 1, "B": 3}
+# ── Nuclear-spin statistical weights, derived rather than tabulated ─────────
+#
+# These used to be two hard-coded dicts, and one of them was wrong. C3 carried
+# A:E = 1:2, which matches no convention: the published value for methanol, the
+# canonical C3 methyl rotor, is A weight 4 (the I=3/2 quartet) against E weight
+# 4 once its double degeneracy is counted, so A:E = 1:1 in total or 2:1 against
+# a single E component. The table also contradicted its own C2 entry, which was
+# right -- A:B = 1:3 IS a nuclear-spin weight -- so whichever way the C3 numbers
+# were meant, the two folds did not share a convention.
+#
+# Deriving them removes the question. For n equivalent nuclei of spin I
+# permuted cyclically:
+#
+#   1. The permutation C_n^m decomposes n objects into gcd(m, n) cycles, and a
+#      product spin state is invariant under it exactly when it is constant on
+#      each cycle. So the trace of that permutation on the spin space is
+#      (2I+1)^gcd(m,n), with no character table required.
+#   2. Projecting onto the k-th irrep of the cyclic group gives the number of
+#      spin functions of that symmetry:
+#
+#          a_k = (1/n) sum_m exp(-2 pi i k m / n) (2I+1)^gcd(m,n)
+#
+#   3. An n-cycle is an EVEN permutation exactly when n is odd. For fermions
+#      the total wavefunction is symmetric under even permutations and
+#      antisymmetric under odd ones, so it must carry irrep k=0 for odd n and
+#      k=n/2 for even n. A torsional level of species k therefore takes the
+#      weight of the spin species that completes it.
+#
+# The derivation is checked two ways in test_torsion_symmetry: it reproduces
+# the C2 entry this module already had and agreed with, and it reproduces the
+# published methanol C3 weights that the old C3 entry did not.
+#
+# A CAVEAT THE OLD TABLE HID. The fold of the POTENTIAL is not the number of
+# equivalent nuclei in the top. Nitromethane and toluene have six-fold
+# torsional potentials because a three-fold methyl turns against a two-fold
+# frame, and their spin statistics are still the three protons' C3 ones. Key
+# the weights off the nuclei, not off the barrier, whenever the two differ;
+# nuclear_spin_weight's rotor_fold argument assumes they do not, which is true
+# for CH2 and CH3 and is why it was never wrong before.
 
+
+def _spin_function_counts(n_equivalent: int, spin: float = 0.5) -> dict[int, int]:
+    """Spin functions of each cyclic symmetry species, by character projection."""
+    n = int(n_equivalent)
+    if n < 1:
+        raise ValueError("n_equivalent must be >= 1.")
+    d = int(round(2.0 * float(spin) + 1.0))
+    if d < 2:
+        raise ValueError("spin must be at least 1/2 for a spin-bearing rotor.")
+
+    counts = {}
+    for k in range(n):
+        total = sum(np.exp(-2j * np.pi * k * m / n) * d ** gcd(m, n)
+                    for m in range(n))
+        counts[k] = int(round(float(total.real / n)))
+    if sum(counts.values()) != d ** n:
+        raise ArithmeticError(
+            f"spin function counts {counts} sum to {sum(counts.values())}, "
+            f"expected {d}^{n} = {d ** n}"
+        )
+    return counts
+
+
+def species_label(k: int, n_equivalent: int) -> str:
+    """Cyclic-group label for symmetry species k of a C_n rotor.
+
+    k = 0 is the totally symmetric A. For even n, k = n/2 has character -1
+    under every generator and is the non-degenerate B. Everything else pairs
+    with its conjugate into a doubly degenerate E.
+    """
+    n, k = int(n_equivalent), int(k) % int(n_equivalent)
+    if k == 0:
+        return "A"
+    if n % 2 == 0 and k == n // 2:
+        return "B"
+    return f"E{k}"
+
+
+def nuclear_spin_weights(n_equivalent: int, spin: float = 0.5) -> dict[str, int]:
+    """Statistical weight of each torsional species, from first principles.
+
+    Fermion statistics assumed, which is right for the protons these rotors are
+    made of. Returns weights keyed by species label, with "E" aliased to the
+    lowest E species so existing callers keep working.
+    """
+    n = int(n_equivalent)
+    counts = _spin_function_counts(n, spin)
+    target = 0 if n % 2 == 1 else n // 2
+    weights = {species_label(k, n): counts[(target - k) % n] for k in range(n)}
+    for k in range(1, n):
+        label = species_label(k, n)
+        if label.startswith("E"):
+            weights.setdefault("E", weights[label])
+            break
+    return weights
+
+
+#: Folds with equivalent spin-1/2 nuclei in the top, derived once at import.
+#: 4 and 6 are included for completeness; see the caveat above before using
+#: fold 6 for a molecule whose six-fold barrier comes from a three-fold top.
 _ROTOR_FOLD_WEIGHTS: dict[int, dict[str, int]] = {
-    3: C3_NUCLEAR_SPIN_WEIGHTS,
-    2: C2_NUCLEAR_SPIN_WEIGHTS,
+    n: nuclear_spin_weights(n, spin=0.5) for n in (2, 3, 4, 6)
 }
+
+C2_NUCLEAR_SPIN_WEIGHTS: dict[str, int] = _ROTOR_FOLD_WEIGHTS[2]
+C3_NUCLEAR_SPIN_WEIGHTS: dict[str, int] = _ROTOR_FOLD_WEIGHTS[3]
 
 
 def nuclear_spin_weight(symmetry_label: str, rotor_fold: int = 3) -> int:
@@ -79,7 +178,7 @@ def nuclear_spin_weight(symmetry_label: str, rotor_fold: int = 3) -> int:
     return int(w)
 
 
-# â”€â”€ Wang transformation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Wang transformation ───────────────────────────────────────────────────────
 
 def wang_transformation_c3(m_values: np.ndarray) -> np.ndarray:
     """
@@ -92,11 +191,11 @@ def wang_transformation_c3(m_values: np.ndarray) -> np.ndarray:
 
     Parameters
     ----------
-    m_values : int ndarray â€” basis m quantum numbers
+    m_values : int ndarray — basis m quantum numbers
 
     Returns
     -------
-    W : (N, N) complex ndarray â€” unitary permutation matrix
+    W : (N, N) complex ndarray — unitary permutation matrix
     """
     m = np.asarray(m_values, dtype=int).ravel()
     N = m.size
@@ -110,7 +209,7 @@ def wang_transformation_c3(m_values: np.ndarray) -> np.ndarray:
     return W
 
 
-# â”€â”€ Per-block energies â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Per-block energies ─────────────────────────────────────────────────────────
 
 def c3_symmetry_block_energies(
     spec: TorsionHamiltonianSpec,
@@ -122,9 +221,9 @@ def c3_symmetry_block_energies(
     """
     Diagonalize the RAM-lite Hamiltonian within each C3 symmetry block.
 
-    Restricts the |m> basis to m â‰¡ r (mod 3) for each residue r = 0, 1, 2,
+    Restricts the |m> basis to m ≡ r (mod 3) for each residue r = 0, 1, 2,
     giving exact block diagonalization for a C3-symmetric potential (V_n with
-    n â‰¡ 0 mod 3 only).
+    n ≡ 0 mod 3 only).
 
     Parameters
     ----------
@@ -161,7 +260,7 @@ def c3_symmetry_block_energies(
     return out
 
 
-# â”€â”€ Tunneling splittings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Tunneling splittings ──────────────────────────────────────────────────────
 
 def predict_tunneling_splitting(
     spec: TorsionHamiltonianSpec,
@@ -216,7 +315,38 @@ def predict_tunneling_splitting(
     return rows
 
 
-# â”€â”€ Symmetry selection rules â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Symmetry selection rules ──────────────────────────────────────────────────
+
+def _species_index(label: str, rotor_fold: int):
+    """Cyclic irrep index k for a species label, or None if unrecognised.
+
+    Accepts the bare "E" as the lowest E species, which is what C2 and C3
+    callers have always passed.
+    """
+    text = str(label).strip().upper()
+    n = int(rotor_fold)
+    if text == "A":
+        return 0
+    if text == "B":
+        return n // 2 if n % 2 == 0 else None
+    if text == "E":
+        # The bare "E" means the lowest degenerate species. A C2 rotor has
+        # none: its only two species are k=0 (A) and k=1 = n/2 (B).
+        return 1 if n >= 3 else None
+    m = re.fullmatch(r"E(\d+)", text)
+    if m:
+        k = int(m.group(1))
+        if not 0 < k < n:
+            return None
+        # An E label is only meaningful where species k is actually part of a
+        # degenerate pair. For even n, k = n/2 is the non-degenerate B, so
+        # "E1" on a C2 rotor is not a C2 label at all -- it used to be read as
+        # B, silently answering a question about a species that does not exist.
+        if n % 2 == 0 and k == n // 2:
+            return None
+        return k
+    return None
+
 
 def symmetry_selection_rules(
     symmetry_lo: str,
@@ -224,63 +354,56 @@ def symmetry_selection_rules(
     rotor_fold: int = 3,
 ) -> dict:
     """
-    Determine whether a transition between symmetry species is allowed.
+    Determine whether a transition between torsional symmetry species is allowed.
 
-    For a C3 rotor (rotor_fold=3) the nuclear spin statistics require:
-      A <-> A : allowed
-      E <-> E (including E1<->E1, E2<->E2, E1<->E2) : allowed
-      A <-> E : forbidden
+    ONE RULE, FOR EVERY FOLD. A radiative transition does not reorient nuclear
+    spins, so it cannot change the nuclear spin species. A transition is
+    allowed exactly when the two levels belong to the same species, and the
+    degenerate pairs count as one: species k and n-k are complex conjugates of
+    each other and describe the same spin modification, which is why
+    E1 <-> E2 is allowed for a C3 rotor.
 
-    For a C2 rotor (rotor_fold=2) the analogous rules are:
-      A <-> A : allowed
-      B <-> B : allowed
-      A <-> B : forbidden
-
-    Parameters
-    ----------
-    symmetry_lo, symmetry_hi : species labels ('A', 'E', 'E1', 'E2' for C3;
-        'A', 'B' for C2)
-    rotor_fold : rotational symmetry order (2 and 3 implemented)
+    So the test is k_lo = +/- k_hi (mod n). For C3 that reproduces the
+    hand-written rules this function used to carry -- A<->A and E<->E allowed,
+    A<->E forbidden -- and for C2, A<->A and B<->B allowed, A<->B forbidden. It
+    extends to C4 and C6 without new cases, where it correctly separates E1
+    from E2: for a six-fold rotor those are different spin species with
+    different weights (11 against 9), not two halves of one.
 
     Returns
     -------
-    dict with 'allowed' (bool or None) and 'reason' (str)
+    dict with 'allowed' (bool or None when a label is unrecognised) and
+    'reason' (str).
     """
-    lo = str(symmetry_lo).strip().upper()
-    hi = str(symmetry_hi).strip().upper()
+    n = int(rotor_fold)
+    if n < 2:
+        return {"allowed": None, "reason": f"rotor_fold must be >= 2, got {rotor_fold}."}
 
-    if rotor_fold == 3:
-        lo_A = lo == "A"
-        hi_A = hi == "A"
-        lo_E = lo in {"E", "E1", "E2"}
-        hi_E = hi in {"E", "E1", "E2"}
+    k_lo = _species_index(symmetry_lo, n)
+    k_hi = _species_index(symmetry_hi, n)
+    if k_lo is None or k_hi is None:
+        return {
+            "allowed": None,
+            "reason": (f"Unknown symmetry labels for a C{n} rotor: "
+                       f"lo={symmetry_lo!r}, hi={symmetry_hi!r}"),
+        }
 
-        if lo_A and hi_A:
-            return {"allowed": True, "reason": "Aâ†”A: same nuclear spin species (C3 rotor)."}
-        if lo_E and hi_E:
-            return {"allowed": True, "reason": "Eâ†”E: same nuclear spin statistics (C3 rotor)."}
-        if (lo_A and hi_E) or (lo_E and hi_A):
-            return {
-                "allowed": False,
-                "reason": "Aâ†”E forbidden: different nuclear spin statistics for C3 rotor.",
-            }
-        return {"allowed": None, "reason": f"Unknown symmetry labels: lo={symmetry_lo!r}, hi={symmetry_hi!r}"}
-
-    if rotor_fold == 2:
-        known = {"A", "B"}
-        if lo in known and hi in known:
-            if lo == hi:
-                return {"allowed": True, "reason": f"{lo}↔{hi}: same nuclear spin species (C2 rotor)."}
-            return {
-                "allowed": False,
-                "reason": "A↔B forbidden: different nuclear spin statistics for C2 rotor.",
-            }
-        return {"allowed": None, "reason": f"Unknown symmetry labels: lo={symmetry_lo!r}, hi={symmetry_hi!r}"}
-
-    return {"allowed": None, "reason": f"Selection rules not implemented for rotor_fold={rotor_fold}."}
+    lo_name = species_label(k_lo, n)
+    hi_name = species_label(k_hi, n)
+    if k_lo == k_hi or k_lo == (-k_hi) % n:
+        return {
+            "allowed": True,
+            "reason": (f"{lo_name} <-> {hi_name}: same nuclear spin species "
+                       f"(C{n} rotor)."),
+        }
+    return {
+        "allowed": False,
+        "reason": (f"{lo_name} <-> {hi_name} forbidden: different nuclear spin "
+                   f"statistics for a C{n} rotor."),
+    }
 
 
-# â”€â”€ Diagnostics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Diagnostics ───────────────────────────────────────────────────────────────
 
 def symmetry_purity_table(
     spec: TorsionHamiltonianSpec,

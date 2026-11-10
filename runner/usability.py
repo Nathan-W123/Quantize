@@ -21,6 +21,34 @@ except ModuleNotFoundError:  # pragma: no cover - handled by load_config error p
 
 COMPONENT_LABELS = ("A", "B", "C")
 VALID_PRESETS = {"FAST_DEBUG", "BALANCED", "STRICT"}
+#: Backend modules that register themselves on import but are not imported by
+#: backend/__init__.py, because they depend on an optional package.
+_OPTIONAL_BACKEND_MODULES = ("dev.pyscf_backend",)
+
+
+def register_optional_backends() -> None:
+    """Import the backend modules that register themselves on import.
+
+    Without this the registry holds whatever happened to be imported first, so
+    the set of accepted backend names depended on the caller. It really did:
+    ``python -m cli validate`` rejected a perfectly good pyscf_hf config --
+    "must be one of none, orca, psi4" -- because cli.py never imported
+    dev.pyscf_backend, while the web UI accepted the same file because it did.
+    A config that one entry point runs and another refuses is the worst kind of
+    inconsistency, so registration happens here, once, for every caller.
+
+    Failures are swallowed on purpose: an install without pyscf is a valid
+    install, and the only consequence is that its name is not offered.
+    """
+    import importlib
+
+    for name in _OPTIONAL_BACKEND_MODULES:
+        try:
+            importlib.import_module(name)
+        except Exception:  # noqa: BLE001 - absence is not an error
+            pass
+
+
 def valid_backends() -> set[str]:
     """Backend names accepted in a config: whatever is registered, plus "none".
 
@@ -28,15 +56,22 @@ def valid_backends() -> set[str]:
     ``@register_backend`` actually usable — base_backend.py tells you to add a
     backend by registering it and importing it from backend/__init__.py, but a
     hardcoded validator rejected the new name before the runner ever saw it.
+
+    Optional backends are registered first, so the answer does not depend on
+    which module the caller happened to import.
     """
     from backend.registry import list_backends
 
+    register_optional_backends()
     return set(list_backends()) | {"none"}
 
 
 # Retained as a module-level name for callers that imported it.
 VALID_BACKENDS = {"orca", "psi4", "none"}
-VALID_GEOMETRY_METHODS = {"bonds", "pubchem", "coords"}
+#: run_generic handles all four, and its own error message for an unknown one
+#: says "Use: smiles, bonds, pubchem, or coords" -- but "smiles" was missing
+#: here, so the validator refused a geometry the runner knows how to build.
+VALID_GEOMETRY_METHODS = {"smiles", "bonds", "pubchem", "coords"}
 _ELEMENT_RE = re.compile(r"^[A-Z][a-z]?$")
 _SAFE_NAME_RE = re.compile(r"[^A-Za-z0-9_.-]+")
 
@@ -1358,7 +1393,7 @@ def generate_kraitchman_report_section(kr: dict[str, Any]) -> str:
             "",
             "Inertial defects (Δ = I_c − I_a − I_b; ≈ 0 for rigid planar molecules):",
             "",
-            "| species | Δ (amu·Å²) |",
+            "| species | Δ (amu·Ų) |",
             "|---|---:|",
         ])
         for d in defects:

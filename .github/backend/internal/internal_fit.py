@@ -1,21 +1,21 @@
 ﻿"""
 Internal-coordinate data structures and transformations.
 
-Phase 1 â€” InternalCoordinate, InternalCoordinateSet:
+Phase 1 — InternalCoordinate, InternalCoordinateSet:
     q(x) and B = dq/dx layer on top of the existing Wilson B-matrix utilities.
 
-Phase 2 â€” Back-transformation:
-    internal_step_to_cartesian_step(B, dq, damping)  â†’  dx
-    apply_internal_step(x0, q_target, coord_set)      â†’  x_new, error
+Phase 2 — Back-transformation:
+    internal_step_to_cartesian_step(B, dq, damping)  →  dx
+    apply_internal_step(x0, q_target, coord_set)      →  x_new, error
 
-Phase 3 â€” Spectral Jacobian conversion:
-    spectral_jacobian_q(Jx, Bplus)  â†’  Jq = Jx @ B+
+Phase 3 — Spectral Jacobian conversion:
+    spectral_jacobian_q(Jx, Bplus)  →  Jq = Jx @ B+
 
 Units convention (enforced throughout this module):
     Bond lengths      : Angstroms
     Angles            : radians
     Dihedrals         : radians
-This matches the Wilson B-matrix rows (âˆ‚q/âˆ‚x in Ã… or rad per Ã…).
+This matches the Wilson B-matrix rows (∂q/∂x in Å or rad per Å).
 Use values_deg() for human-readable display.
 """
 
@@ -41,7 +41,7 @@ from backend.priors.prior_weighting import (
 )
 
 
-# â”€â”€ Phase 1: data structures â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Phase 1: data structures ──────────────────────────────────────────────────
 
 @dataclass
 class InternalCoordinate:
@@ -50,12 +50,12 @@ class InternalCoordinate:
     atoms: tuple        # atom indices (0-based)
     name: str           # e.g. "bond 1-2", "angle 1-2-3"
     active: bool = True
-    prior_value: Optional[float] = None   # natural units (Ã… or rad); used in Phase 6
+    prior_value: Optional[float] = None   # natural units (Å or rad); used in Phase 6
     prior_sigma: Optional[float] = None   # natural units; used in Phase 6
 
 
 def _coord_value(coords: np.ndarray, ic: InternalCoordinate) -> float:
-    """Evaluate ic at coords. Returns Ã… for bonds, radians for angles/dihedrals."""
+    """Evaluate ic at coords. Returns Å for bonds, radians for angles/dihedrals."""
     xyz = np.asarray(coords, dtype=float)
     if ic.kind == "bond":
         i, j = ic.atoms
@@ -103,9 +103,9 @@ class InternalCoordinateSet:
 
     Parameters
     ----------
-    coords : (N, 3) array   Initial geometry in Ã… (used for connectivity only).
+    coords : (N, 3) array   Initial geometry in Å (used for connectivity only).
     elems  : list[str]      Element symbols.
-    use_dihedrals : bool    Include dihedral angles (default False â€” start conservative).
+    use_dihedrals : bool    Include dihedral angles (default False — start conservative).
     """
 
     def __init__(self, coords, elems, use_dihedrals: bool = False):
@@ -132,10 +132,10 @@ class InternalCoordinateSet:
                 name=f"dihedral {i+1}-{j+1}-{k+1}-{l+1}",
             ))
 
-    # â”€â”€ Coordinate values â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Coordinate values ─────────────────────────────────────────────────────
 
     def values(self, coords) -> np.ndarray:
-        """All coordinate values in natural units (Ã…, rad, rad), shape (n_int,)."""
+        """All coordinate values in natural units (Å, rad, rad), shape (n_int,)."""
         return np.array([_coord_value(coords, ic) for ic in self.coordinates], dtype=float)
 
     def values_deg(self, coords) -> np.ndarray:
@@ -153,7 +153,7 @@ class InternalCoordinateSet:
             dtype=float,
         )
 
-    # â”€â”€ B-matrix â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── B-matrix ──────────────────────────────────────────────────────────────
 
     def B_matrix(self, coords) -> np.ndarray:
         """Wilson B-matrix for all coordinates, shape (n_int, 3N)."""
@@ -170,10 +170,10 @@ class InternalCoordinateSet:
         rows = [_coord_B_row(coords, ic) for ic in self.coordinates if ic.active]
         return np.array(rows, dtype=float) if rows else np.zeros((0, n3), dtype=float)
 
-    # â”€â”€ Masks and metadata â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Masks and metadata ────────────────────────────────────────────────────
 
     def active_mask(self) -> np.ndarray:
-        """Boolean array (n_int,) â€” True where coordinate is active."""
+        """Boolean array (n_int,) — True where coordinate is active."""
         return np.array([ic.active for ic in self.coordinates], dtype=bool)
 
     def active_coords(self) -> List[InternalCoordinate]:
@@ -193,15 +193,15 @@ class InternalCoordinateSet:
     def n_active(self) -> int:
         return sum(1 for ic in self.coordinates if ic.active)
 
-    # â”€â”€ Pseudo-inverse â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Pseudo-inverse ────────────────────────────────────────────────────────
 
     @staticmethod
     def damped_pseudoinverse(B: np.ndarray, damping: float = 1e-6) -> np.ndarray:
         """
-        B+ = B^T (B B^T + Î»I)^{-1}   shape (3N, n_active).
+        B+ = B^T (B B^T + λI)^{-1}   shape (3N, n_active).
 
-        Minimises ||dx||Â² subject to B dx â‰ˆ dq.
-        The damping Î» prevents blow-up when B is rank-deficient.
+        Minimises ||dx||² subject to B dx ≈ dq.
+        The damping λ prevents blow-up when B is rank-deficient.
         """
         BBt = B @ B.T
         n = BBt.shape[0]
@@ -216,8 +216,8 @@ class InternalCoordinateSet:
         dict with keys:
           n_coords  : number of active internal coordinates
           n_dof     : number of Cartesian DOF (3N)
-          rank      : numerical rank (singular values > 1e-10 Ã— Ïƒ_max)
-          kappa_B   : condition number Ïƒ_max/Ïƒ_min_nonzero, or None if rank < 2
+          rank      : numerical rank (singular values > 1e-10 × σ_max)
+          kappa_B   : condition number σ_max/σ_min_nonzero, or None if rank < 2
         """
         B = self.active_B_matrix(coords)
         if B.size == 0 or B.shape[0] == 0:
@@ -234,7 +234,7 @@ class InternalCoordinateSet:
         }
 
 
-# â”€â”€ Phase 2: back-transformation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Phase 2: back-transformation ─────────────────────────────────────────────
 
 def internal_step_to_cartesian_step(
     B: np.ndarray,
@@ -244,17 +244,17 @@ def internal_step_to_cartesian_step(
     """
     Minimum-norm Cartesian step that achieves the requested internal step.
 
-    dx = B^T (B B^T + Î»I)^{-1} dq
+    dx = B^T (B B^T + λI)^{-1} dq
 
     Parameters
     ----------
     B       : (n_active, 3N)  Active Wilson B-matrix at current geometry.
-    dq      : (n_active,)     Requested internal-coordinate step (Ã…, rad).
-    damping : float           Tikhonov regularisation Î».
+    dq      : (n_active,)     Requested internal-coordinate step (Å, rad).
+    damping : float           Tikhonov regularisation λ.
 
     Returns
     -------
-    dx : (3N,)  Cartesian step in Ã….
+    dx : (3N,)  Cartesian step in Å.
     """
     BBt = B @ B.T
     n = BBt.shape[0]
@@ -262,7 +262,7 @@ def internal_step_to_cartesian_step(
 
 
 def _wrap_dihedral_diff(dq: np.ndarray, active_coords: List[InternalCoordinate]) -> np.ndarray:
-    """Wrap dihedral differences to (âˆ’Ï€, Ï€] so a 179Â°â†’âˆ’179Â° move is not treated as 358Â°."""
+    """Wrap dihedral differences to (−π, π] so a 179°→−179° move is not treated as 358°."""
     dq = dq.copy()
     for i, ic in enumerate(active_coords):
         if ic.kind == "dihedral":
@@ -279,14 +279,14 @@ def apply_internal_step(
     damping: float = 1e-6,
 ):
     """
-    Find x_new such that coord_set.active_values(x_new) â‰ˆ q_target.
+    Find x_new such that coord_set.active_values(x_new) ≈ q_target.
 
     Uses micro-iterations with damped least-squares back-transformation.
 
     Parameters
     ----------
-    x0        : (N, 3)        Starting Cartesian geometry (Ã…).
-    q_target  : (n_active,)   Target internal-coordinate values (Ã…/rad).
+    x0        : (N, 3)        Starting Cartesian geometry (Å).
+    q_target  : (n_active,)   Target internal-coordinate values (Å/rad).
     coord_set : InternalCoordinateSet
     max_micro : int           Maximum micro-iteration steps.
     tol       : float         Convergence tolerance on residual norm.
@@ -295,7 +295,7 @@ def apply_internal_step(
     Returns
     -------
     x_new             : (N, 3) ndarray  Converged Cartesian geometry.
-    backtransform_err : float           Residual norm |q_target âˆ’ q(x_new)|.
+    backtransform_err : float           Residual norm |q_target − q(x_new)|.
     """
     x = np.asarray(x0, dtype=float).copy()
     active = coord_set.active_coords()
@@ -314,7 +314,7 @@ def apply_internal_step(
     return x, err
 
 
-# â”€â”€ Phase 3: spectral Jacobian conversion â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Phase 3: spectral Jacobian conversion ────────────────────────────────────
 
 def spectral_jacobian_q(Jx: np.ndarray, Bplus: np.ndarray) -> np.ndarray:
     """
@@ -351,8 +351,8 @@ def quantum_terms_q(
 
     Parameters
     ----------
-    gradient : (3N,)      Energy gradient in Hartree/Ã….
-    hessian  : (3N, 3N)   Energy Hessian in Hartree/Ã…Â².
+    gradient : (3N,)      Energy gradient in Hartree/Å.
+    hessian  : (3N, 3N)   Energy Hessian in Hartree/Å².
     Bplus    : (3N, n_act) Damped pseudo-inverse of active Wilson B-matrix.
 
     Returns
@@ -365,7 +365,7 @@ def quantum_terms_q(
     return gq, Hq
 
 
-# â”€â”€ Phase 6: native q-space internal priors â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Phase 6: native q-space internal priors ───────────────────────────────────
 
 def build_internal_priors(
     coord_set: InternalCoordinateSet,
@@ -387,7 +387,7 @@ def build_internal_priors(
     """
     Build a native internal-coordinate prior block for the SVD system.
 
-    Prior residuals:  r_prior = (q0 âˆ’ q) / sigma
+    Prior residuals:  r_prior = (q0 − q) / sigma
     Prior Jacobian:   J_prior = diag(1 / sigma)   (identity in q-space)
 
     This is exact in q-space and avoids the approximation of multiplying a
@@ -398,11 +398,11 @@ def build_internal_priors(
     ----------
     coord_set   : InternalCoordinateSet
     coords      : (N, 3)  Current geometry (used to compute q if prior_values is None).
-    sigma_bond  : float   Prior width for bonds [Ã…].
+    sigma_bond  : float   Prior width for bonds [Å].
     sigma_angle_deg : float   Prior width for valence angles [deg] (converted to rad).
     sigma_dihedral_deg : float  Prior width for dihedrals [deg] (converted to rad).
     prior_values : (n_active,) or None
-        Target q values in natural units (Ã…, rad).  If None, uses the initial
+        Target q values in natural units (Å, rad).  If None, uses the initial
         geometry passed to coord_set (current coords).
 
     Parameters (new)
@@ -422,7 +422,7 @@ def build_internal_priors(
     Returns
     -------
     J_prior : (n_active, n_active)  Diagonal prior Jacobian (diag(1/sigma)).
-    r_prior : (n_active,)           Prior residuals (q0 âˆ’ q_curr) / sigma.
+    r_prior : (n_active,)           Prior residuals (q0 − q_curr) / sigma.
     sigma   : (n_active,)           Prior widths in natural units.
     meta    : list[dict], optional  Prior provenance metadata per coordinate (if return_metadata).
     """
@@ -512,7 +512,7 @@ def build_internal_priors(
             target = float(np.deg2rad(target))
             sig = float(np.deg2rad(sig))
             units = "radian"
-        if kind == "bond" and units in {"angstrom", "a", "Ã¥"}:
+        if kind == "bond" and units in {"angstrom", "a", "å"}:
             units = "angstrom"
         if row_mode == "hard_freeze":
             sig = min(abs(sig), float(freeze_sigma_floor))
@@ -570,7 +570,7 @@ def build_internal_priors(
     sigma = np.maximum(sigma, 1e-12)
 
     diff = q0 - q_curr
-    diff = _wrap_dihedral_diff(diff, active)   # wrap dihedrals to (âˆ’Ï€, Ï€]
+    diff = _wrap_dihedral_diff(diff, active)   # wrap dihedrals to (−π, π]
 
     r_prior = diff / sigma
     J_prior = np.diag(1.0 / sigma)

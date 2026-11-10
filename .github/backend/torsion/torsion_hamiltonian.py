@@ -26,8 +26,25 @@ The hindered_rotor module uses a different RAM-style convention:
   V(phi) = sum_n (V_n / 2) * (1 - cos(n*phi))
 which maps as: V0 = sum_n V_n/2, Vcos_n = -V_n/2.
 
-Later phases will add full torsion-rotation tensor coupling, assignment,
-and global fitting capability.
+Those later phases happened, in other modules. This line used to promise them
+as future work and was read, years later, as a statement that the subsystem was
+unfinished -- which cost a wrong recommendation about what needed building. What
+exists now:
+
+  torsion_rot_hamiltonian.solve_full_torsion_rotation_levels
+      the coupled |J,K,m> Hamiltonian: H_rot, delta_K=+-2 asymmetry, Watson
+      A-reduction quartic distortion, and alpha-dependent A/B/C as Fourier
+      series giving full torsion-rotation K-mixing
+  torsion_fitter.fit_torsion_to_levels / _to_transitions / _joint
+      Gauss-Newton fitting to observed levels and transitions, with bounds,
+      priors and Jacobian uncertainties
+  torsion_average / torsion_average_2d
+      torsional averaging of the rotational constants, one and two rotors
+
+RAM-lite remains the fast single-(J,K)-block path and is what torsion_fitter
+calls by default. What is genuinely missing: nuclear spin weights and selection
+rules for rotor folds other than 2 and 3 (torsion_symmetry), which matters only
+for rotors that are neither CH3-like nor CH2-like.
 """
 
 from __future__ import annotations

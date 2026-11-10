@@ -1,12 +1,12 @@
 ﻿"""
-Master optimizer â€” ties SpectralEngine, QuantumEngine, and SubspaceOptimizer together.
+Master optimizer — ties SpectralEngine, QuantumEngine, and SubspaceOptimizer together.
 
 Workflow
 --------
 1. Provide initial geometry, element list, isotopologue data, and either
    the path to your ORCA binary or "orca" if it is on PATH.
 2. MolecularOptimizer.run() iterates:
-     a. Recompute spectral Jacobian J and residuals Î”Î½ at current geometry.
+     a. Recompute spectral Jacobian J and residuals Δν at current geometry.
      b. When geometry drifts beyond `orca_update_thresh`, refresh ORCA data:
           - Every `hess_recalc_every` ORCA calls: full Freq job (Hessian + gradient).
           - In between: cheap EnGrad job (gradient only, reuse existing Hessian).
@@ -18,8 +18,8 @@ Units
 -----
   Coordinates        : Angstroms
   Rotational constants : MHz
-  Gradient           : Hartree / Ã…  (converted internally from Hartree / Bohr)
-  Hessian            : Hartree / Ã…Â² (converted internally)
+  Gradient           : Hartree / Å  (converted internally from Hartree / Bohr)
+  Hessian            : Hartree / Å² (converted internally)
 """
 
 import os
@@ -60,6 +60,51 @@ from backend.spectral.spectral import default_sigma_constants, defect_model_sigm
 #:
 #: `scripts/estimate_theory_error.py` estimates the right value for a molecule
 #: with no known structure, from the spread between two levels of theory.
+from backend.spectral.prior_widths import (  # noqa: E402
+    level_for_backend,
+    prior_sigma_for_level,
+)
+
+#: Distinguishes "the caller said nothing" from "the caller said None".
+#: They are not the same: None is a documented request for the legacy
+#: alpha_quantum heuristic in place of the calibrated weight (SubspaceOptimizer
+#: branches on it in _effective_quantum_weight), and the YAML runner passes it
+#: deliberately. Only silence means "calibrate from the
+#: level of theory". Collapsing the two switched every None-passing caller onto
+#: the calibrated-weight objective, which the end-to-end water test caught.
+_PRIOR_SIGMA_UNSET = object()
+
+#: How negative a propagated variance may be, relative to the size of the terms
+#: summed to produce it, before it counts as a failed propagation rather than
+#: round-off. Round-off on a well-conditioned covariance lands near 1e-16 of the
+#: term scale; a collapsed one lands near -1. Anything in between is already
+#: untrustworthy, so the threshold is deliberately far below the round-off it
+#: has to tolerate and far above the failure it has to catch.
+_VAR_NEGATIVE_REL_TOL = 1e-9
+_TINY = 1e-300
+
+#: How indefinite the posterior covariance may be before its propagated widths
+#: are refused outright, as min(eig)/max(eig). A symmetric covariance should be
+#: positive semi-definite; a small negative eigenvalue is round-off, a large one
+#: means the normal matrix was too ill-conditioned to invert meaningfully and
+#: every width taken from it is noise -- whatever sign that noise happens to
+#: carry on a given BLAS.
+#:
+#: Measured on water, min(eig)/max(eig), across two interpreters:
+#:
+#:     floored, sigma 0.02      -2.2e-16  (3.11)   -1.4e-15  (3.12)
+#:     floored, sigma 2000      -6.6e-16  (3.11)   -2.9e-16  (3.12)
+#:     unfloored, sigma 2.0     -6.7e-10  (3.11)   -7.5e-10  (3.12)   usable
+#:     unfloored, sigma 0.02    -1.2e+02  (3.11)   rejected  (3.12)   collapsed
+#:
+#: so 1e-6 sits in an empty four-order gap above anything usable and far below
+#: the collapse. It has to be a RATIO: the same absolute eigenvalue means
+#: round-off on one matrix and catastrophe on another.
+_COV_INDEFINITE_REL_TOL = 1e-6
+
+#: Fallback when the level of theory has no calibrated width. See
+#: spectral.prior_widths for the calibrated table and why an unmeasured level
+#: falls back to the loosest value rather than an interpolated one.
 DEFAULT_QUANTUM_PRIOR_SIGMA_ANG = 0.020
 
 #: Guards on chi-square rescaling. Below this many degrees of freedom the ratio
@@ -228,7 +273,7 @@ class MolecularOptimizer:
     max_iter : int
         Maximum optimisation iterations.
     conv_step : float
-        Convergence threshold on Cartesian step norm [Ã…].
+        Convergence threshold on Cartesian step norm [Å].
     conv_freq : float
         Convergence threshold on rotational-constant RMS residual [MHz].
     conv_energy : float
@@ -236,34 +281,34 @@ class MolecularOptimizer:
         [Hartree]. Used for hybrid stall detection and optionally for null-space
         convergence when ``null_convergence_requires_energy`` is True.
     spectral_analytic_jacobian : bool
-        If True (default), ``SpectralEngine`` uses an analytic âˆ‚(A,B,C)/âˆ‚x with
+        If True (default), ``SpectralEngine`` uses an analytic ∂(A,B,C)/∂x with
         finite-difference fallback for degenerate principal moments.
     spectral_jacobian_degeneracy_tol : float
         Relative moment gap below which the Jacobian falls back to finite differences.
     null_convergence_requires_energy : bool
-        If True, null-space convergence also requires ``|Î”E| < conv_energy``.
+        If True, null-space convergence also requires ``|ΔE| < conv_energy``.
         Default False avoids stalling when energy differences fluctuate iteration-to-iteration.
     conv_step_range : float
         Convergence threshold on the range-space component of the Cartesian
-        step norm [Ã…].
+        step norm [Å].
     conv_step_null : float
         Convergence threshold on the null-space component of the Cartesian
-        step norm [Ã…].
+        step norm [Å].
     conv_grad_null : float
         Convergence threshold on the projected null-space gradient norm
-        [Hartree/Ã…].
+        [Hartree/Å].
     orca_update_thresh : float
         Re-run ORCA when RMS geometry drift from last ORCA point exceeds
-        this value [Ã…].  Default 0.005 Ã….
+        this value [Å].  Default 0.005 Å.
     hess_recalc_every : int
         Recalculate the full Hessian every N ORCA calls.  Between recalculations
         only a cheap gradient (EnGrad) job is run.  Default 1 (always recalculate).
     sv_threshold : float
         Relative singular-value cutoff for range/null-space split.
     trust_radius : float
-        Maximum step size [Ã…].
+        Maximum step size [Å].
     lambda_damp : float
-        Levenbergâ€“Marquardt regularisation on the null-space Hessian.
+        Levenberg–Marquardt regularisation on the null-space Hessian.
     """
 
     def __init__(
@@ -305,7 +350,12 @@ class MolecularOptimizer:
         prior_target_coords=None,
         isotropic_prior=False,
         alpha_quantum=1.0,
-        quantum_prior_sigma_ang=DEFAULT_QUANTUM_PRIOR_SIGMA_ANG,
+        # Unset means "calibrate from the level of theory" (see
+        # spectral.prior_widths); an explicit None still means the legacy
+        # heuristic. It previously defaulted to the flat constant, which made
+        # "the caller said nothing" indistinguishable from "the caller asked
+        # for 0.020", so the calibration below could never fire.
+        quantum_prior_sigma_ang=_PRIOR_SIGMA_UNSET,
         prior_class_sigma=None,
         robust_loss="none",
         robust_param=1.0,
@@ -383,6 +433,37 @@ class MolecularOptimizer:
         anharmonic_from_hessian=False,
         anharmonic_fd_delta_ang=0.01,
         nonconvergent_policy="warn",
+        harmonic_scheme="watson",
+    #: normal_mode, not cartesian, and the difference is not small. Both compute the
+    #: same cubic force field; they differ in how it is sampled and therefore in how
+    #: well it is known. The Cartesian tensor takes raw coordinate displacements,
+    #: which mix in rotation and use one step for every mode; the normal-mode route
+    #: displaces along each mode with a ZPE-scaled step, which is what keeps the cubic
+    #: term meaningful on a noisy surface. The code has said "preferred" in
+    #: compute_harmonic_alpha's docstring since it was written.
+    #:
+    #: It also earns a different sigma. The normal-mode path gets a calibrated
+    #: nm_sigma_fraction of the cancellation sum plus its own measured noise; the
+    #: Cartesian path is floored at the FULL magnitude of the anharmonic term.
+    #: Measured on water:
+    #:
+    #:     cartesian     alpha_A -8411   sigma 35720 / 7965 / 7703
+    #:     normal_mode   alpha_A -8344   sigma 11352 / 2792 / 1541
+    #:
+    #: The same alpha to 0.8%, carried with three to five times the uncertainty. The
+    #: fit weights every target by 1/sigma^2, so that is nine to twenty-five times
+    #: less weight on the corrections -- the default threw away most of what the
+    #: correction chain had computed.
+    #:
+    #: Every benchmark in this repository passed cubic_scheme="normal_mode"
+    #: explicitly, so none of them ever exercised the default, and the shipped engine
+    #: was not the one the results came from. It is also the cheaper of the two:
+    #: 2*n_vib Hessians against 6N. It degrades to cartesian on its own when there
+    #: are no isotopologues to build the mode decomposition from.
+        cubic_scheme="normal_mode",
+        freq_scale=1.0,
+        lam_freq_cm=0.0,
+        torsion_replacement=None,
         defect_bias_scale=False,
         harmonic_cd_from_hessian=False,
         cd_sigma_fraction=0.05,
@@ -416,12 +497,29 @@ class MolecularOptimizer:
             orca_method = preset_method
             orca_basis = preset_basis
 
-        # â”€â”€ Rovibrational corrections (M1-M4) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        # ── Rovibrational corrections (M1-M4) ────────────────────────────────
         self._harmonic_from_hessian = bool(harmonic_from_hessian)
         self._harmonic_sigma_fraction = max(float(harmonic_sigma_fraction), 1e-6)
         self._anharmonic_from_hessian = bool(anharmonic_from_hessian)
         self._anharmonic_fd_delta_ang = max(float(anharmonic_fd_delta_ang), 1e-4)
         self._nonconvergent_policy = str(nonconvergent_policy or "warn").strip().lower()
+        # These four reach build_correction_table_from_hessian. Until now they
+        # were only settable by calling that function directly, which meant the
+        # benchmark scripts could pick a scheme and a config file could not --
+        # so the Watson harmonic term, the normal-mode cubic transform,
+        # frequency scaling and the large-amplitude cut were all unreachable
+        # from the CLI and the web UI.
+        self._harmonic_scheme = str(harmonic_scheme or "watson").strip().lower()
+        self._cubic_scheme = str(cubic_scheme or "normal_mode").strip().lower()
+        self._freq_scale = freq_scale
+        self._lam_freq_cm = max(float(lam_freq_cm or 0.0), 0.0)
+        # An explicitly computed torsional contribution, replacing the
+        # perturbative alpha for the modes it covers. This is the only route by
+        # which the torsion package reaches the optimiser: until now the full
+        # torsion-rotation Hamiltonian, the averaging and the fitter were
+        # reachable only from runner/run_generic.py, so none of that physics
+        # could be scored by any benchmark, all of which run through this class.
+        self._torsion_replacement = torsion_replacement
         self._defect_bias_scale = bool(defect_bias_scale)
         self._harmonic_cd_from_hessian = bool(harmonic_cd_from_hessian)
         self._warned_cd_unvalidated = False
@@ -512,6 +610,32 @@ class MolecularOptimizer:
                   f"{', '.join(_filled[:3])}{' ...' if len(_filled) > 3 else ''}")
 
         self._raw_isotopologues = list(isotopologues)   # preserved for harmonic updates
+        # Fitting distortion constants needs OBSERVED ones to fit against, and
+        # nothing anywhere supplies them by default. cd_residuals_mhz skips any
+        # isotopologue without a cd_observed block, so with none present the
+        # whole switch is a bit-exact no-op -- measured across all nine
+        # benchmark molecules in both prior configurations, the fitted geometry
+        # moved by at most 8e-9 mA, which is solver noise.
+        #
+        # That is a silence worth breaking. An hour of compute went into
+        # measuring a feature that was switched on, reported no error, and did
+        # nothing, and the next person to try would spend the same hour.
+        if self._fit_cd_constants and self._cd_weight > 0.0:
+            _n_cd = sum(
+                1 for _iso in self._raw_isotopologues
+                if (_iso.get("cd_observed") or _iso.get("centrifugal_distortion"))
+            )
+            if _n_cd == 0:
+                print(
+                    "[cd-warning] fit_cd_constants=True but no isotopologue "
+                    "carries a cd_observed\n"
+                    "             block, so there are no distortion rows to "
+                    "fit and the switch\n"
+                    "             will have NO effect. Add observed DJ/DJK/DK "
+                    "(with the reduction\n"
+                    "             they were fitted in) to the isotopologues "
+                    "that have them."
+                )
         self._corrected_targets = None
         _ctbl = parse_correction_table(correction_table)
         _apply_corrections = bool(_ctbl) or correction_mode != "hybrid_auto"
@@ -541,7 +665,7 @@ class MolecularOptimizer:
             if use_orca_rovib:
                 print(
                     "[correction-warning] use_orca_rovib=True is ignored when correction_table "
-                    "is supplied â€” corrections are pre-applied and alpha_constants are zeroed."
+                    "is supplied — corrections are pre-applied and alpha_constants are zeroed."
                 )
                 use_orca_rovib = False
 
@@ -671,6 +795,34 @@ class MolecularOptimizer:
         # "fit" left 4 MHz cross-species residuals and C-F 22 mA wrong where
         # a direct least-squares on the same six numbers leaves 0.04 MHz and
         # 2.5 mA.
+        # Calibrate the prior width to the level of theory when the caller did
+        # not state one. sigma_x is an estimate of this level's own geometry
+        # error, and the repository has measured that for several levels -- but
+        # until now those measurements lived in a benchmark script while the
+        # engine shipped one flat constant. Every benchmark passed sigma_x
+        # explicitly and got the calibrated value; every CLI and browser run
+        # took the flat 0.020. Through the joint objective -- the engine's
+        # main solver -- that reaches alpha_q as 1/sigma_x^2, so at
+        # B3LYP/cc-pVTZ the shipped engine weighted the quantum prior 25 times
+        # more weakly than the benchmarked one. See spectral.prior_widths.
+        if quantum_prior_sigma_ang is _PRIOR_SIGMA_UNSET:
+            _lvl = level_for_backend(
+                quantum_backend, orca_method, orca_basis,
+                psi4_method, psi4_basis)
+            _sig, _calibrated = prior_sigma_for_level(
+                *_lvl, default=DEFAULT_QUANTUM_PRIOR_SIGMA_ANG)
+            # Assign in BOTH branches. Everything downstream expects a float
+            # here, and it always got one while the default was the flat
+            # constant; leaving the uncalibrated path unassigned handed
+            # SubspaceOptimizer a None it had never seen.
+            quantum_prior_sigma_ang = _sig
+            if _calibrated:
+                print(f"  [prior] sigma_x = {_sig:.4f} A, calibrated for "
+                      f"{_lvl[0]}/{_lvl[1]}")
+            else:
+                print(f"  [prior] sigma_x = {_sig:.4f} A, the uncalibrated "
+                      f"default ({_lvl[0]}/{_lvl[1]} has not been benchmarked)")
+
         if sv_min_abs is None:
             if spectral_only:
                 sv_min_abs = 0.0
@@ -1062,7 +1214,7 @@ class MolecularOptimizer:
         """Compare VPT2 alpha (from ORCA) with harmonic alpha computed from the Hessian.
 
         Prints a per-isotopologue, per-component table.  Flags components where
-        |Î”Î±| > 2 Ã— harmonic_sigma â€” which suggests the harmonic uncertainty estimate
+        |Δα| > 2 × harmonic_sigma — which suggests the harmonic uncertainty estimate
         may be too tight or a resonance is affecting the VPT2 result.
         """
         from backend.spectral.harmonic_alpha import compute_harmonic_alpha  # pylint: disable=import-outside-toplevel
@@ -1106,17 +1258,26 @@ class MolecularOptimizer:
                 v_harm = h_alpha.get(lbl, 0.0)
                 sig = h_sigma.get(lbl, 1.0)
                 diff = abs(float(v_vpt2) - float(v_harm))
-                flag = "  [>2Ïƒ]" if diff > 2.0 * sig else ""
-                parts.append(f"{lbl}: VPT2={float(v_vpt2):+.1f} harm={v_harm:+.1f} Î”={diff:.1f} MHz{flag}")
+                flag = "  [>2σ]" if diff > 2.0 * sig else ""
+                parts.append(f"{lbl}: VPT2={float(v_vpt2):+.1f} harm={v_harm:+.1f} Δ={diff:.1f} MHz{flag}")
             if parts:
                 print(f"  [vpt2-check]   {label}: {';  '.join(parts)}")
 
     def _apply_harmonic_alpha_corrections(self):
         """Recompute harmonic alpha from the current Hessian and update spectral targets.
 
-        Called once after the first Hessian computation when harmonic_from_hessian=True.
-        Re-applies rovibrational + electronic corrections to the raw (uncorrected)
-        isotopologue data using the current harmonic alpha values.
+        Re-applies rovibrational + electronic corrections to the raw
+        (uncorrected) isotopologue data using the current harmonic alpha.
+
+        This fires on EVERY Hessian recalculation, not once. An earlier version
+        of this docstring claimed otherwise, and there is no guard that would
+        make it true. The distinction matters: self.coords is the CURRENT
+        geometry, so each rebuild re-expands alpha about wherever the optimiser
+        has reached. That is the expansion-point tracking the benchmark calls
+        the "direct" scheme -- measured there as the best of three, since it is
+        the wanted quantity rather than an extrapolation towards it -- and it
+        means hess_recalc_every, not a separate switch, is what controls how
+        closely the correction follows the fit.
         """
         from backend.spectral.harmonic_alpha import build_correction_table_from_hessian  # pylint: disable=import-outside-toplevel
 
@@ -1154,6 +1315,11 @@ class MolecularOptimizer:
             hessian_fn=hessian_fn,
             fd_delta_cubic=self._anharmonic_fd_delta_ang,
             nonconvergent_policy=self._nonconvergent_policy,
+            harmonic_scheme=self._harmonic_scheme,
+            cubic_scheme=self._cubic_scheme,
+            freq_scale=self._freq_scale,
+            lam_freq_cm=self._lam_freq_cm,
+            torsion_replacement=self._torsion_replacement,
         )
         for status in dict.fromkeys(_res_info.get("anharmonic_statuses", [])):
             if status not in ("cubic_fd", "not_requested"):
@@ -1200,7 +1366,7 @@ class MolecularOptimizer:
         if _near_degen > 0:
             print(
                 f"  [harmonic-alpha] WARNING: {_near_degen} near-degenerate Coriolis pair(s) "
-                "skipped (|Ï‰_sÂ²âˆ’Ï‰_rÂ²| < 0.01 cmâ»Â²). Alpha values may be less reliable for "
+                "skipped (|ω_s²−ω_r²| < 0.01 cm⁻²). Alpha values may be less reliable for "
                 "these modes (Fermi/Coriolis resonance region)."
             )
         if not ctbl_raw:
@@ -1221,11 +1387,11 @@ class MolecularOptimizer:
                 if prev is not None:
                     delta = abs(v - prev)
                     max_delta = max(max_delta, delta)
-                    parts.append(f"{comp_lbl}={v:+.1f}Â±{s:.1f} (Î”={delta:+.2f})")
+                    parts.append(f"{comp_lbl}={v:+.1f}±{s:.1f} (Δ={delta:+.2f})")
                 else:
-                    parts.append(f"{comp_lbl}={v:+.1f}Â±{s:.1f}")
+                    parts.append(f"{comp_lbl}={v:+.1f}±{s:.1f}")
                 self._prev_harmonic_alpha_sum[key] = v
-            print(f"  [harmonic-alpha]   {iso_name}: Î£Î± = {', '.join(parts)} MHz")
+            print(f"  [harmonic-alpha]   {iso_name}: Σα = {', '.join(parts)} MHz")
         if max_delta > 0.0:
             print(f"  [harmonic-alpha] Max alpha drift since last Hessian: {max_delta:.2f} MHz")
 
@@ -1274,17 +1440,25 @@ class MolecularOptimizer:
         print("\n  [harmonic-cd] Computing harmonic CD constants from Hessian...")
         if not self._warned_cd_unvalidated:
             self._warned_cd_unvalidated = True
+            # This used to warn that the mapping produced DJ and DK with the
+            # wrong sign (-66.9 against +37.6, -7.0 against +973.3) and DJK
+            # nine times too small. That described the old closed-form
+            # coefficient table, which cd_reduction replaced with a linear
+            # solve against the levels tau itself generates. The signs are now
+            # right on all five constants and the magnitudes are measured, so
+            # the warning says what is actually known.
             print(
-                "  [harmonic-cd] WARNING: the tau' -> Watson A-reduction mapping "
-                "is not validated.\n"
-                "                Measured against water's experimental constants it "
-                "gets DJ and DK\n"
-                "                with the WRONG SIGN (-66.9 vs +37.6, -7.0 vs +973.3) "
-                "and DJK nine\n"
-                "                times too small. These are not order-of-magnitude "
-                "estimates; treat\n"
-                "                them as diagnostics only. See "
-                "dev/tests/test_cd_mapping_validation.py."
+                "  [harmonic-cd] NOTE: validated on water only, where the "
+                "A-reduced constants\n"
+                "                come out DJ +38.2 against +37.59 (1.6% high), "
+                "DK +899 against\n"
+                "                +973.3 (7.6% low) and DJK -235 against -172.9 "
+                "(36% low) --\n"
+                "                force-field error, not mapping error, and DJK "
+                "is the most\n"
+                "                bend-sensitive of the three. One molecule is "
+                "not a validation\n"
+                "                set; see dev/tests/test_cd_mapping_validation.py."
             )
         cd_table = build_cd_table_from_hessian(
             hess_bohr,
@@ -1371,7 +1545,7 @@ class MolecularOptimizer:
         """Make the next quantum update recompute the Hessian rather than reuse it."""
         self._since_hessian = None
 
-    # â”€â”€ Pre-computed files â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Pre-computed files ────────────────────────────────────────────────────
 
     def load_orca(self, engrad_path, hess_path):
         """
@@ -1383,7 +1557,7 @@ class MolecularOptimizer:
         self._orca_ref_coords = self.coords.copy()
         print(f"Loaded ORCA files.  Energy = {self.quantum.energy:.10f} Hartree")
 
-    # â”€â”€ Drift check â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Drift check ───────────────────────────────────────────────────────────
 
     def _orca_drift(self):
         if self._orca_ref_coords is None:
@@ -1639,7 +1813,7 @@ class MolecularOptimizer:
             self.optimizer.alpha_quantum = target_alpha
         return controls
 
-    # â”€â”€ Optimisation loop â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Optimisation loop ─────────────────────────────────────────────────────
 
     def _chi2_dof(self):
         """Effective degrees of freedom of the regularised fit.
@@ -1709,6 +1883,24 @@ class MolecularOptimizer:
         end-to-end water case it left the structure worse than theory alone
         (14.6 mA against 10.9), so it should be switched on only where it has
         been shown to help. Enable with chi2_rescale=True.
+
+        MEASURED AGAIN, 2026-11-09, because an audit flagged that every
+        benchmark passes chi2_rescale=True while this ships False and that
+        looked like the same shipped-versus-benchmarked gap that cubic_scheme
+        turned out to be. It is not; the default here is deliberate.
+
+        Forced to fire -- threshold set to 1e-6, confirmed firing with dof >= 1
+        and reduced chi-square of 0.24, 0.032 and 0.0014 -- it moved the fitted
+        geometry by less than 0.005 mA on water, ozone and formyl fluoride at
+        RHF/6-31G. It rescales the SPECTRAL sigmas only (spectral.scale_sigma),
+        leaving the quantum prior width alone, so it can genuinely shift the
+        data-versus-prior balance and on these three it simply does not change
+        where the fit lands.
+
+        So the benchmarks have been enabling a switch that does nothing on the
+        molecules they run, and the one case where it is known to do something
+        it makes the structure worse. Leaving it off is the supported choice,
+        not an oversight.
 
         A converged fit whose reduced chi-square is far above one is telling you
         the stated uncertainties were optimistic: the model cannot represent the
@@ -1786,7 +1978,7 @@ class MolecularOptimizer:
                 comps = [labels[c] if 0 <= int(c) < 3 else f"R{int(c)}" for c in idx]
                 print(f"[rank-debug]   iso {i}: {comps}")
 
-        # #5: Per-component observability â€” how many isotopologues constrain each constant
+        # #5: Per-component observability — how many isotopologues constrain each constant
         _comp_labels = ["A", "B", "C"]
         _obs_count = {"A": 0, "B": 0, "C": 0}
         for _iso in self.spectral.isotopologues:
@@ -1847,7 +2039,7 @@ class MolecularOptimizer:
                 prior_wrms_before = self.internal_prior.diagnostics(self.coords).get("prior_wrms", 0.0)
             B, _ = wilson_B(self.coords, self.elems)
 
-            # â”€â”€ Internal-coordinate mode: transform J and quantum terms to q-space â”€â”€
+            # ── Internal-coordinate mode: transform J and quantum terms to q-space ──
             _ic_coord_set = None
             _ic_Bplus = None
             _ic_g = g
@@ -1866,12 +2058,12 @@ class MolecularOptimizer:
                     kappa_b_str = f"{b_diag['kappa_B']:.2e}" if b_diag['kappa_B'] is not None else "n/a"
                     print(
                         f"[B-matrix] n_coords={b_diag['n_coords']}  rank={b_diag['rank']}"
-                        f"  of {b_diag['n_dof']} DOF  Îº(B)={kappa_b_str}"
+                        f"  of {b_diag['n_dof']} DOF  κ(B)={kappa_b_str}"
                     )
                     if b_diag["kappa_B"] is not None and b_diag["kappa_B"] > 1e4:
                         print(
-                            f"  [warn] B-matrix ill-conditioned Îº(B)={b_diag['kappa_B']:.2e}; "
-                            "some internal coordinates may be linearly dependent â€” "
+                            f"  [warn] B-matrix ill-conditioned κ(B)={b_diag['kappa_B']:.2e}; "
+                            "some internal coordinates may be linearly dependent — "
                             "consider increasing ic_damping."
                         )
                     if self.autoconfig is not None:
@@ -1916,7 +2108,7 @@ class MolecularOptimizer:
                 J, residual_w, _ic_g, _ic_H, B=_svd_B,
                 prior_displacement=self._prior_displacement())
 
-            # â”€â”€ Back-transform and compute trial geometry â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            # ── Back-transform and compute trial geometry ─────────────────────
             _orig_coords = self.coords  # reference before update (never mutated here)
             if self.coordinate_mode == "internal":
                 # dp is a q-space step; back-transform to Cartesian via micro-iterations
@@ -2009,7 +2201,7 @@ class MolecularOptimizer:
             sv_kept   = float(sv[rank - 1]) if rank > 0 else 0.0
             kappa_J   = float(sv[0] / sv[rank - 1]) if rank > 1 and sv[rank - 1] > 0 else None
             if kappa_J is not None and kappa_J > 1e6:
-                print(f"  [warn] Îº(J)={kappa_J:.2e} â€” Jacobian ill-conditioned; "
+                print(f"  [warn] κ(J)={kappa_J:.2e} — Jacobian ill-conditioned; "
                       "consider adding isotopologues or checking input consistency.")
             if self.debug_rank_diagnostics:
                 cutoff = float(self.optimizer.sv_threshold * sv[0]) if len(sv) and sv[0] > 0 else 0.0
@@ -2099,7 +2291,7 @@ class MolecularOptimizer:
                 stage_suffix = f" [{autoconfig_controls['stage']}]"
             print(
                 f"{it+1:>5}  {step_norm:>12.4e}  {wrms:>12.4f}  {freq_rms:>12.4f}  "
-                f"{rank:>6d}  {sv_kept:>12.4e}  Îº(J)={kappa_str}  "
+                f"{rank:>6d}  {sv_kept:>12.4e}  κ(J)={kappa_str}  "
                 f"{dx_range_norm:>10.3e}  {dx_null_norm:>10.3e}  "
                 f"{gnull_str}  {alpha_q_eff:>8.3f}  {dE_str}  "
                 f"lambda={self.optimizer.lambda_damp:.2e} {status}{stage_suffix}"
@@ -2185,7 +2377,7 @@ class MolecularOptimizer:
 
         return self.coords.copy()
 
-    # â”€â”€ Output â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Output ────────────────────────────────────────────────────────────────
 
     def write_xyz(self, path):
         """Write final geometry to an XYZ file."""
@@ -2301,6 +2493,25 @@ class MolecularOptimizer:
             return "C-F"
         return "skeleton"
 
+    def _warn_once(self, message: str, key: str | None = None) -> None:
+        """Print a warning the first time only, per optimizer instance.
+
+        geometry_uncertainty propagates one coordinate at a time, so a single
+        bad covariance would otherwise print the same paragraph once per bond
+        and angle and bury itself in its own repetition. ``key`` is what makes
+        two warnings "the same": the messages carry per-coordinate numbers, so
+        keying on the text alone would defeat the purpose.
+        """
+        seen = getattr(self, "_warned_messages", None)
+        if seen is None:
+            seen = set()
+            self._warned_messages = seen
+        k = message if key is None else key
+        if k in seen:
+            return
+        seen.add(k)
+        print(f"  [uncertainty] WARNING: {message}", flush=True)
+
     def geometry_uncertainty(self, rigid_tol=1e-8):
         """Posterior standard deviation on each bond length and angle.
 
@@ -2355,6 +2566,39 @@ class MolecularOptimizer:
 
         J, _ = self.spectral.stacked(self.coords)
         cov = cov + self._systematic_covariance(J, cov)
+
+        # IS THIS COVARIANCE USABLE AT ALL? Checked once, on the matrix, rather
+        # than per coordinate on the sign of a quadratic form.
+        #
+        # The per-coordinate check below catches a variance that comes out
+        # negative, which is what happens on some platforms. On others the same
+        # collapsed matrix yields a POSITIVE variance and so a plausible-looking
+        # width -- measured: 0.0119 Ang on a covariance whose condition number
+        # is 1.2e32 and whose minimum eigenvalue is -120 times its maximum.
+        # Guarding on the sign alone therefore catches one symptom on one
+        # machine and lets the same meaningless number through on another,
+        # which is exactly how this survived in the first place.
+        sym = (cov + cov.T) / 2.0
+        try:
+            eigs = np.linalg.eigvalsh(sym)
+        except np.linalg.LinAlgError:
+            eigs = None
+        if eigs is not None and eigs.size:
+            hi = float(np.max(eigs))
+            lo = float(np.min(eigs))
+            if hi > 0.0 and lo / hi < -_COV_INDEFINITE_REL_TOL:
+                self._warn_once(
+                    "geometry_uncertainty: the posterior covariance is not "
+                    f"positive semi-definite (min/max eigenvalue = "
+                    f"{lo / hi:.2e}), so no width taken from it is meaningful. "
+                    "Returning None rather than numbers. This happens when "
+                    "sigma_constants are quoted far below the B0-versus-Be "
+                    "model error with sigma_floor_rel disabled; the floor "
+                    "exists partly to keep the normal matrix invertible.",
+                    key="geometry_uncertainty_indefinite_covariance",
+                )
+                return None
+
         null_frac = self._data_null_fractions(J)
 
         bonds = _detect_bonds(self.coords, self.elems)
@@ -2369,6 +2613,47 @@ class MolecularOptimizer:
                 xm[k] -= h
                 g[k] = (fn(xp.reshape(-1, 3)) - fn(xm.reshape(-1, 3))) / (2 * h)
             var = float(g @ cov @ g)
+
+            # A NEGATIVE VARIANCE IS A FAILURE, NOT A ZERO.
+            #
+            # This used to be `sqrt(max(var, 0.0))`, which is right for a
+            # negative of round-off size and catastrophically wrong for
+            # anything larger. Measured on water with the relative sigma floor
+            # switched off and sigmas quoted at 0.02 MHz on constants near
+            # 1e6 MHz: the covariance reaches a condition number of 1.2e32
+            # with a minimum eigenvalue of -2.0e13, this variance comes out at
+            # -2.3e13, and the old clamp reported it as sigma = 0.000000.
+            #
+            # That is the worst possible answer. A function whose own docstring
+            # says the uncertainty IS the result, and that a structure quoted
+            # without one cannot be used, was quoting PERFECT PRECISION at the
+            # exact point where its arithmetic had collapsed. It also made the
+            # behaviour platform-dependent -- on another LAPACK the round-off
+            # lands slightly positive and you get a plausible 0.0119 instead,
+            # which is how it survived: a test pinned the comparison and
+            # passed on one machine and failed on another, with neither value
+            # meaning anything.
+            #
+            # The tolerance is relative to the size of the terms being summed,
+            # because an absolute one cannot tell 1e-20 on a small matrix from
+            # 1e-20 on a huge one. The floored default path sits at
+            # min_eig = -2.7e-20 against a positive variance of 1.4e-4 and is
+            # unaffected.
+            scale = float(np.abs(g) @ np.abs(cov) @ np.abs(g))
+            if var < -_VAR_NEGATIVE_REL_TOL * max(scale, _TINY):
+                self._warn_once(
+                    "geometry_uncertainty: propagated variance came out "
+                    f"negative ({var:.3e} against a term scale of "
+                    f"{scale:.3e}), so the posterior covariance is not "
+                    "positive semi-definite and this coordinate's width "
+                    "cannot be propagated. Reported as nan rather than 0. "
+                    "This happens when sigma_constants are quoted far below "
+                    "the B0-versus-Be model error with sigma_floor_rel "
+                    "disabled; the floor exists partly to keep the normal "
+                    "matrix invertible.",
+                    key="geometry_uncertainty_negative_variance",
+                )
+                return float("nan"), g
             return float(np.sqrt(max(var, 0.0))), g
 
         out = {}

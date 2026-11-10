@@ -9,13 +9,13 @@ the substituted atom directly from the two sets of rotational constants — no
 geometry model required.  This is the field-standard cross-check for any
 fitted structure and is what programs like KRA and STRFIT report.
 
-All moments are in amu·Å², constants in MHz, coordinates in Å.
+All moments are in amu·Ų, constants in MHz, coordinates in Å.
 
 Conventions
 -----------
 * Planar moments: P_a = Σ m_i a_i² = ( -I_a + I_b + I_c ) / 2, and cyclic.
 * Reduced mass of substitution: μ = M·Δm / (M + Δm).
-* Costain rule: σ(|z|) ≈ K / |z| with K = 0.0015 Å² accounts for zero-point
+* Costain rule: σ(|z|) ≈ K / |z| with K = 0.0015 Ų accounts for zero-point
   vibration effects, and dominates propagated measurement error for typical
   microwave data.
 
@@ -29,15 +29,15 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-# h / (8π² · amu · Å²) → MHz  (same constant as backend.spectral)
+# h / (8π² · amu · Ų) → MHz  (same constant as backend.spectral)
 _INERTIA_TO_MHZ = 505379.0084353526
 
-# Costain constant for rs coordinate uncertainty [Å²]
+# Costain constant for rs coordinate uncertainty [Ų]
 COSTAIN_K = 0.0015
 
 
 def moments_from_constants(constants_mhz) -> np.ndarray:
-    """Principal moments of inertia (amu·Å²) from rotational constants A ≥ B ≥ C in MHz."""
+    """Principal moments of inertia (amu·Ų) from rotational constants A ≥ B ≥ C in MHz."""
     c = np.asarray(constants_mhz, dtype=float)
     if np.any(c <= 0):
         raise ValueError("Rotational constants must be positive.")
@@ -46,7 +46,7 @@ def moments_from_constants(constants_mhz) -> np.ndarray:
 
 def planar_moments(constants_mhz) -> np.ndarray:
     """
-    Planar moments (P_a, P_b, P_c) in amu·Å² from constants (A, B, C) in MHz.
+    Planar moments (P_a, P_b, P_c) in amu·Ų from constants (A, B, C) in MHz.
 
     P_a = Σ m_i a_i² = (-I_a + I_b + I_c)/2, and cyclic permutations.
     """
@@ -61,7 +61,7 @@ def planar_moments(constants_mhz) -> np.ndarray:
 
 def inertial_defect(constants_mhz) -> float:
     """
-    Inertial defect Δ = I_c − I_a − I_b in amu·Å².
+    Inertial defect Δ = I_c − I_a − I_b in amu·Ų.
 
     Δ ≈ 0 (typically +0.05…+0.5 from zero-point effects) for a rigid planar
     molecule; large or negative values indicate non-planarity or
@@ -79,7 +79,7 @@ class KraitchmanResult:
     delta_mass: float
     reduced_mass: float
     coords_abs: np.ndarray            # |a|, |b|, |c| in Å (0.0 where imaginary)
-    coords_sq: np.ndarray             # signed squared coordinates a², b², c² [Å²]
+    coords_sq: np.ndarray             # signed squared coordinates a², b², c² [Ų]
     sigma_costain: np.ndarray         # Costain uncertainties per coordinate [Å]
     imaginary_axes: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
@@ -150,7 +150,7 @@ def kraitchman_single_substitution(
             imaginary.append(axes[i])
             if coords_sq[i] < -0.01:
                 warnings.append(
-                    f"{axes[i]}² = {coords_sq[i]:.5f} Å² is significantly negative; "
+                    f"{axes[i]}² = {coords_sq[i]:.5f} Ų is significantly negative; "
                     "check constants or vibrational contamination."
                 )
             coords_abs[i] = 0.0

@@ -84,11 +84,14 @@ from scripts.monofluoro_benchmark import start_geometry  # noqa: E402
 
 #: Published equilibrium structures, the only ones in the benchmark set.
 #: Water: Csaszar et al., J. Chem. Phys. 122, 214305 (2005).
-#: Ozone: Tyuterev et al., J. Mol. Spectrosc. 198, 57 (1999) -- r_e = 1.27276 A,
-#: angle 116.7542 deg, quoted to +/-0.00015 A and +/-0.0025 deg.
+#: Ozone: Tyuterev et al., J. Mol. Spectrosc. 198, 57 (1999).
+#:
+#: Both now come from the reference module rather than being written out again
+#: here. They were duplicated, and a literature value kept in two places is a
+#: value that will eventually disagree with itself.
 R_E = {
-    "water": (WATER, _bent_xy(WATER_R_E, WATER_THETA_E_DEG)),
-    "ozone": (OZONE, _bent_xy(1.27276, 116.7542)),
+    "water": (WATER, WATER.equilibrium_geometry),
+    "ozone": (OZONE, OZONE.equilibrium_geometry),
 }
 
 

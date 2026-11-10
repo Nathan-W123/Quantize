@@ -37,6 +37,7 @@ wide the intervals are. And coverage is a statement about noise: a bias shared
 across every isotopologue of a molecule moves the fitted structure and the
 interval together, so this test cannot see it. It says the widths are not
 overconfident. It does not say the centres are right.
+"""
 
 from __future__ import annotations
 

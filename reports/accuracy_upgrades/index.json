@@ -1,0 +1,15 @@
+{
+  "hf_6-31g": {
+    "molecules": [
+      "water"
+    ],
+    "configs": {
+      "base": 1,
+      "corr": 1
+    },
+    "code_vintages": {
+      "unstamped": 2
+    },
+    "mixed_vintage": false
+  }
+}

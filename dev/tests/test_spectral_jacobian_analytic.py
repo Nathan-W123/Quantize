@@ -10,7 +10,7 @@ from backend.spectral.spectral import (
 
 
 def test_analytic_matches_finite_difference_random_geometries():
-    """Asymmetric geometries avoid FD cancellation noise on near-zero âˆ‚A/âˆ‚x entries."""
+    """Asymmetric geometries avoid FD cancellation noise on near-zero ∂A/∂x entries."""
     rng = np.random.default_rng(2)
     delta = 1e-3
     for n in (3, 4, 6):

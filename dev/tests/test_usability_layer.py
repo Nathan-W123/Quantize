@@ -248,6 +248,12 @@ def test_write_outputs_creates_report_csvs_and_plots(tmp_path):
     with artifacts["residuals_csv"].open(newline="", encoding="utf-8") as fh:
         rows = list(csv.DictReader(fh))
     assert [row["component"] for row in rows] == ["A", "B", "C"]
+    # Plots are an OPTIONAL artifact: write_plots returns [] when matplotlib is
+    # absent, because a missing figure must not fail a run whose numbers are
+    # all present. Asserting the files unconditionally made a core-output test
+    # fail for a missing optional dependency, so it is declared rather than
+    # assumed.
+    pytest.importorskip("matplotlib")
     assert (tmp_path / "plots" / "residuals.png").is_file()
     assert (tmp_path / "plots" / "singular_values.png").is_file()
     assert (tmp_path / "plots" / "convergence.png").is_file()

@@ -156,12 +156,58 @@ class ReferenceMolecule:
     species: list[Isotopologue]
     structure_source: str
     constants_source: str
+    #: What KIND of structure the reference is, which sets the floor any error
+    #: measured against it can mean. Taken from what the cited source states,
+    #: never inferred:
+    #:
+    #:   "r_e"       equilibrium. The quantity this engine actually targets,
+    #:               so an error against it is the engine's own.
+    #:   "r_s"       substitution (Kraitchman). Carries a vibrational-averaging
+    #:               offset from r_e, so part of any error measured against it
+    #:               belongs to the yardstick.
+    #:   "effective" the r_0/r_s family, where the cited source as recorded here
+    #:               does not state which. Same caveat as r_s; the distinction
+    #:               between them is not what limits the comparison.
+    #:
+    #: WHY THERE IS NO NUMERIC FLOOR FIELD. A per-molecule r_s floor cannot be
+    #: computed from the final geometry. The Costain rule sigma(|z|) = 0.0015/|z|
+    #: diverges for an atom on a principal axis, and in these small, mostly
+    #: planar molecules nearly every atom is on one: propagating it through the
+    #: bonds of all nine references puts every bond against the 1 Ang cap and
+    #: returns 852 mA for ozone, where the figure the benchmark docstring quotes
+    #: from the literature is 4.1 mA. Two orders of magnitude, in the direction
+    #: that would make every row look meaningless. A real floor needs the
+    #: substitution data and the structure determination's own constraints, not
+    #: the coordinates it produced. So the TYPE is recorded, which is a fact,
+    #: and the floor is left to the per-molecule prose that has it.
+    structure_type: str = "effective"
+    #: An EQUILIBRIUM geometry for this molecule where one is published and the
+    #: primary ``geometry`` above is not already r_e. Both are kept rather than
+    #: one replacing the other, because the comparison between them is itself
+    #: the measurement: for ozone they differ by 1.06 mA, which is the size of
+    #: the best result the benchmark reports for it. A single number scored
+    #: against a single reference cannot show that; two can.
+    geometry_re: np.ndarray | None = None
+    geometry_re_source: str = ""
     bonds: dict = field(default_factory=dict)
     angles: dict = field(default_factory=dict)
 
     @property
     def n_atoms(self) -> int:
         return len(self.elems)
+
+    @property
+    def equilibrium_geometry(self):
+        """The r_e geometry for this molecule, or None if there isn't one.
+
+        Either the primary geometry when it is already equilibrium, or the
+        separately published ``geometry_re``. Callers that want to score the
+        engine against what it actually targets should use this and skip the
+        molecule when it is None, rather than quietly scoring against r_s.
+        """
+        if self.structure_type == "r_e":
+            return self.geometry
+        return self.geometry_re
 
     @property
     def internal_dof(self) -> int:
@@ -588,6 +634,61 @@ def _bent_xy(r_ang: float, theta_deg: float) -> np.ndarray:
     ])
 
 
+#: Ozone's published EQUILIBRIUM structure, as distinct from the r_s structure
+#: its benchmark reference carries. Tyuterev et al., J. Mol. Spectrosc. 198, 57
+#: (1999), quoted to +/-0.00015 A and +/-0.0025 deg.
+#:
+#: The pair is worth having because it quantifies the yardstick. The r_s
+#: reference gives r(O-O) = 1.27170 A and the r_e gives 1.27276 A -- 1.06 mA
+#: apart, against a best reported hybrid result for ozone of 1.00 mA. So an
+#: ozone figure quoted without saying which reference it used is ambiguous by
+#: its own magnitude.
+# ── Equilibrium references still wanted ─────────────────────────────────────
+#
+# Two of nine molecules have a published r_e here: water (Csaszar et al. 2005)
+# and ozone (Tyuterev et al. 1999, below). The other seven are scored against
+# r_s or effective structures, which is the binding constraint on what the
+# benchmark can demonstrate -- ozone's two references are 1.06 mA apart, and
+# that is larger than most of the differences between configurations the
+# benchmark is trying to resolve.
+#
+# ADDING ONE IS A TWO-LINE CHANGE: set geometry_re and geometry_re_source on
+# the molecule, and the benchmark picks up the extra columns automatically.
+# What is missing is the numbers, not the plumbing.
+#
+#   molecule              what to look for
+#   ------------------    ------------------------------------------------
+#   fluoroacetylene       r_e^SE; HC2F appears in the Demaison semi-
+#                         experimental series on small halogenated species
+#   isocyanic acid        the Demaison et al. equilibrium structure cited by
+#                         the HNCO nuclear-quadrupole literature; Fusina &
+#                         Mills (1981) give r_z, which is NOT r_e
+#   formyl fluoride       Demaison & Csaszar, J. Mol. Struct. 1023, 7 (2012)
+#                         covers equilibrium C=O lengths incl. F2CO/Cl2CO
+#   vinyl fluoride        r_e^SE from the halogenated-ethylene series
+#   fluoroethane          r_e^SE; compare the propyne treatment
+#   acetyl fluoride       unlikely to exist; a CCSD(T) r_e would have to
+#                         stand in, and then it is theory, not a reference
+#   chlorofluoromethane   unlikely to exist, same caveat
+#
+# The canonical compilation is Demaison & Vogt, "Accurate Structure
+# Determination of Free Molecules", which tabulates r_e for small molecules
+# and is the right place to start.
+#
+# NOT GUESSED. Web searches from this session returned method references and
+# citations but no transcribable tables, and CCCBDB needs form POSTs rather
+# than a fetchable URL. A mis-copied reference structure is worse than a
+# missing one: it would silently move every error measured against it, in a
+# direction nothing in the output would reveal. So these stay empty until
+# somebody reads the numbers off the source.
+
+#: Ozone's published equilibrium structure.
+OZONE_R_E_ANG = 1.27276
+OZONE_THETA_E_DEG = 116.7542
+OZONE_R_E_SOURCE = ("Tyuterev et al., J. Mol. Spectrosc. 198, 57 (1999); "
+                    "r_e = 1.27276(15) A, angle 116.7542(25) deg")
+
+
 # ── Water, H2O — a deliberate stress test ────────────────────────────────────
 # Structure: r_e = 0.95777 A, 104.48 deg -- the spectroscopic (nonadiabatic)
 # equilibrium structure of Csaszar et al., J. Chem. Phys. 122, 214305 (2005),
@@ -633,6 +734,7 @@ WATER = ReferenceMolecule(
         "(Csaszar et al., J. Chem. Phys. 122, 214305 (2005); consistent with "
         "Hoy & Bunker via NIST CCCBDB)"
     ),
+    structure_type="r_e",
     constants_source="NIST CCCBDB experimental rotational constants (H2O, D2O)",
     bonds={"O-H": [(0, 1), (0, 2)]},
     angles={"H-O-H": [(1, 0, 2)]},
@@ -777,6 +879,9 @@ OZONE = ReferenceMolecule(
                      (94768.2, 11886.5, 10536.9), (1, 1, 1)),
     ],
     structure_source="r_s structure, r(O-O) = 1.2717 A, angle 116.78 deg",
+    structure_type="r_s",
+    geometry_re=_bent_xy(OZONE_R_E_ANG, OZONE_THETA_E_DEG),
+    geometry_re_source=OZONE_R_E_SOURCE,
     constants_source="NBS Monograph 70 Vol. IV p.402 (entry 1840)",
     bonds={"O-O": [(0, 1), (0, 2)]},
     angles={"O-O-O": [(1, 0, 2)]},
@@ -890,6 +995,7 @@ ISOCYANIC_ACID = ReferenceMolecule(
         Isotopologue("303 DNCO", {1: M_D}, (None, 10313.61, 10079.67)),
     ],
     structure_source="r_s structure (Jones, Shoolery, Shulman & Yost 1950)",
+    structure_type="r_s",
     constants_source="NBS Monograph 70 Vol. IV p.69 (entry 300)",
     bonds={"N-H": [(0, 1)], "N-C": [(0, 2)], "C-O": [(2, 3)]},
     angles={"H-N-C": [(1, 0, 2)], "N-C-O": [(0, 2, 3)]},

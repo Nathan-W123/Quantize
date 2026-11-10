@@ -62,6 +62,7 @@ for _p in (_ROOT / ".github", _ROOT):
 import dev.pyscf_backend  # noqa: F401,E402  (registers "pyscf_hf")
 from backend.quantize import MolecularOptimizer  # noqa: E402
 from backend.registry import get_backend  # noqa: E402
+from backend.spectral.prior_widths import PRIOR_SIGMA_BY_LEVEL  # noqa: E402
 from backend.spectral.centrifugal_distortion import (  # noqa: E402
     rotational_constants_mhz,
 )
@@ -92,11 +93,13 @@ for _tok in sys.argv[1:]:
 #: The comparison hinges on this number being right for the level in use:
 #: hand mixed estimation a sigma_p calibrated for RHF while the geometry came
 #: from a triple-zeta functional and the baseline is being sandbagged.
-_SIGMA_X_BY_LEVEL = {
-    ("hf", "6-31g"): 0.020,
-    ("b3lyp", "6-31g(d)"): 0.007,
-    ("b3lyp", "cc-pvtz"): 0.004,
-}
+#: Re-exported from the library so the benchmarks and the shipped engine
+#: cannot drift apart. They already had: this table lived here while
+#: MolecularOptimizer used one flat constant for every level, so a benchmark
+#: run at B3LYP/cc-pVTZ trusted the prior over 4 mA and the same calculation
+#: through the CLI trusted it over 20. Several scripts import the name from
+#: here, so it stays importable.
+_SIGMA_X_BY_LEVEL = PRIOR_SIGMA_BY_LEVEL
 
 #: How far the quantum surface is trusted, in Angstrom. The hybrid derives its
 #: alpha_q from exactly this number, so handing the same value to mixed
@@ -236,14 +239,24 @@ def hybrid_fit(mol, isos, theory_coords, ctbl):
         return opt.run()
 
 
-def rms_bond_error(mol, coords):
-    ref = mol.internal_coordinates(np.asarray(mol.geometry, dtype=float))
+def rms_bond_error(mol, coords, ref_coords=None):
+    """RMS bond error in mA against ``ref_coords``, and the per-bond list.
+
+    ``ref_coords`` defaults to the molecule's primary reference geometry,
+    which for eight of the nine references is an r_s or effective structure
+    rather than the r_e the engine targets. Pass ``mol.equilibrium_geometry``
+    to score against equilibrium where one is published: for ozone those two
+    references are 1.06 mA apart, which is the size of the result being
+    reported, so which one was used is not a detail.
+    """
+    base = mol.geometry if ref_coords is None else ref_coords
+    ref = mol.internal_coordinates(np.asarray(base, dtype=float))
     got = mol.internal_coordinates(np.asarray(coords, dtype=float))
     errs = [(got[k] - ref[k]) * 1000.0 for k in mol.bonds]
     return float(np.sqrt(np.mean(np.square(errs)))), errs
 
 
-def rms_angle_error(mol, coords):
+def rms_angle_error(mol, coords, ref_coords=None):
     """RMS angle error in degrees, and the per-angle list.
 
     Reported alongside the bond RMS because the bond RMS alone flatters the
@@ -256,7 +269,8 @@ def rms_angle_error(mol, coords):
     """
     if not getattr(mol, "angles", None):
         return float("nan"), []
-    ref = mol.internal_coordinates(np.asarray(mol.geometry, dtype=float))
+    base = mol.geometry if ref_coords is None else ref_coords
+    ref = mol.internal_coordinates(np.asarray(base, dtype=float))
     got = mol.internal_coordinates(np.asarray(coords, dtype=float))
     errs = [float(got[k] - ref[k]) for k in mol.angles]
     return float(np.sqrt(np.mean(np.square(errs)))), errs

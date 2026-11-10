@@ -160,6 +160,10 @@ determines perfectly well.
 Rule of thumb: keep the joint objective's calibrated prior when the fit is
 undersaturated, and try `split` when it is not. `python scripts/tune_quantum_prior.py`
 scans the value; 0.005 Å is a sparse-data result, not a validated default.
+[`backend/spectral/prior_widths.py`](.github/backend/spectral/prior_widths.py)
+carries a per-level table (HF/6-31G 0.020 Å, B3LYP/6-31G(d) 0.007, B3LYP/cc-pVTZ
+0.004) and `MolecularOptimizer` uses it when `quantum_prior_sigma_ang` is left
+unset, so the width follows the level of theory rather than a single default.
 
 ### Monofluorinated benchmark — and a caveat on the two rows above
 

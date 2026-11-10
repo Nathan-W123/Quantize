@@ -137,8 +137,16 @@ def test_optimizer_applies_anharmonic_correction():
 
 
 def test_anharmonic_costs_6n_extra_hessians():
-    """Cartesian cubic force field: 2 displacements x 3N coordinates."""
-    harm, full = _build(False), _build(True)
+    """Cartesian cubic force field: 2 displacements x 3N coordinates.
+
+    The scheme is named explicitly because it is no longer the default. These
+    two tests measure what the CARTESIAN route costs, and they passed only by
+    inheriting a default that has since moved to normal_mode -- which is both
+    cheaper and better characterised. See the note on cubic_scheme in
+    compute_harmonic_alpha.
+    """
+    harm = _build(False, cubic_scheme="cartesian")
+    full = _build(True, cubic_scheme="cartesian")
     n_cart = 3 * len(H2O_ELEMS)
     assert harm._backend.hessian_calls == 1
     assert full._backend.hessian_calls == 1 + 2 * n_cart
@@ -164,6 +172,7 @@ def test_cubic_field_built_once_for_many_isotopologues():
         harmonic_from_hessian=True,
         anharmonic_from_hessian=True,
         coordinate_mode="cartesian",
+        cubic_scheme="cartesian",
     )
     opt._run_hessian()
     opt._apply_harmonic_alpha_corrections()
@@ -187,3 +196,25 @@ def test_no_anharmonic_means_no_extra_hessians_and_wider_sigma():
     sigma = np.asarray(harm.spectral.isotopologues[0]["sigma_constants"], dtype=float)
     # Sigma must reflect the omitted dominant term, not the 0.2 MHz measurement error.
     assert np.all(sigma > 1.0)
+
+
+def test_the_default_cubic_scheme_is_normal_mode_and_costs_less():
+    """The default moved, and nothing covered what it now does.
+
+    The normal-mode route displaces along each vibrational mode rather than
+    each Cartesian coordinate, so it costs 2*n_vib Hessians against the
+    Cartesian 6N. For water that is 6 against 18 -- cheaper, and it earns a
+    calibrated sigma instead of one floored at the full magnitude of the
+    anharmonic term.
+    """
+    harm = _build(False)
+    full = _build(True)
+    assert harm._cubic_scheme == "normal_mode", "the default is no longer normal_mode"
+    assert harm._backend.hessian_calls == 1
+
+    n_vib = 3 * len(H2O_ELEMS) - 6
+    extra = full._backend.hessian_calls - 1
+    assert extra == 2 * n_vib, (
+        f"normal-mode scheme used {extra} extra Hessians, expected {2 * n_vib}"
+    )
+    assert extra < 6 * len(H2O_ELEMS), "the default should be the cheaper route"

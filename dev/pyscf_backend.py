@@ -12,6 +12,63 @@ is what you want when testing whether spectroscopy can correct a biased prior.
 
 Cost scales sharply with basis. On fluorobenzene (12 atoms): STO-3G is about
 0.3 s per SCF and 26 s per analytic Hessian; 6-31G is 1 s and 68 s.
+
+Correlated methods
+------------------
+``method`` also accepts "mp2", "ccsd" and "ccsd(t)". Energies and gradients are
+analytic; PySCF has no analytic Hessian for any of them, so the Hessian is a
+central finite difference of the analytic gradient, costing 6N gradient
+evaluations. That is what decides whether a correlated force field is
+reachable, and the answer depends sharply on the molecule. Measured here, for
+one cubic force field under the normal-mode scheme (2 x n_vib Hessians, each
+6N gradients):
+
+    water / cc-pVTZ              58 bf    MP2  1.3 s/grad   ->  MP2  <0.1 h
+                                          CCSD  20 s/grad   ->  CCSD  0.6 h
+    formyl fluoride / cc-pVTZ   104 bf    MP2 10.7 s/grad   ->  MP2   0.9 h
+                                          CCSD  72 s/grad   ->  CCSD  5.7 h
+
+MP2/cc-pVTZ is therefore affordable through about five atoms, CCSD only for
+three, and CCSD(T)/cc-pVTZ -- the level quantize.py names as its ORCA default
+-- is out of reach on this hardware for anything but a triatomic. The published
+error budget for the semi-experimental method puts an MP2/cc-pVTZ cubic force
+field at about 0.21% error in the alpha sum against CCSD(T)/cc-pVTZ's 0.09%, so
+MP2 is a real rung on the ladder rather than a consolation prize.
+
+The gradient is analytic in every case, so ``optimise`` is cheap at all four
+methods even where the Hessian is not.
+
+WHERE THE TIME ACTUALLY GOES, measured rather than assumed (2026-11-09,
+cProfile over a full water fit at HF/6-31G with the Hessians already warm):
+
+    total                       1.78 s
+      run_hessian               1.01 s   <- pyscf
+      run_gradient              0.61 s   <- pyscf
+      SCF kernel                0.72 s   <- pyscf
+      integrals (intor/get_jk)  0.52 s   <- pyscf
+      Quantize's own Python      0.002 s
+
+So essentially all of it is quantum chemistry, and the engine's own code does
+not register. THE EFFICIENCY LEVER IS THE NUMBER OF QM CALLS, NOT THE SPEED OF
+ANY PYTHON IN THIS REPOSITORY. Two things follow, and they are written down
+here because both are easy to get wrong in opposite directions:
+
+1. Do not micro-optimise the numpy in the correction chain. Measured,
+   coriolis_alpha_cm is 0.46 ms at 18 modes against Hessians of 0.1-10 s, so
+   vectorising its triple loop would buy something like 0.05 s across a
+   multi-hour run while rewriting physics that is currently derived and
+   verified. That is a cost, not a saving.
+
+2. The QM call pattern here is already minimal, so do not "fix" it either.
+   Verified by counting real SCF runs: a gradient and a Hessian at the SAME
+   geometry share one SCF (1 run, 2 cache hits), and a repeated gradient at
+   that geometry drops from 0.907 s to 0.095 s. The _cache holds one geometry
+   because the optimiser revisits the current point for both, _last_dm chains
+   the converged density into the NEXT geometry, and the benchmark asks for a
+   fresh Hessian only every tenth step.
+
+What was genuinely being recomputed was Hessians across SEPARATE RUNS, which
+is what backend/spectral/hessian_cache.py now fixes.
 """
 
 from __future__ import annotations
@@ -26,6 +83,30 @@ from backend.registry import register_backend
 warnings.filterwarnings("ignore", module="pyscf")
 
 
+#: Methods built on an RHF reference instead of being a DFT functional.
+_CORRELATED = ("mp2", "ccsd", "ccsd(t)", "ccsd_t")
+
+#: Correlated methods have analytic gradients in PySCF but no analytic Hessian,
+#: so run_hessian falls back to central differences of the gradient. The step
+#: is in Bohr and is the usual compromise: large enough that the gradient's own
+#: convergence noise does not dominate the difference, small enough that the
+#: cubic term stays negligible.
+_FD_STEP_BOHR = 0.01
+
+#: SCF and coupled-cluster convergence used whenever a gradient is about to be
+#: finite-differenced. PySCF's defaults (conv_tol 1e-9, and conv_tol_grad its
+#: square root, ~3e-5) are set for energies, not for differencing: a gradient
+#: good to 3e-5 Hartree/Bohr, differenced over 2 x 0.01 Bohr, leaves ~1.5e-3
+#: Hartree/Bohr^2 of noise in the Hessian. Against water's analytic HF Hessian
+#: that showed up as 5% on the whole matrix and 9% on the bend -- the softest
+#: mode, where the absolute noise is the largest fraction of the eigenvalue.
+#: Tightening by three orders fixes it; see test_pyscf_correlated_backend.py,
+#: which pins the agreement.
+_TIGHT_SCF_CONV = 1e-11
+_TIGHT_SCF_CONV_GRAD = 1e-9
+_TIGHT_CC_CONV = 1e-9
+
+
 @register_backend
 class PySCFBackend(QuantumBackend):
     """RHF (or DFT) energies, gradients and Hessians from PySCF."""
@@ -37,6 +118,24 @@ class PySCFBackend(QuantumBackend):
                  charge: int = 0, multiplicity: int = 1, **_kwargs):
         self.elems = list(elems or [])
         self.method = str(method or "hf").strip().lower()
+        #: Correlated methods are built on an RHF reference rather than being
+        #: an exchange-correlation functional, so they branch before the DFT
+        #: path. Anything not named here is still handed to dft.RKS as an xc
+        #: string, which is what lets arbitrary functionals through untouched.
+        self.correlated = self.method in _CORRELATED
+        #: Tighten SCF/CC convergence only while a gradient is being
+        #: differenced. _fd_hessian switches this on for its sweep and restores
+        #: it afterwards.
+        #:
+        #: It must NOT be on by default for correlated methods, which was the
+        #: first version. Tight convergence is reachable near a minimum and
+        #: often is not at the distorted geometries an optimiser visits on its
+        #: way there, so demanding 1e-12 everywhere made optimise() abort with
+        #: "SCF did not converge even with the second-order solver" and killed
+        #: a five-molecule benchmark at its first geometry. The tolerance
+        #: exists for the difference quotient, and only the difference quotient
+        #: needs it.
+        self._tight = False
         self.basis = str(basis or "sto-3g").strip() or "sto-3g"
         self.charge = int(charge)
         self.spin = int(multiplicity) - 1
@@ -62,7 +161,7 @@ class PySCFBackend(QuantumBackend):
             basis=self.basis, charge=self.charge, spin=self.spin,
             unit="Angstrom", verbose=0,
         )
-        if self.method in ("hf", "rhf", "scf"):
+        if self.method in ("hf", "rhf", "scf") or self.correlated:
             mf = scf.RHF(mol)
         else:
             mf = dft.RKS(mol)
@@ -70,6 +169,9 @@ class PySCFBackend(QuantumBackend):
         # Larger bases need more cycles than the default, and an optimiser
         # visits distorted geometries where the default DIIS path stalls.
         mf.max_cycle = max(int(getattr(mf, "max_cycle", 50)), 200)
+        if self._tight:
+            mf.conv_tol = _TIGHT_SCF_CONV
+            mf.conv_tol_grad = _TIGHT_SCF_CONV_GRAD
         if self._last_dm is not None:
             # Chain the density from the previous geometry. Successive points
             # in an optimisation or a finite-difference Hessian are close, so
@@ -108,17 +210,67 @@ class PySCFBackend(QuantumBackend):
         self._cache = {key: mf}
         return mf
 
+    def _correlated(self, mf):
+        """The post-SCF object for a correlated method, converged.
+
+        Returns (object, total energy, gradient callable).
+
+        CCSD(T) has no object of its own in PySCF: the (T) correction is an
+        energy added to a converged CCSD. The trap is that the CCSD object's
+        own ``nuc_grad_method`` then returns the CCSD gradient, so folding the
+        triples into the energy and taking derivatives from that object gives
+        CCSD(T) energies with CCSD forces -- frequencies identical to CCSD to
+        every printed digit, under a label that says otherwise. Measured on
+        water, the true CCSD(T) gradient differs from the CCSD one by 5.2e-05
+        Hartree/Bohr, which is small but is exactly the quantity the
+        correction chain is sensitive to. The gradient is therefore taken from
+        pyscf.grad.ccsd_t rather than from the CCSD object.
+        """
+        from pyscf import cc, mp
+
+        if self.method == "mp2":
+            obj = mp.MP2(mf)
+            obj.kernel()
+            return obj, float(obj.e_tot), obj.nuc_grad_method().kernel
+
+        obj = cc.CCSD(mf)
+        if self._tight:
+            obj.conv_tol = _TIGHT_CC_CONV
+            obj.conv_tol_normt = _TIGHT_CC_CONV
+        obj.kernel()
+        if not obj.converged:
+            raise RuntimeError(
+                f"PySCF CCSD did not converge ({self.method}/{self.basis})"
+            )
+        if self.method in ("ccsd(t)", "ccsd_t"):
+            from pyscf.grad import ccsd_t as ccsd_t_grad
+            return (obj, float(obj.e_tot + obj.ccsd_t()),
+                    ccsd_t_grad.Gradients(obj).kernel)
+        return obj, float(obj.e_tot), obj.nuc_grad_method().kernel
+
+    def _energy_gradient(self, coords_ang):
+        """(energy, flat gradient in Hartree/Bohr) at one geometry.
+
+        One path for every method, so the optimiser and the finite-difference
+        Hessian below do not each need to know whether they are looking at a
+        mean field or a correlated wavefunction.
+        """
+        mf = self._mean_field(coords_ang)
+        if not self.correlated:
+            grad = mf.nuc_grad_method().kernel()
+            return float(mf.e_tot), np.asarray(grad, dtype=float).ravel()
+        _obj, e_tot, grad_fn = self._correlated(mf)
+        return e_tot, np.asarray(grad_fn(), dtype=float).ravel()
+
     # ── QuantumBackend interface ─────────────────────────────────────────────
 
     def run_gradient(self, coords_ang) -> GradientResult:
-        mf = self._mean_field(coords_ang)
-        grad = mf.nuc_grad_method().kernel()          # Hartree/Bohr, (N, 3)
-        return GradientResult(
-            energy=float(mf.e_tot),
-            gradient_bohr=np.asarray(grad, dtype=float).ravel(),
-        )
+        energy, grad = self._energy_gradient(coords_ang)
+        return GradientResult(energy=energy, gradient_bohr=grad)
 
     def run_hessian(self, coords_ang) -> HessianResult:
+        if self.correlated:
+            return self._fd_hessian(coords_ang)
         mf = self._mean_field(coords_ang)
         grad = mf.nuc_grad_method().kernel()
         hess = mf.Hessian().kernel()                  # (N, N, 3, 3) Hartree/Bohr^2
@@ -128,6 +280,65 @@ class PySCFBackend(QuantumBackend):
             energy=float(mf.e_tot),
             gradient_bohr=np.asarray(grad, dtype=float).ravel(),
             hessian_bohr=0.5 * (hess_flat + hess_flat.T),
+        )
+
+    def _fd_hessian(self, coords_ang) -> HessianResult:
+        """Central finite difference of the analytic gradient.
+
+        6N gradient evaluations, which for a correlated method is the whole
+        cost of the thing -- see this module's docstring for where that stops
+        being affordable.
+
+        The displacement is applied in Angstrom because that is the backend's
+        coordinate unit, while the gradient comes back per Bohr, so the
+        difference quotient carries one ANG_TO_BOHR to land in Hartree/Bohr^2.
+        The result is symmetrised: the two halves differ only by
+        finite-difference noise, and averaging them is the cheapest way to stop
+        that noise reaching the normal-mode analysis as an asymmetry it will
+        otherwise interpret as an imaginary frequency.
+        """
+        from backend.quantum import ANG_TO_BOHR
+
+        coords = np.asarray(coords_ang, dtype=float)
+        n3 = coords.size
+        step_ang = _FD_STEP_BOHR / ANG_TO_BOHR
+
+        # Every gradient in this sweep is about to be differenced, including
+        # the reference one, so the cached mean field from a looser setting is
+        # not reusable. Clear it rather than silently differencing a mixture.
+        was_tight = self._tight
+        self._tight = True
+        if not was_tight:
+            self._cache = {}
+            self._last_dm = None
+        try:
+            return self._fd_hessian_inner(coords, n3, step_ang)
+        finally:
+            self._tight = was_tight
+            if not was_tight:
+                self._cache = {}
+                self._last_dm = None
+
+    def _fd_hessian_inner(self, coords, n3, step_ang) -> HessianResult:
+        from backend.quantum import ANG_TO_BOHR
+
+        energy, grad0 = self._energy_gradient(coords)
+        hess = np.zeros((n3, n3))
+        flat = coords.ravel().copy()
+        for i in range(n3):
+            plus = flat.copy();  plus[i] += step_ang
+            minus = flat.copy(); minus[i] -= step_ang
+            _, gp = self._energy_gradient(plus.reshape(coords.shape))
+            _, gm = self._energy_gradient(minus.reshape(coords.shape))
+            hess[i] = (gp - gm) / (2.0 * step_ang) / ANG_TO_BOHR
+
+        # The displaced geometries evicted the reference point from the cache,
+        # so restore it: the caller usually asks for the gradient next.
+        self._mean_field(coords)
+        return HessianResult(
+            energy=energy,
+            gradient_bohr=grad0,
+            hessian_bohr=0.5 * (hess + hess.T),
         )
 
     # ── Convenience for the "theory alone" leg ───────────────────────────────
@@ -146,11 +357,9 @@ class PySCFBackend(QuantumBackend):
         shape = np.asarray(coords_ang, dtype=float).shape
 
         def fun(flat):
-            coords = flat.reshape(shape)
-            mf = self._mean_field(coords)
-            grad_bohr = np.asarray(mf.nuc_grad_method().kernel(), dtype=float).ravel()
+            energy, grad_bohr = self._energy_gradient(flat.reshape(shape))
             # Hartree/Bohr -> Hartree/Angstrom
-            return float(mf.e_tot), grad_bohr * ANG_TO_BOHR
+            return energy, grad_bohr * ANG_TO_BOHR
 
         sol = minimize(
             fun, np.asarray(coords_ang, dtype=float).ravel(), jac=True,

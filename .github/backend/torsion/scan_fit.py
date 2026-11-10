@@ -32,7 +32,7 @@ import numpy as np
 
 from backend.torsion.torsion_hamiltonian import TorsionFourierPotential
 
-# â”€â”€ Unit conversions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Unit conversions ──────────────────────────────────────────────────────────
 _HARTREE_TO_CM1 = 219474.6313705
 _KCAL_PER_MOL_TO_CM1 = 349.7550874793
 _KJ_PER_MOL_TO_CM1 = 83.5934722514
@@ -58,7 +58,7 @@ def energies_to_cm1(energies, unit: str) -> np.ndarray:
     )
 
 
-# â”€â”€ Scan coverage validation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Scan coverage validation ──────────────────────────────────────────────────
 
 def validate_scan_coverage(
     phi_rad: np.ndarray,
@@ -85,12 +85,12 @@ def validate_scan_coverage(
     Returns
     -------
     dict with keys:
-      ok                   : bool â€” True if no fatal errors
+      ok                   : bool — True if no fatal errors
       warnings             : list[str]
       errors               : list[str]
       n_points             : int
-      coverage_frac        : float â€” direct span / period
-      max_gap_frac         : float â€” largest gap / period (includes wrap-around)
+      coverage_frac        : float — direct span / period
+      max_gap_frac         : float — largest gap / period (includes wrap-around)
       has_duplicate_endpoint : bool
       period_rad           : float
     """
@@ -140,7 +140,7 @@ def validate_scan_coverage(
     # Duplicate endpoint: first and last phi are ~period apart
     has_dup = False
     if n >= 2:
-        # After sorting, phi[0] + period â‰ˆ phi[-1] means phi[-1] is a duplicate of phi[0]
+        # After sorting, phi[0] + period ≈ phi[-1] means phi[-1] is a duplicate of phi[0]
         residual = abs(float(phi[-1] - phi[0]) - period)
         if residual < endpoint_tol_rad:
             has_dup = True
@@ -161,7 +161,7 @@ def validate_scan_coverage(
         elif not np.all(np.isfinite(e)):
             errors.append("Energies contain non-finite values (NaN or Inf).")
 
-    # Negative gaps (non-monotonic after sort â€” shouldn't happen but check)
+    # Negative gaps (non-monotonic after sort — shouldn't happen but check)
     if n > 1 and np.any(interior_gaps < 0):
         errors.append("Internal error: negative gaps after sorting phi.")
 
@@ -178,7 +178,7 @@ def validate_scan_coverage(
     }
 
 
-# â”€â”€ Fourier fitting â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Fourier fitting ───────────────────────────────────────────────────────────
 
 def fit_fourier_potential(
     phi_rad: np.ndarray,
@@ -218,7 +218,7 @@ def fit_fourier_potential(
       n_points                      : number of scan points
       harmonics                     : list of harmonic orders used
       cosine_only                   : bool
-      fit_ok                        : bool â€” True if rank >= min(n_params, n_points)
+      fit_ok                        : bool — True if rank >= min(n_params, n_points)
       warnings                      : list[str]
     """
     phi = np.asarray(phi_rad, dtype=float).ravel()
@@ -262,7 +262,7 @@ def fit_fourier_potential(
     if rank < n_params:
         warnings.append(
             f"Design matrix rank ({rank}) < n_params ({n_params}); "
-            "the fitted potential is underdetermined â€” consider fewer harmonics."
+            "the fitted potential is underdetermined — consider fewer harmonics."
         )
 
     # Unpack coefficients
@@ -313,7 +313,7 @@ def fit_fourier_potential(
     }
 
 
-# â”€â”€ Convenience wrapper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Convenience wrapper ───────────────────────────────────────────────────────
 
 def scan_to_torsion_potential(
     phi_rad: np.ndarray,
@@ -336,7 +336,7 @@ def scan_to_torsion_potential(
     phi_rad : torsion angles in radians
     energies_cm1 : potential energies in cm^-1
     n_harmonics : number of symmetry-allowed harmonic groups to include
-                  (e.g. n_harmonics=3 with symmetry_number=3 â†’ orders 3, 6, 9)
+                  (e.g. n_harmonics=3 with symmetry_number=3 → orders 3, 6, 9)
     symmetry_number : fold symmetry of the rotor (1 = no symmetry constraint)
     cosine_only : restrict to cosine terms; defaults to True when symmetry_number > 1
     zero_at_minimum : shift v0 so that min(V) = 0
@@ -370,7 +370,7 @@ def scan_to_torsion_potential(
     return pot, result
 
 
-# â”€â”€ Diagnostics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Diagnostics ───────────────────────────────────────────────────────────────
 
 def scan_fit_diagnostics(
     phi_rad: np.ndarray,
@@ -412,7 +412,7 @@ def scan_fit_diagnostics(
     }
 
 
-# â”€â”€ Export â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Export ────────────────────────────────────────────────────────────────────
 
 def export_scan_fit_csv(
     path: Path,
@@ -447,7 +447,7 @@ def export_scan_fit_csv(
             ])
 
 
-# â”€â”€ Ingestion â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Ingestion ─────────────────────────────────────────────────────────────────
 
 def ingest_scan_csv(
     path: Path,

@@ -28,6 +28,16 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
 
+      # The whole suite, not a hand-picked four files. Those four covered the
+      # benchmark harnesses and left the physics untested on push: the
+      # correction chain, both centrifugal-distortion reductions, the joint
+      # objective and the correlated backends were all outside CI. The
+      # deselected markers are environmental, not a quality judgement --
+      # `network` reaches PubChem, `orca` needs an ORCA executable, and `slow`
+      # is usually both.
+      - name: Run the test suite
+        run: python -m pytest dev/tests -q -m "not slow and not network and not orca"
+
       - name: Run benchmark regression tests
         run: python -m pytest dev/tests/test_benchmark_suite.py dev/tests/test_conformer_benchmark_suite.py dev/tests/test_lam_benchmarks.py dev/tests/test_lam_acetaldehyde.py -q -m "not slow"
 

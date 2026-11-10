@@ -178,3 +178,48 @@ def test_sigma_reflects_the_measured_agreement_not_a_blanket_floor():
 
 def test_notes_no_longer_claim_the_mapping_is_unvalidated():
     assert "UNVALIDATED" not in _water_cd().notes.upper()
+
+
+# ── why reduction_order defaults to 4 ────────────────────────────────────────
+
+def _water_cd_at(order: int, reduction: str = "A"):
+    coords, masses = _water_coords_masses()
+    hess = get_backend("analytic_water")(elems=["O", "H", "H"]).run_hessian(coords)
+    return compute_cd_constants(hess.hessian_bohr, coords, masses,
+                                reduction=reduction, reduction_order=order)
+
+
+def test_order_six_cuts_the_reduction_residual():
+    """The sextic-shaped terms do what they are supposed to do."""
+    r4 = _water_cd_at(4).reduction_residual_mhz
+    r6 = _water_cd_at(6).reduction_residual_mhz
+    assert r6 < 0.75 * r4, f"order 6 residual {r6:.1f} vs order 4 {r4:.1f}"
+
+
+def test_order_six_does_not_improve_agreement_with_experiment():
+    """And that is why the default stays at 4.
+
+    Order 6 takes water's A-reduction misfit from 140 MHz to 94, a third, and
+    the mean absolute error against the measured DJ/DJK/DK does not move:
+    15.1% either way, with DJ and DK slightly better and DJK slightly worse,
+    all under one percentage point. The error is force-field error in tau --
+    36% on DJK, the most bend-sensitive of the three -- not reduction error,
+    so a better level fit buys nothing.
+
+    This is the same trap as choosing the reduction by its level-fit residual
+    (see reduction_for_asymmetry), measured in the other direction. A change
+    that promotes order 6 to the default on residual alone should fail here.
+    """
+    def mean_abs_err(order):
+        got = _water_cd_at(order).as_dict()
+        return np.mean([abs(got[k] - v) / abs(v) for k, v in EXPERIMENT.items()])
+
+    e4, e6 = mean_abs_err(4), mean_abs_err(6)
+    assert e6 == pytest.approx(e4, abs=0.002), (
+        f"mean |err| {e4:.3f} at order 4 vs {e6:.3f} at order 6"
+    )
+    assert e6 > 0.05, "a genuine improvement here would mean revisiting the default"
+
+
+def test_the_default_order_is_four():
+    assert _water_cd().reduction_order == 4
