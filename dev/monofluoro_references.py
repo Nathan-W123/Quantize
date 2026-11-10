@@ -70,6 +70,28 @@ M_N14 = 14.0030740048
 #: pattern.
 SIGMA_REL = (0.010, 0.005, 0.005)
 
+#: How precise an equilibrium reference has to be before it can measure this
+#: engine, in mAngstrom. A yardstick must be finer than what it measures, and
+#: here the three relevant scales are all known:
+#:
+#:   0.754 mA   the hybrid's own error on water after the vibrational
+#:              correction, scored against a published r_e
+#:   6.2 mA     median distance between the engine's data-only fit and the
+#:              published EFFECTIVE structures, on the six molecules whose
+#:              data determines a geometry. The engine fits the constants
+#:              BETTER than those structures do in all six cases, so this is
+#:              the width of the degenerate family the constants allow, not
+#:              an error
+#:   5 mA       the uncertainty CCCBDB/Landolt-Bornstein actually quote on
+#:              those structures (formyl fluoride: +/-0.005 A on bonds,
+#:              +/-0.5 to 3 deg on angles) -- which agrees with the 6.2 above
+#:
+#: So anything coarser than a few tenths of a mAngstrom cannot resolve the
+#: engine at all, and 0.5 is set there. Both references that currently clear
+#: it do so comfortably: ozone r_e = 1.27276(15) A and water's angle
+#: 104.4776 +/- 0.0019 deg.
+RE_REFERENCE_MAX_UNCERTAINTY_MA = 0.5
+
 
 def _quoted_step(value: float, decimals: int) -> float:
     """Half the last quoted digit, as a floor on the measurement uncertainty."""
@@ -189,6 +211,12 @@ class ReferenceMolecule:
     #: against a single reference cannot show that; two can.
     geometry_re: np.ndarray | None = None
     geometry_re_source: str = ""
+    #: Stated uncertainty on ``geometry_re``, in mAngstrom, as the source
+    #: quotes it. None means the source did not state one, which is itself
+    #: worth knowing: see RE_REFERENCE_MAX_UNCERTAINTY_MA for why a reference
+    #: without a stated uncertainty cannot be assumed good enough to score
+    #: against.
+    geometry_re_uncertainty_ma: float | None = None
     bonds: dict = field(default_factory=dict)
     angles: dict = field(default_factory=dict)
 
@@ -208,6 +236,33 @@ class ReferenceMolecule:
         if self.structure_type == "r_e":
             return self.geometry
         return self.geometry_re
+
+    def equilibrium_reference_quality(self) -> str:
+        """Can this molecule's r_e reference actually measure the engine?
+
+        "none"       no equilibrium reference at all
+        "ok"         stated uncertainty is inside the bar
+        "too_coarse" stated uncertainty exceeds the bar, so a score against
+                     it reports the REFERENCE's error more than the engine's
+        "unstated"   there is a geometry but no quoted uncertainty, so
+                     nothing can be concluded about what it can resolve
+
+        A yardstick has to be finer than the thing being measured, and for
+        this engine that is a sharp numerical requirement rather than a
+        preference -- see RE_REFERENCE_MAX_UNCERTAINTY_MA.
+        """
+        if self.equilibrium_geometry is None:
+            return "none"
+        unc = self.geometry_re_uncertainty_ma
+        if unc is None:
+            return "unstated"
+        try:
+            unc = float(unc)
+        except (TypeError, ValueError):
+            return "unstated"
+        if not np.isfinite(unc) or unc < 0.0:
+            return "unstated"
+        return "ok" if unc <= RE_REFERENCE_MAX_UNCERTAINTY_MA else "too_coarse"
 
     @property
     def internal_dof(self) -> int:
@@ -652,9 +707,39 @@ def _bent_xy(r_ang: float, theta_deg: float) -> np.ndarray:
 # that is larger than most of the differences between configurations the
 # benchmark is trying to resolve.
 #
-# ADDING ONE IS A TWO-LINE CHANGE: set geometry_re and geometry_re_source on
-# the molecule, and the benchmark picks up the extra columns automatically.
-# What is missing is the numbers, not the plumbing.
+# ADDING ONE IS A THREE-LINE CHANGE: set geometry_re, geometry_re_source and
+# geometry_re_uncertainty_ma on the molecule, and the benchmark picks up the
+# extra columns automatically. What is missing is the numbers, not the
+# plumbing.
+#
+# THE UNCERTAINTY IS NOT OPTIONAL, and that is the lesson of this round. A
+# reference is only a yardstick if it is finer than what it measures, and the
+# numbers are now known: the hybrid's own error on water is 0.754 mA after
+# correction, while the effective structures this set is otherwise scored
+# against sit a median 6.2 mA from the engine's data-only fit -- and the
+# engine reproduces the constants BETTER than those structures do, in six
+# cases out of six, so that 6.2 is the width of the family the constants
+# allow rather than an error. CCCBDB quotes +/-5 mA on the same structures,
+# which agrees. Hence RE_REFERENCE_MAX_UNCERTAINTY_MA = 0.5 and
+# equilibrium_reference_quality(), so a coarse reference cannot be wired in
+# and silently start reporting its own error as the engine's.
+#
+# TWO SOURCES ARE RULED OUT, both tempting:
+#
+#   CCCBDB is fetchable after all -- https://cccbdb.nist.gov/exp2x.asp?
+#   casno=<CAS>&charge=0 returns the internal-coordinate table, correcting
+#   the note below. But formyl fluoride's entry is Landolt-Bornstein 1976
+#   from Miller & Curl's 1961 microwave work, quoting +/-0.005 A on bonds and
+#   +/-0.5 to 3 deg on angles, and the page does not say whether it is r_e,
+#   r_0 or r_s. Ten times too coarse, and of unstated type.
+#
+#   dev/re_fcho_ccsdt.json is a COMPUTED r_e for formyl fluoride at
+#   CCSD(T)/cc-pVTZ that already lives in this repo, and it would be the
+#   obvious thing to wire in. Its own file says not to: "converged": false,
+#   and "the method's own bias (no core correlation, triple-zeta basis)
+#   dominates at ~2-3 mA". That is three to four times the engine's error, so
+#   scoring against it would measure the structure's bias. It is useful as a
+#   cross-check, not as a reference.
 #
 #   molecule              what to look for
 #   ------------------    ------------------------------------------------
@@ -675,12 +760,17 @@ def _bent_xy(r_ang: float, theta_deg: float) -> np.ndarray:
 # Determination of Free Molecules", which tabulates r_e for small molecules
 # and is the right place to start.
 #
-# NOT GUESSED. Web searches from this session returned method references and
-# citations but no transcribable tables, and CCCBDB needs form POSTs rather
-# than a fetchable URL. A mis-copied reference structure is worse than a
-# missing one: it would silently move every error measured against it, in a
-# direction nothing in the output would reveal. So these stay empty until
-# somebody reads the numbers off the source.
+# NOT GUESSED. Searches return method papers and citations but no
+# transcribable tables: Demaison's vinyl fluoride and vinyl iodide study
+# (J. Mol. Spectrosc. 2006) derives exactly the r_e^SE wanted here, and notes
+# the obstacle this whole set runs into -- "there are no isotopic species
+# available for F or I", which is the same reason this engine exists. The
+# values are behind the journal.
+#
+# A mis-copied or too-coarse reference structure is worse than a missing one:
+# it would silently move every error measured against it, in a direction
+# nothing in the output would reveal. So these stay empty until somebody
+# reads the numbers, WITH their uncertainties, off the source.
 
 #: Ozone's published equilibrium structure.
 OZONE_R_E_ANG = 1.27276
@@ -735,6 +825,10 @@ WATER = ReferenceMolecule(
         "Hoy & Bunker via NIST CCCBDB)"
     ),
     structure_type="r_e",
+    #: Csaszar's spectroscopic equilibrium structure; CCCBDB's concurring
+    #: Hoy & Bunker determination quotes the angle to +/-0.0019 deg, which at
+    #: this bond length is well under a tenth of a mAngstrom.
+    geometry_re_uncertainty_ma=0.1,
     constants_source="NIST CCCBDB experimental rotational constants (H2O, D2O)",
     bonds={"O-H": [(0, 1), (0, 2)]},
     angles={"H-O-H": [(1, 0, 2)]},
@@ -882,6 +976,8 @@ OZONE = ReferenceMolecule(
     structure_type="r_s",
     geometry_re=_bent_xy(OZONE_R_E_ANG, OZONE_THETA_E_DEG),
     geometry_re_source=OZONE_R_E_SOURCE,
+    #: Tyuterev quotes r_e = 1.27276(15) A, so 0.15 mA.
+    geometry_re_uncertainty_ma=0.15,
     constants_source="NBS Monograph 70 Vol. IV p.402 (entry 1840)",
     bonds={"O-O": [(0, 1), (0, 2)]},
     angles={"O-O-O": [(1, 0, 2)]},
