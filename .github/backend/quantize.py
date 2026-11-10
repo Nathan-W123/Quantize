@@ -562,25 +562,33 @@ class MolecularOptimizer:
         # error is the dominant term here. The engine's own benchmark harness
         # passes them explicitly, which is why that never showed up in testing.
         #
-        # Deriving them automatically was tried and reverted. The propagation
-        # A = C J^T Sigma^-1 amplifies the systematic by (sigma_sys/sigma_meas)^2
-        # in variance, which is correct arithmetic: if the model is wrong by far
-        # more than the data are imprecise, the answer's uncertainty really is
-        # dominated by the model. But rotational constants are measured to nine
-        # figures while the model error is ~0.5% of B, so that ratio is around
-        # 1e5 and the reported width becomes absurd -- measured on the test
-        # molecules, bond widths of 47 Angstrom and an angle width of 10975
-        # degrees.
+        # Deriving them automatically was tried and reverted, because the
+        # propagation A = C J^T Sigma^-1 amplifies the systematic by
+        # (sigma_sys/sigma_meas)^2 in variance and the reported width became
+        # absurd -- bond widths of 47 Angstrom, an angle width of 10975
+        # degrees. The diagnosis recorded here was right, and so was the
+        # remedy it named: "floor the weighting sigma at the model error ...
+        # rather than feed one into the other. That is a real piece of work
+        # and not done yet."
         #
-        # The number is not wrong, it is a symptom: weighting data at 1 kHz
-        # while the model is wrong at 100 MHz is itself inconsistent, and the
-        # honest resolution is to reconcile the two (floor the weighting sigma
-        # at the model error, or report the systematic term separately rather
-        # than in quadrature) rather than to feed one into the other. That is a
-        # real piece of work and not done yet.
+        # IT IS DONE NOW, and in two halves that were added years apart.
+        # `sigma_floor_rel` is that floor, and it has been in
+        # `_effective_sigma` for some time. What was missing is that
+        # `_systematic_covariance` went on dividing by the RAW quoted
+        # sigma_constants rather than by the floored one that `stacked`
+        # actually weights J with -- on water a mismatch of 1090x to 4179x,
+        # which is precisely where the absurd widths came from. With the two
+        # reconciled, a 2.4% systematic (water's measured model error) gives
+        # a bond width of 0.0128 Angstrom against 9.4045 before, and an
+        # independent estimate from B ~ 1/r^2 puts it at 0.0115.
         #
-        # Until it is, the user is TOLD, rather than handed a number that omits
-        # the dominant term without saying so.
+        # So the blocker on auto-derivation is gone: run through this path it
+        # now yields 0.0142 Angstrom and 1.85 degrees, not 47 and 10975.
+        # Reinstating it is still a change of default -- every user who
+        # quotes only measurement sigmas would start seeing the model-error
+        # term included -- so it is left off pending that decision, and the
+        # user is TOLD rather than handed a number that omits the dominant
+        # term without saying so.
         _filled = []
         for _iso in isotopologues:
             if _iso.get("sigma_constants") is not None:
@@ -2754,11 +2762,31 @@ class MolecularOptimizer:
         J = np.asarray(J, dtype=float)
         if sys_sig.size != J.shape[0] or not np.any(sys_sig > 0):
             return np.zeros_like(cov)
-        # `stacked` already divides each row by its weighting sigma, so J is
-        # d(residual)/dp and J^T is the sigma^-1-weighted design matrix.
+        # THE SAME SIGMA J WAS WEIGHTED BY, NOT THE RAW ONE.
+        #
+        # `stacked` divides each row by `_effective_sigma`, so J is
+        # d(residual)/dp in units of effective sigma. The shift d therefore
+        # enters as d/sigma_eff, and the denominator here must be sigma_eff
+        # too. This read iso["sigma_constants"] -- the raw quoted value --
+        # which on water differs from the effective one by 1090x to 4179x,
+        # because `sigma_floor_rel` floors the weighting sigma at a fraction
+        # of each constant. Mixing the two scaled the propagated variance by
+        # (sigma_eff/sigma_raw)^2 and the width by that ratio: a 2.4%
+        # systematic gave a 9.4045 Angstrom width on a 0.958 Angstrom bond,
+        # against 0.0128 Angstrom with consistent units -- and an independent
+        # estimate from B ~ 1/r^2 puts it at 0.0115. 735x too large.
+        #
+        # This is the reconciliation the note in __init__ called for and
+        # recorded as "not done yet": floor the weighting sigma at the model
+        # error, then propagate against that floor. The floor arrived, in
+        # `_effective_sigma`; this propagation kept reading around it. It is
+        # not a choice of convention -- J fixes the units, and these have to
+        # match them.
         meas = []
         for iso in self.spectral.isotopologues:
-            meas.extend(np.asarray(iso["sigma_constants"], dtype=float).ravel().tolist())
+            meas.extend(np.asarray(
+                self.spectral._effective_sigma(iso["sigma_constants"], iso=iso),
+                dtype=float).ravel().tolist())
         meas = np.asarray(meas, dtype=float)
         if meas.size != sys_sig.size:
             return np.zeros_like(cov)
