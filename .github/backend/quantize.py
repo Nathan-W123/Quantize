@@ -386,6 +386,7 @@ class MolecularOptimizer:
         # cannot disagree by 1e5 in the first place. Until then this is
         # available and verified, and off.
         auto_systematic_sigma=False,
+        systematic_in_weighting=False,
         max_spectral_weight=None,
         component_weight_map=None,
         torsion_aware_weighting=False,
@@ -609,6 +610,7 @@ class MolecularOptimizer:
         # user is TOLD rather than handed a number that omits the dominant
         # term without saying so.
         self.auto_systematic_sigma = bool(auto_systematic_sigma)
+        self.systematic_in_weighting = bool(systematic_in_weighting)
         _filled = []
         _sys_filled = []
         for _iso in isotopologues:
@@ -785,6 +787,7 @@ class MolecularOptimizer:
             robust_param=robust_param,
             sigma_floor_mhz=sigma_floor_mhz,
             sigma_floor_rel=sigma_floor_rel,
+            systematic_in_weighting=systematic_in_weighting,
             sigma_cap_mhz=sigma_cap_mhz,
             max_weight=max_spectral_weight,
             component_weight_map=component_weight_map,

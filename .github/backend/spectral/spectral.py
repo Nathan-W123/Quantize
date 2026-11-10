@@ -385,6 +385,7 @@ class SpectralEngine:
         robust_loss="none",
         robust_param=1.0,
         sigma_floor_rel=DEFAULT_SIGMA_FLOOR_REL,
+        systematic_in_weighting=False,
         sigma_floor_mhz=0.0,
         sigma_cap_mhz=None,
         max_weight=None,
@@ -484,6 +485,7 @@ class SpectralEngine:
             )
         self.delta = delta
         self.sigma_floor_rel = max(float(sigma_floor_rel), 0.0)
+        self.systematic_in_weighting = bool(systematic_in_weighting)
         self.robust_loss = robust_loss.lower()
         self.robust_param = max(float(robust_param), 1e-12)
         self.sigma_floor_mhz = max(float(sigma_floor_mhz), 0.0)
@@ -696,6 +698,36 @@ class SpectralEngine:
         # data term then outweighs the quantum prior by seven orders of
         # magnitude, and the fit follows the data into directions -- such as a
         # soft bending angle -- where it has no business leading.
+        # THE MEASURED MODEL ERROR AS THE FLOOR, WHEN ASKED FOR.
+        #
+        # `sigma_floor_rel` below is a flat fraction of each constant, the same
+        # for every species -- a crude stand-in for the model error, and the
+        # note beside it says so: the real figure runs from 0.06% to 2.4%
+        # across the reference set. `sigma_systematic_constants` is that figure
+        # measured per species and per component, so where it exists it is the
+        # better floor.
+        #
+        # A floor rather than a quadrature sum, deliberately. The two are
+        # numerically the same here, since the model gap exceeds the quoted
+        # precision by around 1e5 -- but adding in quadrature would assert
+        # that the model error is INDEPENDENT noise per constant, and it is
+        # not: the B0-versus-Be gap is coherent across a species' constants.
+        # Treating a coherent error as independent down-weights the data more
+        # than the physics justifies. A floor claims only that the data cannot
+        # be better than the model, which is all that is known here.
+        #
+        # Skipped when a vibrational correction is in play: that correction
+        # supersedes the gap, its residual uncertainty is already in
+        # sigma_corr above, and flooring at the uncorrected gap as well would
+        # count the same error twice.
+        if (self.systematic_in_weighting and iso is not None
+                and not np.any(self._correction_sigma(iso, sigma_eff.size) > 0.0)):
+            sys_sig = iso.get("sigma_systematic_constants")
+            if sys_sig is not None:
+                sys_sig = np.asarray(sys_sig, dtype=float).ravel()
+                if sys_sig.size == sigma_eff.size:
+                    sigma_eff = np.maximum(sigma_eff, np.abs(sys_sig))
+
         if self.sigma_floor_rel > 0.0 and iso is not None:
             obs = np.asarray(iso.get("obs_constants", []), dtype=float)
             if obs.size == sigma_eff.size:
