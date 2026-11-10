@@ -2565,7 +2565,7 @@ class MolecularOptimizer:
         seen.add(k)
         print(f"  [uncertainty] WARNING: {message}", flush=True)
 
-    def geometry_uncertainty(self, rigid_tol=1e-8):
+    def geometry_uncertainty(self, rigid_tol=1e-8, check_gauss_newton=True):
         """Posterior standard deviation on each bond length and angle.
 
         For a molecule that already has an accepted structure, the interesting
@@ -2605,7 +2605,12 @@ class MolecularOptimizer:
         rotations are null in both blocks, so leaving them in makes the
         covariance singular and the propagated widths meaningless.
         """
-        cov, _ = self.laplace_approximation()
+        # The Gauss-Newton validity check costs about 2 ms here -- 0.1% of a
+        # real pyscf fit, but 40% of this call on a cheap backend, so it is
+        # switchable. On by default: it is what catches a reported width
+        # resting on an approximation that has failed.
+        cov, _ = self.laplace_approximation(
+            check_gauss_newton=check_gauss_newton)
         if cov is None:
             return None
         n = self.coords.size
