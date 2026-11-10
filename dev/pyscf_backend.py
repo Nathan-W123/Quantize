@@ -241,6 +241,23 @@ class PySCFBackend(QuantumBackend):
             return obj, float(obj.e_tot), obj.nuc_grad_method().kernel
 
         obj = cc.CCSD(mf)
+        # The same treatment the mean field already gets, and for the same
+        # reason: PySCF's default of 50 CC iterations is not enough at the
+        # displaced, symmetry-broken geometries a finite-difference Hessian
+        # visits, especially with the tight amplitude tolerance that Hessian
+        # needs.
+        #
+        # Measured on ozone at cc-pVDZ, one FD displacement (+0.0053 Ang) off
+        # its CCSD(T) minimum, with conv_tol 1e-9:
+        #
+        #     max_cycle  50 -> did NOT converge, 10.1 s
+        #     max_cycle 200 -> converged,        11.3 s
+        #
+        # and E_corr agrees to eight decimals across every converged setting,
+        # so this buys convergence for about a second and changes no answer.
+        # Before this, a CCSD(T) correction for ozone died inside the FD
+        # Hessian after the optimisation had already succeeded.
+        obj.max_cycle = max(int(getattr(obj, "max_cycle", 50)), 200)
         if self._tight:
             obj.conv_tol = _TIGHT_CC_CONV
             obj.conv_tol_normt = _TIGHT_CC_CONV
