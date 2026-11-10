@@ -26,18 +26,17 @@ def evaluate_posterior_state(
         _, rp = optimizer.internal_prior.stacked(trial_coords)
         chi_sq_prior = float(optimizer.prior_weight * np.sum(rp ** 2))
 
-    energy_term = 0.0
-    if not optimizer.spectral_only and optimizer.quantum is not None:
-        if use_proxy:
-            dx = (trial_coords - optimizer._orca_ref_coords).ravel()
-            g = optimizer.quantum.gradient
-            h = optimizer.quantum.hessian
-            energy_term = float(optimizer.quantum.energy + np.dot(g, dx) + 0.5 * np.dot(dx, h @ dx))
-        else:
-            energy_term = float(optimizer.quantum.energy)
+    # Third copy of the quantum-prior term, gone the same way as the second:
+    # this read alpha_quantum (1.0) where the optimiser and the Laplace use
+    # the calibrated weight (1810.58 on water), so the log_posterior reported
+    # here described a different objective than the geometry it was reported
+    # with. Both pieces now come from the optimizer, which owns them.
+    energy_term = float(optimizer.quantum_prior_energy(
+        trial_coords, use_proxy=use_proxy))
 
     log_likelihood = -0.5 * chi_sq_spectral
-    log_prior = -0.5 * chi_sq_prior - float(optimizer.optimizer.alpha_quantum * energy_term)
+    log_prior = -0.5 * chi_sq_prior - float(
+        optimizer.quantum_prior_weight() * energy_term)
     log_posterior = log_likelihood + log_prior
 
     return PosteriorState(

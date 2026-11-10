@@ -3075,34 +3075,34 @@ class MolecularOptimizer:
           2. Theory Prior (QC energy surface)
           3. Structural Priors (Internal coordinate constraints)
         """
-        # 1. Spectral Likelihood
-        _, residual_w = self.spectral.stacked(trial_coords)
+        # 1. Spectral Likelihood.
+        #
+        # Residuals only. Both of these calls discarded the Jacobian they
+        # asked for, and the spectral one finite-differences it: measured at
+        # about 400 of this method's 413 microseconds, paid once per MCMC
+        # proposal -- 16,000 times for four chains of 4,000 steps -- for a
+        # matrix thrown away on the next line.
+        _, residual_w = self.spectral.stacked(trial_coords, want_jacobian=False)
         chi_sq_spectral = np.sum(residual_w**2)
 
         # 2. Structural Priors
         chi_sq_prior = 0.0
         if self.internal_prior is not None and self.coordinate_mode == "cartesian":
-            _, rp = self.internal_prior.stacked(trial_coords)
+            _, rp = self.internal_prior.stacked(trial_coords, want_jacobian=False)
             chi_sq_prior = self.prior_weight * np.sum(rp**2)
         elif self.coordinate_mode == "internal" and self._ic_prior_weight > 0.0:
             # q-space priors are evaluated inside the sampler if using internal coords
             pass 
 
-        energy_term = 0.0
-        if not self.spectral_only and self.quantum is not None:
-            if use_proxy:
-                dx = (trial_coords - self._orca_ref_coords).ravel()
-                g = self.quantum.gradient
-                H = self.quantum.hessian
-                energy_term = self.quantum.energy + np.dot(g, dx) + 0.5 * np.dot(dx, H @ dx)
-            else:
-                if self.quantum_backend == "psi4" and self._psi4_engine:
-                    energy_term, _ = self._psi4_engine.run_gradient(trial_coords)
-                else:
-                    energy_term = self.quantum.energy
+        # The quantum prior, weighted as the fit weighted it rather than with
+        # the legacy alpha_quantum. These two readings differ by 1811x on
+        # water, so this used to be the log-posterior of an objective nobody
+        # minimised -- and the MCMC sampled it. Both pieces now come from the
+        # same place laplace_approximation gets them.
+        energy_term = self.quantum_prior_energy(trial_coords, use_proxy=use_proxy)
 
         log_p = -0.5 * (chi_sq_spectral + chi_sq_prior)
-        return log_p - (self.optimizer.alpha_quantum * energy_term)
+        return log_p - (self.quantum_prior_weight() * energy_term)
 
     def laplace_approximation(self, coords=None, regularization: float = 1e-8,
                               check_gauss_newton: bool = True):
@@ -3181,6 +3181,103 @@ class MolecularOptimizer:
                 "so no posterior covariance exists. Returning None.",
                 key="laplace_singular")
             return None, None
+
+    def quantum_prior_weight(self, coords=None, refresh=False):
+        """The weight the quantum prior carries, as the fit itself weighted it.
+
+        ONE WEIGHT, NOT TWO. `laplace_approximation` asks
+        :meth:`SubspaceOptimizer.effective_quantum_weight` for this, exactly as
+        that method's own docstring instructs -- "anything that reports on the
+        fit -- a covariance, a posterior, a log-probability -- has to weight
+        the two halves the same way the step did". `log_probability` instead
+        read ``alpha_quantum`` directly, which is the legacy heuristic that
+        docstring warns against. On water the two differ by a factor of 1811:
+        alpha_quantum is 1.0 while the calibrated weight is 1810.58. So the
+        sampler, and `evaluate_posterior_state` with it, reported a
+        log-posterior for an objective nobody minimised.
+
+        COMPUTED ONCE, DELIBERATELY. The returned value is cached, and that is
+        not a micro-optimisation. Under the legacy ``dynamic_quantum_weight``
+        path the weight depends on ``rank(J)``, which depends on the geometry;
+        recomputing it at each trial point would make `log_probability` a
+        moving target rather than a fixed distribution, and a Metropolis chain
+        against a moving target samples nothing in particular. The default
+        path (``quantum_prior_sigma_ang`` set) already depends only on the
+        fixed reference Hessian, so caching changes no number there -- it
+        makes the guarantee hold in the legacy path too.
+
+        Pass ``refresh=True`` after deliberately changing the weighting inputs.
+        """
+        cached = getattr(self, "_quantum_prior_weight_cache", None)
+        if cached is not None and not refresh:
+            return cached
+        if self.spectral_only or self.quantum is None:
+            self._quantum_prior_weight_cache = 0.0
+            return 0.0
+        x = self.coords if coords is None else np.asarray(coords, dtype=float)
+        J, _ = self.spectral.stacked(x, want_jacobian=True)
+        _g, H = self._project_quantum_terms(
+            self.quantum.gradient, self.quantum.hessian)
+        alpha = float(self.optimizer.effective_quantum_weight(
+            J, int(np.linalg.matrix_rank(J)), hessian=H))
+        self._quantum_prior_weight_cache = alpha
+        return alpha
+
+    def quantum_prior_energy(self, trial_coords, use_proxy=True):
+        """The quantum prior's energy at a geometry, as the Hessian treats it.
+
+        The gradient and Hessian are passed through
+        :meth:`_project_quantum_terms` first, for the same reason
+        `laplace_approximation` does: the quantum proxy is a quadratic
+        expansion about a fixed Cartesian reference, and a quadratic about a
+        fixed frame is not invariant under rotating the molecule. Unprojected,
+        turning the whole molecule by 10 degrees moved the log-posterior by
+        0.0004 -- small, but it is a restoring force along a direction that
+        has no physics in it, and the sampler was free to wander there.
+
+        No ``_spd_hessian`` floor here: that floor exists to keep a *curvature*
+        matrix invertible, and clamping eigenvalues would change the energy
+        value rather than condition a solve.
+        """
+        if self.spectral_only or self.quantum is None:
+            return 0.0
+        xx = np.asarray(trial_coords, dtype=float)
+        if not use_proxy:
+            if self.quantum_backend == "psi4" and self._psi4_engine:
+                energy, _ = self._psi4_engine.run_gradient(xx)
+                return float(energy)
+            return float(self.quantum.energy)
+        g, H = self._projected_reference_terms()
+        dx = (xx - self._orca_ref_coords).ravel()
+        return float(self.quantum.energy + np.dot(g, dx)
+                     + 0.5 * np.dot(dx, H @ dx))
+
+    def _projected_reference_terms(self):
+        """The reference gradient and Hessian, rigid-projected, cached.
+
+        `_project_quantum_terms` builds the rigid-mode projector every call,
+        and that is an SVD: measured at 146 microseconds, against 591 for the
+        whole of `log_probability`. A Metropolis chain evaluates
+        log_probability once per proposal -- 16,000 times for four chains of
+        4,000 steps -- so paying for the same SVD each time cost 26% of the
+        sampler's runtime for an answer that cannot change while it runs.
+
+        The inputs are the reference gradient and Hessian, which are fixed,
+        and `self.coords`, which is not: it moves during the fit. So the
+        cache is validated against the coordinates it was built at rather
+        than assumed. np.array_equal on 3N floats costs about a microsecond
+        against the 146 it saves.
+        """
+        key = np.asarray(self.coords, dtype=float)
+        cached = getattr(self, "_proj_ref_terms_cache", None)
+        if cached is not None:
+            coords_at, g_c, H_c = cached
+            if coords_at.shape == key.shape and np.array_equal(coords_at, key):
+                return g_c, H_c
+        g, H = self._project_quantum_terms(
+            self.quantum.gradient, self.quantum.hessian)
+        self._proj_ref_terms_cache = (key.copy(), g, H)
+        return g, H
 
     def gauss_newton_discrepancy(self, coords=None, n_directions=3,
                                  step_frac=0.1, rel_warn=0.5,
@@ -3384,11 +3481,28 @@ class MolecularOptimizer:
 
         P = self._rigid_mode_projector(x, self._rigid_ref_masses)
         cov_phys = P @ cov @ P
-
-        # The surviving subspace, from the projector itself rather than from a
-        # threshold on the projected covariance: P is an orthogonal projector,
-        # so its eigenvalues are exactly 0 and 1 up to round-off and the 0.5
-        # cut cannot land on anything ambiguous.
-        w, V = np.linalg.eigh((P + P.T) / 2.0)
-        basis = V[:, w > 0.5]
+        basis = self.physical_basis(coords=x, n=n)
         return cov_phys, basis, int(n - basis.shape[1])
+
+    def physical_basis(self, coords=None, n=None):
+        """Orthonormal basis for the directions that are not rigid-body.
+
+        Columns span the complement of the translations and rotations: 3N - 6
+        of them for a non-linear molecule, 3N - 5 for a linear one. Anything
+        that needs to work in physical directions only -- reporting a width,
+        proposing an MCMC step -- takes its basis from here, so there is one
+        definition of "physical" rather than one per caller.
+
+        Taken from the projector's own spectrum rather than from a threshold
+        on some projected matrix: P is an orthogonal projector, so its
+        eigenvalues are exactly 0 and 1 up to round-off, and a cut at 0.5
+        cannot land on anything ambiguous.
+        """
+        x = self.coords if coords is None else np.asarray(coords, dtype=float)
+        x = np.asarray(x, dtype=float)
+        size = int(x.size if n is None else n)
+        if self._rigid_ref_masses is None or x.size != size:
+            return np.eye(size)
+        P = self._rigid_mode_projector(x, self._rigid_ref_masses)
+        w, V = np.linalg.eigh((P + P.T) / 2.0)
+        return V[:, w > 0.5]

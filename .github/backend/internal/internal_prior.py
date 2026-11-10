@@ -90,15 +90,26 @@ class InternalPriorEngine:
         if self.prior_sigmas.size != len(self.labels):
             raise ValueError("prior_sigmas length must match selected internal coordinates.")
 
-    def stacked(self, coords):
+    def stacked(self, coords, want_jacobian: bool = True):
         """
         Returns weighted Jacobian and residual in prior space:
         Jp = B/sigma, rp = (target - q(coords))/sigma
+
+        ``want_jacobian=False`` returns ``(None, rw)`` and skips the Wilson B
+        matrix, which the residuals do not need. Callers that only want the
+        residuals -- ``diagnostics`` here, ``log_probability`` on the
+        optimizer -- were building and discarding it.
         """
         if len(self.labels) == 0:
             n = np.asarray(coords, dtype=float).size
-            return np.zeros((0, n), dtype=float), np.zeros(0, dtype=float)
-        B, labels_all = wilson_B(np.asarray(coords, dtype=float), self.elems)
+            return ((np.zeros((0, n), dtype=float) if want_jacobian else None),
+                    np.zeros(0, dtype=float))
+        xyz = np.asarray(coords, dtype=float)
+        q = _internal_values(xyz, self.labels)
+        rw = (self.prior_targets - q) / self.prior_sigmas
+        if not want_jacobian:
+            return None, rw
+        B, labels_all = wilson_B(xyz, self.elems)
         label_to_idx = {lbl: i for i, lbl in enumerate(labels_all)}
         rows = []
         for i, lbl in enumerate(self.labels):
@@ -110,16 +121,13 @@ class InternalPriorEngine:
                 # Fall back to the initial Jacobian row so priors remain well-defined.
                 rows.append(self.B0[i])
         Bk = np.asarray(rows, dtype=float)
-        q = _internal_values(np.asarray(coords, dtype=float), self.labels)
-        r = self.prior_targets - q
         Jw = Bk / self.prior_sigmas[:, None]
-        rw = r / self.prior_sigmas
         return Jw, rw
 
     def diagnostics(self, coords):
         if len(self.labels) == 0:
             return {"prior_wrms": 0.0, "n_priors": 0}
-        _, rw = self.stacked(coords)
+        _, rw = self.stacked(coords, want_jacobian=False)
         return {"prior_wrms": float(np.sqrt(np.mean(rw ** 2))), "n_priors": int(len(self.labels))}
 
     def diagnostics_for_conformers(self, conformer_coords, conformer_weights=None):
