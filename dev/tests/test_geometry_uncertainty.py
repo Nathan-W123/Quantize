@@ -70,18 +70,33 @@ def test_reports_a_finite_positive_width_for_every_coordinate():
 def test_looser_constants_give_wider_bonds():
     """The whole point of propagating: worse data must show as worse numbers.
 
-    The relative sigma floor is switched off here. It clamps every sigma to at
-    least 0.1% of its own constant, which for water's A of 836 GHz is 836 MHz --
-    so both a 0.02 and a 20 MHz input land on the same floored value and the
-    propagation would look broken when it is the floor doing its job. The floor
-    itself is exercised by the test below.
+    The sigma floor is off so the stated sigma reaches the weighting, and both
+    sigmas are chosen inside the range where the covariance is still
+    invertible -- see test_a_sigma_far_below_the_model_error_is_refused for
+    what happens below it. The effect is small because this configuration is
+    PRIOR dominated: 1000x looser data moves the bond by well under a percent,
+    which is itself worth knowing and is pinned just below.
     """
-    tight = _run(_opt(sigma_mhz=0.02, sigma_floor_rel=0.0))
-    loose = _run(_opt(sigma_mhz=20.0, sigma_floor_rel=0.0))
+    tight = _run(_opt(sigma_mhz=2.0, sigma_floor_rel=0.0))
+    loose = _run(_opt(sigma_mhz=2000.0, sigma_floor_rel=0.0))
     assert loose["O1-H2"] > tight["O1-H2"], (
         f"loosening sigma 1000x did not widen the bond: "
         f"{tight['O1-H2']:.3e} -> {loose['O1-H2']:.3e}"
     )
+
+
+def test_the_reported_width_is_prior_dominated_here():
+    """1000x worse data changes the answer by under a percent.
+
+    Not a defect, but the reason the test above needs a 1000x lever to show a
+    monotonic effect at all: with quantum_prior_sigma_ang = 0.02 Ang the
+    posterior width on this bond is set mostly by the prior. Stated so that a
+    future reader does not mistake a flat response for broken propagation --
+    which is exactly the mistake the previous version of these tests encoded.
+    """
+    tight = _run(_opt(sigma_mhz=2.0, sigma_floor_rel=0.0))
+    loose = _run(_opt(sigma_mhz=2000.0, sigma_floor_rel=0.0))
+    assert loose["O1-H2"] / tight["O1-H2"] - 1.0 < 0.02
 
 
 def test_the_relative_sigma_floor_clamps_optimistic_inputs():
@@ -95,10 +110,59 @@ def test_the_relative_sigma_floor_clamps_optimistic_inputs():
     a = _run(_opt(sigma_mhz=0.02))
     b = _run(_opt(sigma_mhz=20.0))
     assert a["O1-H2"] == pytest.approx(b["O1-H2"], rel=1e-9)
+    # And a sigma above the floor is NOT clamped, so the floor is doing
+    # something rather than flattening everything.
+    above = _run(_opt(sigma_mhz=2000.0))
+    assert above["O1-H2"] > a["O1-H2"]
+
+
+def test_a_sigma_far_below_the_model_error_is_refused_not_reported_as_zero():
+    """The bug this file used to assert the opposite of.
+
+    With the floor off and sigma quoted at 0.02 MHz on constants near 1e6 MHz,
+    the posterior covariance reaches a condition number of ~1e32 with a
+    minimum eigenvalue near -2e13, and the propagated variance comes out at
+    about -2.3e13. The old code did sqrt(max(var, 0.0)) and reported that as
+    sigma = 0.000000 -- perfect precision, from a collapsed matrix.
+
+    Two tests here passed only because of it: this one asserted that removing
+    the floor gives a TIGHTER bond (true only against 0.0), and
+    test_looser_constants_give_wider_bonds used that same 0.0 as its tight
+    end. The value was also platform dependent -- on the CI runner's LAPACK
+    the round-off landed slightly positive and gave a plausible-looking
+    0.0119 instead, so the suite passed locally and failed in CI with neither
+    number meaning anything.
+
+    What the function must NOT do is report a finite width, and above all not
+    zero. HOW it refuses is platform dependent and deliberately not pinned:
+    measured on Python 3.11 / numpy 2.4.6 the coordinate comes back nan, while
+    on 3.12 / numpy 2.5.4 the whole covariance is rejected earlier and
+    geometry_uncertainty returns None. Both are honest. An earlier draft of
+    this very test asserted nan specifically and failed on 3.12 -- the same
+    trap, one layer up, which is why the assertion is on the refusal and not
+    on its shape.
+    """
     unfloored = _run(_opt(sigma_mhz=0.02, sigma_floor_rel=0.0))
-    assert unfloored["O1-H2"] < a["O1-H2"], (
-        "removing the floor should let the tight sigma report a tighter bond"
+    if unfloored is None:
+        return                      # refused wholesale; honest
+    width = unfloored.get("O1-H2")
+    assert width is None or np.isnan(width), (
+        f"a collapsed covariance must not report a finite width, and above "
+        f"all must not report zero; got {width!r}"
     )
+
+
+def test_the_floored_default_is_unaffected_by_that_guard():
+    """The guard must not fire on ordinary round-off.
+
+    The default path's covariance also has a negative minimum eigenvalue, at
+    -2.7e-20 against a positive variance of 1.4e-4 -- round-off, 16 orders of
+    magnitude below the terms being summed. A guard with an absolute threshold
+    would either miss the real failure or reject this, which is why the
+    tolerance is relative to the term scale.
+    """
+    unc = _run(_opt(sigma_mhz=0.02))
+    assert np.isfinite(unc["O1-H2"]) and unc["O1-H2"] > 0
 
 
 def test_more_isotopologues_narrow_the_fit():

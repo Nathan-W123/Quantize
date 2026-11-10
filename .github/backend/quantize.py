@@ -74,6 +74,15 @@ from backend.spectral.prior_widths import (  # noqa: E402
 #: the calibrated-weight objective, which the end-to-end water test caught.
 _PRIOR_SIGMA_UNSET = object()
 
+#: How negative a propagated variance may be, relative to the size of the terms
+#: summed to produce it, before it counts as a failed propagation rather than
+#: round-off. Round-off on a well-conditioned covariance lands near 1e-16 of the
+#: term scale; a collapsed one lands near -1. Anything in between is already
+#: untrustworthy, so the threshold is deliberately far below the round-off it
+#: has to tolerate and far above the failure it has to catch.
+_VAR_NEGATIVE_REL_TOL = 1e-9
+_TINY = 1e-300
+
 #: Fallback when the level of theory has no calibrated width. See
 #: spectral.prior_widths for the calibrated table and why an unmeasured level
 #: falls back to the loosest value rather than an interpolated one.
@@ -2465,6 +2474,25 @@ class MolecularOptimizer:
             return "C-F"
         return "skeleton"
 
+    def _warn_once(self, message: str, key: str | None = None) -> None:
+        """Print a warning the first time only, per optimizer instance.
+
+        geometry_uncertainty propagates one coordinate at a time, so a single
+        bad covariance would otherwise print the same paragraph once per bond
+        and angle and bury itself in its own repetition. ``key`` is what makes
+        two warnings "the same": the messages carry per-coordinate numbers, so
+        keying on the text alone would defeat the purpose.
+        """
+        seen = getattr(self, "_warned_messages", None)
+        if seen is None:
+            seen = set()
+            self._warned_messages = seen
+        k = message if key is None else key
+        if k in seen:
+            return
+        seen.add(k)
+        print(f"  [uncertainty] WARNING: {message}", flush=True)
+
     def geometry_uncertainty(self, rigid_tol=1e-8):
         """Posterior standard deviation on each bond length and angle.
 
@@ -2533,6 +2561,47 @@ class MolecularOptimizer:
                 xm[k] -= h
                 g[k] = (fn(xp.reshape(-1, 3)) - fn(xm.reshape(-1, 3))) / (2 * h)
             var = float(g @ cov @ g)
+
+            # A NEGATIVE VARIANCE IS A FAILURE, NOT A ZERO.
+            #
+            # This used to be `sqrt(max(var, 0.0))`, which is right for a
+            # negative of round-off size and catastrophically wrong for
+            # anything larger. Measured on water with the relative sigma floor
+            # switched off and sigmas quoted at 0.02 MHz on constants near
+            # 1e6 MHz: the covariance reaches a condition number of 1.2e32
+            # with a minimum eigenvalue of -2.0e13, this variance comes out at
+            # -2.3e13, and the old clamp reported it as sigma = 0.000000.
+            #
+            # That is the worst possible answer. A function whose own docstring
+            # says the uncertainty IS the result, and that a structure quoted
+            # without one cannot be used, was quoting PERFECT PRECISION at the
+            # exact point where its arithmetic had collapsed. It also made the
+            # behaviour platform-dependent -- on another LAPACK the round-off
+            # lands slightly positive and you get a plausible 0.0119 instead,
+            # which is how it survived: a test pinned the comparison and
+            # passed on one machine and failed on another, with neither value
+            # meaning anything.
+            #
+            # The tolerance is relative to the size of the terms being summed,
+            # because an absolute one cannot tell 1e-20 on a small matrix from
+            # 1e-20 on a huge one. The floored default path sits at
+            # min_eig = -2.7e-20 against a positive variance of 1.4e-4 and is
+            # unaffected.
+            scale = float(np.abs(g) @ np.abs(cov) @ np.abs(g))
+            if var < -_VAR_NEGATIVE_REL_TOL * max(scale, _TINY):
+                self._warn_once(
+                    "geometry_uncertainty: propagated variance came out "
+                    f"negative ({var:.3e} against a term scale of "
+                    f"{scale:.3e}), so the posterior covariance is not "
+                    "positive semi-definite and this coordinate's width "
+                    "cannot be propagated. Reported as nan rather than 0. "
+                    "This happens when sigma_constants are quoted far below "
+                    "the B0-versus-Be model error with sigma_floor_rel "
+                    "disabled; the floor exists partly to keep the normal "
+                    "matrix invertible.",
+                    key="geometry_uncertainty_negative_variance",
+                )
+                return float("nan"), g
             return float(np.sqrt(max(var, 0.0))), g
 
         out = {}
