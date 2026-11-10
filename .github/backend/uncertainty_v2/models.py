@@ -201,9 +201,58 @@ class MCMCRunSummary:
     chains: list[ChainRunResult]
     convergence: ConvergenceSummary | None = None
 
+    #: Above this, the chains have not mixed and no interval taken from them
+    #: means anything. 1.1 is the conventional line (Gelman et al.); measured
+    #: here, this sampler returns 2.3 to 18 on water depending on the seed,
+    #: because the exact posterior is improper along one direction -- see
+    #: MolecularOptimizer.gauss_newton_discrepancy. A number that moves by 8x
+    #: with the seed is not a diagnostic to print and move past.
+    R_HAT_USABLE_MAX = 1.1
+    #: Below this there are too few independent draws for a quantile to mean
+    #: anything, whatever R-hat says.
+    ESS_USABLE_MIN = 100.0
+
+    @property
+    def usable(self) -> bool:
+        """Whether intervals may be quoted from these chains at all.
+
+        False is not a hedge, it is a refusal: quoting a credible interval
+        from unmixed chains reports the sampler's starting spread as if it
+        were the posterior's width.
+        """
+        if self.convergence is None:
+            return False
+        try:
+            return bool(
+                float(self.convergence.r_hat.max()) <= self.R_HAT_USABLE_MAX
+                and float(self.convergence.ess.min()) >= self.ESS_USABLE_MIN)
+        except (ValueError, AttributeError):
+            return False
+
+    def unusable_reason(self) -> str | None:
+        """Why intervals are refused, or None when they are not."""
+        if self.convergence is None:
+            return ("No convergence diagnostics were computed (fewer than two "
+                    "chains, or too few kept samples), so there is no evidence "
+                    "these chains mixed.")
+        r_hat = float(self.convergence.r_hat.max())
+        ess = float(self.convergence.ess.min())
+        bad = []
+        if r_hat > self.R_HAT_USABLE_MAX:
+            bad.append(f"max R-hat {r_hat:.2f} exceeds {self.R_HAT_USABLE_MAX}")
+        if ess < self.ESS_USABLE_MIN:
+            bad.append(f"min ESS {ess:.0f} is below {self.ESS_USABLE_MIN:.0f}")
+        if not bad:
+            return None
+        return (" and ".join(bad) + ". The chains have not mixed, so any "
+                "interval from them measures where they started rather than "
+                "the posterior's width.")
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "config": asdict(self.config),
             "chains": [c.to_dict() for c in self.chains],
             "convergence": None if self.convergence is None else self.convergence.to_dict(),
+            "usable": self.usable,
+            "unusable_reason": self.unusable_reason(),
         }

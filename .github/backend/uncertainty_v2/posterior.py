@@ -136,6 +136,12 @@ def laplace_approximation(
             f"{_cov_info['n_negative']} variance(s) came out negative, so "
             f"those standard errors are nan rather than numbers.")
 
+    # Whether the Gauss-Newton Hessian these widths come from is valid at all.
+    # The optimizer emits these to its own warning channel; they belong on the
+    # summary too, because this is the object that gets serialised and read
+    # later, when nobody is watching stdout.
+    warnings.extend(optimizer.gauss_newton_warnings(coords=coords))
+
     return LaplaceSummary(
         n_params=n_full,
         rank=rank,

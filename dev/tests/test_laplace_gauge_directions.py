@@ -141,8 +141,13 @@ def test_condition_number_describes_the_physical_block(water_fit):
     assert summary.condition_number < 1e6, (
         f"cond {summary.condition_number:.3e} looks like the padded matrix "
         f"(2.4e11), not the physical block (2.4e3)")
-    # No spurious warnings: the structural nullity is not a finding.
-    assert summary.warnings == [], summary.warnings
+    # No spurious rank or conditioning warnings: the structural nullity is
+    # not a finding. Scoped to those two, because the Gauss-Newton validity
+    # warning fires correctly on this fixture (18 sigma residuals) and is
+    # pinned by test_gauss_newton_validity.
+    noise = [w for w in summary.warnings
+             if "Rank-deficient" in w or "Ill-conditioned" in w]
+    assert noise == [], noise
 
 
 def test_v2_covariance_matches_the_optimizer_method(water_fit):

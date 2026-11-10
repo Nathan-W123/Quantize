@@ -381,6 +381,11 @@ def _cmd_uncertainty(args) -> int:
                 )
     
     cloud = []
+    # Hoisted above the mode branches on purpose: both are read after
+    # them, and initialising inside `if args.mode in [...]` makes
+    # --mode bootstrap raise NameError on the empty-cloud path.
+    all_chains: list = []
+    mcmc_refused = False
     
     if args.mode in ["bootstrap", "both"]:
         if args.uncertainty_engine == "v2":
@@ -418,7 +423,6 @@ def _cmd_uncertainty(args) -> int:
 
     if args.mode in ["mcmc", "both"]:
         print(f"\n[mcmc] Running {args.chains} parallel chains...")
-        all_chains = []
         if args.uncertainty_engine == "v2":
             mcfg = MCMCConfig(
                 n_steps=args.mcmc_steps,
@@ -435,10 +439,26 @@ def _cmd_uncertainty(args) -> int:
             mcmc_summary = AdaptiveMetropolisV2(opt, mcfg).run(base_workdir=opt.workdir)
             print("\n" + format_mcmc_summary(mcmc_summary))
             summary_bundle["mcmc"] = mcmc_summary.to_dict()
+            # Traces are kept either way -- looking at a bad trace is how you
+            # diagnose one. The INTERVAL cloud is what gets refused: feeding
+            # unmixed chains into analyze_coordinate_distribution reports the
+            # spread of the chains' starting points as a posterior width.
+            _mcmc_refusal = mcmc_summary.unusable_reason()
             for c in mcmc_summary.chains:
                 all_chains.append(c.samples)
-                for s in c.samples:
-                    cloud.append(s)
+            if _mcmc_refusal is None:
+                for c in mcmc_summary.chains:
+                    for s in c.samples:
+                        cloud.append(s)
+            else:
+                print(f"\n[mcmc] REFUSED: {_mcmc_refusal}")
+                print("[mcmc] These samples are excluded from the reported "
+                      "distribution. Traces are still written so the failure "
+                      "can be inspected.")
+                summary_bundle["warnings"].append(
+                    "MCMC samples excluded from the reported distribution: "
+                    + _mcmc_refusal)
+                mcmc_refused = True
             if mcmc_summary.convergence is not None:
                 from backend.internal.internal_fit import InternalCoordinateSet
 
@@ -460,7 +480,13 @@ def _cmd_uncertainty(args) -> int:
         else:
             raise SystemExit(_V1_REMOVED)
     if not cloud:
-        print("Error: No uncertainty samples were generated.")
+        if mcmc_refused:
+            print("Error: every MCMC sample was refused as unconverged, so "
+                  "there is nothing to report a distribution from. Raise "
+                  "--mcmc-steps, or use --mode bootstrap, which refits per "
+                  "resample and does not depend on the chains mixing.")
+        else:
+            print("Error: No uncertainty samples were generated.")
         return 1
 
     print("\nProcessing sample cloud...")
@@ -483,9 +509,17 @@ def _cmd_uncertainty(args) -> int:
     print(f"\nGenerating diagnostic plots in: {plot_dir}")
     plot_coordinate_distributions(np.array(cloud), opt.elems, plot_dir)
     plot_parameter_corner(np.array(cloud), opt.elems, plot_dir)
-    if args.mode in ["mcmc", "both"]:
-        plot_mcmc_traces(np.array(cloud)[-args.mcmc_steps:], opt.elems, plot_dir)
-        plot_autocorrelations(np.array(cloud)[-args.mcmc_steps:], opt.elems, plot_dir)
+    if args.mode in ["mcmc", "both"] and all_chains:
+        # One chain, not a tail slice of `cloud`. The slice was wrong twice
+        # over: in --mode both the cloud starts with bootstrap samples, and
+        # the MCMC part is several chains laid end to end, so a "trace" drawn
+        # from it stepped discontinuously from one chain to the next. It also
+        # vanished whenever the chains were refused, which is precisely when
+        # someone needs to look at it.
+        _trace = np.asarray(all_chains[0])
+        if _trace.size:
+            plot_mcmc_traces(_trace, opt.elems, plot_dir)
+            plot_autocorrelations(_trace, opt.elems, plot_dir)
     summary_bundle["plot_dir"] = plot_dir
 
     out_dir = os.path.join(opt.workdir, "uncertainty_v2" if args.uncertainty_engine == "v2" else "uncertainty_legacy")

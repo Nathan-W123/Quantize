@@ -3104,7 +3104,8 @@ class MolecularOptimizer:
         log_p = -0.5 * (chi_sq_spectral + chi_sq_prior)
         return log_p - (self.optimizer.alpha_quantum * energy_term)
 
-    def laplace_approximation(self, coords=None, regularization: float = 1e-8):
+    def laplace_approximation(self, coords=None, regularization: float = 1e-8,
+                              check_gauss_newton: bool = True):
         """Analytical estimate of the posterior covariance at the optimum.
 
         The quantum block is weighted exactly as the optimiser weighted it, via
@@ -3117,14 +3118,18 @@ class MolecularOptimizer:
         """
         x = self.coords if coords is None else np.asarray(coords, dtype=float)
         J, _ = self.spectral.stacked(x)
-        H_total = J.T @ J
+        H_spec = J.T @ J
+        H_quant = np.zeros_like(H_spec)
         if not self.spectral_only and self.quantum is not None:
             g = self.quantum.gradient
             H = self.quantum.hessian
             g, H = self._project_quantum_terms(g, H)
             rank = int(np.linalg.matrix_rank(J))
             alpha_q = self.optimizer.effective_quantum_weight(J, rank, hessian=H)
-            H_total = H_total + alpha_q * self.optimizer._spd_hessian(H)
+            H_quant = alpha_q * self.optimizer._spd_hessian(H)
+        # Kept apart so the Gauss-Newton check below can be handed both
+        # without rebuilding a finite-differenced Jacobian.
+        H_total = H_spec + H_quant
 
         reg_scalar = float(max(regularization, 0.0))
         H_reg = H_total + reg_scalar * np.eye(H_total.shape[0])
@@ -3154,6 +3159,17 @@ class MolecularOptimizer:
                 f"order-of-magnitude.",
                 key="laplace_ill_conditioned")
 
+        # IS GAUSS-NEWTON EVEN VALID HERE? H_total above is JtJ, which drops
+        # sum_i r_i Hess(r_i) from the exact Hessian of 0.5*chi^2. At this
+        # engine's residual levels that omission can exceed the curvature it
+        # perturbs and flip its sign, in which case the width below is an
+        # artefact rather than an uncertainty. Reported, not assumed away.
+        if check_gauss_newton:
+            for _msg in self.gauss_newton_warnings(
+                    coords=x, _blocks=(H_spec, H_quant)):
+                self._warn_once("laplace_approximation: " + _msg,
+                                key="laplace_gauss_newton_" + _msg[:48])
+
         try:
             cov = np.linalg.inv(H_reg)
             std_err, _ = std_err_from_covariance(
@@ -3165,6 +3181,178 @@ class MolecularOptimizer:
                 "so no posterior covariance exists. Returning None.",
                 key="laplace_singular")
             return None, None
+
+    def gauss_newton_discrepancy(self, coords=None, n_directions=3,
+                                 step_frac=0.1, rel_warn=0.5,
+                                 _blocks=None):
+        """Is the Gauss-Newton Hessian a valid stand-in for the real one here?
+
+        `laplace_approximation` builds JtJ, which is the Gauss-Newton form of
+        Hess(0.5*chi^2). The exact Hessian is JtJ + sum_i r_i Hess(r_i), and
+        Gauss-Newton drops the second term. That is standard and harmless when
+        the residuals are small -- but this engine is not built for small
+        residuals. It runs with an uncorrected B0-versus-Be offset against
+        sigma_constants quoted in fractions of a MHz, so the residuals are
+        large by design: 18 sigma rms on water at the default settings.
+
+        Measured there, the omitted term is 3.0% of ||JtJ|| in norm, which
+        sounds ignorable, and is not: the softest physical curvature is
+        +7,995, which is 0.04% of ||JtJ||. A 3% perturbation is 75 times
+        larger than the quantity it perturbs, and it flips the sign, to
+        -372,388. The optimum is then a saddle of the exact posterior rather
+        than a maximum, so that posterior is improper along that direction and
+        no sampler can converge on it -- which is exactly what the MCMC does,
+        returning R-hat between 2.3 and 18 depending on the seed.
+
+        Gauss-Newton hides all of this, reporting an all-positive curvature
+        and a finite width, with nothing to say it is resting on an
+        approximation that has failed. This method is what says so.
+
+        The comparison is directional on purpose. A full exact Hessian costs
+        O(n^2) residual evaluations; a stiff direction cannot be flipped by a
+        small perturbation anyway, so only the soft end of the spectrum is
+        worth probing, at two extra evaluations each. On water the softest
+        direction turns out to have essentially zero Gauss-Newton curvature
+        from the spectral data (-2.5e-11): it is held up entirely by the
+        quantum prior, and the omitted term is 48 times that prior.
+
+        Returns a list of per-direction dicts, softest first, each with the
+        Gauss-Newton and exact curvature, the omitted term, whether the sign
+        flipped, and whether the finite difference itself was stable. An
+        empty list means the check could not be run.
+        """
+        x = self.coords if coords is None else np.asarray(coords, dtype=float)
+        x = np.asarray(x, dtype=float)
+        if _blocks is not None:
+            # Handed down by laplace_approximation, which has just built both.
+            # Rebuilding them here would mean a second finite-differenced
+            # Jacobian for no new information.
+            H_spec, H_quant = _blocks
+        else:
+            J, _ = self.spectral.stacked(x)
+            H_spec = J.T @ J
+            H_quant = np.zeros_like(H_spec)
+            if not self.spectral_only and self.quantum is not None:
+                g_q, H_q = self._project_quantum_terms(
+                    self.quantum.gradient, self.quantum.hessian)
+                rank = int(np.linalg.matrix_rank(J))
+                alpha_q = self.optimizer.effective_quantum_weight(
+                    J, rank, hessian=H_q)
+                H_quant = alpha_q * self.optimizer._spd_hessian(H_q)
+        H_gn = H_spec + H_quant
+        n = H_gn.shape[0]
+
+        try:
+            cov = np.linalg.inv(H_gn + 1e-8 * np.eye(n))
+        except np.linalg.LinAlgError:
+            return []
+        _cov_phys, basis, _n_gauge = self.physical_covariance(cov, coords=x)
+        if basis.shape[1] == 0:
+            return []
+
+        block = basis.T @ H_gn @ basis
+        w, V = np.linalg.eigh((block + block.T) / 2.0)   # ascending: softest first
+
+        x0 = x.ravel()
+
+        def half_chi_sq(vec):
+            # Residuals only: the Jacobian here is finite-differenced at ~6N
+            # rotational-constant evaluations per isotopologue, and this probe
+            # never looks at it. Skipping it makes the whole check cheaper
+            # than the Laplace call it qualifies.
+            _J, r = self.spectral.stacked(vec.reshape(-1, 3), want_jacobian=False)
+            return 0.5 * float(np.sum(np.asarray(r) ** 2))
+
+        f0 = half_chi_sq(x0)
+        out = []
+        for k in range(min(int(n_directions), basis.shape[1])):
+            v = basis @ V[:, k]
+            nv = float(np.linalg.norm(v))
+            if nv <= 0.0:
+                continue
+            v = v / nv
+
+            # Step from the posterior width along this direction, so the probe
+            # is local in the units the problem itself sets. A fixed step
+            # cannot be right for both a stiff and a soft direction.
+            sigma_v = float(np.sqrt(max(float(v @ cov @ v), 0.0)))
+            step = float(np.clip(step_frac * sigma_v, 1e-7, 1e-3))
+
+            def curv(t):
+                return (half_chi_sq(x0 + t * v) - 2.0 * f0
+                        + half_chi_sq(x0 - t * v)) / (t * t)
+
+            c_true_spec = curv(step)
+            c_quant = float(v @ H_quant @ v)      # proxy is exactly quadratic
+            c_gn = float(w[k])
+            c_true = c_true_spec + c_quant
+            omitted = c_true_spec - float(v @ H_spec @ v)
+
+            # A second step at half the size, to tell a real curvature from a
+            # cancelling subtraction -- without it, finite-difference noise
+            # could be reported as a sign flip. Only computed where it would
+            # change what is said, so a direction with nothing to report
+            # costs one probe rather than two.
+            flipped = c_gn > 0.0 and c_true <= 0.0
+            rel = abs(c_true - c_gn) / max(abs(c_gn), 1e-300)
+            fd_stable = True
+            if flipped or rel > rel_warn:
+                c_half = curv(step / 2.0)
+                denom = max(abs(c_true_spec), abs(c_half), 1.0)
+                fd_stable = abs(c_true_spec - c_half) / denom < 0.25
+
+            out.append({
+                "index": k,
+                "curvature_gauss_newton": c_gn,
+                "curvature_exact": c_true,
+                "curvature_spectral_gauss_newton": float(v @ H_spec @ v),
+                "curvature_spectral_exact": c_true_spec,
+                "curvature_quantum": c_quant,
+                "omitted_term": omitted,
+                "sigma_along": sigma_v,
+                "step": step,
+                "fd_stable": bool(fd_stable),
+                "sign_flipped": bool(flipped),
+                "relative_discrepancy": rel,
+            })
+        return out
+
+    def gauss_newton_warnings(self, coords=None, n_directions=3,
+                              rel_warn=0.5, _blocks=None) -> list[str]:
+        """Plain-language findings from :meth:`gauss_newton_discrepancy`."""
+        msgs: list[str] = []
+        try:
+            rows = self.gauss_newton_discrepancy(
+                coords=coords, n_directions=n_directions, _blocks=_blocks)
+        except Exception as exc:                 # a diagnostic must not break a fit
+            self._warn_once(
+                f"gauss_newton_discrepancy could not run ({exc!r}), so the "
+                f"validity of the Gauss-Newton Hessian is unchecked.",
+                key="gn_check_failed")
+            return msgs
+        for row in rows:
+            if not row["fd_stable"]:
+                continue
+            if row["sign_flipped"]:
+                msgs.append(
+                    f"Gauss-Newton is invalid along physical direction "
+                    f"{row['index']}: it reports curvature "
+                    f"{row['curvature_gauss_newton']:.3e} but the exact "
+                    f"Hessian gives {row['curvature_exact']:.3e}. The optimum "
+                    f"is a saddle of the exact posterior there, so the width "
+                    f"reported for that direction is an artefact of the "
+                    f"approximation and no sampler can converge on it.")
+            elif row["relative_discrepancy"] > rel_warn:
+                msgs.append(
+                    f"Gauss-Newton is doubtful along physical direction "
+                    f"{row['index']}: curvature "
+                    f"{row['curvature_gauss_newton']:.3e} against an exact "
+                    f"{row['curvature_exact']:.3e} "
+                    f"({100 * row['relative_discrepancy']:.0f}% discrepancy), "
+                    f"because the term Gauss-Newton omits is "
+                    f"{row['omitted_term']:.3e}. Treat that width as "
+                    f"order-of-magnitude.")
+        return msgs
 
     def physical_covariance(self, cov, coords=None):
         """Strip the rigid-body subspace from a Cartesian posterior covariance.

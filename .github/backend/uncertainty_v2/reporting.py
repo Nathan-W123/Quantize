@@ -69,4 +69,12 @@ def format_mcmc_summary(summary: MCMCRunSummary) -> str:
         lines.append(f"  min ESS  : {float(summary.convergence.ess.min()):.1f}")
         for w in summary.convergence.warnings:
             lines.append(f"  warning: {w}")
+    # The verdict, not just the numbers. R-hat and ESS were already printed
+    # while the sampler returned 2.3 to 18 run to run; printing a diagnostic
+    # is not the same as acting on it.
+    reason = summary.unusable_reason()
+    if reason is None:
+        lines.append("  intervals: USABLE")
+    else:
+        lines.append("  intervals: NOT USABLE -- " + reason)
     return "\n".join(lines)

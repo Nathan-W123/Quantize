@@ -929,11 +929,25 @@ class SpectralEngine:
             return 1.0 / (1.0 + (a / c) ** 2)
         raise ValueError(f"Unknown robust_loss='{self.robust_loss}'. Use none|huber|cauchy.")
 
-    def stacked(self, coords):
+    def stacked(self, coords, want_jacobian: bool = True):
         """
         Stacked (3k × 3N) Jacobian and (3k,) residual vector across all k isotopologues.
         The SVD of the Jacobian determines which structural parameters are experimentally
         constrained vs. assigned to the quantum null space.
+
+        ``want_jacobian=False`` returns ``(None, residuals)`` and skips the
+        Jacobian entirely. The Jacobian is finite-differenced, costing about
+        6N rotational-constant evaluations per isotopologue, while the
+        residuals cost one -- so a caller that only needs residuals pays
+        roughly 6N times too much by taking the default. One such caller is
+        :meth:`MolecularOptimizer.gauss_newton_discrepancy`, which probes
+        chi-squared curvature at displaced geometries.
+
+        It is a flag rather than a second method because the weighting below
+        -- effective sigma, component weights, robust weights, the
+        centrifugal-distortion block -- is what must not be reimplemented
+        anywhere. The residuals this returns are bit-identical to the ones
+        the full call returns.
         """
         coords = np.asarray(coords, dtype=float)
         J_blocks, r_blocks = [], []
@@ -948,25 +962,25 @@ class SpectralEngine:
             be_target = self._be_target(iso)
             idx = np.asarray(iso["component_indices"], dtype=int)
             for w, cxyz in zip(conf_weights, conf_coords):
-                Jc = self.jacobian(cxyz, iso["masses"], idx)
                 calc_c = _rotational_constants(np.asarray(cxyz), np.asarray(iso["masses"]))[idx]
-                if j_mix is None:
-                    j_mix = w * Jc
+                Jc = self.jacobian(cxyz, iso["masses"], idx) if want_jacobian else None
+                if calc_mix is None:
                     calc_mix = w * calc_c
+                    j_mix = None if Jc is None else w * Jc
                 else:
-                    j_mix += w * Jc
                     calc_mix += w * calc_c
-            J = j_mix
+                    if Jc is not None:
+                        j_mix += w * Jc
             r = be_target - calc_mix
             sigma = self._effective_sigma(iso["sigma_constants"], iso=iso)
-            Jw = J / sigma[:, None]
             rw = r / sigma
             comp_w = self._component_weights(iso)
-            Jw = comp_w[:, None] * Jw
             rw = comp_w * rw
             robust_w = np.sqrt(self._robust_weight(rw))
-            J_blocks.append(robust_w[:, None] * Jw)
             r_blocks.append(robust_w * rw)
+            if want_jacobian:
+                Jw = comp_w[:, None] * (j_mix / sigma[:, None])
+                J_blocks.append(robust_w[:, None] * Jw)
 
         if self.cd_weight > 0.0 and self.fit_cd_constants and self._hess_bohr_for_cd is not None:
             w_cd = np.sqrt(self.cd_weight)
@@ -993,16 +1007,21 @@ class SpectralEngine:
                     ],
                     dtype=float,
                 )
-                J_cd = self._cd_jacobian(coords, iso)
-                Jw_cd = w_cd * J_cd / sigma_cd[:, None]
                 rw_cd = w_cd * r_cd / sigma_cd
-                J_blocks.append(Jw_cd)
                 r_blocks.append(rw_cd)
+                if want_jacobian:
+                    J_cd = self._cd_jacobian(coords, iso)
+                    J_blocks.append(w_cd * J_cd / sigma_cd[:, None])
 
-        if not J_blocks:
+        # Emptiness is decided on the residual blocks, since J_blocks is
+        # deliberately empty whenever want_jacobian is False.
+        if not r_blocks:
             n = len(np.asarray(coords, dtype=float)) * 3
-            return np.zeros((0, n)), np.array([])
-        return np.vstack(J_blocks), np.concatenate(r_blocks)
+            return (np.zeros((0, n)) if want_jacobian else None), np.array([])
+        r_all = np.concatenate(r_blocks)
+        if not want_jacobian:
+            return None, r_all
+        return np.vstack(J_blocks), r_all
 
     def stacked_unweighted(self, coords):
         """
