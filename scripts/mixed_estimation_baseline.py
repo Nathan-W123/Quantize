@@ -239,14 +239,24 @@ def hybrid_fit(mol, isos, theory_coords, ctbl):
         return opt.run()
 
 
-def rms_bond_error(mol, coords):
-    ref = mol.internal_coordinates(np.asarray(mol.geometry, dtype=float))
+def rms_bond_error(mol, coords, ref_coords=None):
+    """RMS bond error in mA against ``ref_coords``, and the per-bond list.
+
+    ``ref_coords`` defaults to the molecule's primary reference geometry,
+    which for eight of the nine references is an r_s or effective structure
+    rather than the r_e the engine targets. Pass ``mol.equilibrium_geometry``
+    to score against equilibrium where one is published: for ozone those two
+    references are 1.06 mA apart, which is the size of the result being
+    reported, so which one was used is not a detail.
+    """
+    base = mol.geometry if ref_coords is None else ref_coords
+    ref = mol.internal_coordinates(np.asarray(base, dtype=float))
     got = mol.internal_coordinates(np.asarray(coords, dtype=float))
     errs = [(got[k] - ref[k]) * 1000.0 for k in mol.bonds]
     return float(np.sqrt(np.mean(np.square(errs)))), errs
 
 
-def rms_angle_error(mol, coords):
+def rms_angle_error(mol, coords, ref_coords=None):
     """RMS angle error in degrees, and the per-angle list.
 
     Reported alongside the bond RMS because the bond RMS alone flatters the
@@ -259,7 +269,8 @@ def rms_angle_error(mol, coords):
     """
     if not getattr(mol, "angles", None):
         return float("nan"), []
-    ref = mol.internal_coordinates(np.asarray(mol.geometry, dtype=float))
+    base = mol.geometry if ref_coords is None else ref_coords
+    ref = mol.internal_coordinates(np.asarray(base, dtype=float))
     got = mol.internal_coordinates(np.asarray(coords, dtype=float))
     errs = [float(got[k] - ref[k]) for k in mol.angles]
     return float(np.sqrt(np.mean(np.square(errs)))), errs

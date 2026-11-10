@@ -181,12 +181,33 @@ class ReferenceMolecule:
     #: the coordinates it produced. So the TYPE is recorded, which is a fact,
     #: and the floor is left to the per-molecule prose that has it.
     structure_type: str = "effective"
+    #: An EQUILIBRIUM geometry for this molecule where one is published and the
+    #: primary ``geometry`` above is not already r_e. Both are kept rather than
+    #: one replacing the other, because the comparison between them is itself
+    #: the measurement: for ozone they differ by 1.06 mA, which is the size of
+    #: the best result the benchmark reports for it. A single number scored
+    #: against a single reference cannot show that; two can.
+    geometry_re: np.ndarray | None = None
+    geometry_re_source: str = ""
     bonds: dict = field(default_factory=dict)
     angles: dict = field(default_factory=dict)
 
     @property
     def n_atoms(self) -> int:
         return len(self.elems)
+
+    @property
+    def equilibrium_geometry(self):
+        """The r_e geometry for this molecule, or None if there isn't one.
+
+        Either the primary geometry when it is already equilibrium, or the
+        separately published ``geometry_re``. Callers that want to score the
+        engine against what it actually targets should use this and skip the
+        molecule when it is None, rather than quietly scoring against r_s.
+        """
+        if self.structure_type == "r_e":
+            return self.geometry
+        return self.geometry_re
 
     @property
     def internal_dof(self) -> int:
@@ -613,6 +634,21 @@ def _bent_xy(r_ang: float, theta_deg: float) -> np.ndarray:
     ])
 
 
+#: Ozone's published EQUILIBRIUM structure, as distinct from the r_s structure
+#: its benchmark reference carries. Tyuterev et al., J. Mol. Spectrosc. 198, 57
+#: (1999), quoted to +/-0.00015 A and +/-0.0025 deg.
+#:
+#: The pair is worth having because it quantifies the yardstick. The r_s
+#: reference gives r(O-O) = 1.27170 A and the r_e gives 1.27276 A -- 1.06 mA
+#: apart, against a best reported hybrid result for ozone of 1.00 mA. So an
+#: ozone figure quoted without saying which reference it used is ambiguous by
+#: its own magnitude.
+OZONE_R_E_ANG = 1.27276
+OZONE_THETA_E_DEG = 116.7542
+OZONE_R_E_SOURCE = ("Tyuterev et al., J. Mol. Spectrosc. 198, 57 (1999); "
+                    "r_e = 1.27276(15) A, angle 116.7542(25) deg")
+
+
 # ── Water, H2O — a deliberate stress test ────────────────────────────────────
 # Structure: r_e = 0.95777 A, 104.48 deg -- the spectroscopic (nonadiabatic)
 # equilibrium structure of Csaszar et al., J. Chem. Phys. 122, 214305 (2005),
@@ -804,6 +840,8 @@ OZONE = ReferenceMolecule(
     ],
     structure_source="r_s structure, r(O-O) = 1.2717 A, angle 116.78 deg",
     structure_type="r_s",
+    geometry_re=_bent_xy(OZONE_R_E_ANG, OZONE_THETA_E_DEG),
+    geometry_re_source=OZONE_R_E_SOURCE,
     constants_source="NBS Monograph 70 Vol. IV p.402 (entry 1840)",
     bonds={"O-O": [(0, 1), (0, 2)]},
     angles={"O-O-O": [(1, 0, 2)]},

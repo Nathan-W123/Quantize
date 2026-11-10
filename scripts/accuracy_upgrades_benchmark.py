@@ -889,6 +889,7 @@ def main() -> None:
                                  defect_scale=cfg["defect_scale"],
                                  fit_cd=cfg["fit_cd"], cd_weight=CD_WEIGHT)
 
+            _re_geom = getattr(mol, "equilibrium_geometry", None)
             entry = {
                 #: The commit that produced this row. Compare only within one
                 #: vintage; see code_vintage().
@@ -911,6 +912,21 @@ def main() -> None:
                 "reference_type": str(getattr(mol, "structure_type", "effective")),
                 "reference_is_equilibrium": bool(
                     getattr(mol, "structure_type", "effective") == "r_e"),
+                # Scored against the published EQUILIBRIUM structure as well,
+                # wherever one exists, because that is the quantity the engine
+                # targets. Ozone is the case that shows why it matters: its two
+                # references are 1.06 mA apart, so the same fit scores ~1.0 mA
+                # against its r_s structure and far less against its r_e one.
+                # Null where no r_e structure is published, which is seven of
+                # the nine molecules and the honest state of the art here.
+                **({} if _re_geom is None else {
+                    "hybrid_rms_ma_vs_re": rms_bond_error(mol, hyb, _re_geom)[0],
+                    "me_rms_ma_vs_re": rms_bond_error(mol, me_geom, _re_geom)[0],
+                    "theory_rms_ma_vs_re": rms_bond_error(mol, prior, _re_geom)[0],
+                    "hybrid_rms_deg_vs_re": rms_angle_error(mol, hyb, _re_geom)[0],
+                    "re_source": str(getattr(mol, "geometry_re_source", "")
+                                     or mol.structure_source),
+                }),
                 "n_species": len(isos),
                 "sigma_x_ang": float(sigma_x),
                 # How far the fit travelled off the expansion point, and so
@@ -957,10 +973,12 @@ def main() -> None:
             # the engine's own error; anything else shares the error with the
             # yardstick, and a figure read off a terminal should say which.
             _ref = str(getattr(mol, "structure_type", "effective"))
+            _extra = ("" if _re_geom is None or _ref == "r_e"
+                      else f"   (vs r_e {entry['hybrid_rms_ma_vs_re']:5.2f})")
             print(f"  {mol.name:<22} {name:<9} theory {entry['theory_rms_ma']:6.2f}"
                   f"   ME {entry['me_rms_ma']:6.2f}"
                   f"   hybrid {entry['hybrid_rms_ma']:6.2f} mA"
-                  f"   vs {_ref}", flush=True)
+                  f"   vs {_ref}{_extra}", flush=True)
         print(f"    ({(time.time() - t0) / 60:.1f} min)", flush=True)
 
     print(f"\n  written to {out_path}")
