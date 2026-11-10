@@ -643,6 +643,46 @@ def _bent_xy(r_ang: float, theta_deg: float) -> np.ndarray:
 #: apart, against a best reported hybrid result for ozone of 1.00 mA. So an
 #: ozone figure quoted without saying which reference it used is ambiguous by
 #: its own magnitude.
+# ── Equilibrium references still wanted ─────────────────────────────────────
+#
+# Two of nine molecules have a published r_e here: water (Csaszar et al. 2005)
+# and ozone (Tyuterev et al. 1999, below). The other seven are scored against
+# r_s or effective structures, which is the binding constraint on what the
+# benchmark can demonstrate -- ozone's two references are 1.06 mA apart, and
+# that is larger than most of the differences between configurations the
+# benchmark is trying to resolve.
+#
+# ADDING ONE IS A TWO-LINE CHANGE: set geometry_re and geometry_re_source on
+# the molecule, and the benchmark picks up the extra columns automatically.
+# What is missing is the numbers, not the plumbing.
+#
+#   molecule              what to look for
+#   ------------------    ------------------------------------------------
+#   fluoroacetylene       r_e^SE; HC2F appears in the Demaison semi-
+#                         experimental series on small halogenated species
+#   isocyanic acid        the Demaison et al. equilibrium structure cited by
+#                         the HNCO nuclear-quadrupole literature; Fusina &
+#                         Mills (1981) give r_z, which is NOT r_e
+#   formyl fluoride       Demaison & Csaszar, J. Mol. Struct. 1023, 7 (2012)
+#                         covers equilibrium C=O lengths incl. F2CO/Cl2CO
+#   vinyl fluoride        r_e^SE from the halogenated-ethylene series
+#   fluoroethane          r_e^SE; compare the propyne treatment
+#   acetyl fluoride       unlikely to exist; a CCSD(T) r_e would have to
+#                         stand in, and then it is theory, not a reference
+#   chlorofluoromethane   unlikely to exist, same caveat
+#
+# The canonical compilation is Demaison & Vogt, "Accurate Structure
+# Determination of Free Molecules", which tabulates r_e for small molecules
+# and is the right place to start.
+#
+# NOT GUESSED. Web searches from this session returned method references and
+# citations but no transcribable tables, and CCCBDB needs form POSTs rather
+# than a fetchable URL. A mis-copied reference structure is worse than a
+# missing one: it would silently move every error measured against it, in a
+# direction nothing in the output would reveal. So these stay empty until
+# somebody reads the numbers off the source.
+
+#: Ozone's published equilibrium structure.
 OZONE_R_E_ANG = 1.27276
 OZONE_THETA_E_DEG = 116.7542
 OZONE_R_E_SOURCE = ("Tyuterev et al., J. Mol. Spectrosc. 198, 57 (1999); "
