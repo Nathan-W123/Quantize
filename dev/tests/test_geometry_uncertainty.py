@@ -116,40 +116,55 @@ def test_the_relative_sigma_floor_clamps_optimistic_inputs():
     assert above["O1-H2"] > a["O1-H2"]
 
 
-def test_a_sigma_far_below_the_model_error_is_refused_not_reported_as_zero():
-    """The bug this file used to assert the opposite of.
+def test_an_indefinite_covariance_is_refused_outright():
+    """The guard, tested on the guard rather than through the numerics.
 
-    With the floor off and sigma quoted at 0.02 MHz on constants near 1e6 MHz,
-    the posterior covariance reaches a condition number of ~1e32 with a
-    minimum eigenvalue near -2e13, and the propagated variance comes out at
-    about -2.3e13. The old code did sqrt(max(var, 0.0)) and reported that as
-    sigma = 0.000000 -- perfect precision, from a collapsed matrix.
+    An earlier version of this test provoked the bad covariance by running a
+    real fit with sigma quoted at 0.02 MHz and the floor off, then asserted
+    what came back. That is not portable: on Python 3.11 / numpy 2.4.6 the
+    coordinate comes back nan, on a 3.12 / numpy 2.5.4 venv the whole result
+    is None, and on the CI runner the same collapsed matrix yields a
+    plausible-looking 0.0119 because its variance happens to land positive.
+    Three machines, three answers, none of them meaningful -- and a test
+    pinned to any one of them fails on the other two. That is the same trap
+    this file already fell into once.
 
-    Two tests here passed only because of it: this one asserted that removing
-    the floor gives a TIGHTER bond (true only against 0.0), and
-    test_looser_constants_give_wider_bonds used that same 0.0 as its tight
-    end. The value was also platform dependent -- on the CI runner's LAPACK
-    the round-off landed slightly positive and gave a plausible-looking
-    0.0119 instead, so the suite passed locally and failed in CI with neither
-    number meaning anything.
-
-    What the function must NOT do is report a finite width, and above all not
-    zero. HOW it refuses is platform dependent and deliberately not pinned:
-    measured on Python 3.11 / numpy 2.4.6 the coordinate comes back nan, while
-    on 3.12 / numpy 2.5.4 the whole covariance is rejected earlier and
-    geometry_uncertainty returns None. Both are honest. An earlier draft of
-    this very test asserted nan specifically and failed on 3.12 -- the same
-    trap, one layer up, which is why the assertion is on the refusal and not
-    on its shape.
+    So the guard is driven directly: hand geometry_uncertainty a covariance
+    that is definitely indefinite and require it to refuse. Platform
+    independent, and it tests the thing that is supposed to protect the
+    caller.
     """
-    unfloored = _run(_opt(sigma_mhz=0.02, sigma_floor_rel=0.0))
-    if unfloored is None:
-        return                      # refused wholesale; honest
-    width = unfloored.get("O1-H2")
-    assert width is None or np.isnan(width), (
-        f"a collapsed covariance must not report a finite width, and above "
-        f"all must not report zero; got {width!r}"
+    opt = _opt()
+    _run(opt)
+    good = opt.geometry_uncertainty()
+    assert good is not None and np.isfinite(good["O1-H2"])
+
+    # Same optimum, but with an unmistakably indefinite covariance.
+    n = opt.coords.size
+    bad = np.eye(n) * 1e-4
+    bad[0, 0] = -1.0                      # min/max = -1e4, far past the 1e-6 tol
+    opt.laplace_approximation = lambda *a, **k: (bad, None)
+    assert opt.geometry_uncertainty() is None, (
+        "an indefinite covariance must yield no widths at all, rather than "
+        "numbers taken from it"
     )
+
+
+def test_round_off_indefiniteness_is_tolerated():
+    """The guard must not fire on a covariance that is merely imperfect.
+
+    The healthy default path has a negative minimum eigenvalue too, at about
+    -2e-16 of its maximum. A guard with an absolute threshold, or a ratio
+    threshold set too tight, would reject every real result.
+    """
+    opt = _opt()
+    _run(opt)
+    n = opt.coords.size
+    nearly = np.eye(n) * 1e-4
+    nearly[0, 0] = -1e-4 * 1e-12          # min/max = -1e-12, round-off scale
+    opt.laplace_approximation = lambda *a, **k: (nearly, None)
+    unc = opt.geometry_uncertainty()
+    assert unc is not None, "round-off indefiniteness must still be usable"
 
 
 def test_the_floored_default_is_unaffected_by_that_guard():

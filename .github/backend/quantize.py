@@ -83,6 +83,25 @@ _PRIOR_SIGMA_UNSET = object()
 _VAR_NEGATIVE_REL_TOL = 1e-9
 _TINY = 1e-300
 
+#: How indefinite the posterior covariance may be before its propagated widths
+#: are refused outright, as min(eig)/max(eig). A symmetric covariance should be
+#: positive semi-definite; a small negative eigenvalue is round-off, a large one
+#: means the normal matrix was too ill-conditioned to invert meaningfully and
+#: every width taken from it is noise -- whatever sign that noise happens to
+#: carry on a given BLAS.
+#:
+#: Measured on water, min(eig)/max(eig), across two interpreters:
+#:
+#:     floored, sigma 0.02      -2.2e-16  (3.11)   -1.4e-15  (3.12)
+#:     floored, sigma 2000      -6.6e-16  (3.11)   -2.9e-16  (3.12)
+#:     unfloored, sigma 2.0     -6.7e-10  (3.11)   -7.5e-10  (3.12)   usable
+#:     unfloored, sigma 0.02    -1.2e+02  (3.11)   rejected  (3.12)   collapsed
+#:
+#: so 1e-6 sits in an empty four-order gap above anything usable and far below
+#: the collapse. It has to be a RATIO: the same absolute eigenvalue means
+#: round-off on one matrix and catastrophe on another.
+_COV_INDEFINITE_REL_TOL = 1e-6
+
 #: Fallback when the level of theory has no calibrated width. See
 #: spectral.prior_widths for the calibrated table and why an unmeasured level
 #: falls back to the loosest value rather than an interpolated one.
@@ -2547,6 +2566,39 @@ class MolecularOptimizer:
 
         J, _ = self.spectral.stacked(self.coords)
         cov = cov + self._systematic_covariance(J, cov)
+
+        # IS THIS COVARIANCE USABLE AT ALL? Checked once, on the matrix, rather
+        # than per coordinate on the sign of a quadratic form.
+        #
+        # The per-coordinate check below catches a variance that comes out
+        # negative, which is what happens on some platforms. On others the same
+        # collapsed matrix yields a POSITIVE variance and so a plausible-looking
+        # width -- measured: 0.0119 Ang on a covariance whose condition number
+        # is 1.2e32 and whose minimum eigenvalue is -120 times its maximum.
+        # Guarding on the sign alone therefore catches one symptom on one
+        # machine and lets the same meaningless number through on another,
+        # which is exactly how this survived in the first place.
+        sym = (cov + cov.T) / 2.0
+        try:
+            eigs = np.linalg.eigvalsh(sym)
+        except np.linalg.LinAlgError:
+            eigs = None
+        if eigs is not None and eigs.size:
+            hi = float(np.max(eigs))
+            lo = float(np.min(eigs))
+            if hi > 0.0 and lo / hi < -_COV_INDEFINITE_REL_TOL:
+                self._warn_once(
+                    "geometry_uncertainty: the posterior covariance is not "
+                    f"positive semi-definite (min/max eigenvalue = "
+                    f"{lo / hi:.2e}), so no width taken from it is meaningful. "
+                    "Returning None rather than numbers. This happens when "
+                    "sigma_constants are quoted far below the B0-versus-Be "
+                    "model error with sigma_floor_rel disabled; the floor "
+                    "exists partly to keep the normal matrix invertible.",
+                    key="geometry_uncertainty_indefinite_covariance",
+                )
+                return None
+
         null_frac = self._data_null_fractions(J)
 
         bonds = _detect_bonds(self.coords, self.elems)
