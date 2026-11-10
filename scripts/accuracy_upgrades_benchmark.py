@@ -167,6 +167,10 @@ from backend.spectral.electronic_g import (  # noqa: E402
     g_tensors_for_isotopologues,
     rotational_g_tensor,
 )
+from backend.spectral.force_field_diagnostics import (  # noqa: E402
+    frequency_disagreement,
+    multireference_diagnostic,
+)
 from backend.spectral.hessian_cache import HessianCache  # noqa: E402
 from backend.spectral.harmonic_alpha import (  # noqa: E402
     build_correction_table_from_hessian,
@@ -203,6 +207,7 @@ CD_WEIGHT = 1.0
 VINTAGE = "unknown"
 WANT_CONFIGS: list[str] = []
 HESSIAN_CACHE = True
+RUN_DIAGNOSTICS = True
 _args: list[str] = []
 for _tok in sys.argv[1:]:
     if _tok.startswith("method="):
@@ -219,6 +224,8 @@ for _tok in sys.argv[1:]:
         TRACK_MAX = float(_tok.split("=", 1)[1])
     elif _tok.startswith("harmonic="):
         HARMONIC_SCHEME = _tok.split("=", 1)[1]
+    elif _tok == "no_diagnostics":
+        RUN_DIAGNOSTICS = False
     elif _tok == "no_hessian_cache":
         HESSIAN_CACHE = False
     elif _tok.startswith("configs="):
@@ -238,6 +245,18 @@ LAM_FREQ_CM = 350.0
 #: rotor it carries V3 and V6 and nothing it cannot distinguish; see
 #: torsion_scan_qm on why asking for more aliases rather than refuses.
 TORSION_SCAN_POINTS = 12
+
+#: Run the force-field trust diagnostics. On by default: the cross-level
+#: frequency check is free wherever base and corr both run, and the
+#: multireference probe is one cc-pVDZ MP2 calculation. Pass
+#: `no_diagnostics` to skip them.
+#:
+#: They exist because this benchmark reported ozone at 7.86 mA from an MP2
+#: force field whose antisymmetric stretch is 101% high, with nothing to say
+#: so. A result and the reason to distrust it belong on the same row.
+#:
+#: Declared above the argument loop and set by it; assigning it here too would
+#: clobber the flag, the same way HESSIAN_CACHE was briefly clobbered.
 
 #: Where Hessians are cached between runs, and whether to. On by default: a
 #: Hessian is a deterministic function of (level, elements, geometry), so a hit
@@ -821,6 +840,34 @@ def main() -> None:
                         torsion_replacement=replacement)
             return _tabs[key]
 
+        # FORCE-FIELD TRUST, once per molecule. The multireference probe is a
+        # property of the molecule, not of a configuration, so it is computed
+        # once; the cross-level frequency check needs both force fields and so
+        # only exists when a correction level differs from the geometry level.
+        diag = {}
+        if RUN_DIAGNOSTICS:
+            with contextlib.redirect_stdout(io.StringIO()):
+                diag["multireference"] = multireference_diagnostic(
+                    list(mol.elems), theory_coords)
+                if corr_backend is not None:
+                    from backend.spectral.centrifugal_distortion import normal_modes
+                    masses = np.asarray(mol.masses, dtype=float)
+                    om_base, _ = normal_modes(hessian_fn(theory_coords), masses)
+                    om_corr, _ = normal_modes(corr_hessian_fn(corr_geom), masses)
+                    diag["frequency_disagreement"] = frequency_disagreement(
+                        om_base, om_corr,
+                        f"{METHOD}/{BASIS}",
+                        f"{CORR_METHOD or METHOD}/{CORR_BASIS or BASIS}")
+                    diag["freqs_base_cm"] = np.sort(np.asarray(om_base, float)).tolist()
+                    diag["freqs_corr_cm"] = np.sort(np.asarray(om_corr, float)).tolist()
+            flags = [k for k, v in diag.items()
+                     if isinstance(v, dict) and v.get("flagged")]
+            if flags:
+                print(f"  [trust] {mol.name}: FORCE FIELD SUSPECT "
+                      f"({', '.join(flags)})", flush=True)
+                for k in flags:
+                    print(f"          {diag[k]['reason']}", flush=True)
+
         g_tensor = None
         for name in todo:
             cfg = CONFIGS[name]
@@ -909,6 +956,13 @@ def main() -> None:
                 # of the engine. Recorded per row because that caveat was
                 # previously only a paragraph in this file's docstring, and a
                 # number read out of the JSON carried no trace of it.
+                # Why this number might not be trustworthy, on the same row
+                # as the number. "force_field_suspect" true means at least one
+                # diagnostic fired; the detail says which and why.
+                "force_field_suspect": bool(any(
+                    isinstance(v, dict) and v.get("flagged")
+                    for v in diag.values())),
+                "force_field_diagnostics": diag or None,
                 "reference_type": str(getattr(mol, "structure_type", "effective")),
                 "reference_is_equilibrium": bool(
                     getattr(mol, "structure_type", "effective") == "r_e"),
@@ -975,6 +1029,8 @@ def main() -> None:
             _ref = str(getattr(mol, "structure_type", "effective"))
             _extra = ("" if _re_geom is None or _ref == "r_e"
                       else f"   (vs r_e {entry['hybrid_rms_ma_vs_re']:5.2f})")
+            if entry.get("force_field_suspect"):
+                _extra += "   [FORCE FIELD SUSPECT]"
             print(f"  {mol.name:<22} {name:<9} theory {entry['theory_rms_ma']:6.2f}"
                   f"   ME {entry['me_rms_ma']:6.2f}"
                   f"   hybrid {entry['hybrid_rms_ma']:6.2f} mA"
