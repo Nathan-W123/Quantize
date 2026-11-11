@@ -741,6 +741,51 @@ def _bent_xy(r_ang: float, theta_deg: float) -> np.ndarray:
 #   scoring against it would measure the structure's bias. It is useful as a
 #   cross-check, not as a reference.
 #
+# WHAT THIS SESSION ACTUALLY OBTAINED, and it is one number.
+#
+# Demaison's 2007 review is open access on HAL (hal.science/hal-00513162,
+# Mol. Phys. 105, 3109, doi 10.1080/00268970701765811) and was read in full.
+# It is a METHODS review, not a structure compilation: its only complete
+# equilibrium structures are for CO, phosphine and stibine. The compilation
+# that would have the rest is Demaison & Vogt's book, which is not open.
+#
+# Its Table 19 does give one hard parameter, for vinyl fluoride:
+#
+#     VINYL_FLUORIDE_RE_CCH_DEG below -- angle(CCH) = 125.95(20) deg,
+#     from Demaison, J., 2006, J. Mol. Spectrosc. 239, 201
+#     (doi 10.1016/j.jms.2006.07.007, confirmed NOT open access)
+#
+# One angle is not a geometry, so it cannot populate geometry_re. It is
+# recorded because it is a real, sourced, uncertainty-quoted equilibrium
+# number for a molecule in this set, and because at 0.20 deg it is just
+# inside what could check a single coordinate -- the engine's own angle error
+# on water is about 0.3 deg.
+#
+# AND IT CONFIRMS THE DEGENERACY, from an authoritative source rather than
+# from our own fit. Table 19 lists that same angle as determined eight ways:
+#
+#     1958  r0   123.7          1979  rz   130.8(25)   [electron diffraction]
+#     1961  r0   129.2          1989  rs   124.35(63)
+#     1961  r0   120.9          1992  r0   127.6(42)
+#     1974  rg   127.7(7)       2006  re   125.95(20)
+#
+# The three r0 determinations alone span 120.9 to 129.2 degrees -- 8.3 deg on
+# one angle -- and the review's point in printing it is that "the resulting
+# r0 structure may be widely different from the equilibrium structure". Our
+# own measurement put the engine's data-only fit 2.29 deg from the published
+# r0 for this molecule, which is well inside that published scatter. So the
+# 6.2 mA degeneracy measured in this session is not an artefact of our fit;
+# it is the known state of these references.
+#
+# Two further notes from the review, for whoever continues this:
+#   - fluorobenzene has an rm(1)/rm(2) structure (13 parameters, 9
+#     isotopologues): Tinti, Bizzocchi, Degli Esposti & Dore, 2006,
+#     J. Mol. Spectrosc. 240, 202. rm approximates re and is worth chasing,
+#     though fluorobenzene's data is 18 observables short of determining it.
+#   - Table 21 lists rm structures for CH2=CHCl and CH2=CHBr but NOT
+#     CH2=CHF, which is the "no second F isotope" problem again, in the one
+#     place it can be seen directly.
+#
 #   molecule              what to look for
 #   ------------------    ------------------------------------------------
 #   fluoroacetylene       r_e^SE; HC2F appears in the Demaison semi-
@@ -771,6 +816,21 @@ def _bent_xy(r_ang: float, theta_deg: float) -> np.ndarray:
 # it would silently move every error measured against it, in a direction
 # nothing in the output would reveal. So these stay empty until somebody
 # reads the numbers, WITH their uncertainties, off the source.
+
+#: Vinyl fluoride's equilibrium C=C-H angle, the one equilibrium parameter
+#: this session could source for any molecule in the set beyond water and
+#: ozone. Demaison, J., 2006, J. Mol. Spectrosc. 239, 201, as tabulated in
+#: Demaison's 2007 Mol. Phys. review (Table 19, open access on HAL).
+#:
+#: A single angle cannot populate geometry_re, so nothing scores against this
+#: yet. It is here so the number does not have to be found twice, and because
+#: its 0.20 deg uncertainty is inside RE_REFERENCE_MAX_UNCERTAINTY_MA's
+#: spirit -- the engine's own angle error on water is about 0.3 deg.
+VINYL_FLUORIDE_RE_CCH_DEG = 125.95
+VINYL_FLUORIDE_RE_CCH_UNC_DEG = 0.20
+VINYL_FLUORIDE_RE_CCH_SOURCE = (
+    "Demaison, J., 2006, J. Mol. Spectrosc. 239, 201; angle(CCH) = "
+    "125.95(20) deg, via Table 19 of Demaison, Mol. Phys. 105, 3109 (2007)")
 
 #: Ozone's published equilibrium structure.
 OZONE_R_E_ANG = 1.27276

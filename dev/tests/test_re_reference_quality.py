@@ -122,3 +122,37 @@ def test_the_repo_s_computed_fcho_structure_would_not_qualify():
     assert REF.FORMYL_FLUORIDE.equilibrium_geometry is None, (
         "formyl fluoride now has an r_e reference -- if it is the computed "
         "CCSD(T) structure, it cannot measure the engine")
+
+
+def test_the_one_sourced_equilibrium_parameter_is_recorded():
+    """Vinyl fluoride's equilibrium C=C-H angle, the only equilibrium number
+    this session could source beyond water and ozone.
+
+    Demaison, J., 2006, J. Mol. Spectrosc. 239, 201, via Table 19 of his 2007
+    Mol. Phys. review (open access on HAL). A single angle cannot populate
+    geometry_re, so nothing scores against it yet -- it is pinned so the
+    value and its provenance survive.
+    """
+    assert REF.VINYL_FLUORIDE_RE_CCH_DEG == pytest.approx(125.95, abs=0.005)
+    assert REF.VINYL_FLUORIDE_RE_CCH_UNC_DEG == pytest.approx(0.20, abs=0.005)
+    src = REF.VINYL_FLUORIDE_RE_CCH_SOURCE
+    assert "Demaison" in src and "239" in src
+    # It is a parameter, not a geometry: vinyl fluoride still has no r_e.
+    assert REF.VINYL_FLUORIDE.equilibrium_geometry is None
+    assert REF.VINYL_FLUORIDE.equilibrium_reference_quality() == "none"
+
+
+def test_published_r0_scatter_exceeds_our_measured_distance():
+    """The published r0 determinations of that same angle span 8.3 degrees.
+
+    From the review's Table 19: three r0 values at 123.7, 129.2 and 120.9
+    degrees. Our data-only fit sat 2.29 deg from the published r0 for this
+    molecule -- comfortably inside the published scatter, which is why the
+    6.2 mA degeneracy measured this session is the state of the references
+    rather than an artefact of the fit.
+    """
+    published_r0_deg = [123.7, 129.2, 120.9]
+    scatter = max(published_r0_deg) - min(published_r0_deg)
+    our_distance_deg = 2.2918       # measured, data-only fit vs published r_0
+    assert scatter > 8.0
+    assert our_distance_deg < scatter
