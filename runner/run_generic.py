@@ -1862,7 +1862,21 @@ def _write_torsion_phase2_plots(
     return paths
 
 
-def main(cfg: dict[str, Any]) -> dict[str, Any]:
+def build_run_inputs(cfg: dict[str, Any], *, verbose: bool = True) -> dict[str, Any]:
+    """Translate a config dict into everything a run needs, without running one.
+
+    This is the whole config -> ``MolecularOptimizer`` kwargs translation, which
+    used to live inline in :func:`main` and so was reachable only by running a
+    full multistart fit. ``quantize uncertainty`` needs the same translation and
+    had been importing a ``build_optimizer_from_config`` that was never written,
+    so the subcommand died on import -- see
+    :func:`runner.run_from_config.build_optimizer_from_config`, which is built
+    on this.
+
+    Returns a dict of exactly the names :func:`main` goes on to use. Set
+    ``verbose=False`` to skip the banner lines a caller that is not running a
+    fit has no use for.
+    """
     name = str(cfg.get("name", "molecule")).strip()
     managed_run = "_run_dir" in cfg
     run_dir = Path(str(cfg.get("_run_dir") or ".")).resolve()
@@ -2144,22 +2158,74 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
         optimizer_kwargs["conformer_weight_mode"] = cm_mode
         optimizer_kwargs["conformer_temperature_k"] = cm_temp_k
 
-    print(f"[{name}] elements     : {elems}")
-    print(f"[{name}] isotopologues: {[iso['name'] for iso in isotopologues]}")
-    print(f"[{name}] spectral model: {spectral_model}")
-    print(f"[{name}] quantum      : {backend} / {orca_method} / {orca_basis}")
-    print(f"[{name}] coord mode   : {coordinate_mode}")
-    print(f"[{name}] preset       : {preset_name}")
-    print(f"[{name}] n_starts     : {preset['n_starts']}  max_workers: {preset['max_workers']}")
-    if conformer_workflow["summary"]["requested_enabled"]:
-        print(
-            f"[{name}] conformers   : {conformer_workflow['summary']['n_conformers']} "
-            f"(explicit={conformer_workflow['summary']['explicit_count']}, "
-            f"generated={conformer_workflow['summary']['generated_count']}, "
-            f"mode={conformer_workflow['summary']['weight_mode']})"
-        )
-    if symmetry_spec:
-        print(f"[{name}] symmetry     : {symmetry_spec}")
+    if verbose:
+        print(f"[{name}] elements     : {elems}")
+        print(f"[{name}] isotopologues: {[iso['name'] for iso in isotopologues]}")
+        print(f"[{name}] spectral model: {spectral_model}")
+        print(f"[{name}] quantum      : {backend} / {orca_method} / {orca_basis}")
+        print(f"[{name}] coord mode   : {coordinate_mode}")
+        print(f"[{name}] preset       : {preset_name}")
+        print(f"[{name}] n_starts     : {preset['n_starts']}  max_workers: {preset['max_workers']}")
+        if conformer_workflow["summary"]["requested_enabled"]:
+            print(
+                f"[{name}] conformers   : {conformer_workflow['summary']['n_conformers']} "
+                f"(explicit={conformer_workflow['summary']['explicit_count']}, "
+                f"generated={conformer_workflow['summary']['generated_count']}, "
+                f"mode={conformer_workflow['summary']['weight_mode']})"
+            )
+        if symmetry_spec:
+            print(f"[{name}] symmetry     : {symmetry_spec}")
+
+    return {
+        "name": name,
+        "managed_run": managed_run,
+        "run_dir": run_dir,
+        "base_workdir": base_workdir,
+        "coords": coords,
+        "elems": elems,
+        "bonds": bonds,
+        "spectral_model": spectral_model,
+        "isotopologues": isotopologues,
+        "backend": backend,
+        "orca_method": orca_method,
+        "orca_basis": orca_basis,
+        "spectral_only": spectral_only,
+        "preset_name": preset_name,
+        "preset": preset,
+        "write_xyz": write_xyz,
+        "symmetry_spec": symmetry_spec,
+        "coordinate_mode": coordinate_mode,
+        "starts": starts,
+        "conformer_workflow": conformer_workflow,
+        "use_conformer_mixture": use_conformer_mixture,
+        "optimizer_kwargs": optimizer_kwargs,
+    }
+
+
+def main(cfg: dict[str, Any]) -> dict[str, Any]:
+    _inputs = build_run_inputs(cfg)
+    name = _inputs["name"]
+    managed_run = _inputs["managed_run"]
+    run_dir = _inputs["run_dir"]
+    base_workdir = _inputs["base_workdir"]
+    coords = _inputs["coords"]
+    elems = _inputs["elems"]
+    bonds = _inputs["bonds"]
+    spectral_model = _inputs["spectral_model"]
+    isotopologues = _inputs["isotopologues"]
+    backend = _inputs["backend"]
+    orca_method = _inputs["orca_method"]
+    orca_basis = _inputs["orca_basis"]
+    spectral_only = _inputs["spectral_only"]
+    preset_name = _inputs["preset_name"]
+    preset = _inputs["preset"]
+    write_xyz = _inputs["write_xyz"]
+    symmetry_spec = _inputs["symmetry_spec"]
+    coordinate_mode = _inputs["coordinate_mode"]
+    starts = _inputs["starts"]
+    conformer_workflow = _inputs["conformer_workflow"]
+    use_conformer_mixture = _inputs["use_conformer_mixture"]
+    optimizer_kwargs = _inputs["optimizer_kwargs"]
 
     # ── Run ───────────────────────────────────────────────────────────────────
     results = run_multistart(
