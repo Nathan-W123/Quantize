@@ -151,10 +151,59 @@ if SIGMA_X is None:
 #: X-Cl rests on a single molecule (n=1) whose 1953 reference is itself the
 #: pre-registered exclusion above -- treat that entry as provisional.
 #: Bond classes in Angstrom, "angle" in degrees.
+#: HF/6-31G is the benchmark's DEFAULT level and had no row here at all, so
+#: CLASS_SIGMA came back None and no per-class floor reached the
+#: theory-determined fraction of any coordinate. Measured consequence: bond
+#: coverage 8/20 with median |error|/sigma = 1.40 against an ideal 0.674 --
+#: the quoted bond sigma about 2x too small, which is the overconfident
+#: direction. sigma_x was not the problem (0.020 against a 16-24 mA error is
+#: about right); the missing class resolution was.
+#:
+#: Measured the same way the B3LYP row describes itself: geometry error of the
+#: level against the published reference, by class, over the 10-molecule set,
+#: binned with MolecularOptimizer._coordinate_class.
+#:
+#:   class       n       RMS        B3LYP row     ratio
+#:   X-H        25    0.01302        0.00593       2.2x
+#:   C-F         7    0.02711        0.00520       5.2x
+#:   skeleton   19    0.01784        0.00716       2.5x
+#:
+#: PROCEDURE VALIDATED by re-deriving the B3LYP row with the same code before
+#: trusting it for a new one: X-Cl came back 0.04322 against a recorded
+#: 0.0432 -- exact, and it is n=1 so deterministic -- and X-H 0.00586 against
+#: 0.00593, 1.2%. C-F and skeleton land 32% and 11% away, so these are not
+#: bit-identical to whatever produced the recorded row (optimiser convergence
+#: or start geometry, most likely); the binning and the comparison are right.
+#:
+#: TWO CLASSES DELIBERATELY OMITTED:
+#:
+#:   angle    HF's RMS is 4.00 deg against its own median of 0.57, a factor
+#:            of seven, and it is ONE coordinate: isocyanic acid's H-N-C,
+#:            30.34 deg off. HNCO is quasi-linear there and HF fails
+#:            qualitatively rather than typically -- B3LYP's worst angle on
+#:            the same set is 3.64 deg, so this is HF's failure and not an
+#:            artefact. Dropping it gives 0.975 deg, but dropping it AFTER
+#:            seeing that it inflates the number is post-hoc, which is the
+#:            thing the pre-registered exclusion below exists to avoid. And
+#:            HF angles are already about 10x too wide, so a 4 deg floor
+#:            would push the wrong way. No angle floor until the rule is
+#:            decided in advance.
+#:
+#:   X-Cl     n=1, and that one molecule is chlorofluoromethane, which the
+#:            pre-registered exclusion below already removes from the primary
+#:            metric. A floor resting entirely on an excluded reference is
+#:            not a floor.
+#:
+#: A class absent from the dict gets .get(cls, 0.0) downstream, so it is
+#: simply unfloored -- exactly today's behaviour for those two.
+_HF_CLASS_SIGMA = {"X-H": 0.01302, "C-F": 0.02711, "skeleton": 0.01784}
+
 PRIOR_CLASS_SIGMA = {
     ("b3lyp", "6-31g(d)"): {"X-H": 0.00593, "C-F": 0.00520,
                             "skeleton": 0.00716, "X-Cl": 0.0432,
                             "angle": 1.25},
+    ("hf", "6-31g"): dict(_HF_CLASS_SIGMA),
+    ("rhf", "6-31g"): dict(_HF_CLASS_SIGMA),
 }
 CLASS_SIGMA = PRIOR_CLASS_SIGMA.get((METHOD.lower(), BASIS.lower()))
 

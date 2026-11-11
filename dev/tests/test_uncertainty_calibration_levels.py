@@ -119,3 +119,81 @@ def test_the_docstring_records_both_levels_and_the_caveat():
     # Asserting the phrase is absent was wrong: the correction quotes it.
     assert "level mix-up" in head
     assert "the warning holds for bonds" in head
+
+
+def _prior_class_sigma():
+    src = _SCRIPT.read_text()
+    start = src.index("_HF_CLASS_SIGMA")
+    end = src.index("CLASS_SIGMA = PRIOR_CLASS_SIGMA")
+    ns: dict = {}
+    exec(src[start:end], ns)
+    return ns["PRIOR_CLASS_SIGMA"]
+
+
+#: Measured HF/6-31g per-class errors over the 10-molecule set, RMS in Angstrom.
+HF_MEASURED = {"X-H": 0.01302, "C-F": 0.02711, "skeleton": 0.01784}
+
+
+def test_the_default_level_now_has_class_floors():
+    """It had none, which is why bonds covered 8/20 at HF/6-31g."""
+    table = _prior_class_sigma()
+    row = table.get(("hf", "6-31g"))
+    assert row, "HF/6-31g still has no per-class floors"
+    for cls, want in HF_MEASURED.items():
+        assert row[cls] == pytest.approx(want, rel=1e-3), cls
+
+
+def test_both_method_spellings_share_one_row():
+    table = _prior_class_sigma()
+    assert table[("hf", "6-31g")] == table[("rhf", "6-31g")]
+    # Separate dicts, so mutating one cannot alter the other.
+    assert table[("hf", "6-31g")] is not table[("rhf", "6-31g")]
+
+
+def test_hf_floors_exceed_b3lyp_floors():
+    """HF is the worse method; a floor that did not reflect that is suspect."""
+    table = _prior_class_sigma()
+    hf = table[("hf", "6-31g")]
+    b3 = table[("b3lyp", "6-31g(d)")]
+    for cls in hf:
+        assert hf[cls] > b3[cls], cls
+
+
+def test_angle_and_xcl_are_deliberately_absent():
+    """Both omissions are judgement calls and must not be silently filled.
+
+    angle: HF's RMS is 4.00 deg against a median of 0.57, driven by one
+    coordinate (isocyanic acid H-N-C, 30.34 deg). Excluding it gives 0.975,
+    but excluding it after seeing its effect is post-hoc, and HF angles are
+    already ~10x too wide so a 4 deg floor pushes the wrong way.
+
+    X-Cl: n=1, on chlorofluoromethane, which is already pre-registered as
+    excluded from the primary metric.
+    """
+    row = _prior_class_sigma()[("hf", "6-31g")]
+    assert "angle" not in row
+    assert "X-Cl" not in row
+
+
+def test_a_missing_class_is_unfloored_not_an_error():
+    """The omissions are only safe because the consumer tolerates them."""
+    import inspect
+    from backend.quantize import MolecularOptimizer
+    src = inspect.getsource(MolecularOptimizer)
+    assert "_prior_class_sigma.get(cls, 0.0)" in src, (
+        "the consumer no longer defaults a missing class to zero, so omitting "
+        "angle and X-Cl from the HF row may now raise instead of unfloor")
+
+
+def test_the_classifier_bins_as_the_measurement_did():
+    """A coordinate must land in the bin its calibration error landed in."""
+    from backend.quantize import MolecularOptimizer
+    c = MolecularOptimizer._coordinate_class
+    assert c("C", "H") == "X-H"
+    assert c("C", "D") == "X-H"
+    assert c("C", "F") == "C-F"
+    assert c("C", "Cl") == "X-Cl"
+    assert c("C", "C") == "skeleton"
+    assert c("C", "O") == "skeleton"
+    # Priority order: hydrogen beats halogen.
+    assert c("H", "Cl") == "X-H"
