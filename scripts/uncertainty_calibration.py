@@ -14,20 +14,36 @@ not be quoted on unknown molecules until the cause is fixed.
     python scripts/uncertainty_calibration.py
     python scripts/uncertainty_calibration.py method=b3lyp "basis=6-31g(d)"
 
-RESULT, and it runs the opposite way to the warning in geometry_uncertainty
---------------------------------------------------------------------------
-42 coordinates across the held-out molecules at RHF/6-31G:
+RESULT, and the aggregate number is the least informative part
+--------------------------------------------------------------
+42 coordinates across the held-out molecules, both levels measured:
 
-    coverage of the quoted 1-sigma interval   38/42 = 90%   (ideal ~68%)
-    median |error| / sigma                    0.38          (ideal ~0.67)
-      bonds    18/20 covered, median 0.72
-      angles   20/22 covered, median 0.24
+                              B3LYP/6-31g(d)      HF/6-31g
+                              sigma_x = 0.007     sigma_x = 0.020
+    coverage                  38/42 = 90%         27/42 = 64%
+    median |error| / sigma     0.39                0.34
+      bonds                   18/20, median 0.72   8/20, median 1.40
+      angles                  20/22, median 0.24  19/22, median 0.07
 
-The intervals are CONSERVATIVE, by roughly 1.8x overall and 2.8x on angles.
-geometry_uncertainty's docstring says "expect it to be optimistic"; on this set
-it is not, and that sentence should not be relied on. Most rows come back marked
-theory-determined, so the width being reported is largely the prior's width, and
-the prior sigma is set conservatively.
+(ideal: 68% coverage, and median |error|/sigma = 0.674 for a half-normal.)
+
+HF's 64% looks beautifully calibrated and is a COINCIDENCE: it averages bonds
+that are overconfident with angles that are far too wide. Read the split, never
+the total.
+
+  bonds   at B3LYP, median 0.72 against an ideal 0.674 -- right. At HF, 1.40,
+          so the quoted bond sigma is about 2x too SMALL and covers 8/20.
+          HF/6-31g is the benchmark's own default level, and there
+          geometry_uncertainty's "expect it to be optimistic" is correct.
+  angles  2.8x too wide at B3LYP and ~10x too wide at HF. Most rows come back
+          theory-determined, so what is reported is the prior's width, and the
+          prior is isotropic while the real error is not.
+
+An earlier version of this docstring recorded the B3LYP column and attributed
+it to RHF/6-31G, and concluded from it that the intervals are conservative and
+that geometry_uncertainty's optimism warning "should not be relied on". That
+was a level mix-up: at HF the warning holds for bonds. Both columns are now
+measured and labelled.
 
 Two things keep this from being a clean bill of health. The errors here are
 measured against r_0 and r_s references, not equilibrium structures, so part of
@@ -109,7 +125,16 @@ for _tok in sys.argv[1:]:
 #: is 5.5-6.7 mA RMS -- so every theory-determined coordinate reported a sigma
 #: ~3x too wide by construction. Values here are calibrated on molecules with
 #: known structures and then frozen; sigma= overrides.
+#: Keyed on the method string the REST of the codebase uses, which is "hf":
+#: the pyscf backend's default, and METHOD in the benchmark. These entries
+#: said "rhf", so they could never be looked up and every HF run fell through
+#: to the 0.020 default. Harmless only because the default happened to equal
+#: them -- it would have gone silently wrong the first time anyone changed a
+#: value or added a level. Both spellings are accepted now so an "rhf=" on
+#: the command line still resolves.
 THEORY_SIGMA_X = {
+    ("hf", "6-31g"): 0.020,
+    ("hf", "6-31g(d)"): 0.020,
     ("rhf", "6-31g"): 0.020,
     ("rhf", "6-31g(d)"): 0.020,
     ("b3lyp", "6-31g(d)"): 0.007,
