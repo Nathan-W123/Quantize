@@ -167,6 +167,140 @@ def multireference_diagnostic(elements, coords_ang, basis: str = MULTIREFERENCE_
     return out
 
 
+#: Cross-level angle disagreement, in degrees, above which a coordinate is
+#: not merely imprecise but qualitatively different between the two levels.
+#:
+#: Measured over the 10-molecule reference set, HF/6-31G against
+#: B3LYP/6-31G(d), 61 angles:
+#:
+#:     median  0.437    p90  1.364    p99  13.70    max  29.19
+#:
+#:     29.194   isocyanic acid   H-N-C     <- HF puts it 30.34 deg from the
+#:      3.377   isocyanic acid   N-C-O        published reference, B3LYP 1.14
+#:      1.984   chlorofluoromethane H-C-H
+#:      1.831   vinyl fluoride   H4-C1=C2
+#:      1.786   ozone            O-O-O
+#:
+#: The real failure is 8.6x the next worst and nothing at all lies between
+#: 3.4 and 29.2, so 10.0 sits in an empty gap: it flags that coordinate and
+#: no other on this set. HNCO is quasi-linear at H-N-C and HF simply finds a
+#: different minimum there.
+GEOMETRY_ANGLE_DISAGREEMENT_WARN_DEG = 10.0
+
+#: The same for bonds, in Angstrom -- and this one is NOT calibrated against
+#: an observed failure, because there wasn't one. Over the same set, 52 bonds:
+#:
+#:     median  0.01439   p90  0.02982   p99  0.03891   max  0.04285
+#:
+#: a smooth distribution with its maximum only 3x the median, which is what
+#: two levels of theory differing systematically looks like. 0.15 is set at
+#: roughly 3.5x the observed maximum, so it means "no bond should ever move
+#: this far between levels" rather than "this is where failure begins". It has
+#: never fired on real data and should not be read as validated.
+GEOMETRY_BOND_DISAGREEMENT_WARN_ANG = 0.15
+
+
+def geometry_disagreement(coords_a, coords_b, elems, bonds=None, angles=None,
+                          label_a: str = "A", label_b: str = "B",
+                          angle_warn: float = GEOMETRY_ANGLE_DISAGREEMENT_WARN_DEG,
+                          bond_warn: float = GEOMETRY_BOND_DISAGREEMENT_WARN_ANG) -> dict:
+    """Do two levels of theory agree on the SHAPE, not just the energy?
+
+    The point of this one is that it needs no reference structure. The engine
+    exists for molecules that have none, and a published structure is exactly
+    what is unavailable when a qualitative optimisation failure happens -- so
+    a check that requires one cannot run where it is needed.
+
+    HF/6-31G puts isocyanic acid's H-N-C angle 30.34 deg away from the
+    published value while B3LYP/6-31G(d) is 1.14 deg away. Nothing in the
+    engine noticed. The two levels disagree by 29.19 deg on that coordinate,
+    which is visible without knowing the answer, and is 8.6x the next worst
+    disagreement anywhere on the reference set.
+
+    Coordinates are taken from the `bonds` and `angles` maps so a coordinate
+    lands in the same place the rest of the harness puts it. Returns
+    'max_angle_dev', 'max_bond_dev', 'worst_angle', 'worst_bond',
+    'flagged_angles', 'flagged_bonds', 'flagged' and 'reason'. A failure to
+    compare returns the same shape with the reason filled in, because a
+    diagnostic that raises takes down the run it was meant to qualify.
+    """
+    out = {"max_angle_dev": None, "max_bond_dev": None,
+           "worst_angle": None, "worst_bond": None,
+           "flagged_angles": [], "flagged_bonds": [],
+           "flagged": False, "reason": "",
+           "label_a": str(label_a), "label_b": str(label_b)}
+    try:
+        xa = np.asarray(coords_a, dtype=float)
+        xb = np.asarray(coords_b, dtype=float)
+    except (TypeError, ValueError) as exc:
+        out["reason"] = f"coordinates not numeric: {exc}"
+        return out
+    if xa.shape != xb.shape or xa.ndim != 2 or xa.shape[1] != 3:
+        out["reason"] = (f"cannot compare geometries of shape {xa.shape} and "
+                         f"{xb.shape}")
+        return out
+    if xa.shape[0] != len(list(elems)):
+        out["reason"] = (f"{xa.shape[0]} atoms against {len(list(elems))} "
+                         f"element labels")
+        return out
+
+    def blen(x, i, j):
+        return float(np.linalg.norm(x[i] - x[j]))
+
+    def bang(x, i, j, k):
+        u = x[i] - x[j]; v = x[k] - x[j]
+        nu = np.linalg.norm(u); nv = np.linalg.norm(v)
+        if nu <= 0.0 or nv <= 0.0:
+            return float("nan")
+        return float(np.degrees(np.arccos(np.clip((u / nu) @ (v / nv), -1.0, 1.0))))
+
+    worst_b, worst_a = (-1.0, None), (-1.0, None)
+    for label, pairs in (bonds or {}).items():
+        for (i, j) in pairs:
+            d = abs(blen(xa, i, j) - blen(xb, i, j))
+            name = f"{label}({i},{j})"
+            if d > worst_b[0]:
+                worst_b = (d, name)
+            if d > float(bond_warn):
+                out["flagged_bonds"].append((name, d))
+    for label, trips in (angles or {}).items():
+        for (i, j, k) in trips:
+            d = abs(bang(xa, i, j, k) - bang(xb, i, j, k))
+            if not np.isfinite(d):
+                continue
+            name = f"{label}({i},{j},{k})"
+            if d > worst_a[0]:
+                worst_a = (d, name)
+            if d > float(angle_warn):
+                out["flagged_angles"].append((name, d))
+
+    if worst_b[1] is not None:
+        out["max_bond_dev"] = worst_b[0]
+        out["worst_bond"] = worst_b[1]
+    if worst_a[1] is not None:
+        out["max_angle_dev"] = worst_a[0]
+        out["worst_angle"] = worst_a[1]
+    if not out["flagged_bonds"] and not out["flagged_angles"]:
+        if worst_a[1] is None and worst_b[1] is None:
+            out["reason"] = "no bonds or angles given to compare"
+        return out
+
+    out["flagged"] = True
+    bits = []
+    for name, d in out["flagged_angles"]:
+        bits.append(f"angle {name} differs by {d:.1f} deg")
+    for name, d in out["flagged_bonds"]:
+        bits.append(f"bond {name} differs by {d:.4f} Ang")
+    out["reason"] = (
+        f"{label_a} and {label_b} do not agree on the shape: "
+        + "; ".join(bits)
+        + ". A disagreement this large is a different minimum rather than a "
+          "difference of precision, so the cheaper level's geometry should "
+          "not be trusted for this coordinate."
+    )
+    return out
+
+
 def frequency_disagreement(omega_a, omega_b, label_a: str = "A",
                            label_b: str = "B",
                            warn: float = FREQUENCY_DISAGREEMENT_WARN) -> dict:

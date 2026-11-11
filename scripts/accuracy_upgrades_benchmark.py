@@ -182,6 +182,7 @@ from dev.monofluoro_references import (  # noqa: E402
 )
 from scripts.force_field_diagnostics import (  # noqa: E402
     frequency_disagreement,
+    geometry_disagreement,
     multireference_diagnostic,
 )
 from scripts.mixed_estimation_baseline import (  # noqa: E402
@@ -917,6 +918,18 @@ def main() -> None:
                         f"{CORR_METHOD or METHOD}/{CORR_BASIS or BASIS}")
                     diag["freqs_base_cm"] = np.sort(np.asarray(om_base, float)).tolist()
                     diag["freqs_corr_cm"] = np.sort(np.asarray(om_corr, float)).tolist()
+                    # Do the two levels agree on the SHAPE, not just the
+                    # frequencies? HF/6-31G puts isocyanic acid's H-N-C angle
+                    # 30.34 deg from its published value where B3LYP is 1.14
+                    # deg away, and nothing here noticed. It needs no
+                    # reference: the two optimised geometries disagree by
+                    # 29.19 deg on that coordinate, which is 8.6x the worst
+                    # ordinary disagreement anywhere on this set.
+                    diag["geometry_disagreement"] = geometry_disagreement(
+                        theory_coords, corr_geom, list(mol.elems),
+                        bonds=mol.bonds, angles=mol.angles,
+                        label_a=f"{METHOD}/{BASIS}",
+                        label_b=f"{CORR_METHOD or METHOD}/{CORR_BASIS or BASIS}")
             flags = [k for k, v in diag.items()
                      if isinstance(v, dict) and v.get("flagged")]
             if flags:
