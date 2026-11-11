@@ -38,6 +38,15 @@ class BootstrapSampleResult:
     error: str | None = None
     workdir: str | None = None
     elapsed_s: float | None = None
+    #: How far this sample's geometry moved from the geometry it started at,
+    #: as max|dx| in Angstrom. Exactly 0.0 means the optimiser accepted no
+    #: step at all, so the "sample" is a copy of the starting point.
+    moved_ang: float | None = None
+    #: Whether this sample may enter the cloud an interval is taken from.
+    #: `success` only says the fit did not raise; these are different facts
+    #: and were conflated, which is the defect these fields exist for.
+    usable: bool = True
+    unusable_reason: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         blob = asdict(self)
@@ -56,6 +65,61 @@ class BootstrapRunSummary:
     failed_samples: int
     mean_rms_mhz: float | None
     sample_results: list[BootstrapSampleResult] = field(default_factory=list)
+    #: The base fit's residual RMS the samples were gated against, when the
+    #: optimizer had been run before sampling. None means only the
+    #: no-accepted-step gate could be applied.
+    base_rms_mhz: float | None = None
+
+    #: Fewer usable samples than this fraction of the requested count and the
+    #: cloud is not a sample of anything. The CLI already used one half as the
+    #: line for "high failure rate suggests the geometry is unstable or poorly
+    #: constrained"; this applies the same line to samples that ran but did
+    #: not produce a draw.
+    USABLE_FRACTION_MIN = 0.5
+
+    @property
+    def usable_results(self) -> list[BootstrapSampleResult]:
+        """The samples an interval may be quoted from."""
+        return [r for r in self.sample_results
+                if r.success and r.usable and r.coords is not None]
+
+    @property
+    def usable_samples(self) -> int:
+        return len(self.usable_results)
+
+    @property
+    def refused_samples(self) -> int:
+        """Samples that ran without raising but are not draws."""
+        return sum(1 for r in self.sample_results if r.success and not r.usable)
+
+    @property
+    def usable(self) -> bool:
+        """Whether an interval may be quoted from this run at all.
+
+        False is a refusal, not a hedge. A sample that accepted no step is a
+        copy of the starting geometry, and a cloud padded with copies of its
+        own centre reports a narrower interval the more often the sampler
+        fails -- the error points the wrong way, so it cannot be left to a
+        warning.
+        """
+        n = int(self.config.n_samples) if self.config is not None else self.total_samples
+        if n <= 0:
+            return False
+        return self.usable_samples >= max(1, int(np.ceil(self.USABLE_FRACTION_MIN * n)))
+
+    def unusable_reason(self) -> str | None:
+        """Why an interval is refused, or None when it is not."""
+        if self.usable:
+            return None
+        n = int(self.config.n_samples) if self.config is not None else self.total_samples
+        need = max(1, int(np.ceil(self.USABLE_FRACTION_MIN * n)))
+        return (
+            f"Only {self.usable_samples} of {n} bootstrap samples produced a "
+            f"draw ({self.refused_samples} ran but were refused, "
+            f"{self.failed_samples} raised); {need} are needed. An interval "
+            f"from what is left would be narrower than the truth, because a "
+            f"refused sample sits exactly on the starting geometry."
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -64,6 +128,11 @@ class BootstrapRunSummary:
             "successful_samples": self.successful_samples,
             "failed_samples": self.failed_samples,
             "mean_rms_mhz": self.mean_rms_mhz,
+            "base_rms_mhz": self.base_rms_mhz,
+            "usable_samples": self.usable_samples,
+            "refused_samples": self.refused_samples,
+            "usable": self.usable,
+            "unusable_reason": self.unusable_reason(),
             "sample_results": [s.to_dict() for s in self.sample_results],
         }
 

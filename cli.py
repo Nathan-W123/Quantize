@@ -401,19 +401,40 @@ def _cmd_uncertainty(args) -> int:
             summary = engine.run(base_workdir=opt.workdir)
             print("\n" + format_bootstrap_summary(summary))
             summary_bundle["bootstrap"] = summary.to_dict()
-            successes = [r for r in summary.sample_results if r.success and r.coords is not None]
+            # Usable, not merely non-raising. A sample whose fit accepted no
+            # step returns the geometry it started from; counting it put a
+            # duplicate of the cloud's own centre into the cloud, which makes
+            # the reported interval NARROWER the more often the sampler fails.
+            # Measured on water: two of four samples came back bit-identical
+            # to the base geometry and were reported as successes.
+            successes = summary.usable_results
+            n_refused = summary.refused_samples
         else:
             raise SystemExit(_V1_REMOVED)
-        
-        # Warning for high bootstrap failure rate
-        if len(successes) < args.samples:
-            print(f"\n[warning] Only {len(successes)}/{args.samples} bootstrap samples converged.")
+
+        if n_refused:
+            print(f"\n[warning] {n_refused}/{args.samples} bootstrap samples ran but "
+                  f"produced no draw; they are excluded from the cloud.")
             summary_bundle["warnings"].append(
-                f"Only {len(successes)}/{args.samples} bootstrap samples converged."
+                f"{n_refused}/{args.samples} bootstrap samples ran but produced no draw "
+                f"(no accepted step, or a fit outside the spectral gate); excluded."
             )
-            if len(successes) < args.samples / 2:
-                print("          High failure rate suggests the geometry is unstable or poorly constrained.")
-                summary_bundle["warnings"].append("High bootstrap failure rate suggests unstable/weakly constrained geometry.")
+        if len(successes) < args.samples:
+            print(f"[warning] Only {len(successes)}/{args.samples} bootstrap samples "
+                  f"produced a usable draw.")
+            summary_bundle["warnings"].append(
+                f"Only {len(successes)}/{args.samples} bootstrap samples produced a usable draw."
+            )
+        if not summary.usable:
+            reason = summary.unusable_reason()
+            print(f"[warning] {reason}")
+            print("          No bootstrap interval is reported from this run.")
+            summary_bundle["warnings"].append(reason)
+            summary_bundle["bootstrap_interval_refused"] = True
+            successes = []
+        elif len(successes) < args.samples / 2:
+            print("          High failure rate suggests the geometry is unstable or poorly constrained.")
+            summary_bundle["warnings"].append("High bootstrap failure rate suggests unstable/weakly constrained geometry.")
 
         for res in successes:
             if args.uncertainty_engine == "v2":

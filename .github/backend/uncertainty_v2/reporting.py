@@ -10,9 +10,19 @@ def format_bootstrap_summary(summary: BootstrapRunSummary) -> str:
         f"  samples: {summary.total_samples}",
         f"  success: {summary.successful_samples}",
         f"  failed : {summary.failed_samples}",
+        # "success" only ever meant the fit did not raise. A sample that
+        # accepted no step came back as the starting geometry and was counted
+        # among the successes, so this line is what separates the two.
+        f"  usable : {summary.usable_samples}  (refused {summary.refused_samples})",
     ]
     if summary.mean_rms_mhz is not None:
         lines.append(f"  mean RMS (MHz): {summary.mean_rms_mhz:.4f}")
+    if summary.base_rms_mhz is not None:
+        lines.append(f"  base fit RMS  : {summary.base_rms_mhz:.4f} MHz "
+                     f"(gate {summary.base_rms_mhz * 2.0:.4f})")
+    reason = summary.unusable_reason()
+    if reason:
+        lines.append(f"  REFUSED: {reason}")
     return "\n".join(lines)
 
 
