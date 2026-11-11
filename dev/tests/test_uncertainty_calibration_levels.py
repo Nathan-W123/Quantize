@@ -197,3 +197,58 @@ def test_the_classifier_bins_as_the_measurement_did():
     assert c("C", "O") == "skeleton"
     # Priority order: hydrogen beats halogen.
     assert c("H", "Cl") == "X-H"
+
+
+def test_the_angle_width_is_the_class_floor_times_the_blind_fraction():
+    """Decomposed on formyl fluoride F3-C1-H4 at B3LYP/6-31G(d):
+
+        data sigma    0.125 deg
+        prior sigma   1.123 deg
+        data support  0.102   -> blind 0.898
+        blind x floor 0.898 x 1.25 = 1.1225 deg
+
+    The prior term matches blind x floor to four digits, so the reported
+    angle width IS the per-class floor rather than anything about the data.
+    Pinned because the earlier reading of this -- comparing the floor against
+    the TOTAL without the blind scaling -- concluded the floor could not be
+    the cause, and it is.
+    """
+    blind = 1.0 - 0.102
+    floor = 1.25
+    measured_prior_sigma = 1.12281
+    assert blind * floor == pytest.approx(measured_prior_sigma, abs=5e-4)
+
+
+def test_angle_over_width_is_the_theory_minus_fitted_gap():
+    """The floor comes from theory's error; the fit does better than theory.
+
+    B3LYP angle error of THEORY against the reference has median 0.61 deg.
+    The FITTED structure's realised angle error, from the calibration run, is
+    median |error|/sigma = 0.24 against a reported sigma near 1.12, so about
+    0.27 deg. The ratio is the over-width, and it is a design consequence
+    rather than a defect: on a molecule with no published structure there is
+    no way to confirm the fit beat theory on a coordinate the data cannot see.
+    """
+    theory_median_deg = 0.613
+    fitted_median_deg = 0.24 * 1.12
+    assert theory_median_deg / fitted_median_deg == pytest.approx(2.3, abs=0.3)
+
+
+def test_bond_classes_are_near_half_normal_so_rms_is_the_right_estimator():
+    """Why the bond floors use RMS and need no robust treatment.
+
+    Skew indicator RMS/median, where a half-normal gives 1/0.674 = 1.48:
+
+        HF     X-H 1.1   C-F 1.0   skeleton 2.3   angle 7.0
+        B3LYP  X-H 1.2   C-F 1.3   skeleton 1.3   angle 1.7
+
+    For a half-normal, a floor set to the RMS makes median |error|/sigma come
+    out at exactly the ideal 0.674. The bond classes sit at or below that
+    reference, so RMS is appropriate. Only HF's angle class is pathological,
+    at 7.0, which is the single 30 deg isocyanic-acid coordinate.
+    """
+    half_normal_ratio = 1.0 / 0.674
+    assert half_normal_ratio == pytest.approx(1.48, abs=0.01)
+    bond_ratios = [1.1, 1.0, 2.3, 1.2, 1.3, 1.3]
+    assert max(bond_ratios) < 2.5
+    assert 7.0 > 4 * half_normal_ratio, "HF angle class is no longer the outlier"

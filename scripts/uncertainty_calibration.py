@@ -35,9 +35,27 @@ the total.
           so the quoted bond sigma is about 2x too SMALL and covers 8/20.
           HF/6-31g is the benchmark's own default level, and there
           geometry_uncertainty's "expect it to be optimistic" is correct.
-  angles  2.8x too wide at B3LYP and ~10x too wide at HF. Most rows come back
-          theory-determined, so what is reported is the prior's width, and the
-          prior is isotropic while the real error is not.
+  angles  2.8x too wide at B3LYP and ~10x too wide at HF -- and this one is
+          CONSERVATIVE BY DESIGN rather than broken. Decomposed on formyl
+          fluoride's F3-C1-H4 at B3LYP: data sigma 0.125 deg, prior sigma
+          1.123 deg, data support 0.102. The prior term is blind x floor =
+          0.898 x 1.25 = 1.1225, matching to four digits, so the width IS the
+          per-class floor. Removing the floor drops it to 0.82 deg.
+
+          The floor is derived from the error of THEORY against the reference
+          (B3LYP angle median 0.61 deg) and then quoted for the blind fraction
+          of a coordinate. But the FITTED structure does better than theory
+          alone even on a 90%-blind coordinate -- its realised angle error is
+          about 2.3x smaller -- so the quoted width exceeds the realised error
+          by roughly that factor.
+
+          Leaving it. On a molecule with no published structure, which is the
+          case this engine exists for, there is no way to verify that the fit
+          beat theory on a coordinate the data cannot see. Quoting the theory
+          error there is the honest conservative choice, and 2.8x
+          over-coverage on this set is what that costs. Narrowing it would buy
+          nominal calibration on ten molecules at the price of over-claiming
+          on the ones that matter.
 
 An earlier version of this docstring recorded the B3LYP column and attributed
 it to RHF/6-31G, and concluded from it that the intervals are conservative and
