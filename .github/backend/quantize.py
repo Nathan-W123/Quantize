@@ -2054,6 +2054,13 @@ class MolecularOptimizer:
         _reject_streak = 0
         for it in range(self.max_iter):
 
+            # Carries the iteration's internal-prior rows from the point where
+            # the step is computed to the point where the trial geometry is
+            # judged, so both sides of the acceptance test span the same rows.
+            # Declared here, unconditionally: setting it inside the
+            # internal-mode branch leaves it unbound on every other path.
+            _ic_prior_rows = None
+
             if self.spectral_only:
                 n_dof = 3 * len(self.elems)
                 g = np.zeros(n_dof)
@@ -2151,6 +2158,19 @@ class MolecularOptimizer:
                     J = np.vstack([J, _wp * _J_prior])
                     residual_w = np.concatenate([residual_w, _wp * _r_prior])
                     _ic_prior_wrms = float(np.sqrt(np.mean(_r_prior ** 2))) if _r_prior.size else 0.0
+                    # Keep this iteration's prior block for the acceptance test.
+                    # Its sigmas may be adaptive, so rebuilding it at the trial
+                    # geometry could change the objective between the step and
+                    # the judgement of the step. The prior is exactly linear in
+                    # q -- r_prior = (q0 - q)/sigma with J_prior = diag(1/sigma)
+                    # -- so the same prior can be re-evaluated anywhere from
+                    # these three pieces with no approximation at all.
+                    _ic_prior_rows = (
+                        _J_prior,
+                        _r_prior,
+                        np.asarray(_ic_coord_set.active_values(self.coords), dtype=float),
+                        _wp,
+                    )
 
             wrms_before = float(np.sqrt(np.mean(residual_w ** 2)))
             mhz_rms_before = float(np.sqrt(np.mean(residual_mhz ** 2)))
@@ -2204,6 +2224,41 @@ class MolecularOptimizer:
                 prior_wrms_after = float(np.sqrt(np.mean(rp_trial ** 2))) if rp_trial.size else 0.0
             elif self.internal_prior is not None and self.coordinate_mode == "internal":
                 prior_wrms_after = self.internal_prior.diagnostics(trial_coords).get("prior_wrms", 0.0)
+                # THE TWO SIDES OF THE ACCEPTANCE TEST MUST SPAN THE SAME ROWS.
+                #
+                # They did not. In internal mode wrms_before is the RMS over
+                # [spectral; sqrt(w) * prior] -- the vector the step is solved
+                # from -- while this branch left residual_w_trial as the
+                # spectral rows alone and only computed a prior diagnostic. So
+                # `wrms_after <= wrms_before` compared an RMS over m rows with
+                # an RMS over m + p rows, and with spectral_accept_relax = 0 a
+                # vanishing step does not make the two sides meet: whether a
+                # step is accepted came out of the row counts, not the step.
+                #
+                # Measured on the analytic-water config (3 spectral rows, 3
+                # prior rows), at a ZERO step, where both sides describe the
+                # identical geometry and a correct test must give exactly
+                # equal values: after/before = 1.258, 1.281, 1.251 on three
+                # bootstrap samples and 0.941, 0.691 on two others. Above one
+                # every step is rejected however small or however good, so the
+                # fit stalls at its starting point and reports "converged";
+                # below one every step is accepted however bad, so there is no
+                # descent control. Five samples, five outcomes, predicted by
+                # the ratio alone -- the gate was testing the prior's size
+                # against the residual's, which is a property of the geometry.
+                #
+                # 9 of 24 bootstrap samples stalled this way, preferentially
+                # the ones with larger data perturbations (correlation +0.52),
+                # which censored the tails the interval is made of.
+                if _ic_prior_rows is not None:
+                    _Jp, _rp_ref, _q_ref, _wp_acc = _ic_prior_rows
+                    _q_trial = np.asarray(
+                        _ic_coord_set.active_values(trial_coords), dtype=float)
+                    _rp_trial = _rp_ref - _Jp @ (_q_trial - _q_ref)
+                    residual_w_trial = np.concatenate(
+                        [residual_w_trial, _wp_acc * _rp_trial])
+                    prior_wrms_after = (
+                        float(np.sqrt(np.mean(_rp_trial ** 2))) if _rp_trial.size else 0.0)
             _, residual_mhz_trial = self.spectral.stacked_unweighted(trial_coords)
             wrms_after = float(np.sqrt(np.mean(residual_w_trial ** 2)))
             mhz_rms_after = float(np.sqrt(np.mean(residual_mhz_trial ** 2)))
