@@ -5,7 +5,7 @@ from typing import Optional
 
 import numpy as np
 
-from backend.spectral.correction_models import COMPONENTS, RovibCorrection
+from backend.spectral.correction_models import RovibCorrection
 from backend.spectral.spectral import (
     _INERTIA_TO_MHZ,
     _rotational_constants,

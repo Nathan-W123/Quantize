@@ -28,9 +28,6 @@ import numpy as np
 
 from backend.torsion.torsion_hamiltonian import (
     TorsionHamiltonianSpec,
-    _validate_units,
-    basis_m_values,
-    fourier_potential_matrix,
     solve_ram_lite_levels,
 )
 

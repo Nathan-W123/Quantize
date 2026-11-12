@@ -166,7 +166,6 @@ def torsion_geometry_jacobian(
         except Exception:
             return np.full(n_lev, np.nan)
 
-    ref = _eval(coords)
     for i in range(N):
         for j in range(3):
             col = 3 * i + j

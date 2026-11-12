@@ -111,7 +111,7 @@ def main() -> None:
 
     (r, t), res = _pipeline("analytic_water_detuned", True, True)
     score = float((res.get("score") or {}).get("score", float("nan")))
-    _row("HYBRID (theory + experiment)", r, t, f"corrected B_e + null-space prior")
+    _row("HYBRID (theory + experiment)", r, t, "corrected B_e + null-space prior")
 
     print("\n  Experiment alone converges on an r_0-like effective structure: B_0 is a")
     print("  vibrationally averaged quantity, so fitting it directly returns the average,")

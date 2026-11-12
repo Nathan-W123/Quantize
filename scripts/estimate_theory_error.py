@@ -85,7 +85,7 @@ def main() -> None:
     tr = np.mean([r["true_error_ma"] for r in out])
     print("  " + "-" * 62)
     print(f"  {'mean':<18}{sp:>10.1f}{tr:>10.1f}{tr / sp:>8.2f}")
-    print(f"\n  The spread between the two levels is an answer-free estimate of the")
+    print("\n  The spread between the two levels is an answer-free estimate of the")
     print(f"  cheap level's error. Here it {'under' if sp < tr else 'over'}states it "
           f"by a factor of {tr / sp:.2f}.")
     print(f"  => quantum_prior_sigma_ang ~ {sp / 1000:.3f} A from the estimator, "

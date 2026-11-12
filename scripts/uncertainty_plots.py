@@ -20,7 +20,7 @@ def plot_coordinate_distributions(cloud_xyz, elems, output_dir, use_dihedrals=Fa
             
         plt.figure(figsize=(6, 4))
         plt.hist(data, bins=30, color='skyblue', edgecolor='black', alpha=0.7)
-        mu, sigma = np.mean(data), np.std(data)
+        mu = np.mean(data)
         plt.axvline(mu, color='red', linestyle='dashed', linewidth=1.5, label=f'Mean: {mu:.4f}')
         plt.title(f"Distribution of {name}")
         plt.xlabel(f"Value ({unit})")

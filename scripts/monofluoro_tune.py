@@ -169,7 +169,7 @@ def main() -> None:
     results["cf_beats_theory"] = {str(s): cf_beats[s] for s in PRIOR_SIGMAS}
 
     if do_split:
-        print(f"\n  sv_threshold scan (split objective)")
+        print("\n  sv_threshold scan (split objective)")
         header = f"  {'case':<30}{'theory':>9}" + "".join(
             f"{c:>9.0e}" for c in SPLIT_CUTOFFS)
         print(header)

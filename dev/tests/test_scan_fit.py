@@ -151,11 +151,12 @@ class TestFitFourierPotential:
     def test_recovers_v3_and_v6(self):
         V3, V6 = 373.554746, -1.319650
         phi = np.linspace(0, 2 * np.pi, 72, endpoint=False)
-        # Direct Fourier form
-        e = 186.117548 + (-186.777373) * np.cos(3 * phi) + 0.659825 * np.cos(6 * phi)
+        # V = (V3/2)(1 - cos 3phi) + (V6/2)(1 - cos 6phi), so the cosine
+        # coefficients are -V3/2 and -V6/2.
+        e = 0.5 * V3 * (1 - np.cos(3 * phi)) + 0.5 * V6 * (1 - np.cos(6 * phi))
         result = fit_fourier_potential(phi, e, include_harmonics=[3, 6], cosine_only=True)
-        assert result["vcos"][3] == pytest.approx(-186.777373, rel=1e-6)
-        assert result["vcos"][6] == pytest.approx(0.659825, rel=1e-6)
+        assert result["vcos"][3] == pytest.approx(-0.5 * V3, rel=1e-6)
+        assert result["vcos"][6] == pytest.approx(-0.5 * V6, rel=1e-6)
         assert result["rms_cm1"] == pytest.approx(0.0, abs=1e-6)
 
     def test_zero_at_minimum_shifts_v0(self):

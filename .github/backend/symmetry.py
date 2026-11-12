@@ -520,17 +520,6 @@ def detect_symmetry(elements: List[str], coords,
     return "C1", np.eye(3)
 
 
-def infer_point_group(elements: List[str], coords, linear_tol_deg: float = 2.0) -> str:
-    """Point-group label for a geometry. See :func:`detect_symmetry`.
-
-    `linear_tol_deg` is accepted for backwards compatibility and ignored:
-    linearity is now decided from the inertia tensor, which does not depend on
-    any particular atom being the central one. The previous implementation read
-    the bend angle at index 1 and so returned Cs for water ordered O,H,H.
-    """
-    return detect_symmetry(elements, coords)[0]
-
-
 def create_symmetry(
     point_group: Optional[str],
     elements: List[str],

@@ -18,8 +18,6 @@ from backend.spectral.correction_models import (
     M_ELECTRON_AMU, electronic_delta_b, bob_delta_b,
 )
 from backend.spectral.rovib_corrections import (
-    CorrectionRecord,
-    CorrectedSpectralTarget,
     resolve_corrections,
     apply_corrections_to_isotopologues,
     validate_correction_quality,
@@ -195,7 +193,7 @@ class TestUncertaintyPropagation:
         ctbl = {"test_iso": {"B": {"delta_mhz": 200.0}}}
         targets = resolve_corrections(isos, correction_table=ctbl, sigma_vib_fraction=0.1)
         sigma_vib = 200.0 * 0.1  # = 20.0
-        expected = np.sqrt(0.2**2 + 20.0**2)
+        expected = np.sqrt(0.2**2 + sigma_vib**2)
         assert targets[0].sigma_mhz == pytest.approx(expected)
 
 

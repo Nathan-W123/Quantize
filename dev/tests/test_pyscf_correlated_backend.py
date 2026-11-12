@@ -16,7 +16,6 @@ reproduce it. Any disagreement is the finite-difference machinery, not physics.
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 import dev.pyscf_backend  # noqa: F401  (registers "pyscf_hf")
 from backend.registry import get_backend

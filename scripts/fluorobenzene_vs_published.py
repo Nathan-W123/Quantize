@@ -148,7 +148,7 @@ def main() -> None:
     print(f"  {'RMS angle error (deg)':<24}{'':>11}{'':>10}"
           f"{np.sqrt(np.mean(np.square(ang_t))):>9.2f}{'':>10}"
           f"{np.sqrt(np.mean(np.square(ang_h))):>9.2f}")
-    print(f"\n  bond errors are in milliangstrom (m), angles in degrees.")
+    print("\n  bond errors are in milliangstrom (m), angles in degrees.")
     print(f"  theory {t_theory:.0f}s, hybrid {t_hybrid:.0f}s")
 
     for label, geom in (("theory", theory), ("hybrid", hybrid)):

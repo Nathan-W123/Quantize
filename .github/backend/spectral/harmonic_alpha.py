@@ -37,7 +37,6 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from backend.spectral.centrifugal_distortion import (
-    _BOHR_TO_ANG,
     _CM_TO_MHZ,
     _EIGVAL_TO_CM,
     _INERTIA_TO_MHZ,

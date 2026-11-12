@@ -22,7 +22,7 @@ Use values_deg() for human-readable display.
 from __future__ import annotations
 
 import numpy as np
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional, List, Any
 
 from backend.quantum import (
@@ -34,7 +34,7 @@ from backend.quantum import (
     _dihedral_deriv,
 )
 from backend.internal.internal_prior_library import resolve_default_prior
-from backend.priors.prior_models import PriorRecord, normalize_user_prior_atoms
+from backend.priors.prior_models import normalize_user_prior_atoms
 from backend.priors.prior_weighting import (
     adaptive_sigma_from_identifiability,
     identifiability_scores_from_jacobian,

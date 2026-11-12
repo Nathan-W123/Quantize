@@ -24,7 +24,6 @@ Parameter name convention
 
 from __future__ import annotations
 
-import math
 from copy import deepcopy
 from dataclasses import dataclass
 from typing import Optional
@@ -35,16 +34,13 @@ from backend.covariance_checks import std_err_from_covariance
 
 from backend.torsion.torsion_average import (
     TorsionScan,
-    average_torsion_scan_quantum,
-    average_torsion_scan_quantum_thermal,
 )
-from backend.torsion.torsion_hamiltonian import TorsionHamiltonianSpec, solve_ram_lite_levels
+from backend.torsion.torsion_hamiltonian import TorsionHamiltonianSpec
 from backend.torsion.torsion_uncertainty import (
     TorsionParameter,
     default_torsion_parameters,
     finite_difference_jacobian,
     pack_torsion_parameters,
-    torsion_level_jacobian,
     torsion_level_observables,
     unpack_torsion_parameters,
 )

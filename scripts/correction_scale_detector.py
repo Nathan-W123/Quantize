@@ -354,11 +354,11 @@ def main() -> None:
             dof = max(n_obs - n_par, 1)
             return float(np.sum(sol.fun ** 2) / dof)
 
-        print(f"  correction believed (s fixed at 1):")
+        print("  correction believed (s fixed at 1):")
         print(f"    r = {fixed.x[0]:.5f} A ({1000*(fixed.x[0]-ref_r):+.2f} mA)"
               f"   theta = {fixed.x[1]:.3f} deg ({fixed.x[1]-ref_t:+.3f})"
               f"   chi2/nu = {chi2_nu(fixed, 2):.2f}")
-        print(f"  correction scaled (s fitted):")
+        print("  correction scaled (s fitted):")
         print(f"    r = {free.x[0]:.5f} A ({1000*(free.x[0]-ref_r):+.2f} mA)"
               f"   theta = {free.x[1]:.3f} deg ({free.x[1]-ref_t:+.3f})"
               f"   chi2/nu = {chi2_nu(free, 5):.2f}")
@@ -379,7 +379,7 @@ def main() -> None:
         cand = CANDIDATES.get(key, [])
         have = {lbl for lbl, _, _ in species(mol)}
         d_all, _ = corrections_for_masses(mol, cand, method, basis)
-        print(f"\n  bias detection limit (2 sigma on |s-1|), by species set:")
+        print("\n  bias detection limit (2 sigma on |s-1|), by species set:")
         for n in range(2, len(cand) + 1):
             subset = cand[:n]
             lim = detection_limit(

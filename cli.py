@@ -51,6 +51,14 @@ def _print_config_summary(cfg: dict) -> None:
     elems = cfg.get("elements", []) or []
     print("\nConfig Summary")
     print("-" * 60)
+    print(f"  Name             : {name}")
+    print(f"  Schema version   : {cfg.get('schema_version', 'n/a')}")
+    print(f"  Coordinate mode  : {mode}")
+    print(f"  Quantum backend  : {backend}")
+    print(f"  Elements         : {len(elems)} atoms")
+    print(f"  Isotopologues    : {n_iso}")
+    print(f"  Preset           : {cfg.get('preset', 'BALANCED')}")
+    print("-" * 60)
 
 
 def _json_safe(v):
@@ -71,19 +79,11 @@ def _json_safe(v):
     if isinstance(v, (str, int, float, bool)) or v is None:
         return v
     return str(v)
-    print(f"  Name             : {name}")
-    print(f"  Schema version   : {cfg.get('schema_version', 'n/a')}")
-    print(f"  Coordinate mode  : {mode}")
-    print(f"  Quantum backend  : {backend}")
-    print(f"  Elements         : {len(elems)} atoms")
-    print(f"  Isotopologues    : {n_iso}")
-    print(f"  Preset           : {cfg.get('preset', 'BALANCED')}")
-    print("-" * 60)
 
 def _load_torsion_spec_from_cfg_path(config_path: Path):
     """Load config and build TorsionHamiltonianSpec from it."""
     from backend.torsion.torsion_hamiltonian import (
-        TorsionFourierPotential, TorsionHamiltonianSpec, TorsionEffectiveConstantFourier,
+        TorsionFourierPotential, TorsionHamiltonianSpec,
     )
     cfg = load_config(config_path)
     th = cfg.get("torsion_hamiltonian") or {}
@@ -129,7 +129,7 @@ def _cmd_lam_scan(args) -> int:
 
     import numpy as np
     from backend.torsion.scan_preprocess import preprocess_scan
-    from backend.torsion.scan_fit import fit_fourier_potential
+    from backend.torsion.scan_fit import scan_to_torsion_potential
 
     phi_vals, e_vals = [], []
     with csv_path.open(encoding="utf-8") as fh:
@@ -143,6 +143,15 @@ def _cmd_lam_scan(args) -> int:
 
     phi_arr = np.asarray(phi_vals, dtype=float)
     e_arr   = np.asarray(e_vals,   dtype=float)
+
+    # --energy-unit was parsed and then never applied: energies went into the
+    # fit as read and every line below is labelled cm^-1, so a scan in
+    # kcal/mol printed a potential 349.755x too small and one in hartree
+    # 219,474.6x too small, under the wrong unit and with no warning. Convert
+    # through the converter hindered_rotor already owns; argparse's choices
+    # guarantee it knows the unit.
+    from backend.torsion.hindered_rotor import convert_energy_to_cm1
+    e_arr = e_arr * convert_energy_to_cm1(1.0, energy_unit)
 
     if angle_unit.lower() in {"deg", "degrees"}:
         phi_arr = np.deg2rad(phi_arr)
@@ -159,11 +168,17 @@ def _cmd_lam_scan(args) -> int:
     for w in pp_info.get("warnings", []):
         print(f"[preprocess] {w}")
 
-    result = fit_fourier_potential(
+    # This called fit_fourier_potential, which takes no symmetry_number, so
+    # every `quantize lam-scan` raised TypeError before fitting anything.
+    # scan_to_torsion_potential is the symmetry-aware wrapper written for
+    # exactly this: n_harmonics symmetry-allowed groups, so 3 with sigma = 3
+    # fits V3, V6, V9. --cosine-only only ever forces cosine terms on; left
+    # off, the wrapper's own default applies (cosine-only when sigma > 1).
+    _pot, result = scan_to_torsion_potential(
         phi_arr, e_arr,
         n_harmonics=n_harmonics,
         symmetry_number=sym_number,
-        cosine_only=args.cosine_only,
+        cosine_only=True if args.cosine_only else None,
         zero_at_minimum=True,
     )
     print(f"\nScan Fourier fit  (n_harmonics={n_harmonics}, sym={sym_number}, n_pts={len(phi_arr)})")
@@ -631,7 +646,8 @@ def main(argv: list[str] | None = None) -> int:
     scan_p.add_argument("--energy-col", dest="energy_col", default="energy_cm1")
     scan_p.add_argument("--angle-unit", dest="angle_unit", default="degrees",
                         choices=["degrees", "radians"])
-    scan_p.add_argument("--energy-unit", dest="energy_unit", default="cm-1")
+    scan_p.add_argument("--energy-unit", dest="energy_unit", default="cm-1",
+                        choices=["cm-1", "kcal/mol", "kj/mol", "hartree"])
     scan_p.add_argument("--n-harmonics", dest="n_harmonics", type=int, default=3)
     scan_p.add_argument("--symmetry-number", dest="symmetry_number", type=int, default=3)
     scan_p.add_argument("--cosine-only", dest="cosine_only", action="store_true",

@@ -17,7 +17,6 @@ something, not merely that it runs.
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 import dev.analytic_water_backend  # noqa: F401  (registers "analytic_water")
 from backend.quantize import MolecularOptimizer

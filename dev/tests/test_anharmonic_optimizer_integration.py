@@ -7,7 +7,7 @@ MolecularOptimizer correction path runs without Psi4 or ORCA.
 import numpy as np
 import pytest
 
-from backend.base_backend import GradientResult, HessianResult, QuantumBackend, QuantumState
+from backend.base_backend import GradientResult, HessianResult, QuantumBackend
 from backend.quantize import MolecularOptimizer
 from backend.registry import register_backend
 

@@ -27,7 +27,6 @@ The pure J=0 torsional splitting from RAM-lite is 0.276 cm^-1.
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 from backend.torsion.torsion_hamiltonian import (
     TorsionFourierPotential,

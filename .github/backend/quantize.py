@@ -42,7 +42,7 @@ from backend.spectral.rovib_corrections import (
     validate_correction_quality,
     correction_summary,
 )
-from backend.spectral.correction_models import parse_correction_table, RovibCorrection, ParsedRovibResult
+from backend.spectral.correction_models import parse_correction_table, RovibCorrection
 from backend.spectral.spectral import default_sigma_constants, defect_model_sigma
 
 
@@ -120,7 +120,6 @@ from backend.autoconfig import AutoConfigEngine
 from backend.autoconfig_bases import ProblemShape, count_spectral_rows, infer_optimizer_bases
 from backend.quantum import (
     QuantumEngine,
-    parse_orca_rovib_alpha,
     _detect_bonds,
     _detect_angles,
     wilson_B,
@@ -2103,7 +2102,6 @@ class MolecularOptimizer:
             _ic_Bplus = None
             _ic_g = g
             _ic_H = H
-            _ic_prior_wrms = None
             if self.coordinate_mode == "internal":
                 _ic_coord_set = InternalCoordinateSet(self.coords, self.elems, self._ic_use_dihedrals)
                 _ic_B_active = _ic_coord_set.active_B_matrix(self.coords)
@@ -2157,7 +2155,6 @@ class MolecularOptimizer:
                     _wp = float(np.sqrt(self._ic_prior_weight))
                     J = np.vstack([J, _wp * _J_prior])
                     residual_w = np.concatenate([residual_w, _wp * _r_prior])
-                    _ic_prior_wrms = float(np.sqrt(np.mean(_r_prior ** 2))) if _r_prior.size else 0.0
                     # Keep this iteration's prior block for the acceptance test.
                     # Its sigmas may be adaptive, so rebuilding it at the trial
                     # geometry could change the objective between the step and
@@ -2620,7 +2617,7 @@ class MolecularOptimizer:
         seen.add(k)
         print(f"  [uncertainty] WARNING: {message}", flush=True)
 
-    def geometry_uncertainty(self, rigid_tol=1e-8, check_gauss_newton=True):
+    def geometry_uncertainty(self, check_gauss_newton=True):
         """Posterior standard deviation on each bond length and angle.
 
         For a molecule that already has an accepted structure, the interesting

@@ -9,7 +9,6 @@ from backend.spectral.centrifugal_distortion import (
     bk_mode_derivatives,
     build_cd_table_from_hessian,
     compute_cd_constants,
-    tau_prime_from_dB1_cm,
     watson_a_reduction_cd_from_tau_cm,
 )
 from backend.spectral.harmonic_alpha import compute_harmonic_alpha, _bk_mode_derivatives

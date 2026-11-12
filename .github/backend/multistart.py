@@ -4,7 +4,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 import numpy as np
 
 from backend.quantize import MolecularOptimizer
-from backend.registry import get_backend, list_backends
+from backend.registry import get_backend
 
 
 def _spectral_isotopologue_snapshot(opt):

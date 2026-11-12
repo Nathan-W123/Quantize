@@ -171,33 +171,45 @@ def test_a_perturbed_restart_accepts_at_least_one_step(converged):
             assert h["step_norm"] >= 0.0
 
 
-def test_the_prior_is_re_evaluated_not_rebuilt(converged):
-    """The trial side must use the sigmas the step was computed with.
+def test_the_prior_is_re_evaluated_not_rebuilt():
+    """The trial side re-evaluates the step's own prior block linearly; that is
+    only legitimate if the block IS linear in q, so test that directly.
 
     The prior's sigmas can be adaptive, so rebuilding the block at the trial
-    geometry would let the objective move between computing a step and judging
-    it -- the same class of error, one level down. The prior is exactly linear
-    in q, r_prior = (q0 - q)/sigma with J_prior = diag(1/sigma), so re-evaluating
-    it from the iteration's own block is exact rather than an approximation.
+    geometry could let the objective move between computing a step and judging
+    it. The fix instead carries the iteration's (J_prior, r_prior, q) and forms
+    r_trial = r_prior - J_prior (q_trial - q). For that to be exact rather than
+    an approximation, two things must hold, and both are checked here against
+    a direct build at the trial geometry: the Jacobian does not depend on the
+    geometry, and the residual moves by exactly J_prior times the step in q.
     """
-    opt = converged
-    coords = np.asarray(opt.coords, dtype=float)
-    _, rp0 = opt.internal_prior.stacked(coords, want_jacobian=False)
-    rp0 = np.asarray(rp0, dtype=float)
+    from backend.internal.internal_fit import (
+        InternalCoordinateSet,
+        build_internal_priors,
+    )
 
-    # Displace, then reconstruct the prior residual the linear way and compare
-    # against a direct evaluation. They must agree to round-off.
-    step = np.zeros_like(coords)
-    step[1, 1] += 1e-4
-    step[2, 1] -= 1e-4
-    moved = coords + step
-    Jp, _, _ = (None, None, None)
-    _, rp_direct = opt.internal_prior.stacked(moved, want_jacobian=False)
-    rp_direct = np.asarray(rp_direct, dtype=float)
-    assert rp_direct.shape == rp0.shape
-    # Linearity: the residual changed, and changed smoothly.
-    assert not np.allclose(rp_direct, rp0)
-    assert np.all(np.isfinite(rp_direct))
+    elems = ["O", "H", "H"]
+    def water(r, deg):
+        th = np.radians(deg)
+        return np.array([[0.0, 0.0, 0.0],
+                         [r * np.sin(th / 2), r * np.cos(th / 2), 0.0],
+                         [-r * np.sin(th / 2), r * np.cos(th / 2), 0.0]])
+
+    ref = water(0.985, 104.9)            # where the prior is centred
+    x1 = water(0.962, 105.8)             # the iteration's geometry
+    x2 = water(0.958, 104.2)             # a trial geometry, far from x1
+    cs = InternalCoordinateSet(x1, elems, use_dihedrals=False)
+    q0 = cs.active_values(ref)
+    kw = dict(sigma_bond=0.12, sigma_angle_deg=5.0, prior_values=q0,
+              prior_mode="soft", elems=elems)
+    J1, r1, _ = build_internal_priors(cs, x1, **kw)
+    J2, r2, _ = build_internal_priors(cs, x2, **kw)
+    q1 = np.asarray(cs.active_values(x1), dtype=float)
+    q2 = np.asarray(cs.active_values(x2), dtype=float)
+
+    np.testing.assert_array_equal(J1, J2)          # geometry-independent
+    np.testing.assert_allclose(r1 - J1 @ (q2 - q1), r2, rtol=0, atol=1e-12)
+    assert not np.allclose(r1, r2), "the step was too small to test anything"
 
 
 def test_cartesian_mode_already_had_this_right_and_is_untouched():

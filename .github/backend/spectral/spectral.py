@@ -107,7 +107,6 @@ def default_sigma_constants(obs_constants, component_indices=None):
 from backend.spectral.centrifugal_distortion import (
     CD_NAMES,
     CDConstants,
-    build_cd_table_from_hessian,
     cd_observed_from_iso,
     compute_cd_constants,
 )
@@ -255,7 +254,7 @@ def sanitize_isotopologues(
             else None
         )
 
-        def _target(k_local, comp_local):
+        def _target(k_local):
             if delta_total is not None and k_local < delta_total.size and np.isfinite(delta_total[k_local]):
                 return float(obs[k_local] + delta_total[k_local])
             return float(obs[k_local] + 0.5 * alpha[k_local])
@@ -268,7 +267,7 @@ def sanitize_isotopologues(
         dropped = []
         for k, comp in enumerate(idx):
             comp = int(comp)
-            target = _target(k, comp)
+            target = _target(k)
             calc = float(calc_abc[comp]) if 0 <= comp < 3 else np.nan
             jn = float(np.linalg.norm(j_full[comp])) if 0 <= comp < 3 else np.inf
             unstable = (not np.isfinite(calc)) or (not np.isfinite(jn))
@@ -607,7 +606,6 @@ class SpectralEngine:
             J = np.zeros((len(keys), 3 * n))
             self._cd_jacobian_cache[cache_key] = J
             return J
-        base_v = base.vector()
         name_to_idx = {k: i for i, k in enumerate(CD_NAMES)}
         row_idx = [name_to_idx[k] for k in keys]
         J = np.zeros((len(keys), 3 * n))
@@ -878,7 +876,6 @@ class SpectralEngine:
         """
         coords = np.asarray(coords, dtype=float)
         masses = np.asarray(masses, dtype=float)
-        N = len(coords)
         if self.analytic_jacobian:
             J_full = _jacobian_full_analytic(
                 coords, masses, self.delta, self.jacobian_degeneracy_tol

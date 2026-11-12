@@ -344,7 +344,7 @@ def benchmark(mol: ReferenceMolecule) -> dict:
 def main() -> None:
     wanted = [t for t in sys.argv[1:] if "=" not in t] or [m.key for m in MOLECULES]
     print(f"  Level of theory: {METHOD.upper()}/{BASIS} (PySCF) — the same for the")
-    print(f"  theory-alone leg and the hybrid's quantum half, for every molecule.")
+    print("  theory-alone leg and the hybrid's quantum half, for every molecule.")
     print(f"  Quantum prior sigma: {QUANTUM_PRIOR_SIGMA_ANG} A.")
     print(f"  Start displaced from the published structure by "
           f"{DISPLACEMENT_ANG} A rms, seed {SEED}.")

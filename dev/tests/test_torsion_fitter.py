@@ -19,7 +19,6 @@ from backend.torsion.torsion_hamiltonian import (
     TorsionHamiltonianSpec,
     solve_ram_lite_levels,
 )
-from backend.torsion.torsion_uncertainty import default_torsion_parameters
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

@@ -212,7 +212,6 @@ def test_a_direction_the_data_cannot_see_is_held_at_the_target():
     other four bonds sat at 2.46.
     """
     sigma_x = 0.006
-    n = 2
     J = np.array([[1000.0, 0.0]])            # coordinate 1 is invisible
     residual = np.array([5.0])
     hess = np.diag([4.0, 4.0])

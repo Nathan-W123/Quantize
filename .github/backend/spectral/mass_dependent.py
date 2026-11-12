@@ -261,7 +261,7 @@ def fit_mass_dependent_structure(
     n_atoms = coords0.shape[0]
     warnings: list[str] = []
 
-    obs, sig, masses_list = [], [], []
+    obs, masses_list = [], []
     for iso in isotopologues:
         const = np.asarray(iso["obs_constants"], dtype=float)
         idx = np.asarray(

@@ -98,7 +98,6 @@ class TestCosAlphaMatrix:
         """<m'|cos(α)|m> = 0.5 for |m'-m| == 1, else 0."""
         m = basis_m_values(3)
         C = torsion_cos_alpha_matrix(m)
-        m_to_i = {int(mi): i for i, mi in enumerate(m)}
         for j, mj in enumerate(m):
             for i, mi in enumerate(m):
                 expected = 0.5 if abs(int(mi) - int(mj)) == 1 else 0.0

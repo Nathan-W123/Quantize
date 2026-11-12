@@ -51,7 +51,7 @@ from reference_molecules import (  # noqa: E402
 D2O_MASSES = np.array([15.9949146196, 2.0141017778, 2.0141017778])
 
 
-def _noisy_hessian(scale, seed_from_coords=True):
+def _noisy_hessian(scale):
     """A deterministic symmetric perturbation, standing in for SCF/grid noise.
 
     Seeded from the geometry so the same point always gets the same noise --

@@ -124,29 +124,30 @@ class TestWangTransformationC3:
         # Rows mapped to old indices should group A (mod3=0), E1 (mod3=1), E2 (mod3=2)
         n_A = np.sum(np.mod(m, 3) == 0)
         n_E1 = np.sum(np.mod(m, 3) == 1)
-        # First n_A rows should map to m%3==0 columns
-        for new_i in range(n_A):
+        # A rows first, then E1, then E2: each row's dominant column carries
+        # the residue of its block. This checked the A block only.
+        for new_i in range(len(m)):
+            want = 0 if new_i < n_A else (1 if new_i < n_A + n_E1 else 2)
             old_i = int(np.argmax(np.abs(W[new_i])))
-            assert int(m[old_i]) % 3 == 0
+            assert int(m[old_i]) % 3 == want, f"row {new_i}"
 
     def test_block_diagonalizes_c3_hamiltonian(self):
         """Applying Wang transform to a pure-C3 Hamiltonian gives block-diagonal result."""
-        from backend.torsion.torsion_hamiltonian import basis_m_values, build_ram_lite_hamiltonian
+        from backend.torsion.torsion_hamiltonian import build_ram_lite_hamiltonian
         spec = _make_c3_spec(rho=0.0)
         H, m_vals, _ = build_ram_lite_hamiltonian(spec, J=0, K=0)
         W = wang_transformation_c3(m_vals)
         H_block = W @ H @ W.conj().T
 
-        n_m = m_vals.size
         n_A = np.sum(np.mod(m_vals, 3) == 0)
         n_E1 = np.sum(np.mod(m_vals, 3) == 1)
 
-        # Off-diagonal blocks between A and E1 should be ~0
-        A_block_rows = slice(0, n_A)
-        E1_block_rows = slice(n_A, n_A + n_E1)
-        np.testing.assert_allclose(
-            np.abs(H_block[A_block_rows, E1_block_rows]), 0.0, atol=1e-10
-        )
+        # Every off-diagonal block must vanish, not only A-E1.
+        A = slice(0, n_A)
+        E1 = slice(n_A, n_A + n_E1)
+        E2 = slice(n_A + n_E1, m_vals.size)
+        for rows, cols in ((A, E1), (A, E2), (E1, E2)):
+            np.testing.assert_allclose(np.abs(H_block[rows, cols]), 0.0, atol=1e-10)
 
 
 # ── c3_symmetry_block_energies ────────────────────────────────────────────────

@@ -5,9 +5,7 @@ real structure can produce. configs/fluorobenzene.yaml is the motivating case:
 every isotopologue there has a defect near +5.6 amu*A^2 for a planar molecule.
 """
 
-import copy
 
-import pytest
 import yaml
 
 from runner.usability import (

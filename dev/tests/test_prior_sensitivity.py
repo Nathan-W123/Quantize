@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from backend.internal.internal_fit import InternalCoordinateSet, build_internal_priors
+from backend.internal.internal_fit import InternalCoordinateSet
 from backend.priors.prior_sensitivity import classify_prior_dominance, prior_sensitivity_analysis
 
 

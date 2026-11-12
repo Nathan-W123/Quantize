@@ -52,12 +52,6 @@ from backend.torsion.torsion_average import (
     average_torsion_scan_quantum_thermal,
 )
 from backend.torsion.hindered_rotor import HinderedRotorModel
-from runner.reporting import (
-    export_rovib_corrections_csv,
-    export_rovib_warnings_json,
-    export_semi_experimental_targets_csv,
-    generate_rovib_report_section,
-)
 from runner.run_settings import BASE_SETTINGS, GLOBAL_PRESETS
 from runner.usability import write_outputs
 
@@ -1160,7 +1154,6 @@ def _run_torsion_phase2_exports(
                 try:
                     from backend.torsion.torsion_geometry import (
                         compute_F_rho_from_geometry as _compute_F_rho,
-                        torsion_geometry_jacobian as _tor_geom_jac,
                     )
                     coords_arr = np.asarray(coords, dtype=float)
                     masses_arr = np.asarray(masses_list, dtype=float)
@@ -2207,24 +2200,17 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
     name = _inputs["name"]
     managed_run = _inputs["managed_run"]
     run_dir = _inputs["run_dir"]
-    base_workdir = _inputs["base_workdir"]
-    coords = _inputs["coords"]
     elems = _inputs["elems"]
     bonds = _inputs["bonds"]
-    spectral_model = _inputs["spectral_model"]
     isotopologues = _inputs["isotopologues"]
     backend = _inputs["backend"]
     orca_method = _inputs["orca_method"]
     orca_basis = _inputs["orca_basis"]
-    spectral_only = _inputs["spectral_only"]
     preset_name = _inputs["preset_name"]
     preset = _inputs["preset"]
     write_xyz = _inputs["write_xyz"]
-    symmetry_spec = _inputs["symmetry_spec"]
-    coordinate_mode = _inputs["coordinate_mode"]
     starts = _inputs["starts"]
     conformer_workflow = _inputs["conformer_workflow"]
-    use_conformer_mixture = _inputs["use_conformer_mixture"]
     optimizer_kwargs = _inputs["optimizer_kwargs"]
 
     # ── Run ───────────────────────────────────────────────────────────────────

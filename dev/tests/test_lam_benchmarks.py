@@ -397,9 +397,15 @@ class TestCentrifugalDistortion:
         plain = solve_full_torsion_rotation_levels(spec_plain, J, n_levels=15)
         with_cd = solve_full_torsion_rotation_levels(spec_cd, J, n_levels=15)
         diffs = with_cd["energies_cm-1"] - plain["energies_cm-1"]
-        # Mean shift should be close to -DJK*J(J+1)*<K^2> where <K^2> ≥ 0
-        # At minimum, the spread of diffs should be > 0 for DJK != 0
-        assert float(np.std(diffs)) > 1e-6, "DJK should create K-dependent spread in energies"
+        ka = np.abs(np.asarray(plain["Ka_labels"]))
+        assert np.array_equal(ka, np.abs(np.asarray(with_cd["Ka_labels"])))
+        # What the docstring said and the old assertion (a nonzero spread) did
+        # not check: zero at K = 0, then -DJK J(J+1) K^2. Measured: 1.4e-6 at
+        # K = 0 (asymmetry mixing), and +1.0200e-2 / +4.07995e-2 at |K| = 1 / 2
+        # against a first-order +1.0200e-2 / +4.0800e-2.
+        assert np.all(np.abs(diffs[ka == 0]) < 1e-5)
+        for k in (1, 2):
+            np.testing.assert_allclose(diffs[ka == k], -DJK * jj * k * k, rtol=1e-3)
 
     def test_cd_fitter_recognises_DJ_DJK(self):
         """select_fit_params must accept DJ and DJK without raising."""

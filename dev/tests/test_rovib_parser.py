@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 from backend.quantum import parse_orca_rovib, parse_orca_rovib_alpha
 

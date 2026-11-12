@@ -15,11 +15,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from backend.spectral.cd_reduction import (
-    best_reduction,
     reduction_from_tau,
     reduction_residual_mhz,
 )
-from typing import Any
 
 import numpy as np
 from scipy import constants as _sc
@@ -495,10 +493,8 @@ def compute_cd_constants(
     order = int(reduction_order)
     if red == "AUTO":
         red = reduction_for_asymmetry(B0_ref)
-    if True:
-        cd_mhz = reduction_from_tau(B0_ref, tau_mhz, reduction=red, order=order)
-        resid = reduction_residual_mhz(B0_ref, tau_mhz, reduction=red,
-                                       order=order)
+    cd_mhz = reduction_from_tau(B0_ref, tau_mhz, reduction=red, order=order)
+    resid = reduction_residual_mhz(B0_ref, tau_mhz, reduction=red, order=order)
     # Validated against H2-16O's measured constants on the analytic water PES:
     # DJ +38.2 vs +37.59, DK +899 vs +973.3, DJK -235 vs -172.9 -- correct
     # signs and the right magnitudes, where the previous closed-form mapping
