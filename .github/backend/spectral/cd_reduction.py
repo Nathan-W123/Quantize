@@ -294,11 +294,6 @@ def _reduced_basis_levels(jmax: int, reduction: str = "A", order: int = 4):
     return design
 
 
-def _a_reduced_basis_levels(jmax: int):
-    """Backwards-compatible alias for the A-reduced design matrix."""
-    return _reduced_basis_levels(jmax, "A")
-
-
 def levels_from_reduction(abc_mhz, params, reduction: str = "A", jmax: int = 6,
                           order: int = 4):
     """Exact eigenvalues of a reduced Hamiltonian built from fitted parameters.
@@ -350,12 +345,6 @@ def reduction_from_tau(abc_mhz, tau_mhz, reduction: str = "A", jmax: int = 6,
 def a_reduction_from_tau(abc_mhz, tau_mhz, jmax: int = 6, order: int = 4):
     """Watson A-reduction constants in MHz. See :func:`reduction_from_tau`."""
     return reduction_from_tau(abc_mhz, tau_mhz, reduction="A", jmax=jmax,
-                              order=order)
-
-
-def s_reduction_from_tau(abc_mhz, tau_mhz, jmax: int = 6, order: int = 4):
-    """Watson S-reduction constants in MHz. See :func:`reduction_from_tau`."""
-    return reduction_from_tau(abc_mhz, tau_mhz, reduction="S", jmax=jmax,
                               order=order)
 
 

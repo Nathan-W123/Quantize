@@ -207,27 +207,6 @@ def _effective_spectral_rms_for_selection(
     return base + (float(stagnant_penalty_mhz) if stagnant else 0.0)
 
 
-def rank_key_spectral_value(
-    result,
-    *,
-    penalize_stagnant=False,
-    stagnant_coord_rms_tol_ang=5e-6,
-    stagnant_max_spectral_gain_mhz=0.05,
-    stagnant_penalty_mhz=500.0,
-):
-    """
-    Effective spectral RMS used by ``select_best_result(..., primary_objective='spectral')``.
-    Exposed for printing/debugging alongside ``multistart_seed_metrics``.
-    """
-    return _effective_spectral_rms_for_selection(
-        result,
-        penalize_stagnant,
-        stagnant_coord_rms_tol_ang,
-        stagnant_max_spectral_gain_mhz,
-        stagnant_penalty_mhz,
-    )
-
-
 def select_best_result(
     results,
     spectral_gate_abs=0.01,

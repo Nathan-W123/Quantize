@@ -406,10 +406,6 @@ def _residue_indices(m_values: np.ndarray, fold: int) -> dict[int, np.ndarray]:
     return {r: np.where(np.mod(m, fold) == r)[0] for r in range(int(fold))}
 
 
-def _c3_residue_indices(m_values: np.ndarray) -> dict[int, np.ndarray]:
-    return _residue_indices(m_values, 3)
-
-
 def periodic_wavefunction_diagnostics(
     eigenvector: np.ndarray,
     m_values: np.ndarray,

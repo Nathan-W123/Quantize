@@ -104,29 +104,6 @@ def guess_bent_triatomic(
     )
 
 
-def guess_linear_triatomic(
-    left_elem,
-    center_elem,
-    right_elem,
-    r_left_center=1.2,
-    r_center_right=1.6,
-    bend_deg=0.0,
-):
-    """
-    Build a near-linear triatomic guess with atom order [left, center, right].
-    """
-    _ = (left_elem, center_elem, right_elem)  # semantic placeholders
-    bend = np.radians(float(bend_deg))
-    return np.array(
-        [
-            [-float(r_left_center), 0.0, 0.0],
-            [0.0, 0.0, 0.0],
-            [float(r_center_right) * np.cos(bend), float(r_center_right) * np.sin(bend), 0.0],
-        ],
-        dtype=float,
-    )
-
-
 def guess_geometry(elems, bonds, relax_kwargs=None):
     """
     General initial-guess builder from element list + bond graph.
@@ -210,105 +187,6 @@ def guess_geometry(elems, bonds, relax_kwargs=None):
     if bonds:
         rk = {} if relax_kwargs is None else dict(relax_kwargs)
         coords = _relax_geometry(coords, bonds, targets, **rk)
-    return coords
-
-
-def guess_staggered_methanol(
-    r_co=1.428,
-    r_ch=1.094,
-    r_oh=0.963,
-    angle_coh_deg=108.7,
-    center=True,
-):
-    """
-    Staggered CH₃OH geometry (C_s), atom order **C, O, H, H, H, Ho** with Ho the
-    hydroxyl hydrogen bonded to O.
-
-    The methyl takes three vertices of a regular tetrahedron around C (fourth
-    vertex is the C–O bond); the OH bond is placed in a plane defined by the C→O
-    axis and a perpendicular so **∠COH ≈ angle_coh_deg** (gas-phase ~108.7°).
-
-    Bond lengths default near equilibrium gas-phase / microwave-derived r₀ values
-    (order Å): CO ~1.43, CH ~1.09, OH ~0.96.
-
-    This avoids ``guess_geometry(...)``, whose greedy placement often yields
-    distorted methyl angles unsuitable as an optimization seed.
-
-    Parameters
-    ----------
-    center : bool
-        If True (default), subtract the centroid so the cluster sits near the origin.
-    """
-    # Four tetrahedral directions from C (alternating vertices); assign O to one.
-    v = np.array(
-        [
-            [1.0, 1.0, 1.0],
-            [1.0, -1.0, -1.0],
-            [-1.0, 1.0, -1.0],
-            [-1.0, -1.0, 1.0],
-        ],
-        dtype=float,
-    )
-    v /= np.linalg.norm(v[0])
-
-    coords = np.zeros((6, 3), dtype=float)
-    coords[1] = float(r_co) * v[0]
-    for i in range(3):
-        coords[2 + i] = float(r_ch) * v[1 + i]
-
-    o = coords[1]
-    u_oc = _unit(coords[0] - o)
-    ref = np.array([1.0, 0.0, 0.0], dtype=float)
-    if abs(np.dot(u_oc, ref)) > 0.85:
-        ref = np.array([0.0, 1.0, 0.0], dtype=float)
-    e_perp = _unit(np.cross(u_oc, ref))
-    g = np.radians(float(angle_coh_deg))
-    u_oh = np.cos(g) * u_oc + np.sin(g) * e_perp
-    u_oh = _unit(u_oh)
-    coords[5] = o + float(r_oh) * u_oh
-
-    if center:
-        coords -= coords.mean(axis=0, keepdims=True)
-    return coords
-
-
-def guess_planar_formaldehyde(r_co=1.205, r_ch=1.111, angle_hch_deg=116.13):
-    """
-    Planar H₂CO (C₂ᵥ) guess; atom order **O, C, H, H** matching experimental fits.
-
-    Orientation: C at origin, O on +z; hydrogens symmetric in the yz plane (∠HCH ≈ angle_hch_deg).
-    Defaults align with NIST CCCBDB experimental geometry for formaldehyde (Cas No. 50-00-0).
-    """
-    half = 0.5 * np.radians(float(angle_hch_deg))
-    o = np.array([0.0, 0.0, float(r_co)], dtype=float)
-    c = np.array([0.0, 0.0, 0.0], dtype=float)
-    y = float(r_ch) * np.sin(half)
-    z_h = -float(r_ch) * np.cos(half)
-    h1 = np.array([0.0, y, z_h], dtype=float)
-    h2 = np.array([0.0, -y, z_h], dtype=float)
-    return np.array([o, c, h1, h2], dtype=float)
-
-
-def guess_planar_benzene(r_cc=1.3971, r_ch=1.0804):
-    """
-    Planar D6h benzene in the xy plane (standard orientation: σh = xy).
-
-    Carbons sit on a regular hexagon at circumradius R = r_cc (Å); hydrogens lie
-    outward along the same radial directions at distance (r_cc + r_ch) from the
-    origin (COM at origin for equal masses).
-
-    Atom order: C0…C5 clock-wise, then H0…H5 with Hi bonded to Ci.
-
-    Default bond lengths match equilibrium values inferred by In Heo et al., RSC Adv.
-    2022, 12, 21406–21416 (doi:10.1039/D2RA03431J) from rotational Raman data.
-    """
-    coords = np.zeros((12, 3))
-    for i in range(6):
-        th = i * (np.pi / 3.0)
-        ux, uy = np.cos(th), np.sin(th)
-        rc = r_cc
-        coords[i] = np.array([rc * ux, rc * uy, 0.0])
-        coords[6 + i] = np.array([(rc + r_ch) * ux, (rc + r_ch) * uy, 0.0])
     return coords
 
 

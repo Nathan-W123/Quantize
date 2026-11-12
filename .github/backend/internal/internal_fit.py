@@ -155,13 +155,6 @@ class InternalCoordinateSet:
 
     # ── B-matrix ──────────────────────────────────────────────────────────────
 
-    def B_matrix(self, coords) -> np.ndarray:
-        """Wilson B-matrix for all coordinates, shape (n_int, 3N)."""
-        coords = np.asarray(coords, dtype=float)
-        n3 = 3 * len(self.elems)
-        if not self.coordinates:
-            return np.zeros((0, n3), dtype=float)
-        return np.array([_coord_B_row(coords, ic) for ic in self.coordinates], dtype=float)
 
     def active_B_matrix(self, coords) -> np.ndarray:
         """B-matrix rows for active coordinates only, shape (n_active, 3N)."""
@@ -172,9 +165,6 @@ class InternalCoordinateSet:
 
     # ── Masks and metadata ────────────────────────────────────────────────────
 
-    def active_mask(self) -> np.ndarray:
-        """Boolean array (n_int,) — True where coordinate is active."""
-        return np.array([ic.active for ic in self.coordinates], dtype=bool)
 
     def active_coords(self) -> List[InternalCoordinate]:
         return [ic for ic in self.coordinates if ic.active]

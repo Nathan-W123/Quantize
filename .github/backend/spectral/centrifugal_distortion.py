@@ -378,15 +378,6 @@ class CDConstants:
     def vector(self) -> np.ndarray:
         return np.array([getattr(self, k) for k in CD_NAMES], dtype=float)
 
-    def sigma_vector(self, default_fraction: float = 0.05) -> np.ndarray:
-        out = []
-        for k in CD_NAMES:
-            s = self.sigma.get(k)
-            if s is None or not np.isfinite(s):
-                v = abs(getattr(self, k))
-                s = max(v * default_fraction, 0.01)
-            out.append(float(s))
-        return np.array(out, dtype=float)
 
 
 #: |kappa| above this is "near-symmetric" and takes the S reduction. Watson's

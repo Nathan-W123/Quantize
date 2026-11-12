@@ -23,8 +23,6 @@ Units
 """
 
 import os
-import contextlib
-import io
 
 import numpy as np
 
@@ -2923,94 +2921,6 @@ class MolecularOptimizer:
         V_null = Vt[rank:]
         return V_null.T @ V_null if V_null.size else np.zeros((n, n))
 
-    def bootstrap_uncertainty(self, n_samples=32, seed=0, include_systematic=True,
-                              coherent=True):
-        """Resampling estimate of the geometry uncertainty.
-
-        The Laplace covariance assumes the objective is quadratic and the
-        posterior Gaussian near the optimum. Neither is guaranteed, and a
-        miscalibration in it is invisible from the inside. This perturbs the
-        observed constants within their uncertainties, refits, and takes the
-        spread of the resulting coordinates -- an estimate that shares almost
-        none of those assumptions, so agreement between the two is evidence and
-        disagreement localises the problem.
-
-        Expensive: one full fit per sample. Intended as a check on the analytic
-        covariance, not as the routine path.
-        """
-        rng = np.random.default_rng(seed)
-        base_obs = [np.asarray(iso["obs_constants"], dtype=float).copy()
-                    for iso in self.spectral.isotopologues]
-        # Snapshot everything a fit mutates in place. chi-square rescaling
-        # multiplies iso["sigma_constants"] via scale_sigma, so without this the
-        # rescale factors compound as a random walk across replicates and later
-        # samples are fitted with weights inconsistent with the injected noise.
-        base_sig = [np.asarray(iso["sigma_constants"], dtype=float).copy()
-                    for iso in self.spectral.isotopologues]
-        base_trust = float(self.optimizer.trust_radius)
-        base_lambda = float(self.optimizer.lambda_damp)
-        widths = []
-        for iso in self.spectral.isotopologues:
-            s = np.asarray(iso["sigma_constants"], dtype=float).copy()
-            if include_systematic:
-                sys_s = iso.get("sigma_systematic_constants")
-                if sys_s is not None:
-                    sys_s = np.asarray(sys_s, dtype=float).ravel()
-                    if sys_s.size == s.size:
-                        s = np.hypot(s, sys_s)
-            widths.append(s)
-
-        start = np.array(self.coords, dtype=float, copy=True)
-        samples = []
-        try:
-            for _ in range(int(n_samples)):
-                shared = rng.normal(0.0, 1.0, size=3)
-                for iso, obs, sig, w in zip(self.spectral.isotopologues,
-                                            base_obs, base_sig, widths):
-                    if coherent:
-                        # The model error is common mode: the B0-vs-Be offset
-                        # shifts every isotopologue's constant of a given type
-                        # nearly together. Independent draws suppress the
-                        # coherent displacement of the optimum by about
-                        # sqrt(#constants) while adding scatter the systematic
-                        # does not have, so one shared draw per component type
-                        # per replicate is the physically right perturbation.
-                        idx = np.asarray(iso["component_indices"], dtype=int)
-                        noise = w * shared[np.clip(idx, 0, 2)]
-                    else:
-                        noise = rng.normal(0.0, w)
-                    iso["obs_constants"] = obs + noise
-                    iso["sigma_constants"] = sig.copy()
-                self.optimizer.trust_radius = base_trust
-                self.optimizer.lambda_damp = base_lambda
-                self.coords = start.copy()
-                with contextlib.redirect_stdout(io.StringIO()):
-                    samples.append(np.asarray(self.run(), dtype=float).copy())
-        finally:
-            for iso, obs, sig in zip(self.spectral.isotopologues, base_obs, base_sig):
-                iso["obs_constants"] = obs
-                iso["sigma_constants"] = sig.copy()
-            self.optimizer.trust_radius = base_trust
-            self.optimizer.lambda_damp = base_lambda
-            self.coords = start
-        if len(samples) < 2:
-            return None
-
-        bonds = _detect_bonds(self.coords, self.elems)
-        angles = _detect_angles(bonds)
-        out = {}
-        for i, j in bonds:
-            vals = [float(np.linalg.norm(c[i] - c[j])) for c in samples]
-            out[f"{self.elems[i]}{i + 1}-{self.elems[j]}{j + 1}"] = float(np.std(vals, ddof=1))
-        for i, j, k in angles:
-            vals = []
-            for c in samples:
-                v1, v2 = c[i] - c[j], c[k] - c[j]
-                cosa = float(v1 @ v2 / (np.linalg.norm(v1) * np.linalg.norm(v2)))
-                vals.append(float(np.degrees(np.arccos(np.clip(cosa, -1.0, 1.0)))))
-            out[(f"{self.elems[i]}{i + 1}-{self.elems[j]}{j + 1}"
-                 f"-{self.elems[k]}{k + 1}")] = float(np.std(vals, ddof=1))
-        return out
 
     def sigma_split(self):
         """Per-coordinate (data_sigma, prior_sigma) from the last uncertainty call.
@@ -3099,99 +3009,6 @@ class MolecularOptimizer:
             self.spectral.isotopologues, start, model=model, symmetry=self.symmetry,
         )
 
-    def report_internal(self):
-        """
-        Extended report for internal-coordinate mode (Phase 7).
-
-        Prints bond/angle table with uncertainties and identifiability labels
-        derived from the internal-coordinate Jacobian at the final geometry.
-        Falls back to report() if not in internal mode.
-        """
-        if self.coordinate_mode != "internal":
-            return self.report()
-
-        from backend.uncertainty import uncertainty_table, print_uncertainty_table
-        from backend.internal.identifiability import identifiability_table, print_identifiability_table
-        from backend.priors.prior_sensitivity import classify_prior_dominance, prior_sensitivity_analysis
-
-        coord_set = InternalCoordinateSet(self.coords, self.elems, self._ic_use_dihedrals)
-        B_active = coord_set.active_B_matrix(self.coords)
-        Bplus = InternalCoordinateSet.damped_pseudoinverse(B_active, self._ic_damping)
-        J_spectral, residual = self.spectral.stacked(self.coords)
-        Jq = spectral_jacobian_q(J_spectral, Bplus)
-
-        # Collect prior sigmas for uncertainty and identifiability
-        if self._ic_prior_weight > 0.0:
-            _, _, sigma_prior = build_internal_priors(
-                coord_set, self.coords,
-                sigma_bond=self._ic_prior_sigma_bond,
-                sigma_angle_deg=self._ic_prior_sigma_angle_deg,
-                sigma_dihedral_deg=self._ic_prior_sigma_dihedral_deg,
-                prior_mode=self._ic_prior_mode,
-                prior_specs=self._ic_user_priors,
-                elems=self.elems,
-                freeze_sigma_floor=self._ic_freeze_sigma_floor,
-                spectral_jacobian_q=Jq,
-                adaptive_config=self._ic_prior_adaptive,
-                sv_rel_threshold=self.optimizer.sv_threshold,
-            )
-        else:
-            sigma_prior = None
-
-        # Print base report header and residuals
-        self.report()
-
-        # Print uncertainty table
-        _J_prior_tmp, _r_prior_tmp, sigma_prior_for_labels, _meta_tmp = build_internal_priors(
-            coord_set, self.coords,
-            sigma_bond=self._ic_prior_sigma_bond,
-            sigma_angle_deg=self._ic_prior_sigma_angle_deg,
-            sigma_dihedral_deg=self._ic_prior_sigma_dihedral_deg,
-            prior_mode=self._ic_prior_mode,
-            prior_specs=self._ic_user_priors,
-            elems=self.elems,
-            freeze_sigma_floor=self._ic_freeze_sigma_floor,
-            spectral_jacobian_q=Jq,
-            adaptive_config=self._ic_prior_adaptive,
-            sv_rel_threshold=self.optimizer.sv_threshold,
-            return_metadata=True,
-        )
-        dominance = classify_prior_dominance(Jq, sigma_prior_for_labels, coord_set.active_names())
-        sensitivity = prior_sensitivity_analysis(
-            coord_set,
-            self.coords,
-            Jq,
-            residual,
-            sigma_bond=self._ic_prior_sigma_bond,
-            sigma_angle_deg=self._ic_prior_sigma_angle_deg,
-            sigma_dihedral_deg=self._ic_prior_sigma_dihedral_deg,
-            prior_mode=self._ic_prior_mode,
-            prior_specs=self._ic_user_priors,
-            elems=self.elems,
-            freeze_sigma_floor=self._ic_freeze_sigma_floor,
-            spectral_jacobian_q=Jq,
-            adaptive_config=self._ic_prior_adaptive,
-            sv_rel_threshold=self.optimizer.sv_threshold,
-            lambda_reg=self._ic_damping,
-        )
-        unc_rows = uncertainty_table(
-            coord_set, self.coords, Jq,
-            sigma_prior=sigma_prior,
-            lambda_reg=self._ic_damping,
-            residual_w=residual,
-            dominance_labels=dominance,
-            sensitivity_rows=sensitivity,
-        )
-        print("\n  Internal-coordinate uncertainties")
-        print_uncertainty_table(unc_rows)
-
-        # Print identifiability table
-        id_rows, sv, rank = identifiability_table(coord_set, Jq, sigma_prior)
-        print()
-        print_identifiability_table(id_rows, sv, rank)
-        print()
-
-        return residual
 
     def log_probability(self, trial_coords, use_proxy=True):
         """

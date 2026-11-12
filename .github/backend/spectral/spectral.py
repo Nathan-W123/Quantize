@@ -642,11 +642,6 @@ class SpectralEngine:
                 out[i] = obs[i] + dt_arr[i]
         return out
 
-    def effective_sigma_with_correction(self, iso):
-        """Return per-row effective sigma combining obs noise and correction uncertainty."""
-        sigma_obs = np.asarray(iso.get("sigma_constants", []), dtype=float)
-        sigma_corr = self._correction_sigma(iso, sigma_obs.size)
-        return np.sqrt(np.maximum(sigma_obs, 0.0) ** 2 + sigma_corr ** 2)
 
     def _correction_sigma(self, iso, n):
         """Return length-``n`` correction sigma aligned with the iso's components."""

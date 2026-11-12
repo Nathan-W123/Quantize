@@ -32,9 +32,3 @@ def ensure_repo_paths(repo_root: Path) -> Path:
     return root
 
 
-def ensure_output_layout(repo_root: Path | None = None) -> Path:
-    """Create ``output/`` subdirectories if missing."""
-    root = (repo_root or Path(__file__).resolve().parent).resolve()
-    for sub in _DEFAULT_OUTPUT_SUBDIRS:
-        (root / sub).mkdir(parents=True, exist_ok=True)
-    return root / OUTPUT_DIR
