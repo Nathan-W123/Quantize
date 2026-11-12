@@ -39,6 +39,23 @@ spectral chi-squared rose.
 data perturbations (point-biserial correlation +0.52; 58.3% stall rate above
 the median perturbation against 25.0% below), so the bootstrap censored the
 tails its interval is made of.
+
+WHAT THE FIX COSTS, measured rather than extrapolated. On the analytic config
+it took the fit from 11 iterations to 26 for a bit-identical geometry, which
+looked like a 2.4x bill on every production run. It is not: that config has two
+free parameters on a model surface. Real fits, HF/6-31G through pyscf on
+published constants, in this same internal mode (2026-11-12):
+
+    molecule            atoms  species   iterations      wall time      result
+    formyl fluoride       4       4      15  ->  15    2.61 -> 2.64 s   identical
+    fluoroacetylene       4       6      40  ->  40    3.13 -> 2.91 s   identical
+    vinyl fluoride        6       8      40  ->  40    11.16 -> 11.66 s identical
+
+Identical iteration counts, identical accepted-step counts, and final freq_rms
+and geometry RMS equal to every digit printed; the timing spread is noise. All
+three accept every step both before and after, so their ratio was below one --
+the harmless side of the mismatch. The 2.4x was specific to a geometry where the
+ratio sat near the boundary, and the fix is free where it does not.
 """
 
 from __future__ import annotations
