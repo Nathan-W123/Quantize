@@ -160,6 +160,16 @@ determines perfectly well.
 Rule of thumb: keep the joint objective's calibrated prior when the fit is
 undersaturated, and try `split` when it is not. `python scripts/tune_quantum_prior.py`
 scans the value; 0.005 Å is a sparse-data result, not a validated default.
+
+> **The 0.005 Å rows above predate a units fix.** Internal-coordinate runs
+> used to take $\alpha_q$'s typical curvature from the q-space Hessian, which
+> mixes Hartree/Å² with Hartree/rad²; on water that made the prior 1.5–2.1×
+> stronger at a given σ than in Cartesian mode. It now comes from the
+> Cartesian Hessian in both modes, so σ means the same thing in each, and a
+> 0.005 measured then corresponds to roughly 0.0035 Å now. Re-scanned on the
+> one-isotopologue water case, the corrected engine's trade is monotone and
+> 0.003 Å gives the old combined score (`dev/tests/test_endtoend_water_pipeline.py`).
+> The fluorobenzene and monofluoro rows have not been re-scanned.
 [`backend/spectral/prior_widths.py`](.github/backend/spectral/prior_widths.py)
 carries a per-level table (HF/6-31G 0.020 Å, B3LYP/6-31G(d) 0.007, B3LYP/cc-pVTZ
 0.004) and `MolecularOptimizer` uses it when `quantum_prior_sigma_ang` is left

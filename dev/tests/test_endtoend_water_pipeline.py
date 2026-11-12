@@ -140,55 +140,56 @@ def test_calibrated_quantum_prior_improves_the_weakly_determined_angle():
     multi-isotopologue data the same fixes improve the bond length too: water's
     parent-only RHF fit goes from 3.29 to 1.75 mA RMS.
 
-    THIS TEST USED TO ASSERT THAT BOTH PARAMETERS BEAT THEORY ALONE, and that
-    is no longer true of the angle. The change was not a regression in the
-    hybrid but a fix to the step-acceptance test, which in internal coordinate
-    mode compared an RMS over the spectral rows against an RMS over the
-    spectral *and* internal-prior rows (see
-    test_acceptance_test_row_consistency.py). Measured here, on this config:
+    WHY SIGMA IS 0.003 HERE AND WAS 0.005. sigma_x is the displacement over
+    which theory is trusted, and alpha_q = 1 / (1/2 lambda_bar sigma_x^2)
+    turns it into a weight through a typical curvature lambda_bar. In internal
+    coordinates lambda_bar used to come from the q-space Hessian, which mixes
+    Hartree/Angstrom^2 with Hartree/rad^2; it now comes from the Cartesian
+    Hessian, as in Cartesian mode, so sigma_x means the same thing in both. On
+    this water fit the q-space value made alpha_q 1.5-2.1x stronger, so the
+    0.005 tuned under it is about 0.0035 now. The same change landed with the
+    re-expanded quantum gradient and the joint-objective step test, after
+    which the fit converges to the optimum of its objective (it used to stop
+    short). Swept again on the corrected engine (2.0 = theory alone):
 
-        parameter   before fix   after fix   theory alone
-        bond         5.061 mA     1.284 mA     10.9 mA
-        angle        0.7432 deg   0.8144 deg   0.808 deg
-        combined     1.384        1.127        2.000
+        sigma_x   bond (mA)   angle (deg)   combined
+        0.0020     +9.40       -0.129        1.021
+        0.00225    +9.07       -0.008        0.842
+        0.0030     +8.03       +0.325        1.139
+        0.0040     +6.63       +0.675        1.444
+        0.0050     +5.38       +0.928        1.642
+        split      -1.21       +1.730        2.252
 
-    So the fix buys 3.9x on the bond and gives up 9.6% on the angle, which
-    lands 0.8% past theory's own error bar. By the repository's own aggregate
-    -- tune._combined, each error as a fraction of the theory-alone error --
-    it is a 19% improvement, and nothing is being quietly papered over: the
-    assertions below now state exactly that, one parameter at a time, and the
-    angle carries a ceiling so this cannot become a licence to drift.
-
-    Re-tuning does not recover the angle. Sweeping quantum_prior_sigma_ang over
-    0.002, 0.003, 0.004, 0.005, 0.0075, 0.010, 0.015, 0.020, 0.030 with the fix
-    in place, no value beats theory on both parameters and 0.005 is still the
-    best by the combined metric (1.127), so the calibration was not stale.
+    The trade is monotone: a tighter prior buys the angle with the bond. The
+    combined minimum sits where the angle error crosses zero, a knife edge, so
+    the test is pinned at 0.003 instead -- the same combined score as the old
+    tuning (1.139 against 1.127), with the angle at 0.40x theory's own error
+    and the bond at 0.74x.
     """
     import scripts.tune_quantum_prior as tune
 
     r_split, th_split = tune.run()
-    r_joint, th_joint = tune.run(objective_mode="joint", quantum_prior_sigma_ang=0.005)
+    r_joint, th_joint = tune.run(objective_mode="joint", quantum_prior_sigma_ang=0.003)
 
     # The weakly determined direction, which is what the calibrated prior is for.
     assert abs(th_joint - THETA_E) < abs(th_split - THETA_E)
 
-    # The bond beats theory alone outright, and by a wide margin (8.5x here).
+    # The bond beats theory alone (8.03 against 10.9 mA).
     assert abs(r_joint - R_E) * 1000 < tune.THEORY_DR
 
-    # The angle does not, and the margin is recorded rather than asserted away.
-    # The ceiling is what stops this becoming a licence to drift: the angle may
-    # sit just past theory's bar, not wander away from it.
+    # So does the angle, outright: 0.40x theory's own error. The ceiling keeps
+    # it from drifting back toward the split objective's 2.1x.
     angle_vs_theory = abs(th_joint - THETA_E) / abs(tune.THEORY_DTHETA)
-    assert angle_vs_theory < 1.05, (
+    assert angle_vs_theory < 0.5, (
         f"the angle is now {angle_vs_theory:.3f}x theory's own error, past the "
-        f"1.05 ceiling; it was 1.008x when the step-acceptance fix was measured"
+        f"0.5 ceiling; it measured 0.402x"
     )
 
-    # And the pair together still beats theory alone, which is the claim that
-    # survives. 2.0 is theory; this measured 1.127.
+    # And the pair together beats theory alone. 2.0 is theory; this measured
+    # 1.139.
     combined = tune._combined(r_joint, th_joint)
     assert combined < 1.25, (
-        f"combined error {combined:.3f} against 1.127 when measured and 2.0 for "
+        f"combined error {combined:.3f} against 1.139 when measured and 2.0 for "
         f"theory alone"
     )
 
@@ -227,7 +228,7 @@ def test_absolute_singular_value_floor_returns_directions_to_theory():
 
     r_floor, th_floor = tune.run(sv_min_abs=1e5)
     r_joint, th_joint = tune.run(objective_mode="joint",
-                                 quantum_prior_sigma_ang=0.005)
+                                 quantum_prior_sigma_ang=0.003)
 
     # Theory alone errs long on the bond and small on the angle; the floor hands
     # both directions back to it, so both errors must take theory's sign.
@@ -236,7 +237,7 @@ def test_absolute_singular_value_floor_returns_directions_to_theory():
 
     # But handing a direction back wholesale is worse than leaving it contested:
     # the calibrated prior keeps the data's influence in proportion and lands
-    # the angle an order of magnitude closer.
+    # the angle closer (0.325 against 0.803 deg; sigma_x as in the test above).
     assert abs(th_joint - THETA_E) < abs(th_floor - THETA_E), (
         f"calibrated prior {abs(th_joint - THETA_E):.3f} deg should beat the "
         f"blunt floor {abs(th_floor - THETA_E):.3f} deg"

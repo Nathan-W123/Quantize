@@ -52,10 +52,17 @@ published constants, in this same internal mode (2026-11-12):
     vinyl fluoride        6       8      40  ->  40    11.16 -> 11.66 s identical
 
 Identical iteration counts, identical accepted-step counts, and final freq_rms
-and geometry RMS equal to every digit printed; the timing spread is noise. All
-three accept every step both before and after, so their ratio was below one --
-the harmless side of the mismatch. The 2.4x was specific to a geometry where the
-ratio sat near the boundary, and the fix is free where it does not.
+and geometry RMS equal to every digit printed.
+
+THAT TABLE MEASURED NOTHING, and is kept only so the mistake stays visible.
+Those fits ran the class defaults -- use_internal_priors=False -- and the fix
+as first written sat under the InternalPriorEngine branch, so it never applied
+to them: "identical" was the fix's absence. The class default carries the
+q-space prior rows without that engine, so it had the mismatch all along; the
+analytic-water fixture of the uncertainty tests accepted 0 of 3 steps because
+of it. The fix now applies on every internal-coordinate path; what it and the
+changes landing with it cost and buy on real molecules is recorded in
+test_fit_consistency.py.
 """
 
 from __future__ import annotations

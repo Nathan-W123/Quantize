@@ -6,16 +6,22 @@ term, which is standard and harmless for small residuals -- and this engine
 does not run at small residuals. With an uncorrected B0-versus-Be offset
 against sigma_constants in fractions of a MHz, water sits at 18 sigma rms.
 
-Measured there: the omitted term is 3.0% of ||JtJ|| in norm, while the softest
+Measured at water's starting geometry -- the r_e structure against raw B0,
+18 sigma rms: the omitted term is 3.0% of ||JtJ|| in norm, while the softest
 physical curvature is 0.04% of ||JtJ||. So the perturbation is 75x the
-quantity it perturbs and flips its sign, +7,995 -> -372,388. The optimum is a
-saddle of the exact posterior along that direction, the posterior is improper
-there, and no sampler can converge on it -- which is why this engine's MCMC
-returns R-hat anywhere from 2.3 to 18 depending on the seed.
+quantity it perturbs and flips its sign, +7,995 -> -372,388. That point is a
+saddle of the exact objective along that direction, and Gauss-Newton reports
+all-positive curvature and a finite width there, with nothing to say so.
 
-Gauss-Newton reports all-positive curvature and a finite width throughout,
-with nothing to say so. These tests pin that it now says so, and -- just as
-importantly -- that it stays quiet when the approximation is actually fine.
+WHERE THAT IS, AND WHERE IT IS NOT. These tests used to call that point the
+optimum, because the fit never left it: the step-acceptance test compared
+residual vectors of different lengths on the default internal-coordinate path,
+so this fixture accepted 0 of its 3 steps and the Laplace width was taken at
+the start. With that fixed the fit moves (3 of 3 accepted) to a point at 13.4
+sigma rms, where Gauss-Newton and the exact curvature agree to 9.5% (7,995
+against 8,758) and the check is silent. So the tests drive the check at the
+starting geometry, where the failure is real, and at the fitted point, where
+it is not -- the check has to be right about both.
 
 WHICH DIRECTION THAT IS, AND WHY THESE FITS IMPOSE NO SYMMETRY. The softest
 direction is the antisymmetric stretch. Rotational constants are even in it,
@@ -33,11 +39,12 @@ symmetry="C1". test_symmetric_fit_has_no_failure_to_report pins the other
 side: under the imposed group the check finds nothing, because there is
 nothing to find.
 
-The same direction was the MCMC's problem. With proposals along all three
-directions -- what the sampler did before -- four seeds gave max R-hat 2.25 to
-3.42 and min ESS 34 to 46, none usable. Restricted to the two symmetric
-directions, the same four seeds give R-hat 1.018 to 1.054 and ESS 166 to 185,
-all usable: the saddle the chains wandered along is not in the model.
+The same direction was the MCMC's problem, measured while the fit was still
+frozen at its start. With proposals along all three directions -- what the
+sampler did before -- four seeds gave max R-hat 2.25 to 3.42 and min ESS 34 to
+46, none usable. Restricted to the two symmetric directions, the same four
+seeds gave R-hat 1.018 to 1.054 and ESS 166 to 185, all usable: the saddle the
+chains wandered along is not in the model.
 """
 
 from __future__ import annotations
@@ -86,8 +93,15 @@ def _fit(sigma_mhz):
 
 @pytest.fixture(scope="module")
 def tight_sigma():
-    """sigma_constants = 0.2 MHz: 18 sigma residuals, Gauss-Newton invalid."""
+    """sigma_constants = 0.2 MHz: 18 sigma residuals at the start, 13.4 fitted."""
     return _fit(0.2)
+
+
+# Where the fit starts: the r_e structure, against raw B0. The residuals are
+# largest here (18 sigma rms) and the softest direction is a saddle of the
+# exact objective, so this is where the check must fire.
+def _start():
+    return _coords()
 
 
 @pytest.fixture(scope="module")
@@ -109,7 +123,7 @@ def test_the_two_fixtures_really_are_the_two_regimes(tight_sigma, loose_sigma):
 
 
 def test_sign_flip_is_detected_at_large_residuals(tight_sigma):
-    rows = tight_sigma.gauss_newton_discrepancy()
+    rows = tight_sigma.gauss_newton_discrepancy(coords=_start())
     assert rows, "the check returned nothing"
     soft = rows[0]
     assert soft["curvature_gauss_newton"] > 0.0
@@ -119,11 +133,27 @@ def test_sign_flip_is_detected_at_large_residuals(tight_sigma):
 
 
 def test_the_flip_is_reported_not_just_computed(tight_sigma):
-    msgs = tight_sigma.gauss_newton_warnings()
+    msgs = tight_sigma.gauss_newton_warnings(coords=_start())
     assert len(msgs) >= 1
     joined = " ".join(msgs).lower()
     assert "gauss-newton" in joined
     assert "saddle" in joined
+
+
+def test_silent_at_the_fitted_point(tight_sigma):
+    """The same fixture once fitted: 13.4 sigma, and Gauss-Newton holds.
+
+    Measured: 7,995 against an exact 8,758 on the softest direction, 9.5%
+    apart, with the omitted term +763 rather than -380,383. A check that
+    still fired here would be reporting on the start, not on the answer.
+    """
+    rows = tight_sigma.gauss_newton_discrepancy()
+    assert rows
+    soft = rows[0]
+    assert soft["sign_flipped"] is False
+    assert soft["curvature_exact"] > 0.0
+    assert soft["relative_discrepancy"] < 0.15
+    assert tight_sigma.gauss_newton_warnings() == []
 
 
 def test_quiet_when_gauss_newton_is_valid(loose_sigma):
@@ -145,7 +175,7 @@ def test_softest_direction_carries_no_spectral_curvature(tight_sigma):
     quoted there is a prior width being overwhelmed by an uncounted term,
     not a measurement.
     """
-    soft = tight_sigma.gauss_newton_discrepancy()[0]
+    soft = tight_sigma.gauss_newton_discrepancy(coords=_start())[0]
     scale = abs(soft["curvature_gauss_newton"])
     assert abs(soft["curvature_spectral_gauss_newton"]) < 1e-6 * scale
     assert soft["curvature_quantum"] > 0.0
@@ -221,7 +251,7 @@ def test_check_can_be_switched_off(tight_sigma):
 
 def test_v2_summary_carries_the_finding(tight_sigma):
     """The serialised object is what gets read later, with no stdout around."""
-    summary = laplace_approximation(tight_sigma)
+    summary = laplace_approximation(tight_sigma, coords=_start())
     assert any("Gauss-Newton" in w for w in summary.warnings), summary.warnings
     assert any("Gauss-Newton" in w for w in summary.to_dict()["warnings"])
 

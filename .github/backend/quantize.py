@@ -1743,6 +1743,123 @@ class MolecularOptimizer:
             return None
         return (x - _kabsch_align(target, x)).ravel()
 
+    def _expanded_quantum_gradient(self, gradient, hessian):
+        """The quantum gradient at the current geometry, to first order.
+
+        The stored gradient belongs to the geometry of the last quantum update
+        (``_orca_ref_coords``), and updates only happen once the fit has
+        drifted ``orca_update_thresh`` (5 mA RMS) away from it. Between them
+        the step used that stale gradient as if it were current, so the
+        quantum force did not change as the fit moved -- and a fit that
+        converged under a stale force is not at the optimum of its own
+        objective. Measured in internal mode from the published start: a
+        fresh restart from formyl fluoride's "converged" answer moved it 5.83
+        mA, and vinyl fluoride cycled for 80 iterations without converging.
+
+            g(x) ~= g(x_ref) + H (x - x_ref)
+
+        is the same quadratic model of the surface the step already solves
+        with, applied to the gradient too. It costs one matrix-vector product
+        and no quantum chemistry. Rigid motion between the two geometries is
+        harmless: H acting on an infinitesimal rotation rotates the gradient
+        with the molecule, and translations are null in H.
+        """
+        ref = self._orca_ref_coords
+        if ref is None or gradient is None or hessian is None:
+            return gradient
+        x = np.asarray(self.coords, dtype=float)
+        ref = np.asarray(ref, dtype=float)
+        if ref.shape != x.shape:
+            return gradient
+        g = np.asarray(gradient, dtype=float)
+        H = np.asarray(hessian, dtype=float)
+        if H.shape != (g.size, g.size):
+            return gradient
+        return g + H @ (x - ref).ravel()
+
+    #: Smallest ratio of actual to predicted decrease of the joint objective at
+    #: which a step is accepted: the conventional trust-region value, which
+    #: takes any step that delivers some of what the model promised.
+    _JOINT_RATIO_ETA = 1e-4
+
+    def _joint_step_ratio(self, r0, r1, J, dp, g, H, alpha_q, trial_coords):
+        """Accept a joint step when the objective it minimises actually fell.
+
+        The joint step is the damped Gauss-Newton step of
+
+            Phi = 1/2 |r|^2 + alpha_q E_q  [+ 1/2 |x - x_t|^2 / sigma_iso^2]
+
+        with r the weighted spectral residuals plus any internal-prior rows.
+        Accepting on |r| alone -- as this did -- does not test that step. At
+        the optimum J^T r = alpha_q g, which is not zero, so on the
+        low-residual side every step that lowers Phi raises |r| to first
+        order and was rejected; the trust radius halved toward its floor and
+        the plateau test called that convergence. Conversely a step that
+        raised Phi was accepted whenever it lowered |r|. Measured on the
+        benchmark's Cartesian recipe started at the theory optimum: one step
+        accepted, then every one after it refused (formyl fluoride 1 of 11,
+        chlorofluoromethane 2 of 18), and stalls of up to 33 mA / 6.5 deg
+        from a start near the spectral optimum.
+
+        rho = [Phi(x) - Phi(x + dp)] / [m(0) - m(dp)], with m the step's own
+        quadratic model. Accepted when the model promised a decrease and
+        rho > eta, or, where it promised none, when Phi fell anyway.
+
+        No quantum chemistry is spent. With a prior target the quantum prior
+        IS the quadratic 1/2 d^T H d (d the displacement from the
+        Kabsch-aligned target), so its change is evaluated exactly. Otherwise
+        the change comes from the quadratic model the step solved, with the
+        gradient re-expanded at the current geometry
+        (_expanded_quantum_gradient); without that re-expansion the model
+        would describe the surface where it was last computed.
+
+        ``dp`` must be the step actually taken. Returns (accept, rho).
+        """
+        r0 = np.asarray(r0, dtype=float).ravel()
+        r1 = np.asarray(r1, dtype=float).ravel()
+        dp = np.asarray(dp, dtype=float).ravel()
+        if r0.size != r1.size:
+            # Both sides must span the same rows; if they somehow do not, a
+            # comparison of objectives is meaningless, so fall back to the
+            # residual test rather than invent one.
+            self._warn_once(
+                "joint step test: the current and trial residuals have "
+                f"{r0.size} and {r1.size} rows; falling back to the residual "
+                "test for this step.", key="joint_ratio_row_mismatch")
+            return bool(float(r1 @ r1) <= float(r0 @ r0)), None
+        Jdp = np.asarray(J, dtype=float) @ dp
+        actual = 0.5 * float(r0 @ r0) - 0.5 * float(r1 @ r1)
+        pred = float(r0 @ Jdp) - 0.5 * float(Jdp @ Jdp)
+        target = self._prior_target_coords
+        x0 = np.asarray(self.coords, dtype=float)
+        x1 = np.asarray(trial_coords, dtype=float)
+        exact_target = (target is not None and self.coordinate_mode == "cartesian"
+                        and np.shape(target) == x0.shape)
+        if not self.spectral_only and alpha_q:
+            Hq = np.asarray(H, dtype=float)
+            dq_model = float(np.asarray(g, dtype=float) @ dp
+                             + 0.5 * dp @ (self.optimizer._spd_hessian(Hq) @ dp))
+            if exact_target:
+                d0 = (x0 - _kabsch_align(target, x0)).ravel()
+                d1 = (x1 - _kabsch_align(target, x1)).ravel()
+                dq_actual = 0.5 * float(d1 @ Hq @ d1) - 0.5 * float(d0 @ Hq @ d0)
+            else:
+                dq_actual = dq_model
+            actual -= float(alpha_q) * dq_actual
+            pred -= float(alpha_q) * dq_model
+        d0_iso = self._prior_displacement()
+        sig_iso = self.optimizer.isotropic_prior_sigma_ang
+        if (sig_iso is not None and float(sig_iso) > 0.0 and d0_iso is not None
+                and d0_iso.size == dp.size and exact_target):
+            p_iso = 1.0 / (float(sig_iso) ** 2)
+            d1_iso = (x1 - _kabsch_align(target, x1)).ravel()
+            actual -= 0.5 * p_iso * (float(d1_iso @ d1_iso) - float(d0_iso @ d0_iso))
+            pred -= p_iso * (float(d0_iso @ dp) + 0.5 * float(dp @ dp))
+        if pred > 0.0:
+            rho = actual / pred
+            return bool(rho > self._JOINT_RATIO_ETA), float(rho)
+        return bool(actual > 0.0), None
+
     def _prior_gradient(self, gradient, hessian):
         """Gradient of the quantum prior, centred where the prior actually is.
 
@@ -1793,6 +1910,13 @@ class MolecularOptimizer:
             sv_threshold=self._base_sv_threshold,
             alpha_quantum=self._base_alpha_quantum,
         )
+        # A calibrated quantum weight is a statement about the level of theory
+        # (sigma_x, in Angstrom), and alpha_quantum multiplies it. A heuristic
+        # that rescales alpha_quantum by problem shape therefore silently
+        # re-states how good the theory is -- so with sigma_x set it is left
+        # where the caller put it.
+        if self.optimizer.quantum_prior_sigma_ang is not None:
+            bases = dict(bases, alpha_quantum=self._base_alpha_quantum)
         self.optimizer.trust_radius = bases["trust_radius"]
         self.optimizer.null_trust_radius = bases["null_trust_radius"]
         self.optimizer.lambda_damp = bases["lambda_damp"]
@@ -1860,12 +1984,20 @@ class MolecularOptimizer:
         )
         target_sv = float(controls.get("sv_threshold", self.optimizer.sv_threshold))
         target_alpha = float(controls.get("alpha_quantum", self.optimizer.alpha_quantum))
+        # Not with a calibrated weight: there alpha_quantum multiplies
+        # 1 / (1/2 lambda_bar sigma_x^2), so retuning it mid-fit changes the
+        # objective under the fit. Measured on formyl fluoride (class
+        # defaults, internal mode): alpha_q fell 3438 -> 2216 within one fit,
+        # and a fresh restart from its "converged" answer moved 15.5 mA.
+        calibrated = self.optimizer.quantum_prior_sigma_ang is not None
         if reject_streak > 0:
             self.optimizer.sv_threshold = max(self.optimizer.sv_threshold, target_sv)
-            self.optimizer.alpha_quantum = min(self.optimizer.alpha_quantum, target_alpha)
+            if not calibrated:
+                self.optimizer.alpha_quantum = min(self.optimizer.alpha_quantum, target_alpha)
         else:
             self.optimizer.sv_threshold = target_sv
-            self.optimizer.alpha_quantum = target_alpha
+            if not calibrated:
+                self.optimizer.alpha_quantum = target_alpha
         return controls
 
     # ── Optimisation loop ─────────────────────────────────────────────────────
@@ -2048,6 +2180,20 @@ class MolecularOptimizer:
             _status = "constrained" if _n >= 1 else "UNCONSTRAINED"
             print(f"  {_k}: {_n} isotopologue(s)  [{_status}]")
 
+        # EVERY PASS STARTS FROM THE BASE TRUST REGION. adapt_lambda only ever
+        # shrinks the radius (floor 1e-4 Angstrom) and nothing grew it back, so
+        # a second pass on the same optimizer -- a chi2-rescale refit, or a
+        # bootstrap refit of a deep copy -- inherited the radius the first
+        # pass had ended on and could barely move. Measured on the benchmark
+        # configuration (autoconfig off): 1.95e-4 Angstrom inherited, and
+        # bootstrap clouds 30-50% too narrow (HCOF C-H 5.43 against 7.41 mA).
+        # With autoconfig on, _apply_autoconfig re-seeds these each iteration
+        # anyway, so this changes nothing there.
+        self.optimizer.trust_radius = self._base_trust_radius
+        self.optimizer.null_trust_radius = self._base_null_trust_radius
+        self.optimizer.lambda_damp = self._base_lambda_damp
+        self.optimizer.alpha_quantum = self._base_alpha_quantum
+
         converged = False
         prev_energy = None
         prev_freq_rms = None
@@ -2073,6 +2219,7 @@ class MolecularOptimizer:
                     self._update_orca()
                 g = self.quantum.gradient
                 H = self.quantum.hessian
+                g = self._expanded_quantum_gradient(g, H)
                 g, H = self._project_quantum_terms(g, H)
 
             # Re-fit the mass-dependent B0 -> Be offset at the current geometry.
@@ -2179,7 +2326,9 @@ class MolecularOptimizer:
             _ic_g = self._prior_gradient(_ic_g, _ic_H)
             dp, rank, sv, alpha_q_eff, Vt = self.optimizer.step(
                 J, residual_w, _ic_g, _ic_H, B=_svd_B,
-                prior_displacement=self._prior_displacement())
+                prior_displacement=self._prior_displacement(),
+                weight_hessian=(H if self.coordinate_mode == "internal"
+                                and not self.spectral_only else None))
 
             # ── Back-transform and compute trial geometry ─────────────────────
             _orig_coords = self.coords  # reference before update (never mutated here)
@@ -2207,14 +2356,25 @@ class MolecularOptimizer:
                 dx = dp
                 trial_coords = self.coords + dx.reshape(-1, 3)
 
+            # The step actually taken, in the parameters it was solved in. In
+            # internal mode the back-transform realises only the part of dq
+            # that a geometry can have -- the redundant angle sum of a planar
+            # centre, for one, cannot move -- so the step test below judges the
+            # step that was taken, not the one that was asked for.
+            if self.coordinate_mode == "internal":
+                _dp_realised = (np.asarray(_ic_coord_set.active_values(trial_coords), dtype=float)
+                                - np.asarray(_q_curr, dtype=float))
+                for _k, _ic in enumerate(_ic_coord_set.active_coords()):
+                    if _ic.kind == "dihedral":
+                        _dp_realised[_k] = (_dp_realised[_k] + np.pi) % (2.0 * np.pi) - np.pi
+            else:
+                _dp_realised = np.asarray(dp, dtype=float).ravel()
+
             P_range = self.optimizer.range_projector(Vt, rank)
             P_null = self.optimizer.null_projector(Vt, rank)
             dx_range_norm = float(np.linalg.norm(P_range @ dp))
             dx_null_norm = float(np.linalg.norm(P_null @ dp))
             g_null_norm = None if self.spectral_only else float(np.linalg.norm(P_null @ _ic_g))
-            autoconfig_controls = None
-            if self.autoconfig is not None and ((it % self.autoconfig_update_every) == 0):
-                autoconfig_controls = self._apply_autoconfig(rank, sv, residual_mhz, _reject_streak)
             geometry_valid, guardrail_stats = self._geometry_validity(trial_coords)
             _, residual_w_trial = self.spectral.stacked(trial_coords)
             prior_wrms_after = None
@@ -2225,6 +2385,7 @@ class MolecularOptimizer:
                 prior_wrms_after = float(np.sqrt(np.mean(rp_trial ** 2))) if rp_trial.size else 0.0
             elif self.internal_prior is not None and self.coordinate_mode == "internal":
                 prior_wrms_after = self.internal_prior.diagnostics(trial_coords).get("prior_wrms", 0.0)
+            if _ic_prior_rows is not None:
                 # THE TWO SIDES OF THE ACCEPTANCE TEST MUST SPAN THE SAME ROWS.
                 #
                 # They did not. In internal mode wrms_before is the RMS over
@@ -2251,23 +2412,51 @@ class MolecularOptimizer:
                 # 9 of 24 bootstrap samples stalled this way, preferentially
                 # the ones with larger data perturbations (correlation +0.52),
                 # which censored the tails the interval is made of.
-                if _ic_prior_rows is not None:
-                    _Jp, _rp_ref, _q_ref, _wp_acc = _ic_prior_rows
-                    _q_trial = np.asarray(
-                        _ic_coord_set.active_values(trial_coords), dtype=float)
-                    _rp_trial = _rp_ref - _Jp @ (_q_trial - _q_ref)
-                    residual_w_trial = np.concatenate(
-                        [residual_w_trial, _wp_acc * _rp_trial])
-                    prior_wrms_after = (
-                        float(np.sqrt(np.mean(_rp_trial ** 2))) if _rp_trial.size else 0.0)
+                #
+                # Unconditional, now. The q-space prior rows come from
+                # ic_prior_weight, not from an InternalPriorEngine, so the
+                # class default (use_internal_priors=False, ic_prior_weight=1)
+                # carries them in the step while self.internal_prior is None.
+                # The first version of this fix sat under that engine's
+                # branch and so left exactly the default path mismatched.
+                _Jp, _rp_ref, _q_ref, _wp_acc = _ic_prior_rows
+                _q_trial = np.asarray(
+                    _ic_coord_set.active_values(trial_coords), dtype=float)
+                _rp_trial = _rp_ref - _Jp @ (_q_trial - _q_ref)
+                residual_w_trial = np.concatenate(
+                    [residual_w_trial, _wp_acc * _rp_trial])
+                prior_wrms_after = (
+                    float(np.sqrt(np.mean(_rp_trial ** 2))) if _rp_trial.size else 0.0)
             _, residual_mhz_trial = self.spectral.stacked_unweighted(trial_coords)
             wrms_after = float(np.sqrt(np.mean(residual_w_trial ** 2)))
             mhz_rms_after = float(np.sqrt(np.mean(residual_mhz_trial ** 2)))
 
-            # Dual acceptance gate:
-            # 1) spectral improvement
-            # 2) optional quantum-descent consistency check from local quadratic model
-            spectral_accept = wrms_after <= wrms_before * (1.0 + self.spectral_accept_relax)
+            # Autoconfig only after the trial has been weighed. It can move the
+            # spectral sigma floor, the weight cap and the prior weight, and it
+            # used to run between the step and the trial evaluation -- so the
+            # two sides of the acceptance test could be weighted differently,
+            # and the test then measured the change of weights as well as the
+            # step. Everything it reads (rank, singular values, the current
+            # residuals, the rejection streak) is already fixed here, and what
+            # it sets takes effect from the next step either way.
+            autoconfig_controls = None
+            if self.autoconfig is not None and ((it % self.autoconfig_update_every) == 0):
+                autoconfig_controls = self._apply_autoconfig(rank, sv, residual_mhz, _reject_streak)
+
+            # Acceptance.
+            #
+            # Joint objective: the standard trust-region ratio test on the
+            # objective the step minimises (see _joint_step_ratio). Split
+            # objective: there is no single objective, so the residual test
+            # and the optional quantum-descent check stay as they were.
+            joint = (self.optimizer.objective_mode == "joint")
+            step_ratio = None
+            if joint:
+                spectral_accept, step_ratio = self._joint_step_ratio(
+                    residual_w, residual_w_trial, J, _dp_realised, _ic_g, _ic_H,
+                    alpha_q_eff, trial_coords)
+            else:
+                spectral_accept = wrms_after <= wrms_before * (1.0 + self.spectral_accept_relax)
             model_delta = None
             quantum_accept = True
             quantum_gate_active = False
@@ -2276,7 +2465,20 @@ class MolecularOptimizer:
                 # In internal mode g/_ic_H are in q-space and dp is the q-step.
                 # In Cartesian mode they are the original Cartesian terms.
                 model_delta = float(np.dot(_ic_g, dp) + 0.5 * dp @ (_ic_H @ dp))
-                if self.enforce_quantum_descent:
+                if self.enforce_quantum_descent and joint:
+                    # Requiring the energy to fall on its own forbids exactly
+                    # the trade the joint objective exists to make, and ANDed
+                    # with a descent test on the whole objective it freezes a
+                    # fit that starts at the prior centre. The ratio test
+                    # already requires the joint objective to descend.
+                    self._warn_once(
+                        "enforce_quantum_descent has no effect with the joint "
+                        "objective: its step test already requires the joint "
+                        "objective (spectral + quantum) to descend, and a "
+                        "separate energy-descent test would forbid the "
+                        "data-for-energy trade the objective exists to make.",
+                        key="enforce_quantum_descent_joint")
+                elif self.enforce_quantum_descent:
                     quantum_gate_active = True
                     # Recovery fallback: in persistent rejection during explore stage,
                     # relax strict descent gating to allow exit from frozen loops.
@@ -2343,6 +2545,7 @@ class MolecularOptimizer:
                     g_null_norm=g_null_norm,
                     alpha_q_eff=alpha_q_eff,
                     model_delta=model_delta,
+                    step_ratio=step_ratio,
                     backtransform_error=(_bt_err if self.coordinate_mode == "internal" else None),
                     internal_rank=(rank if self.coordinate_mode == "internal" else None),
                     internal_singular_values=(sv.tolist() if self.coordinate_mode == "internal" else None),

@@ -230,34 +230,42 @@ def test_physical_covariance_is_idempotent(water_fit):
     geometry_uncertainty and the v2 path both call it; this is what makes it
     harmless if a third caller appears downstream of either.
 
-    Tolerances come from the matrix's own scale, not from a round number.
-    ||cov||_F is 3.1e4 here, so an element-wise atol of 1e-18 -- which is what
-    this test first asserted -- sits fourteen orders below the round-off floor
-    and fails on noise in structurally-zero entries. What idempotency actually
-    predicts is a relative change at machine precision, and a second pass that
-    converges rather than drifting.
+    Tolerances come from the matrix's own size and scale, not from a round
+    number. A projection is a triple product of n x n matrices, so one pass
+    over an already-projected matrix moves it by about n*eps relative --
+    measured 0.99 n*eps here (n = 9, so 2.0e-15) -- and the basis is
+    orthonormal only to round-off, so repeated passes walk by about that much
+    each, linearly: 9.9 n*eps after ten. What idempotency predicts is exactly
+    that: round-off per pass, and no amplification.
+
+    (This test once asserted 1e-15 and "each change smaller". Both held only
+    because the covariance then still carried the rigid-body directions'
+    1e4-scale variances, which inflated ||cov|| until any physical change
+    looked small. laplace_approximation now returns the projected matrix.)
     """
     cov, _ = water_fit.laplace_approximation()
     scale = float(np.linalg.norm(cov))
+    n = cov.shape[0]
+    tol = n * np.finfo(float).eps
     once, basis, g1 = water_fit.physical_covariance(cov)
     twice, _b2, g2 = water_fit.physical_covariance(once)
     assert g1 == g2 == 7          # 6 rigid-body + 1 symmetry-forbidden
 
-    # Measured 6.4e-18; eps alone would allow 2.2e-16.
     rel = float(np.linalg.norm(once - twice)) / scale
-    assert rel < 1e-15, f"second projection moved the matrix by {rel:.3e}"
+    assert rel < 2.0 * tol, f"second projection moved the matrix by {rel:.3e}"
 
-    # The block that carries the uncertainties agrees to machine precision.
+    # The block that carries the uncertainties agrees to the same precision.
     b1 = basis.T @ once @ basis
     b2 = basis.T @ twice @ basis
-    assert np.linalg.norm(b1 - b2) / np.linalg.norm(b1) < 1e-14
+    assert np.linalg.norm(b1 - b2) / np.linalg.norm(b1) < 2.0 * tol
 
-    # And it settles instead of walking: ten passes, each change smaller.
+    # And it does not amplify: ten more passes stay within round-off of the
+    # first, growing no faster than one n*eps per pass.
     cur = twice
-    for _ in range(8):
-        nxt, _b, _g = water_fit.physical_covariance(cur)
-        assert float(np.linalg.norm(nxt - cur)) / scale < 1e-15
-        cur = nxt
+    for k in range(8):
+        cur, _b, _g = water_fit.physical_covariance(cur)
+        drift = float(np.linalg.norm(cur - once)) / scale
+        assert drift < 2.0 * (k + 2) * tol, f"pass {k + 3}: drift {drift:.3e}"
 
 
 def test_physical_covariance_passes_through_without_masses(water_fit):

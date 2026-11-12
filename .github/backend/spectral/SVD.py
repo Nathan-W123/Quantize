@@ -390,9 +390,19 @@ class SubspaceOptimizer:
         return float(self.alpha_quantum / e_scale)
 
     def step(self, J, residual, gradient, hessian, B=None,
-             prior_displacement=None):
+             prior_displacement=None, weight_hessian=None):
         """
         Full hybrid step in whatever parameter space J is defined over.
+
+        ``weight_hessian`` is the Hessian the calibrated quantum weight is
+        taken from, when that is not ``hessian`` itself. Internal-coordinate
+        mode passes the projected CARTESIAN Hessian here: alpha_q converts an
+        energy into chi-square units through sigma_x, which is in Angstrom,
+        so its typical curvature has to be in Hartree/Angstrom^2. The q-space
+        Hessian mixes Hartree/Angstrom^2 with Hartree/rad^2, and its mean
+        positive eigenvalue is not even continuous in the geometry: on formyl
+        fluoride it gave alpha_q = 3438, 76 and 1.4 at 0, 1e-4 and 1e-3
+        Angstrom out of plane, where the Cartesian one stays at 1911-1931.
 
         Parameters
         ----------
@@ -416,7 +426,8 @@ class SubspaceOptimizer:
         Vt          : (n_p, n_p) right singular vectors (reuse to avoid recomputing SVD)
         """
         U, s, Vt, rank = self.decompose(J)
-        alpha_q_eff = self._effective_quantum_weight(J, rank, hessian=hessian)
+        alpha_q_eff = self._effective_quantum_weight(
+            J, rank, hessian=hessian if weight_hessian is None else weight_hessian)
         if self.objective_mode == "joint":
             dp = self._joint_step(J, residual, gradient, hessian, alpha_q_eff,
                                   prior_displacement=prior_displacement)
