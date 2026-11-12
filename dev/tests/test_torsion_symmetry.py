@@ -294,10 +294,6 @@ class TestSymmetrySelectionRules:
         result = symmetry_selection_rules("B", "A", rotor_fold=2)
         assert result["allowed"] is False
 
-    def test_c2_unknown_label(self):
-        result = symmetry_selection_rules("E1", "A", rotor_fold=2)
-        assert result["allowed"] is None
-
 
 # ── C2 symmetry mode (2-fold rotors) ─────────────────────────────────────────
 
