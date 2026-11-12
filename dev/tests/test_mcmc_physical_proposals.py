@@ -73,11 +73,21 @@ def _subspaces(opt):
     return basis, V[:, w > 0.5]
 
 
-def test_water_has_three_physical_and_six_gauge_directions(sampled):
+def test_water_has_two_physical_and_seven_removed_directions(sampled):
+    """Under the auto-detected C2v: 6 rigid-body + 1 symmetry-forbidden.
+
+    The chain is proposed only along the two symmetric internal directions.
+    Before the symmetry restriction it was also proposed along the
+    antisymmetric stretch -- a direction the fit itself never moves along,
+    because it symmetrises after every step -- so the sampler was exploring a
+    model nobody had fitted.
+    """
     opt, _ = sampled
     basis, gbasis = _subspaces(opt)
-    assert basis.shape == (9, 3)
-    assert gbasis.shape == (9, 6)
+    assert opt.symmetry is not None and opt.symmetry.point_group == "C2v"
+    assert basis.shape == (9, 2)
+    assert gbasis.shape == (9, 7)
+    assert opt.projected_direction_counts() == (6, 1)
 
 
 def test_no_sampled_variance_in_the_gauge_subspace(sampled):
@@ -161,3 +171,28 @@ def test_full_rank_fallback_proposes_in_all_directions():
         assert np.array_equal(basis, np.eye(9))
     finally:
         opt._rigid_ref_masses = saved
+
+
+def test_water_chains_now_converge_under_the_imposed_symmetry(sampled):
+    """The refusal used to fire on every water run; now it need not.
+
+    With proposals along all three internal directions, four seeds gave max
+    R-hat 2.25 to 3.42 and min ESS 34 to 46 -- unusable every time, because at
+    these residuals the exact posterior is a saddle along the antisymmetric
+    stretch and the chains wandered along it. That direction is fixed by the
+    C2v the fit imposes, so it is no longer proposed, and the same four seeds
+    give R-hat 1.018 to 1.054 with ESS 166 to 185. Pinned on one of them, at
+    a length long enough for ESS to clear its threshold.
+    """
+    opt, _ = sampled
+    with contextlib.redirect_stdout(io.StringIO()):
+        summary = AdaptiveMetropolisV2(opt, MCMCConfig(
+            n_steps=2000, burn_in=500, n_chains=4, seed=11,
+            persist_chain_samples=False)).run()
+    assert summary.convergence is not None
+    r_hat = float(summary.convergence.r_hat.max())
+    ess = float(summary.convergence.ess.min())
+    assert summary.usable, summary.unusable_reason()
+    assert r_hat < 1.1, f"max R-hat {r_hat:.3f}"
+    assert ess > 100.0, f"min ESS {ess:.1f}"
+

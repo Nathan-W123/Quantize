@@ -16,6 +16,28 @@ returns R-hat anywhere from 2.3 to 18 depending on the seed.
 Gauss-Newton reports all-positive curvature and a finite width throughout,
 with nothing to say so. These tests pin that it now says so, and -- just as
 importantly -- that it stays quiet when the approximation is actually fine.
+
+WHICH DIRECTION THAT IS, AND WHY THESE FITS IMPOSE NO SYMMETRY. The softest
+direction is the antisymmetric stretch. Rotational constants are even in it,
+so at a symmetric geometry the data has no first-order sensitivity to it at
+all (J v = 1.3e-11 against 7.8e3 on the next direction) and its whole exact
+curvature is the sum_i r_i d2r_i term Gauss-Newton drops. Under the C2v that
+symmetry="auto" detects and imposes, that direction is not a parameter: the
+fit symmetrises after every step, so the reported posterior excludes it (see
+MolecularOptimizer._restrict_to_symmetric) and on the two directions that
+remain Gauss-Newton and the exact Hessian agree to 2.4%.
+
+So the failure these tests exist to catch is real only where the
+antisymmetric stretch is free, and the fixture says so explicitly with
+symmetry="C1". test_symmetric_fit_has_no_failure_to_report pins the other
+side: under the imposed group the check finds nothing, because there is
+nothing to find.
+
+The same direction was the MCMC's problem. With proposals along all three
+directions -- what the sampler did before -- four seeds gave max R-hat 2.25 to
+3.42 and min ESS 34 to 46, none usable. Restricted to the two symmetric
+directions, the same four seeds give R-hat 1.018 to 1.054 and ESS 166 to 185,
+all usable: the saddle the chains wandered along is not in the model.
 """
 
 from __future__ import annotations
@@ -56,7 +78,7 @@ def _fit(sigma_mhz):
                         "obs_constants": B0_H2O,
                         "sigma_constants": [sigma_mhz] * 3}],
         quantum_backend="analytic_water", use_autoconfig=False, max_iter=3,
-        quantum_prior_sigma_ang=0.02)
+        quantum_prior_sigma_ang=0.02, symmetry="C1")
     with contextlib.redirect_stdout(io.StringIO()):
         opt.run()
     return opt
@@ -217,3 +239,29 @@ def test_diagnostic_never_breaks_the_fit(tight_sigma, monkeypatch):
     assert tight_sigma.gauss_newton_warnings() == []
     cov, std = tight_sigma.laplace_approximation()
     assert cov is not None and std is not None
+
+
+def test_symmetric_fit_has_no_failure_to_report():
+    """Under the imposed C2v, Gauss-Newton is valid on every direction left.
+
+    The same fit as the fixtures above, but with the default symmetry
+    handling. The antisymmetric stretch is then fixed by the constraint, the
+    two remaining directions agree with the exact Hessian to 2.4%, and the
+    check must stay silent -- a warning here would be the probe reporting on a
+    direction the model does not have.
+    """
+    opt = MolecularOptimizer(
+        elems=["O", "H", "H"], coords=_coords(),
+        isotopologues=[{"name": "H2-16O", "masses": MASSES_H2O,
+                        "obs_constants": B0_H2O,
+                        "sigma_constants": [0.2] * 3}],
+        quantum_backend="analytic_water", use_autoconfig=False, max_iter=3,
+        quantum_prior_sigma_ang=0.02)
+    with contextlib.redirect_stdout(io.StringIO()):
+        opt.run()
+    assert opt.symmetry is not None and opt.symmetry.point_group == "C2v"
+    assert opt.physical_basis().shape[1] == 2
+    assert opt.gauss_newton_warnings() == []
+    summary = laplace_approximation(opt)
+    assert not any("Gauss-Newton" in w for w in summary.warnings)
+

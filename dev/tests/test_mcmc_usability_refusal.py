@@ -1,12 +1,19 @@
 """Unmixed chains must be refused, not printed and passed along.
 
 This sampler returned R-hat between 2.3 and 18 on water depending on the
-seed -- it cannot converge, because the exact posterior is improper along one
-direction (see test_gauss_newton_validity). The diagnostics were computed
-correctly and printed correctly the whole time. What was missing is that
-nothing acted on them: the samples went into the reported distribution
-regardless, so `analyze_coordinate_distribution` turned the spread of four
-chains' starting points into a posterior width.
+seed, because the exact posterior is improper along one direction (see
+test_gauss_newton_validity). The diagnostics were computed correctly and
+printed correctly the whole time. What was missing is that nothing acted on
+them: the samples went into the reported distribution regardless, so
+`analyze_coordinate_distribution` turned the spread of four chains' starting
+points into a posterior width.
+
+That direction turned out to be the antisymmetric stretch, which the C2v the
+fit imposes holds fixed -- so it should never have been proposed, and since it
+no longer is, water's chains converge (R-hat 1.018 to 1.054 over four seeds;
+see test_mcmc_physical_proposals). The refusal stays: it is what stops the
+next unconverged run, on a molecule or a configuration where the cause is
+something else, from being reported as a posterior.
 """
 
 from __future__ import annotations

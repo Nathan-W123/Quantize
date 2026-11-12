@@ -150,5 +150,7 @@ def laplace_approximation(
         covariance=np.asarray(cov, dtype=float),
         warnings=warnings,
         n_gauge_directions=n_gauge,
+        n_symmetry_directions=int(
+            optimizer.projected_direction_counts(coords=coords, n=n_full)[1]),
     )
 

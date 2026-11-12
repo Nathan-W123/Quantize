@@ -177,6 +177,12 @@ class LaplaceSummary:
     # physical directions, not the padded matrix: the nullity is structural,
     # so reporting it as rank deficiency or as cond = inf says nothing.
     n_gauge_directions: int = 0
+    #: Of those, how many were removed because the imposed point group forbids
+    #: them rather than because they are rigid-body motions. Counted inside
+    #: n_gauge_directions so n_params - n_gauge_directions stays the size of
+    #: the reported block; reported apart because a symmetry assumption is a
+    #: modelling choice, not a gauge freedom.
+    n_symmetry_directions: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -188,6 +194,7 @@ class LaplaceSummary:
             "covariance": np.asarray(self.covariance, dtype=float).tolist(),
             "warnings": list(self.warnings),
             "n_gauge_directions": self.n_gauge_directions,
+            "n_symmetry_directions": self.n_symmetry_directions,
         }
 
 

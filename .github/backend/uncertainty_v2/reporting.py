@@ -41,11 +41,15 @@ def format_posterior_state(state: PosteriorState) -> str:
 
 def format_laplace_summary(summary: LaplaceSummary) -> str:
     n_phys = summary.n_params - summary.n_gauge_directions
+    n_sym = int(getattr(summary, "n_symmetry_directions", 0) or 0)
+    n_rigid = summary.n_gauge_directions - n_sym
+    removed = f"{n_rigid} rigid-body" + (
+        f" + {n_sym} symmetry-forbidden" if n_sym else "")
     lines = [
         "Laplace approximation",
         f"  n params         : {summary.n_params}"
-        + (f" ({n_phys} physical, {summary.n_gauge_directions} rigid-body"
-           f" removed)" if summary.n_gauge_directions else ""),
+        + (f" ({n_phys} physical, {removed} removed)"
+           if summary.n_gauge_directions else ""),
         # Rank and condition describe the physical directions only; saying so
         # on the line matters, because "rank 3" beside "n params 9" otherwise
         # reads as a rank-deficient fit when it is a projected one.

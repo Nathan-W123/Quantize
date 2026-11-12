@@ -73,11 +73,12 @@ def test_looser_constants_give_wider_bonds():
     The sigma floor is off so the stated sigma reaches the weighting, and both
     sigmas are chosen inside the range where the covariance is still
     invertible -- see test_a_sigma_far_below_the_model_error_is_refused for
-    what happens below it. The effect is small because this configuration is
-    PRIOR dominated: 1000x looser data moves the bond by well under a percent,
-    which is itself worth knowing and is pinned just below.
+    what happens below it. That range now starts above 2 MHz: at 2 MHz the
+    covariance on the two symmetric directions comes out indefinite and is
+    refused, which the antisymmetric stretch's large prior-only variance used
+    to hide by sitting in the denominator of the relative test.
     """
-    tight = _run(_opt(sigma_mhz=2.0, sigma_floor_rel=0.0))
+    tight = _run(_opt(sigma_mhz=20.0, sigma_floor_rel=0.0))
     loose = _run(_opt(sigma_mhz=2000.0, sigma_floor_rel=0.0))
     assert loose["O1-H2"] > tight["O1-H2"], (
         f"loosening sigma 1000x did not widen the bond: "
@@ -85,18 +86,28 @@ def test_looser_constants_give_wider_bonds():
     )
 
 
-def test_the_reported_width_is_prior_dominated_here():
-    """1000x worse data changes the answer by under a percent.
+def test_the_reported_width_is_data_dominated_here():
+    """10x looser data gives a 10x wider bond, until the prior takes over.
 
-    Not a defect, but the reason the test above needs a 1000x lever to show a
-    monotonic effect at all: with quantum_prior_sigma_ang = 0.02 Ang the
-    posterior width on this bond is set mostly by the prior. Stated so that a
-    future reader does not mistake a flat response for broken propagation --
-    which is exactly the mistake the previous version of these tests encoded.
+    This test used to assert the opposite -- that 1000x worse data moved the
+    bond by under a percent, because the width was "set mostly by the prior".
+    That prior-set width belonged to the antisymmetric stretch, which the
+    imposed C2v holds fixed, so it was never a width the fit had. On the two
+    directions the fit can move along, the data is in charge:
+
+        sigma (MHz)    O1-H2 width (Ang)    step ratio
+        20             1.333e-05
+        200            1.333e-04            10.00
+        2000           1.325e-03             9.94
+        20000          8.745e-03             6.60   <- prior starts to bite
+
+    which is the linear scaling a data-dominated Laplace width must show.
     """
-    tight = _run(_opt(sigma_mhz=2.0, sigma_floor_rel=0.0))
-    loose = _run(_opt(sigma_mhz=2000.0, sigma_floor_rel=0.0))
-    assert loose["O1-H2"] / tight["O1-H2"] - 1.0 < 0.02
+    w20 = _run(_opt(sigma_mhz=20.0, sigma_floor_rel=0.0))["O1-H2"]
+    w200 = _run(_opt(sigma_mhz=200.0, sigma_floor_rel=0.0))["O1-H2"]
+    w2000 = _run(_opt(sigma_mhz=2000.0, sigma_floor_rel=0.0))["O1-H2"]
+    assert w200 / w20 == pytest.approx(10.0, rel=0.02)
+    assert w2000 / w200 == pytest.approx(10.0, rel=0.02)
 
 
 def test_the_relative_sigma_floor_clamps_optimistic_inputs():
@@ -139,15 +150,40 @@ def test_an_indefinite_covariance_is_refused_outright():
     good = opt.geometry_uncertainty()
     assert good is not None and np.isfinite(good["O1-H2"])
 
-    # Same optimum, but with an unmistakably indefinite covariance.
+    # Same optimum, but with an unmistakably indefinite covariance -- built on
+    # the directions the fit can move along, so that the projection which
+    # removes rigid-body and symmetry-forbidden directions cannot discard the
+    # negative part. (Placing it on oxygen's in-plane x, as this first did,
+    # puts it on the antisymmetric stretch under the imposed C2v, where it is
+    # projected away and the guard never sees it.)
     n = opt.coords.size
-    bad = np.eye(n) * 1e-4
-    bad[0, 0] = -1.0                      # min/max = -1e4, far past the 1e-6 tol
+    basis = opt.physical_basis()
+    assert basis.shape[1] == 2
+    bad = basis @ np.diag([-1.0, 1e-4]) @ basis.T + 1e-4 * np.eye(n)
     opt.laplace_approximation = lambda *a, **k: (bad, None)
     assert opt.geometry_uncertainty() is None, (
         "an indefinite covariance must yield no widths at all, rather than "
         "numbers taken from it"
     )
+
+
+def test_indefiniteness_on_a_direction_the_model_fixes_is_projected_away():
+    """The other half: a negative variance on a symmetry-forbidden direction
+    says nothing about the widths of coordinates the fit can move along.
+
+    Pinned because it is a choice. The guard runs on the covariance the
+    widths are taken from, after the forbidden directions are gone; a
+    defect confined to a direction the model holds fixed is not a defect in
+    what is reported.
+    """
+    opt = _opt()
+    _run(opt)
+    n = opt.coords.size
+    bad = np.eye(n) * 1e-4
+    bad[0, 0] = -1.0                      # oxygen's in-plane x: the B2 stretch
+    opt.laplace_approximation = lambda *a, **k: (bad, None)
+    unc = opt.geometry_uncertainty()
+    assert unc is not None and np.isfinite(unc["O1-H2"])
 
 
 def test_round_off_indefiniteness_is_tolerated():

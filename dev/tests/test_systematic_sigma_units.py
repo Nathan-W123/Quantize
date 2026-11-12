@@ -113,18 +113,84 @@ def test_width_stays_smaller_than_the_molecule(with_systematic):
     assert angle < 180.0, f"angle width {angle:.1f} deg exceeds a half turn"
 
 
-def test_width_matches_an_independent_physics_estimate(with_systematic):
-    """B ~ 1/r^2, so dr/r = (1/2) dB/B: 1.2% of 0.958 Ang is 0.0115.
+_AMU_A2_TO_MHZ = 505379.0045
 
-    This is the check that pins the magnitude rather than merely bounding it.
-    A factor-of-735 error passes any loose bound; it does not pass this.
+
+def _rigid_rotor_constants(r, theta, masses):
+    """A, B, C of a C2v triatomic, from the moments of inertia alone."""
+    t = theta / 2.0
+    X = np.array([[0.0, 0.0, 0.0],
+                  [r * np.sin(t), r * np.cos(t), 0.0],
+                  [-r * np.sin(t), r * np.cos(t), 0.0]])
+    m = np.asarray(masses, dtype=float)
+    X = X - (m[:, None] * X).sum(0) / m.sum()
+    inertia = np.zeros((3, 3))
+    for mi, xi in zip(m, X):
+        inertia += mi * ((xi @ xi) * np.eye(3) - np.outer(xi, xi))
+    return _AMU_A2_TO_MHZ / np.sort(np.linalg.eigvalsh(inertia))
+
+
+def _independent_systematic_bond_sigma(opt, correlated):
+    """The systematic bond width from a rigid rotor, with none of the engine's
+    covariance code: J by finite differences in (r, theta), the engine's own
+    effective sigmas as weights, and the model error propagated through the
+    least-squares estimator as A Sigma_sys A^T."""
+    def model(p):
+        return np.concatenate([_rigid_rotor_constants(p[0], p[1], MASSES_H2O),
+                               _rigid_rotor_constants(p[0], p[1], MASSES_D2O)])
+    p0 = np.array([R_OH, np.radians(THETA)])
+    step = np.array([1e-6, 1e-7])
+    J = np.column_stack([
+        (model(p0 + step[k] * np.eye(2)[k]) - model(p0 - step[k] * np.eye(2)[k]))
+        / (2 * step[k]) for k in range(2)])
+    seff = np.concatenate([
+        np.asarray(opt.spectral._effective_sigma(iso["sigma_constants"], iso=iso),
+                   dtype=float).ravel() for iso in opt.spectral.isotopologues])
+    W = np.diag(1.0 / seff ** 2)
+    F = np.linalg.inv(J.T @ W @ J)
+    d = WATER_MODEL_ERROR_FRAC * np.concatenate([B0_H2O, B0_D2O])
+    S = np.outer(d, d) if correlated else np.diag(d ** 2)
+    C = F @ J.T @ W @ S @ W @ J @ F
+    return float(np.sqrt(C[0, 0]))
+
+
+def test_width_matches_an_independent_physics_estimate(with_systematic):
+    """Pinned against a rigid rotor computed here, not against a hand formula.
+
+    This used to compare with B ~ 1/r^2, dr/r = (1/2) dB/B, i.e. 0.0115 Ang,
+    and the engine's 0.0128 passed. It passed by coincidence. 93% of that
+    0.0128 was not systematic at all: it was the prior-only width of the
+    antisymmetric stretch, a direction the imposed C2v holds fixed (0.0119 of
+    it, against 0.0048 that was genuinely the model error). With that
+    direction removed the engine reports 0.00478.
+
+    And the hand formula answers a different question. dr/r = (1/2) dB/B is
+    exact for a COHERENT error -- every constant scaled by the same 1 + eps --
+    which a rigid rotor confirms (0.01143 Ang). The engine propagates model
+    error as INDEPENDENT per constant, diag(sigma_sys^2), and six independent
+    errors on two parameters average down: the same rigid rotor gives 0.00473
+    Ang for that, against the engine's 0.00478. So the engine is right about
+    the model it implements, to 1%.
+
+    Which model is right is not settled here and is flagged rather than
+    decided: `ReferenceMolecule.sigmas_systematic` describes the error as "an
+    offset that biases every isotopologue the same way", which is the coherent
+    case, and on this configuration the coherent width is 2.4x the reported
+    one. A B0-versus-Be offset is coherent in sign within a species but not
+    uniform across A, B and C, so the truth lies between the two.
     """
-    _opt, unc = with_systematic
+    opt, unc = with_systematic
     bond, _angle = _bond_and_angle(unc)
-    expected = 0.5 * WATER_MODEL_ERROR_FRAC * R_OH
-    assert bond == pytest.approx(expected, rel=0.5), (
-        f"bond width {bond:.5f} Ang against a hand estimate of "
-        f"{expected:.5f} Ang")
+    independent = _independent_systematic_bond_sigma(opt, correlated=False)
+    coherent = _independent_systematic_bond_sigma(opt, correlated=True)
+    assert bond == pytest.approx(independent, rel=0.05), (
+        f"bond width {bond:.5f} Ang against an independent rigid-rotor "
+        f"estimate of {independent:.5f} Ang for per-constant model error")
+    # The hand formula is the coherent limit, and the rigid rotor agrees with
+    # it -- which is what makes the 2.4x gap a statement about the error
+    # model rather than about the arithmetic.
+    assert coherent == pytest.approx(0.5 * WATER_MODEL_ERROR_FRAC * R_OH, rel=0.02)
+    assert coherent / bond > 2.0
 
 
 def test_systematic_widens_rather_than_narrows(no_systematic, with_systematic):
@@ -135,14 +201,29 @@ def test_systematic_widens_rather_than_narrows(no_systematic, with_systematic):
     assert b1 > b0 and a1 > a0
 
 
-def test_the_angle_is_the_coordinate_model_error_hits(no_systematic, with_systematic):
-    """Physically expected, and worth pinning: the weakly-determined
-    coordinate is the one a coherent shift in the constants moves."""
+def test_model_error_inflates_every_coordinate_by_the_same_factor(no_systematic, with_systematic):
+    """sqrt(1 + (sigma_sys / sigma_eff)^2), for the bond and the angle alike.
+
+    The statistical and systematic widths propagate through the same matrix,
+    A = C J^T, so when sigma_sys / sigma_eff is the same on every row the
+    ratio of total to statistical width is that one number for every
+    coordinate. Here sigma_eff is the relative floor (0.001 of each constant)
+    and sigma_sys is 0.024 of it, so the prediction is sqrt(1 + 24^2) =
+    24.0208. Measured: 24.0175 on the bond, 24.0200 on the angle.
+
+    This replaces an assertion that the angle is hit five times harder than
+    the bond. That held only because the bond's statistical width was inflated
+    by the antisymmetric stretch -- a direction the imposed C2v holds fixed --
+    which made its ratio look small.
+    """
+    o1, unc1 = with_systematic
     _o0, unc0 = no_systematic
-    _o1, unc1 = with_systematic
     b0, a0 = _bond_and_angle(unc0)
     b1, a1 = _bond_and_angle(unc1)
-    assert (a1 / a0) > 5.0 * (b1 / b0)
+    floor = float(o1.spectral.sigma_floor_rel)
+    predicted = float(np.sqrt(1.0 + (WATER_MODEL_ERROR_FRAC / floor) ** 2))
+    assert b1 / b0 == pytest.approx(predicted, rel=1e-3)
+    assert a1 / a0 == pytest.approx(predicted, rel=1e-3)
 
 
 def test_variance_scales_as_the_square_of_the_systematic():

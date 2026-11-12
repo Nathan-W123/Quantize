@@ -125,14 +125,21 @@ def test_it_repairs_the_angle_under_coverage():
         f"{KNOWN_ANGLE_ERROR_DEG} deg error the engine makes")
 
 
-def test_the_bond_is_barely_affected():
-    """A coherent shift in the constants moves the weakly-determined
-    coordinate. The bond was already conservative and should stay put."""
+def test_the_model_error_dominates_both_coordinates():
+    """With the derived systematic on, it is the larger term for the bond AND
+    the angle: measured 43x and 62x their statistical widths.
+
+    This replaces "the bond is barely affected" (asserted < 2x). The bond only
+    looked conservative because its statistical width carried the
+    antisymmetric stretch's prior-only variance -- 0.0119 Ang on a direction
+    the imposed C2v holds fixed. Its honest statistical width is 0.0002 Ang,
+    and against that a B0-versus-Be model error of this size is decisive.
+    """
     _o0, unc_off = _fit(auto=False)
     _o1, unc_on = _fit(auto=True)
     b_off, a_off = _widths(unc_off)
     b_on, a_on = _widths(unc_on)
-    assert (b_on / b_off) < 2.0
+    assert (b_on / b_off) > 10.0
     assert (a_on / a_off) > 10.0
 
 

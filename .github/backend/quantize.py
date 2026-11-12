@@ -3609,9 +3609,13 @@ class MolecularOptimizer:
         if self._rigid_ref_masses is None or x.size != n:
             return cov, np.eye(n), 0
 
-        P = self._rigid_mode_projector(x, self._rigid_ref_masses)
-        cov_phys = P @ cov @ P
         basis = self.physical_basis(coords=x, n=n)
+        # Project with the basis itself rather than the rigid projector alone,
+        # so the symmetry-forbidden directions go too. Without a symmetry
+        # constraint this is the same matrix: the rigid projector is
+        # orthogonal, so basis @ basis.T reproduces it exactly.
+        Q = basis @ basis.T
+        cov_phys = Q @ cov @ Q
         return cov_phys, basis, int(n - basis.shape[1])
 
     def physical_basis(self, coords=None, n=None):
@@ -3635,4 +3639,83 @@ class MolecularOptimizer:
             return np.eye(size)
         P = self._rigid_mode_projector(x, self._rigid_ref_masses)
         w, V = np.linalg.eigh((P + P.T) / 2.0)
-        return V[:, w > 0.5]
+        V = V[:, w > 0.5]
+        return self._restrict_to_symmetric(V)
+
+    def _symmetry_projector(self, size):
+        """The imposed point group's orthogonal projector, or None.
+
+        Only a constraint the fit actually enforces counts. ``symmetrize`` is
+        applied after every accepted step, so the geometry can never leave
+        this subspace; on centroid-preserving displacements -- which is all
+        that survives the rigid-body projection -- its Jacobian is exactly this
+        matrix.
+        """
+        sym = getattr(self, "symmetry", None)
+        Pi = getattr(sym, "_projection", None) if sym is not None else None
+        if Pi is None:
+            return None
+        Pi = np.asarray(Pi, dtype=float)
+        if Pi.shape != (size, size):
+            return None
+        return Pi
+
+    def _restrict_to_symmetric(self, V):
+        """Keep only the columns of ``V`` the imposed symmetry allows.
+
+        WHY THIS EXISTS. With a point group imposed, the fit symmetrises after
+        every step, so a symmetry-breaking direction is not a parameter of the
+        model at all -- it is fixed, exactly, by the constraint. Reporting a
+        width along it describes a model nobody fitted.
+
+        It was not a cosmetic leak. On water under C2v the one such direction
+        is the antisymmetric stretch, and rotational constants are even in it,
+        so at a symmetric geometry the data has no first-order sensitivity to
+        it at all: J v = 1.3e-11 against 7.8e3 and 1.3e4 on the two allowed
+        directions. Gauss-Newton then gave it curvature 1.90 (the quantum prior
+        alone), the Laplace reported a bond-length sigma of 0.775 Angstrom on a
+        0.956 Angstrom bond, and the Gauss-Newton check fired a 26,012%
+        discrepancy -- all of it sum_i r_i d2r_i = 571.48 on this one
+        direction. Restricted to the two directions the fit can move along,
+        Gauss-Newton and the exact Hessian agree to 2.4% and the bond sigma is
+        0.0082 Angstrom.
+
+        An exact-Hessian covariance would have been the wrong repair: it gives
+        that direction a finite width (0.042 Angstrom), which is just as
+        meaningless for a coordinate the model holds fixed.
+
+        Both projectors are orthogonal and they commute, so ``V^T Pi V`` has
+        eigenvalues of exactly 0 and 1 -- measured {0, 1, 1} on water to 1e-17
+        -- and the 0.5 cut cannot land on anything ambiguous.
+        """
+        V = np.asarray(V, dtype=float)
+        if V.ndim != 2 or V.shape[1] == 0:
+            return V
+        Pi = self._symmetry_projector(V.shape[0])
+        if Pi is None:
+            return V
+        M = V.T @ Pi @ V
+        w, U = np.linalg.eigh((M + M.T) / 2.0)
+        return V @ U[:, w > 0.5]
+
+    def projected_direction_counts(self, coords=None, n=None):
+        """How many directions the reported posterior leaves out, and why.
+
+        Returns ``(n_rigid, n_symmetry)``: rigid-body directions (translations
+        and rotations, null in every block of the objective) and directions
+        the imposed point group forbids. Kept apart because they mean
+        different things -- one is gauge freedom, the other is a modelling
+        constraint -- and a report that lumped them would call a symmetry
+        assumption a gauge choice.
+        """
+        x = self.coords if coords is None else np.asarray(coords, dtype=float)
+        x = np.asarray(x, dtype=float)
+        size = int(x.size if n is None else n)
+        if self._rigid_ref_masses is None or x.size != size:
+            return 0, 0
+        P = self._rigid_mode_projector(x, self._rigid_ref_masses)
+        w, V = np.linalg.eigh((P + P.T) / 2.0)
+        V = V[:, w > 0.5]
+        n_rigid = size - V.shape[1]
+        n_symmetry = V.shape[1] - self._restrict_to_symmetric(V).shape[1]
+        return int(n_rigid), int(n_symmetry)

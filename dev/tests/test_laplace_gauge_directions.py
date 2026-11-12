@@ -47,18 +47,35 @@ def _coords(r=R_OH_ANG, deg=THETA_DEG):
     ])
 
 
-@pytest.fixture(scope="module")
-def water_fit():
+def _water(**kw):
     opt = MolecularOptimizer(
         elems=["O", "H", "H"], coords=_coords(),
         isotopologues=[{"name": "H2-16O", "masses": MASSES_H2O,
                         "obs_constants": B0_H2O,
                         "sigma_constants": [0.2] * 3}],
         quantum_backend="analytic_water", use_autoconfig=False, max_iter=3,
-        quantum_prior_sigma_ang=0.02)
+        quantum_prior_sigma_ang=0.02, **kw)
     with contextlib.redirect_stdout(io.StringIO()):
         opt.run()
     return opt
+
+
+@pytest.fixture(scope="module")
+def water_fit():
+    """symmetry="auto", the default: C2v is detected and imposed.
+
+    Under that constraint water has two physical directions, not three. The
+    third -- the antisymmetric stretch -- is fixed by the symmetrisation the
+    fit applies after every step, so it is not a parameter and the posterior
+    has no width along it. See MolecularOptimizer._restrict_to_symmetric.
+    """
+    return _water()
+
+
+@pytest.fixture(scope="module")
+def water_fit_c1():
+    """No symmetry imposed: all three internal directions are parameters."""
+    return _water(symmetry="C1")
 
 
 def test_reported_widths_are_smaller_than_the_molecule(water_fit):
@@ -75,10 +92,25 @@ def test_reported_widths_are_smaller_than_the_molecule(water_fit):
 
 
 def test_rigid_body_directions_are_counted_and_removed(water_fit):
-    """Water is 9 Cartesians, 3 physical: 3 translations + 3 rotations go."""
+    """Water is 9 Cartesians: 3 translations + 3 rotations go, and under the
+    imposed C2v so does the antisymmetric stretch -- counted apart, because a
+    symmetry assumption is not a gauge freedom."""
     summary = laplace_approximation(water_fit)
+    assert water_fit.symmetry is not None and water_fit.symmetry.point_group == "C2v"
+    assert summary.n_params == 9
+    assert summary.n_gauge_directions == 7
+    assert summary.n_symmetry_directions == 1
+    assert summary.n_gauge_directions - summary.n_symmetry_directions == 6
+    assert summary.rank == 2, "both symmetric internal directions should be identified"
+
+
+def test_without_symmetry_all_three_internal_directions_remain(water_fit_c1):
+    """The rigid-body count does not depend on the symmetry handling."""
+    summary = laplace_approximation(water_fit_c1)
+    assert water_fit_c1.symmetry is None
     assert summary.n_params == 9
     assert summary.n_gauge_directions == 6
+    assert summary.n_symmetry_directions == 0
     assert summary.rank == 3, "all three internal directions should be identified"
 
 
@@ -118,7 +150,14 @@ def test_physical_directions_do_carry_width(water_fit):
     """The complement of the above: the fit is not simply zeroed out."""
     summary = laplace_approximation(water_fit)
     assert float(np.max(summary.std_err)) > 0.0
-    # Three nonzero eigenvalues, one per internal coordinate.
+    # Two nonzero eigenvalues under C2v, one per symmetric internal coordinate.
+    eig = np.linalg.eigvalsh((summary.covariance + summary.covariance.T) / 2)
+    scale = float(np.max(eig))
+    assert int(np.sum(eig > 1e-9 * scale)) == 2
+
+
+def test_unconstrained_physical_directions_do_carry_width(water_fit_c1):
+    summary = laplace_approximation(water_fit_c1)
     eig = np.linalg.eigvalsh((summary.covariance + summary.covariance.T) / 2)
     scale = float(np.max(eig))
     assert int(np.sum(eig > 1e-9 * scale)) == 3
@@ -175,9 +214,14 @@ def test_regularization_and_coords_reach_the_method(water_fit):
 def test_report_labels_the_projection(water_fit):
     """"rank 3" beside "n params 9" must not read as a rank-deficient fit."""
     txt = format_laplace_summary(laplace_approximation(water_fit))
-    assert "3 physical" in txt
-    assert "6 rigid-body removed" in txt
-    assert "of 3 physical" in txt
+    assert "2 physical" in txt
+    assert "6 rigid-body + 1 symmetry-forbidden removed" in txt
+    assert "of 2 physical" in txt
+    # And without a symmetry constraint the label is the plain one.
+    txt_c1 = format_laplace_summary(laplace_approximation(_water(symmetry="C1")))
+    assert "3 physical" in txt_c1
+    assert "6 rigid-body removed" in txt_c1
+    assert "symmetry" not in txt_c1
 
 
 def test_physical_covariance_is_idempotent(water_fit):
@@ -197,7 +241,7 @@ def test_physical_covariance_is_idempotent(water_fit):
     scale = float(np.linalg.norm(cov))
     once, basis, g1 = water_fit.physical_covariance(cov)
     twice, _b2, g2 = water_fit.physical_covariance(once)
-    assert g1 == g2 == 6
+    assert g1 == g2 == 7          # 6 rigid-body + 1 symmetry-forbidden
 
     # Measured 6.4e-18; eps alone would allow 2.2e-16.
     rel = float(np.linalg.norm(once - twice)) / scale
