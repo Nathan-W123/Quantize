@@ -498,9 +498,9 @@ class MolecularOptimizer:
         ic_damping=1e-6,
         ic_use_dihedrals=False,
         ic_micro_iter=20,
-        ic_prior_weight=1.0,
-        ic_prior_sigma_bond=0.05,
-        ic_prior_sigma_angle_deg=3.0,
+        ic_prior_weight=None,
+        ic_prior_sigma_bond=None,
+        ic_prior_sigma_angle_deg=None,
         ic_prior_sigma_dihedral_deg=15.0,
         ic_prior_mode="soft",
         ic_user_priors=None,
@@ -1057,9 +1057,40 @@ class MolecularOptimizer:
         self._ic_damping = max(float(ic_damping), 1e-14)
         self._ic_use_dihedrals = bool(ic_use_dihedrals)
         self._ic_micro_iter = max(1, int(ic_micro_iter))
+        # THE INTERNAL-COORDINATE PRIOR IS A THIRD TERM, so by default it is
+        # only there when nothing else holds the undetermined directions.
+        # The objective this engine is built on is spectra + quantum chemistry;
+        # the library prior is neither. It pulls every bond and angle toward a
+        # rule-book value (vinyl fluoride's H-C-H toward 109.5 deg, against
+        # 120.1 published; formyl fluoride's O-C-H toward 120 against 127.3),
+        # and with it on formyl fluoride's angle error was 2.03 deg against
+        # 1.08 with it off. So with a quantum prior active the default weight
+        # is 0; spectral-only fits, which have no other regulariser, keep 1.
+        # An explicit ic_prior_weight is used as given.
+        _qm_prior_on = (not self.spectral_only
+                        and self.quantum_backend not in {"none", ""})
+        if ic_prior_weight is None:
+            ic_prior_weight = 0.0 if _qm_prior_on else 1.0
+            self._ic_prior_weight_reason = (
+                "off: the quantum prior is on" if _qm_prior_on
+                else "on: spectral-only fit")
+        else:
+            self._ic_prior_weight_reason = "as given"
         self._ic_prior_weight = max(float(ic_prior_weight), 0.0)
-        self._ic_prior_sigma_bond = float(ic_prior_sigma_bond)
-        self._ic_prior_sigma_angle_deg = float(ic_prior_sigma_angle_deg)
+        # WIDTHS AS GIVEN ARE WIDTHS AS USED. The rule library used to replace
+        # the width of every coordinate it had a rule for, so a configured
+        # 0.12 Angstrom / 5 deg became 0.015 / 2 without a word. Widths passed
+        # here now win over the library's for their kind of coordinate; left
+        # unset, the library's apply where it has a rule and these fallbacks
+        # (0.05 Angstrom, 3 deg) elsewhere. Library centres apply either way.
+        self._ic_prior_configured_kinds = {
+            kind for kind, given in (("bond", ic_prior_sigma_bond),
+                                     ("angle", ic_prior_sigma_angle_deg))
+            if given is not None}
+        self._ic_prior_sigma_bond = (
+            0.05 if ic_prior_sigma_bond is None else float(ic_prior_sigma_bond))
+        self._ic_prior_sigma_angle_deg = (
+            3.0 if ic_prior_sigma_angle_deg is None else float(ic_prior_sigma_angle_deg))
         self._ic_prior_sigma_dihedral_deg = float(ic_prior_sigma_dihedral_deg)
         self._ic_prior_mode = str(ic_prior_mode or "soft").strip().lower()
         self._ic_user_priors = list(ic_user_priors or [])
@@ -1073,7 +1104,8 @@ class MolecularOptimizer:
         self._ic_initial_coords = None   # captured once after first geometry is confirmed
         if self.coordinate_mode == "internal":
             print(f"Internal-coordinate mode enabled: bonds+{'dihedrals+' if self._ic_use_dihedrals else ''}angles, "
-                  f"damping={self._ic_damping:.1e}, prior_weight={self._ic_prior_weight:.2f}")
+                  f"damping={self._ic_damping:.1e}, prior_weight={self._ic_prior_weight:.2f} "
+                  f"({self._ic_prior_weight_reason})")
 
         self._rigid_ref_masses = None
         if len(self.spectral.isotopologues) > 0:
@@ -2302,6 +2334,7 @@ class MolecularOptimizer:
                         spectral_jacobian_q=J,
                         adaptive_config=self._ic_prior_adaptive,
                         sv_rel_threshold=self.optimizer.sv_threshold,
+                        configured_kinds=self._ic_prior_configured_kinds,
                     )
                     _wp = float(np.sqrt(self._ic_prior_weight))
                     J = np.vstack([J, _wp * _J_prior])

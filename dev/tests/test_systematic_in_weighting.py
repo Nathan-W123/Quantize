@@ -6,28 +6,34 @@ MHz is itself inconsistent". `systematic_in_weighting` resolves it by
 flooring the weighting sigma at the measured per-species model gap, which is
 what `sigma_floor_rel` approximates with a flat fraction.
 
-It does fix the statistics. It also costs accuracy, and accuracy is the point
-of the engine, so it is OFF.
+It does fix the statistics. What it does to accuracy is a trade, and it
+stays OFF while that trade is unresolved.
 
 Measured on water against the accepted structure, from five starting
-geometries:
+geometries, with the fit converging to its own optimum and no rule-library
+internal prior (both the defaults since 2026-11-12):
 
   start            weighting OFF          weighting ON
                    dr (mA)   dang         dr (mA)   dang
-  accepted           2.490  0.6488          2.360  1.5908
-  +3% scaled         1.413  0.6883          2.933  1.5093
-  -3% scaled         0.992  0.6105          3.028  1.6281
-  r+0.05 ang-5       2.367  0.6659          4.291  1.2766
-  r-0.05 ang+5       2.472  0.6789          3.906  1.6067
+  accepted          +2.551  +0.6569        +4.833  +0.1734
+  +3% scaled        +2.551  +0.6569        +4.721  +0.1736
+  -3% scaled        +2.551  +0.6569        +4.924  +0.1730
+  r+0.05 ang-5      +2.550  +0.6569        +4.406  +0.1711
+  r-0.05 ang+5      +2.551  +0.6569        +4.811  +0.1453
 
-Worse on the angle in 5 of 5 starts, on the bond in 4 of 5, and more
-start-dependent (bond spread 2.4-4.3 mA against 1.0-2.5).
+Better on the angle in 5 of 5 starts (by about 0.49 deg) and worse on the
+bond in 5 of 5 (by about 2.2 mA). This test once recorded the angle as WORSE
+in 5 of 5 (+1.27 to +1.63 deg): that was the rule-library prior, then on by
+default, pulling the down-weighted fit toward its own angle. The decision
+belongs with the double-counting question -- reference sigmas already carry
+the model error, so flooring them at it counts it twice -- and is not made
+here.
 
 MECHANISM. Spectral data alone, no prior, gives dr +1.435 mA and dang
 +0.690 -- essentially the weighting-OFF answer. So this fit is
-data-determined, and the data is good. Flooring sigma at the model gap
-down-weights it by about 1e5 and hands the answer to the quantum prior,
-which is less accurate here.
+data-determined. Flooring sigma at the model gap down-weights the data by
+about 1e5 and hands the answer to the quantum prior, which on this surface
+has the angle better and the bond worse.
 
 WHAT THAT MEANS, and it is worth stating plainly: this engine's accuracy
 depends on the inconsistency. It gets good geometries precisely by trusting
@@ -160,26 +166,30 @@ def test_the_reported_width_stops_tracking_the_quoted_sigma():
     assert widths[0] == pytest.approx(widths[1], rel=1e-9), widths
 
 
-def test_but_it_costs_accuracy_so_it_stays_off():
-    """THE REASON THIS IS NOT ON. Pinned, so it is re-measured not re-argued.
+def test_but_it_trades_the_bond_for_the_angle_so_it_stays_off():
+    """THE TRADE, pinned so it is re-measured not re-argued.
 
     If a change to the weighting scheme makes this test fail, the trade has
     moved and the default should be reconsidered -- that is the point of
-    asserting it rather than only writing it down.
+    asserting it rather than only writing it down. (It fired once already:
+    with the rule-library prior switched off by default, the angle went from
+    worse in 5 of 5 starts to better in 5 of 5.)
     """
-    worse_angle = 0
+    better_angle = 0
     worse_bond = 0
     for start in STARTS:
         _o0, r0, a0 = _fit(start, False)
         _o1, r1, a1 = _fit(start, True)
-        if abs(a1 - ANGLE_ACCEPTED) > abs(a0 - ANGLE_ACCEPTED):
-            worse_angle += 1
+        if abs(a1 - ANGLE_ACCEPTED) < abs(a0 - ANGLE_ACCEPTED):
+            better_angle += 1
         if abs(r1 - R_ACCEPTED) > abs(r0 - R_ACCEPTED):
             worse_bond += 1
-    assert worse_angle == len(STARTS), (
-        f"weighting the fit with the model error is no longer worse on the "
-        f"angle ({worse_angle}/{len(STARTS)}) -- re-evaluate the default")
-    assert worse_bond >= len(STARTS) - 1, worse_bond
+    assert better_angle == len(STARTS), (
+        f"weighting with the model error no longer helps the angle "
+        f"({better_angle}/{len(STARTS)}) -- the trade has moved")
+    assert worse_bond == len(STARTS), (
+        f"weighting with the model error no longer costs the bond "
+        f"({worse_bond}/{len(STARTS)}) -- re-evaluate the default")
 
 
 def test_the_fit_is_data_determined_which_is_why_down_weighting_hurts():

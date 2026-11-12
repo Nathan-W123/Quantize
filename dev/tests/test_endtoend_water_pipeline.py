@@ -89,10 +89,16 @@ def test_corrections_reach_the_pipeline(tmp_path):
 
 def test_full_chain_improves_the_bond_length_end_to_end(tmp_path):
     """Fitting raw B_0 conflates structure with zero-point motion; correcting to
-    B_e should pull the recovered bond length toward r_e."""
+    B_e should pull the recovered bond length toward r_e.
+
+    Measured: 2.99 mA raw, 1.65 mA with the full chain (0.55x). The ratio was
+    0.34x while the rule library silently replaced this config's stated prior
+    widths (0.12 A / 5 deg) with its own 0.015 / 2; honouring them costs the
+    bond 0.6 mA and buys the angle 0.95 deg (+1.83 -> +0.88 deg).
+    """
     r_raw, _ = _structure(_run(tmp_path / "a", False, False)["best"]["coords"])
     r_full, _ = _structure(_run(tmp_path / "b", True, True)["best"]["coords"])
-    assert abs(r_full - R_E) < 0.5 * abs(r_raw - R_E)
+    assert abs(r_full - R_E) < 0.65 * abs(r_raw - R_E)
     assert abs(r_full - R_E) < 0.010
 
 
@@ -246,7 +252,12 @@ def test_absolute_singular_value_floor_returns_directions_to_theory():
 
 def test_run_reports_low_confidence_for_a_single_isotopologue(tmp_path):
     """One isotopologue cannot pin water's structure, and the run should say so
-    rather than presenting the numbers as settled."""
+    rather than presenting the numbers as settled.
+
+    "Says so" is the report's own verdict band: below 60 it prints "geometry
+    regularized by quantum prior; low spectral confidence". Measured 52.0
+    (43.0 before the config's stated prior widths were honoured).
+    """
     result = _run(tmp_path, True, True)
     score = float((result.get("score") or {}).get("score", 100.0))
-    assert score < 50.0
+    assert score < 60.0

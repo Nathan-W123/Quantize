@@ -373,6 +373,7 @@ def build_internal_priors(
     sv_rel_threshold: float = 1e-3,
     sigma_scale: float = 1.0,
     return_metadata: bool = False,
+    configured_kinds: Optional[set] = None,
 ):
     """
     Build a native internal-coordinate prior block for the SVD system.
@@ -406,6 +407,11 @@ def build_internal_priors(
         type/kind, atoms, target, sigma, optional units/source/confidence/notes, optional mode.
     elems : list[str], optional
         Element symbols for chemistry default prior matching.
+    configured_kinds : set of {"bond", "angle", "dihedral"}, optional
+        Kinds of coordinate whose width the caller set explicitly. For these
+        a matching library rule supplies the centre but not the width, so a
+        configured width is the width used. Without it the library's width
+        replaced the configured one wherever it had a rule.
     freeze_sigma_floor : float
         Small sigma used for hard-freeze coordinates.
 
@@ -471,10 +477,11 @@ def build_internal_priors(
             if dflt is None:
                 continue
             q0[i] = float(dflt.target_value)
-            sigma[i] = float(max(dflt.sigma, 1e-12))
+            if ic.kind not in (configured_kinds or ()):
+                sigma[i] = float(max(dflt.sigma, 1e-12))
             meta[i].update({
                 "target_value": float(dflt.target_value),
-                "sigma": float(max(dflt.sigma, 1e-12)),
+                "sigma": float(sigma[i]),
                 "units": dflt.units,
                 "source": dflt.source,
                 "confidence": dflt.confidence,

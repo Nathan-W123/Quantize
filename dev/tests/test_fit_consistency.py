@@ -81,13 +81,15 @@ def _run(opt):
 # ── Row parity on the default path ───────────────────────────────────────────
 
 def test_the_default_internal_path_compares_like_rows(monkeypatch):
-    """Class defaults: internal mode, ic_prior_weight=1, no InternalPriorEngine.
+    """Internal mode with q-space prior rows and no InternalPriorEngine.
 
     The step carries the q-space prior rows; the trial side used to get them
     only when self.internal_prior existed. With the sides of unequal length
-    this fixture accepted 0 of its 3 steps and never left its start.
+    this fixture accepted 0 of its 3 steps and never left its start. (It was
+    the class default then; the prior is now off by default when a quantum
+    prior is on, so the weight is set here explicitly.)
     """
-    opt = _opt()
+    opt = _opt(ic_prior_weight=1.0)
     assert opt.coordinate_mode == "internal" and opt.internal_prior is None
     sizes = []
     orig = MolecularOptimizer._joint_step_ratio

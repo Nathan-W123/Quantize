@@ -1982,8 +1982,14 @@ def build_run_inputs(cfg: dict[str, Any], *, verbose: bool = True) -> dict[str, 
     ic_damping = float(internal_cfg.get("damping", 1e-6))
     ic_micro_iter = int(internal_cfg.get("microiterations", 20))
     ic_prior_weight = float(internal_cfg.get("prior_weight", 1.0))
-    ic_prior_sigma_bond = float(internal_cfg.get("prior_sigma_bond", 0.04))
-    ic_prior_sigma_angle_deg = float(internal_cfg.get("prior_sigma_angle_deg", 2.0))
+    # Widths only when the config states them: a stated width is used as
+    # stated, and an unstated one lets the rule library supply its own where
+    # it has a rule. Passing a fallback number here would make every run look
+    # "configured" and switch the library's widths off.
+    _sb = internal_cfg.get("prior_sigma_bond")
+    _sa = internal_cfg.get("prior_sigma_angle_deg")
+    ic_prior_sigma_bond = None if _sb is None else float(_sb)
+    ic_prior_sigma_angle_deg = None if _sa is None else float(_sa)
     ic_prior_sigma_dihedral_deg = float(internal_cfg.get("prior_sigma_dihedral_deg", 15.0))
     ip_cfg = cfg.get("internal_priors", {}) or {}
     ic_prior_mode = str(ip_cfg.get("mode", "soft")).strip().lower()
