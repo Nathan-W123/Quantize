@@ -90,7 +90,8 @@ _TINY = 1e-300
 #: every width taken from it is noise -- whatever sign that noise happens to
 #: carry on a given BLAS.
 #:
-#: Measured on water, min(eig)/max(eig), across two interpreters:
+#: Measured on water, min(eig)/max(eig), across two interpreters, when the
+#: Laplace inverted the full 3N matrix:
 #:
 #:     floored, sigma 0.02      -2.2e-16  (3.11)   -1.4e-15  (3.12)
 #:     floored, sigma 2000      -6.6e-16  (3.11)   -2.9e-16  (3.12)
@@ -100,6 +101,11 @@ _TINY = 1e-300
 #: so 1e-6 sits in an empty four-order gap above anything usable and far below
 #: the collapse. It has to be a RATIO: the same absolute eigenvalue means
 #: round-off on one matrix and catastrophe on another.
+#:
+#: The collapse rows came from that inverse, not from the data. Inverted over
+#: the physical directions, the same cases stay between -1.3e-16 and -2e-18
+#: down to 0.02 MHz, so this is now a round-off backstop for covariances that
+#: arrive from elsewhere rather than something the Laplace can trip.
 _COV_INDEFINITE_REL_TOL = 1e-6
 
 #: Fallback when the level of theory has no calibrated width. See
@@ -2651,9 +2657,10 @@ class MolecularOptimizer:
           molecules whose structures are known before trusting it on one whose
           structure is not.
 
-        Rigid-body directions are excluded before inversion: translations and
-        rotations are null in both blocks, so leaving them in makes the
-        covariance singular and the propagated widths meaningless.
+        Rigid-body directions, and any the imposed point group forbids, are
+        excluded before inversion: translations and rotations are null in
+        both blocks, so leaving them in makes the covariance singular and the
+        propagated widths meaningless.
         """
         # The Gauss-Newton validity check costs about 2 ms here -- 0.1% of a
         # real pyscf fit, but 40% of this call on a cheap backend, so it is
@@ -2697,10 +2704,11 @@ class MolecularOptimizer:
                     "geometry_uncertainty: the posterior covariance is not "
                     f"positive semi-definite (min/max eigenvalue = "
                     f"{lo / hi:.2e}), so no width taken from it is meaningful. "
-                    "Returning None rather than numbers. This happens when "
-                    "sigma_constants are quoted far below the B0-versus-Be "
-                    "model error with sigma_floor_rel disabled; the floor "
-                    "exists partly to keep the normal matrix invertible.",
+                    "Returning None rather than numbers. The Laplace "
+                    "covariance is factorised over the physical directions "
+                    "and is positive definite by construction, so this "
+                    "points at a covariance supplied some other way or at "
+                    "the systematic block added to it, not at the data.",
                     key="geometry_uncertainty_indefinite_covariance",
                 )
                 return None
@@ -2753,10 +2761,9 @@ class MolecularOptimizer:
                     f"{scale:.3e}), so the posterior covariance is not "
                     "positive semi-definite and this coordinate's width "
                     "cannot be propagated. Reported as nan rather than 0. "
-                    "This happens when sigma_constants are quoted far below "
-                    "the B0-versus-Be model error with sigma_floor_rel "
-                    "disabled; the floor exists partly to keep the normal "
-                    "matrix invertible.",
+                    "The Laplace covariance is positive definite by "
+                    "construction, so this points at a covariance supplied "
+                    "some other way or at the systematic block added to it.",
                     key="geometry_uncertainty_negative_variance",
                 )
                 return float("nan"), g
@@ -3059,6 +3066,32 @@ class MolecularOptimizer:
         that was minimised whenever ``quantum_prior_sigma_ang`` is set, which is
         now the default, so the reported uncertainties would not belong to the
         reported geometry.
+
+        INVERTED OVER THE PHYSICAL DIRECTIONS ONLY: C = B (BᵀHB + reg·I)⁻¹ Bᵀ,
+        with B from :meth:`physical_basis`. The rigid-body directions, and any
+        the imposed point group forbids, never enter the inverse, so the
+        covariance comes back already projected and :meth:`physical_covariance`
+        leaves it unchanged.
+
+        This used to invert the whole 3N matrix and project afterwards. In
+        exact arithmetic that is the same matrix; in floating point it is
+        not. The rigid directions carry only the quantum block's eigenvalue
+        floor (8.0e-5 on water) against 3e12 along the data, so their
+        variances sit sixteen orders above the physical ones, and the
+        inverse's round-off -- about eps times the largest entry -- swamps
+        every physical entry. Measured on water with the sigma floor off,
+        against an exact rational inverse: under C2v it refused at 2 MHz and
+        below, although the physical block's condition number is 16.4; under
+        C1 it returned widths silently wrong by 67% at 2 MHz and an angle
+        width of exactly 0.0 at 0.02 MHz. The subspace inverse is exact to
+        5e-14 in all of those cases, and moves ordinary floored results by
+        under 1e-5 relative.
+
+        ``regularization`` is now a ridge on the physical directions only --
+        an isotropic N(0, 1/reg) prior in Å⁻², immaterial whenever the
+        quantum prior is on. It matters only where the data and the prior
+        together leave a physical direction unidentified, and that is
+        reported below from the unridged block.
         """
         x = self.coords if coords is None else np.asarray(coords, dtype=float)
         J, _ = self.spectral.stacked(x)
@@ -3076,31 +3109,41 @@ class MolecularOptimizer:
         H_total = H_spec + H_quant
 
         reg_scalar = float(max(regularization, 0.0))
-        H_reg = H_total + reg_scalar * np.eye(H_total.shape[0])
+        basis = self.physical_basis(coords=x, n=H_total.shape[0])
+        n_phys = int(basis.shape[1])
+        if n_phys == 0:
+            self._warn_once(
+                "laplace_approximation: no physical directions remain once "
+                "the rigid-body and symmetry-forbidden ones are removed, so "
+                "there is no posterior to report. Returning None.",
+                key="laplace_no_physical_directions")
+            return None, None
+        M = basis.T @ H_total @ basis
+        M = 0.5 * (M + M.T)
 
-        # CONDITIONING, REPORTED. uncertainty_v2's duplicate of this
-        # calculation warned when the matrix was rank deficient or badly
-        # conditioned and this one did not, which is backwards: this is the
-        # copy everything else goes through. Carried over when the duplicate
-        # was removed, because an inverse of a cond-1e12 matrix is numerically
-        # meaningless whichever routine performs it, and silence about that is
-        # how geometry_uncertainty came to report sigma = 0.
-        _rank = int(np.linalg.matrix_rank(H_reg))
-        _cond = float(np.linalg.cond(H_reg))
-        if _rank < H_reg.shape[0]:
+        # CONDITIONING, REPORTED -- over the physical block, without the
+        # ridge. On the 3N matrix both numbers were dominated by the
+        # rigid-body directions and said nothing about the fit ("rank 3 of 9",
+        # cond 3.9e20, while the physical block's cond was 16.4). With the
+        # ridge added, a direction nothing identifies looks identified: rank
+        # 1 becomes rank 2.
+        _rank = int(np.linalg.matrix_rank(M))
+        _cond = float(np.linalg.cond(M))
+        if _rank < n_phys:
             self._warn_once(
-                f"laplace_approximation: the regularised Hessian is rank "
-                f"{_rank} of {H_reg.shape[0]}, so some directions are not "
-                f"identified by the data or the prior and their widths are "
-                f"set by the {reg_scalar:.1e} ridge rather than by anything "
-                f"physical.",
+                f"laplace_approximation: over the {n_phys} physical "
+                f"directions the Hessian is rank {_rank}, so "
+                f"{n_phys - _rank} of them are not identified by the data or "
+                f"the prior and their widths are set by the "
+                f"{reg_scalar:.1e} ridge rather than by anything physical.",
                 key="laplace_rank_deficient")
-        if not np.isfinite(_cond) or _cond > 1e12:
+        elif not np.isfinite(_cond) or _cond > 1e12:
             self._warn_once(
-                f"laplace_approximation: the regularised Hessian has condition "
-                f"number {_cond:.2e}, so its inverse is numerically unreliable "
-                f"and the widths taken from it should be treated as "
-                f"order-of-magnitude.",
+                f"laplace_approximation: the Hessian over the physical "
+                f"directions has condition number {_cond:.2e}, so round-off "
+                f"in its inverse can reach about {_cond * np.finfo(float).eps:.0e} "
+                f"relative, and the widths taken from it are no more precise "
+                f"than that.",
                 key="laplace_ill_conditioned")
 
         # IS GAUSS-NEWTON EVEN VALID HERE? H_total above is JtJ, which drops
@@ -3114,17 +3157,25 @@ class MolecularOptimizer:
                 self._warn_once("laplace_approximation: " + _msg,
                                 key="laplace_gauss_newton_" + _msg[:48])
 
+        # Cholesky succeeds exactly when the ridged physical block is
+        # positive definite, so it is the check and the factorisation at once.
+        # A Gaussian posterior needs that; anything else has no width to give.
         try:
-            cov = np.linalg.inv(H_reg)
-            std_err, _ = std_err_from_covariance(
-                cov, context="Laplace approximation (inverse of H_total + reg)")
-            return cov, std_err
+            L = np.linalg.cholesky(M + reg_scalar * np.eye(n_phys))
         except np.linalg.LinAlgError:
             self._warn_once(
-                "laplace_approximation: the regularised Hessian is singular, "
-                "so no posterior covariance exists. Returning None.",
+                "laplace_approximation: the Hessian over the physical "
+                "directions is not positive definite, so no Gaussian "
+                "posterior exists at this point. Returning None.",
                 key="laplace_singular")
             return None, None
+        L_inv = np.linalg.inv(L)
+        M_inv = L_inv.T @ L_inv
+        cov = basis @ M_inv @ basis.T
+        cov = 0.5 * (cov + cov.T)
+        std_err, _ = std_err_from_covariance(
+            cov, context="Laplace approximation (physical subspace)")
+        return cov, std_err
 
     def quantum_prior_weight(self, coords=None, refresh=False):
         """The weight the quantum prior carries, as the fit itself weighted it.
@@ -3283,11 +3334,14 @@ class MolecularOptimizer:
         H_gn = H_spec + H_quant
         n = H_gn.shape[0]
 
-        try:
-            cov = np.linalg.inv(H_gn + 1e-8 * np.eye(n))
-        except np.linalg.LinAlgError:
-            return []
-        _cov_phys, basis, _n_gauge = self.physical_covariance(cov, coords=x)
+        # The physical block's own eigenvectors are the directions probed, so
+        # the posterior width along each is 1/sqrt(eigenvalue + ridge) exactly
+        # -- the same 1e-8 ridge laplace_approximation defaults to. This used
+        # to come from an inverse of the full 3N matrix, which at tight sigma
+        # is round-off: measured 4.965e-3 against the exact 5.645e-9 on water
+        # at 0.02 MHz, so the finite-difference step was 4.96e-4 Angstrom
+        # instead of its 1e-7 floor.
+        basis = self.physical_basis(coords=x, n=n)
         if basis.shape[1] == 0:
             return []
 
@@ -3316,7 +3370,8 @@ class MolecularOptimizer:
             # Step from the posterior width along this direction, so the probe
             # is local in the units the problem itself sets. A fixed step
             # cannot be right for both a stiff and a soft direction.
-            sigma_v = float(np.sqrt(max(float(v @ cov @ v), 0.0)))
+            _prec = float(w[k]) + 1e-8
+            sigma_v = float(1.0 / np.sqrt(_prec)) if _prec > 0.0 else 0.0
             step = float(np.clip(step_frac * sigma_v, 1e-7, 1e-3))
 
             def curv(t):
@@ -3400,12 +3455,20 @@ class MolecularOptimizer:
 
         Translations and rotations are null directions of both blocks of the
         objective: moving or turning the whole molecule changes no rotational
-        constant and no energy. The regularisation ridge nevertheless hands
-        them a finite width, and that width is enormous, because it is
-        1/reg rather than anything the data said. Reporting it as a parameter
-        uncertainty is not conservative, it is wrong by orders of magnitude --
-        measured on water: sigma = 112 Angstrom on a 0.958 Angstrom bond,
-        a factor of 13,400, while the physical widths are 8.3e-3 Angstrom.
+        constant and no energy. An inverse of the full 3N matrix nevertheless
+        hands them a finite width, and that width is enormous, because it
+        comes from the quantum block's eigenvalue floor (alpha_q x 1e-8 x
+        lambda_max) rather than anything the data said. Reporting it as a
+        parameter uncertainty is not conservative, it is wrong by orders of
+        magnitude -- measured on water: sigma = 112 Angstrom on a 0.958
+        Angstrom bond, a factor of 13,400, while the physical widths are
+        8.3e-3 Angstrom.
+
+        laplace_approximation no longer produces such a matrix: it inverts
+        over the physical directions only, so its covariance passes through
+        here unchanged. The projection stays for covariances built any other
+        way, and because the indefiniteness guard in geometry_uncertainty is
+        defined on what survives it.
 
         Returns ``(cov_phys, basis, n_gauge)``. ``cov_phys`` is P C P, which is
         singular by construction: the gauge directions are exactly zero rather
@@ -3445,16 +3508,32 @@ class MolecularOptimizer:
         on some projected matrix: P is an orthogonal projector, so its
         eigenvalues are exactly 0 and 1 up to round-off, and a cut at 0.5
         cannot land on anything ambiguous.
+
+        Cached on everything it depends on -- the geometry, the reference
+        masses and the imposed symmetry's projector -- because one
+        uncertainty call asks for it three times at the same point (the
+        Laplace inverse, the Gauss-Newton check, the projection the
+        indefiniteness guard runs on). The array returned is read-only, so a
+        caller cannot corrupt the cached copy by writing into it.
         """
         x = self.coords if coords is None else np.asarray(coords, dtype=float)
         x = np.asarray(x, dtype=float)
         size = int(x.size if n is None else n)
         if self._rigid_ref_masses is None or x.size != size:
             return np.eye(size)
+        Pi = self._symmetry_projector(size)
+        key = (size, x.tobytes(), np.asarray(self._rigid_ref_masses).tobytes(),
+               None if Pi is None else Pi.tobytes())
+        cached = getattr(self, "_physical_basis_cache", None)
+        if cached is not None and cached[0] == key:
+            return cached[1]
         P = self._rigid_mode_projector(x, self._rigid_ref_masses)
         w, V = np.linalg.eigh((P + P.T) / 2.0)
         V = V[:, w > 0.5]
-        return self._restrict_to_symmetric(V)
+        basis = np.array(self._restrict_to_symmetric(V), dtype=float)
+        basis.setflags(write=False)
+        self._physical_basis_cache = (key, basis)
+        return basis
 
     def _symmetry_projector(self, size):
         """The imposed point group's orthogonal projector, or None.

@@ -86,16 +86,19 @@ def laplace_approximation(
     #
     # This is what the report was getting wrong, and it was not subtle.
     # Translations and rotations are null in both blocks of the objective, so
-    # the only thing giving them a finite width is the ridge. On water that
-    # width is sigma = 112 Angstrom, on a 0.958 Angstrom bond, and
-    # format_laplace_summary printed it as "max std err" -- 13,400 times the
-    # largest physical width (8.3e-3 Angstrom), with no warning, because the
-    # ridge also makes matrix_rank report 9 of 9 and puts cond at 2.4e11,
-    # just under the 1e12 threshold. Two reassuring diagnostics either side
-    # of a number wrong by four orders of magnitude.
+    # an inverse of the full 3N matrix gave them a width from nothing but the
+    # quantum block's eigenvalue floor. On water that width is sigma = 112
+    # Angstrom, on a 0.958 Angstrom bond, and format_laplace_summary printed
+    # it as "max std err" -- 13,400 times the largest physical width
+    # (8.3e-3 Angstrom), with no warning, because the floor also made
+    # matrix_rank report 9 of 9 and put cond at 2.4e11, just under the 1e12
+    # threshold. Two reassuring diagnostics either side of a number wrong by
+    # four orders of magnitude.
     #
-    # geometry_uncertainty always projected first. This path did not, which is
-    # the entire defect; both now go through optimizer.physical_covariance.
+    # The method now inverts over the physical directions only, so the
+    # covariance arrives already projected and this call leaves it as it is.
+    # It stays because it is also where the basis and the gauge count come
+    # from, and so that a covariance from any other source is treated alike.
     n_full = int(cov.shape[0])
     cov, basis, n_gauge = optimizer.physical_covariance(cov, coords=coords)
     std, _cov_info = std_err_from_covariance(

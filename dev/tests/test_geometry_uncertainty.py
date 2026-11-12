@@ -70,13 +70,11 @@ def test_reports_a_finite_positive_width_for_every_coordinate():
 def test_looser_constants_give_wider_bonds():
     """The whole point of propagating: worse data must show as worse numbers.
 
-    The sigma floor is off so the stated sigma reaches the weighting, and both
-    sigmas are chosen inside the range where the covariance is still
-    invertible -- see test_a_sigma_far_below_the_model_error_is_refused for
-    what happens below it. That range now starts above 2 MHz: at 2 MHz the
-    covariance on the two symmetric directions comes out indefinite and is
-    refused, which the antisymmetric stretch's large prior-only variance used
-    to hide by sitting in the denominator of the relative test.
+    The sigma floor is off so the stated sigma reaches the weighting. Any
+    sigma works now: the covariance is inverted over the physical directions,
+    whose block has condition number 16.4 here at every sigma, so nothing is
+    refused down to 0.02 MHz (see test_laplace_physical_subspace). Inverting
+    the full 3N matrix refused everything at or below 2 MHz.
     """
     tight = _run(_opt(sigma_mhz=20.0, sigma_floor_rel=0.0))
     loose = _run(_opt(sigma_mhz=2000.0, sigma_floor_rel=0.0))
