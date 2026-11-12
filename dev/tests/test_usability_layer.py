@@ -300,63 +300,81 @@ def test_rebuild_report_from_run_dir(tmp_path):
     assert out["report_html"].is_file()
 
 
-def test_write_outputs_internal_mode_exports_internal_tables(tmp_path):
-    coords = np.array(
-        [
-            [0.0, 0.0, 0.1174],
-            [0.0, 0.7572, -0.4696],
-            [0.0, -0.7572, -0.4696],
-        ],
-        dtype=float,
-    )
-    result = {
+def _fitted_water_result(tmp_path, **opt_kw):
+    """A run result whose posterior comes from a real fit, as the multistart
+    worker produces it -- the exports are built from that, not rebuilt."""
+    import contextlib
+    import io
+
+    import dev.analytic_water_backend  # noqa: F401  (registers analytic_water)
+    from backend.quantize import MolecularOptimizer
+    from runner.run_generic import _posterior_rows
+
+    coords = np.array([[0.0, 0.0, 0.1174], [0.0, 0.7572, -0.4696],
+                       [0.0, -0.7572, -0.4696]], dtype=float)
+    iso = {"name": "H2-16O", "masses": [15.99491461956, 1.00782503207, 1.00782503207],
+           "obs_constants": [835840.3, 435351.7, 278138.7],
+           "sigma_constants": [0.2, 0.2, 0.2], "component_indices": [0, 1, 2]}
+    with contextlib.redirect_stdout(io.StringIO()):
+        opt = MolecularOptimizer(
+            elems=["O", "H", "H"], coords=coords, isotopologues=[dict(iso)],
+            quantum_backend="analytic_water", use_autoconfig=False, max_iter=5,
+            quantum_prior_sigma_ang=0.02, workdir=str(tmp_path / "fit"), **opt_kw)
+        opt.run()
+        posterior = opt.internal_coordinate_posterior()
+    assert posterior is not None
+    return {
         "name": "water_internal",
         "run_dir": str(tmp_path),
         "elems": ["O", "H", "H"],
-        "cfg": {
-            "coordinate_mode": "internal",
-            "internal_coordinates": {
-                "use_dihedrals": False,
-                "damping": 1e-6,
-                "prior_sigma_bond": 0.04,
-                "prior_sigma_angle_deg": 2.0,
-                "prior_sigma_dihedral_deg": 15.0,
-            },
-        },
+        "cfg": {"coordinate_mode": "internal",
+                "internal_coordinates": {"use_dihedrals": False, "damping": 1e-6}},
         "best": {
-            "idx": 1,
-            "coords": coords,
-            "freq_rms": 1.23,
-            "energy": -76.0,
-            "history": [
-                {"iteration": 1, "freq_rms": 5.0, "step_norm": 1e-2},
-                {"iteration": 2, "freq_rms": 1.23, "step_norm": 1e-4},
-            ],
-            "spectral_isotopologues_snapshot": [
-                {
-                    "name": "H2-16O",
-                    "masses": [15.99491461956, 1.00782503207, 1.00782503207],
-                    "obs_constants": [835840.3, 435351.7, 278138.7],
-                    "sigma_constants": [0.2, 0.2, 0.2],
-                    "alpha_constants": [-43390.0, 10560.0, 6240.0],
-                    "component_indices": [0, 1, 2],
-                }
-            ],
+            "idx": 1, "coords": opt.coords.copy(), "freq_rms": 1.23, "energy": -76.0,
+            "history": [{"iteration": 1, "freq_rms": 5.0, "step_norm": 1e-2},
+                        {"iteration": 2, "freq_rms": 1.23, "step_norm": 1e-4}],
+            "spectral_isotopologues_snapshot": [dict(iso)],
+            "posterior": posterior,
         },
+        "uncertainty_rows": _posterior_rows(posterior),
+        "uncertainty_meta": {k: posterior.get(k) for k in
+                             ("blocks", "objective_mode", "chi2_per_observation",
+                              "n_observations", "alpha_q", "warnings")},
         "score": {"score": 75.0, "constrained_rank": 3, "internal_dof": 3},
     }
 
+
+def test_write_outputs_internal_mode_exports_internal_tables(tmp_path):
+    """With an internal prior in the fit, its provenance is exported too."""
+    result = _fitted_water_result(tmp_path, ic_prior_weight=1.0)
     artifacts = write_outputs(result)
     assert artifacts["internal_uncertainty_csv"].is_file()
     assert artifacts["internal_covariance_csv"].is_file()
     assert artifacts["internal_identifiability_csv"].is_file()
-    assert artifacts["internal_prior_sensitivity_csv"].is_file()
     assert artifacts["internal_prior_provenance_csv"].is_file()
+    # The prior-sensitivity export re-solved the fit without its quantum term,
+    # so it described no fit this engine runs; it is gone, not empty.
+    assert "internal_prior_sensitivity_csv" not in artifacts
     with artifacts["internal_prior_provenance_csv"].open(newline="", encoding="utf-8") as fh:
         rows = list(csv.DictReader(fh))
     assert rows
     assert "source" in rows[0]
     assert "mode" in rows[0]
+
+
+def test_the_exported_covariance_is_the_fit_s_own(tmp_path):
+    """Default fit, no internal prior: the covariance CSV is the posterior's
+    matrix exactly, and there is no prior provenance to describe."""
+    result = _fitted_water_result(tmp_path)
+    artifacts = write_outputs(result)
+    assert "internal_prior_provenance_csv" not in artifacts
+    with artifacts["internal_covariance_csv"].open(newline="", encoding="utf-8") as fh:
+        table = list(csv.reader(fh))
+    names = table[0][1:]
+    got = np.array([[float(v) for v in row[1:]] for row in table[1:]])
+    assert names == result["best"]["posterior"]["names"]
+    assert np.allclose(got, np.asarray(result["best"]["posterior"]["covariance"]),
+                       rtol=1e-10, atol=0.0)
 
 
 def test_write_outputs_exports_torsion_objective_csv(tmp_path):

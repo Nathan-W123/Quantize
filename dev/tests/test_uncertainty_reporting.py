@@ -34,9 +34,10 @@ _ROWS = [
 def test_absence_is_reported_rather_than_omitted():
     """A missing uncertainty must be visible, not a gap in the report.
 
-    Cartesian runs cannot produce one, and the benchmark harness runs in
-    cartesian mode -- so silently dropping the section is exactly the case that
-    would hide it from the people most likely to look.
+    Both coordinate modes produce one now (it is the fit's own posterior,
+    expressed in internal coordinates), so an absence means the posterior
+    could not be formed -- and silently dropping the section is exactly the
+    case that would hide that.
     """
     out = generate_uncertainty_report_section({"cfg": {"coordinate_mode": "cartesian"}})
     assert "## Parameter Uncertainty" in out
@@ -67,12 +68,33 @@ def test_every_coordinate_appears_with_its_interval_and_prior_label():
     assert "data/low" in out and "prior/high" in out
 
 
-def test_chi2_inflation_is_reported_either_way():
-    quiet = generate_uncertainty_report_section({"uncertainty_rows": _ROWS})
+def test_chi2_is_reported_and_not_applied():
+    """The old table rescaled every width by the spectral chi-square -- down
+    as well as up -- behind a fixed sentence. No width is rescaled now; the
+    chi-square is stated as a diagnostic, in either direction."""
+    quiet = generate_uncertainty_report_section(
+        {"uncertainty_rows": _ROWS, "uncertainty_meta": {"chi2_per_observation": 0.8}})
     assert "residuals within their stated sigma" in quiet
+    assert "not applied" in quiet
 
-    loud = [dict(r, chi2_scale=2.25) for r in _ROWS]
-    assert "2.250" in generate_uncertainty_report_section({"uncertainty_rows": loud})
+    loud = generate_uncertainty_report_section(
+        {"uncertainty_rows": _ROWS, "uncertainty_meta": {"chi2_per_observation": 2.25}})
+    assert "2.250" in loud
+    assert "1.50x their stated sigma" in loud
+
+
+def test_the_section_names_what_the_widths_are_a_posterior_of():
+    """From the blocks the fit carried, not a fixed sentence: the old text said
+    the widths included the quantum prior while the computation had none."""
+    hybrid = generate_uncertainty_report_section(
+        {"uncertainty_rows": _ROWS,
+         "uncertainty_meta": {"blocks": ["spectral data", "quantum"]}})
+    assert "spectral data, quantum" in hybrid
+    assert "reports the prior's width" in hybrid
+
+    data_only = generate_uncertainty_report_section(
+        {"uncertainty_rows": _ROWS, "uncertainty_meta": {"blocks": ["spectral data"]}})
+    assert "No prior carries any direction" in data_only
 
 
 def test_csv_round_trips_every_column(tmp_path):

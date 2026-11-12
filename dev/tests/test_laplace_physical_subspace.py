@@ -116,28 +116,43 @@ def test_covariance_comes_back_projected():
     assert float(np.max(std)) < 1.0
 
 
-def test_rank_is_judged_on_the_physical_block_without_the_ridge():
-    """One constant and no quantum prior: one physical direction is blind.
-
-    The ridge alone makes that block look full rank (rank 1 becomes 2), so
-    the warning has to be taken from the unridged block. Taken on the 3N
-    matrix instead it reported "rank 3 of 9" on every healthy fit, which
-    said nothing about the fit at all.
-    """
+def _one_constant_fit(**kw):
     opt = MolecularOptimizer(
         elems=["O", "H", "H"], coords=_coords(),
         isotopologues=[{"name": "H2-16O", "masses": MASSES_H2O,
                         "obs_constants": B0_H2O[:1], "sigma_constants": [0.2],
                         "component_indices": [0]}],
         quantum_backend="analytic_water", use_autoconfig=False, max_iter=3,
-        spectral_only=True, quantum_prior_sigma_ang=0.02)
+        spectral_only=True, quantum_prior_sigma_ang=0.02, **kw)
     with contextlib.redirect_stdout(io.StringIO()):
         opt.run()
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         cov, _ = opt.laplace_approximation(check_gauss_newton=False)
+    return cov, buf.getvalue()
+
+
+def test_rank_is_judged_on_the_physical_block_without_the_ridge():
+    """One constant and no prior of any kind: one physical direction is blind.
+
+    The ridge alone makes that block look full rank (rank 1 becomes 2), so
+    the warning has to be taken from the unridged block. Taken on the 3N
+    matrix instead it reported "rank 3 of 9" on every healthy fit, which
+    said nothing about the fit at all.
+    """
+    cov, out = _one_constant_fit(ic_prior_weight=0.0)
     assert cov is not None
-    assert "over the 2 physical directions the Hessian is rank 1" in buf.getvalue()
+    assert "over the 2 physical directions the Hessian is rank 1" in out
+
+
+def test_the_internal_prior_the_fit_carried_holds_that_direction():
+    """The same fit with its default internal prior (spectral-only fits keep
+    it): the posterior includes the prior the fit minimised, so the direction
+    the single constant cannot see is held by it rather than by the ridge.
+    """
+    cov, out = _one_constant_fit()
+    assert cov is not None
+    assert "rank" not in out
 
     # And a healthy hybrid fit says nothing about rank.
     healthy = _fit(0.2)

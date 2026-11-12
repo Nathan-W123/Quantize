@@ -26,11 +26,8 @@ _ROOT = ensure_repo_paths(Path(__file__).resolve().parent.parent)
 from backend.conformers.conformer_generation import build_conformer_ensemble
 from backend.conformers.geometryguess import guess_geometry_molecular_input
 from backend.multistart import run_multistart, select_best_result, underconstrained_success_score
-from backend.internal.internal_fit import InternalCoordinateSet, spectral_jacobian_q, build_internal_priors
 from backend.spectral.spectral import SpectralEngine
 from backend.spectral.spectral_model import normalize_spectral_model
-from backend.uncertainty import uncertainty_table
-from backend.priors.prior_sensitivity import classify_prior_dominance, prior_sensitivity_analysis
 from backend.torsion.torsion_hamiltonian import (
     TorsionEffectiveConstantFourier,
     TorsionFourierPotential,
@@ -380,6 +377,38 @@ def _compute_metrics(
     return metrics
 
 
+def _posterior_rows(posterior: dict) -> list[dict]:
+    """Report rows from the fit's own posterior (internal_coordinate_posterior).
+
+    Bonds in Angstrom, angles and dihedrals in degrees. The interval is
+    +/- 1.96 sigma of the posterior itself; nothing is rescaled.
+    """
+    rows = []
+    for name, kind, q, se, label, frac in zip(
+            posterior["names"], posterior["kinds"], posterior["values"],
+            posterior["std_err"], posterior["labels"], posterior["data_fraction"]):
+        if kind == "bond":
+            val, err, unit = float(q), float(se), "Å"
+        else:
+            val, err, unit = float(np.degrees(q)), float(np.degrees(se)), "deg"
+        half = 1.96 * err
+        rows.append({
+            "name": name,
+            "value": val,
+            "value_unit": unit,
+            "std_err": err,
+            "std_err_unit": unit,
+            "ci_lo": val - half,
+            "ci_hi": val + half,
+            "ci_unit": unit,
+            "prior_dominance": label,
+            "data_fraction": float(frac),
+            "prior_sensitivity": "",
+            "chi2_scale": 1.0,
+        })
+    return rows
+
+
 def _print_internal_uncertainty_summary(best: dict, cfg: dict, elems: list[str]):
     """Print internal-coordinate uncertainty and variance table to CLI.
 
@@ -388,94 +417,39 @@ def _print_internal_uncertainty_summary(best: dict, cfg: dict, elems: list[str])
     reached the terminal and nothing else -- no report, no export, nothing a
     reader of the run directory could find. They are now handed back so
     write_outputs can put them in the report and a CSV.
+
+    THE NUMBERS ARE THE FIT'S OWN POSTERIOR, computed by the worker that ran
+    the fit (MolecularOptimizer.internal_coordinate_posterior). This used to
+    rebuild a posterior here from the config -- its own spectral engine, the
+    config's internal-prior widths, no quantum prior at all, every width
+    rescaled by the spectral chi-square -- so the report described a
+    different objective from the one the fit minimised.
     """
-    coord_mode = str(cfg.get("coordinate_mode", "internal")).strip().lower()
-    if coord_mode != "internal":
+    posterior = best.get("posterior")
+    if not posterior:
         return None, None
-    iso_snapshot = best.get("spectral_isotopologues_snapshot", [])
-    if not iso_snapshot:
+    if "error" in posterior:
+        print(f"\n  [Uncertainty] not available: {posterior['error']}")
         return None, None
-
-    ic_cfg = cfg.get("internal_coordinates", {}) or {}
-    use_dihedrals = bool(ic_cfg.get("use_dihedrals", False))
-    damping = max(float(ic_cfg.get("damping", 1e-6)), 1e-14)
-    sigma_bond = float(ic_cfg.get("prior_sigma_bond", 0.04))
-    sigma_angle_deg = float(ic_cfg.get("prior_sigma_angle_deg", 2.0))
-    sigma_dihedral_deg = float(ic_cfg.get("prior_sigma_dihedral_deg", 15.0))
-    ip_cfg = cfg.get("internal_priors", {}) or {}
-
-    coords = np.asarray(best["coords"], dtype=float)
-    coord_set = InternalCoordinateSet(coords, elems, use_dihedrals=use_dihedrals)
-    B_active = coord_set.active_B_matrix(coords)
-    if B_active.shape[0] == 0:
-        return
-
-    Bplus = InternalCoordinateSet.damped_pseudoinverse(B_active, damping)
-    J_spectral, residual_w = SpectralEngine(iso_snapshot).stacked(coords)
-    Jq = spectral_jacobian_q(J_spectral, Bplus)
-    if B_active.shape[1] == 0:
+    if not posterior.get("names"):
         return None, None
-    _, _, sigma_prior = build_internal_priors(
-        coord_set,
-        coords,
-        sigma_bond=sigma_bond,
-        sigma_angle_deg=sigma_angle_deg,
-        sigma_dihedral_deg=sigma_dihedral_deg,
-        prior_mode=str(ip_cfg.get("mode", "soft")).strip().lower(),
-        prior_specs=list(ip_cfg.get("user_priors", []) or []),
-        elems=elems,
-        freeze_sigma_floor=float(ip_cfg.get("freeze_sigma_floor", 1e-6)),
-        spectral_jacobian_q=Jq,
-        adaptive_config=dict(ip_cfg.get("adaptive", {}) or {}),
-    )
-    rows = uncertainty_table(
-        coord_set,
-        coords,
-        Jq,
-        sigma_prior=sigma_prior,
-        lambda_reg=damping,
-        residual_w=residual_w,
-        dominance_labels=classify_prior_dominance(Jq, sigma_prior, coord_set.active_names()),
-        sensitivity_rows=prior_sensitivity_analysis(
-            coord_set,
-            coords,
-            Jq,
-            residual_w,
-            sigma_bond=sigma_bond,
-            sigma_angle_deg=sigma_angle_deg,
-            sigma_dihedral_deg=sigma_dihedral_deg,
-            prior_mode=str(ip_cfg.get("mode", "soft")).strip().lower(),
-            prior_specs=list(ip_cfg.get("user_priors", []) or []),
-            elems=elems,
-            freeze_sigma_floor=float(ip_cfg.get("freeze_sigma_floor", 1e-6)),
-            spectral_jacobian_q=Jq,
-            adaptive_config=dict(ip_cfg.get("adaptive", {}) or {}),
-            sv_rel_threshold=1e-3,
-            lambda_reg=damping,
-        ),
-    )
+    rows = _posterior_rows(posterior)
 
     print("\n  Internal-coordinate uncertainty summary")
-    print(f"  {'Coordinate':<30}  {'Value':>12}  {'StdErr':>12}  {'Variance':>12}  {'Unit':>6}  {'Prior'}")
-    print("  " + "-" * 112)
+    print(f"  posterior of: {', '.join(posterior.get('blocks', []))}")
+    print(f"  {'Coordinate':<30}  {'Value':>12}  {'StdErr':>12}  {'Variance':>12}  {'Unit':>6}  {'Support'}")
+    print("  " + "-" * 104)
     for r in rows:
         se = float(r["std_err"])
-        var = se * se
-        prior_lbl = str(r.get("prior_dominance", "") or "")
-        sens_lbl = str(r.get("prior_sensitivity", "") or "")
-        combo = prior_lbl if not sens_lbl else f"{prior_lbl}/{sens_lbl}"
         print(
-            f"  {r['name']:<30}  {float(r['value']):>12.6f}  {se:>12.6f}  {var:>12.6f}  {r['value_unit']:>6}  {combo}"
+            f"  {r['name']:<30}  {float(r['value']):>12.6f}  {se:>12.6f}  {se * se:>12.6f}  "
+            f"{r['value_unit']:>6}  {r['prior_dominance']}"
         )
 
     # ── Covariance matrix export ──────────────────────────────────────────────
-    from backend.uncertainty.core import compute_uncertainty
-    _cov, _, _, _ = compute_uncertainty(
-        Jq,
-        sigma_prior=sigma_prior,
-        lambda_reg=damping,
-        residual_w=residual_w,
-    )
+    # Natural units, as the optimizer works in them: Angstrom for bonds,
+    # radians for angles and dihedrals.
+    _cov = np.asarray(posterior["covariance"], dtype=float)
     _workdir = best.get("workdir", ".")
     _cov_path = str(Path(_workdir) / "uncertainty_covariance.npy")
     try:
@@ -2394,6 +2368,11 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
         # write_markdown_report reports as a stated absence rather than by
         # omitting the section.
         "uncertainty_rows": _unc_rows,
+        "uncertainty_meta": {
+            k: (best.get("posterior") or {}).get(k)
+            for k in ("blocks", "objective_mode", "chi2_per_observation",
+                      "n_observations", "alpha_q", "warnings", "error")
+        },
         "uncertainty_covariance_npy": _cov_path,
         "results": results,
         "best": best,

@@ -1115,6 +1115,12 @@ class MolecularOptimizer:
         self.quantum = None
         self._backend = None
         self._orca_ref_coords = None
+        # What the last fit iteration actually used, kept so that everything
+        # reporting on the fit -- the Laplace, the log-probability, the run
+        # report -- describes the objective that was minimised rather than
+        # rebuilding its own (see _posterior_blocks).
+        self._last_ic_prior = None
+        self._last_alpha_q_eff = None
         self._orca_call_count = 0
         # Quantum updates since the last full Hessian / rovib job. None means
         # "never computed", which forces one on the next update.
@@ -2321,7 +2327,7 @@ class MolecularOptimizer:
                 if self._ic_prior_weight > 0.0:
                     if self._ic_initial_coords is None:
                         self._ic_initial_coords = self.coords.copy()
-                    _J_prior, _r_prior, _ = build_internal_priors(
+                    _J_prior, _r_prior, _sig_prior = build_internal_priors(
                         _ic_coord_set, self.coords,
                         sigma_bond=self._ic_prior_sigma_bond,
                         sigma_angle_deg=self._ic_prior_sigma_angle_deg,
@@ -2352,6 +2358,16 @@ class MolecularOptimizer:
                         np.asarray(_ic_coord_set.active_values(self.coords), dtype=float),
                         _wp,
                     )
+                    # The prior exactly as this iteration used it -- widths
+                    # possibly adaptive -- for the posterior to read back.
+                    # r = (q0 - q) / sigma, so the centre is q + sigma * r.
+                    _sig_eff = 1.0 / np.maximum(np.abs(np.diag(np.asarray(_J_prior, dtype=float))), 1e-300)
+                    self._last_ic_prior = dict(
+                        coord_set=_ic_coord_set,
+                        sigma=_sig_eff,
+                        q0=_ic_prior_rows[2] + _sig_eff * np.asarray(_r_prior, dtype=float),
+                        weight=float(self._ic_prior_weight),
+                    )
 
             wrms_before = float(np.sqrt(np.mean(residual_w ** 2)))
             mhz_rms_before = float(np.sqrt(np.mean(residual_mhz ** 2)))
@@ -2362,6 +2378,7 @@ class MolecularOptimizer:
                 prior_displacement=self._prior_displacement(),
                 weight_hessian=(H if self.coordinate_mode == "internal"
                                 and not self.spectral_only else None))
+            self._last_alpha_q_eff = float(alpha_q_eff)
 
             # ── Back-transform and compute trial geometry ─────────────────────
             _orig_coords = self.coords  # reference before update (never mutated here)
@@ -3074,6 +3091,144 @@ class MolecularOptimizer:
             self._last_data_support[name] = 1.0 - blind
         return out
 
+    #: Data-information fractions at which a coordinate is labelled
+    #: data-constrained / prior-dominated -- the thresholds
+    #: priors.prior_sensitivity.classify_prior_dominance has always used.
+    _DATA_FRACTION_LABELS = (0.8, 0.2)
+
+    def internal_coordinate_posterior(self):
+        """The fit's posterior over its bonds, angles and dihedrals.
+
+        What the run report and its exports quote. It is the covariance
+        geometry_uncertainty propagates -- the Laplace over the physical
+        directions, from every block of the objective the fit minimised
+        (_posterior_blocks), plus the systematic block -- carried into the
+        active internal coordinates through Wilson's B.
+
+        It used to come from a separate rebuild (uncertainty.core
+        .compute_uncertainty) that carried the configured internal prior and
+        no quantum prior at all, kept the symmetry-forbidden directions, and
+        rescaled every width by the spectral chi-square -- downward too, when
+        chi-square was below one -- while the report said the widths included
+        the quantum prior. No rescaling here: the spectral chi-square per
+        observation is returned as a diagnostic.
+
+        Each coordinate is labelled by how much of its precision the data
+        supplies, 1 - var(posterior) / var(priors alone): >= 0.8
+        "data-constrained", <= 0.2 "prior-dominated", otherwise "mixed".
+
+        Returns a dict of plain lists -- it crosses the multistart process
+        boundary -- or None when the Laplace has no answer.
+        """
+        x = np.asarray(self.coords, dtype=float)
+        cov_lap, _ = self.laplace_approximation(coords=x, check_gauss_newton=False)
+        if cov_lap is None:
+            return None
+        cov_lap, basis, n_removed = self.physical_covariance(cov_lap, coords=x)
+        J, rw = self.spectral.stacked(x)
+        rw = np.asarray(rw, dtype=float)
+        C_sys = self._systematic_covariance(J, cov_lap)
+        cov_x = cov_lap + C_sys
+        _H_spec, H_prior, parts = self._posterior_blocks(x)
+
+        cs = InternalCoordinateSet(x, self.elems, self._ic_use_dihedrals)
+        Bq = np.asarray(cs.active_B_matrix(x), dtype=float)
+        q = np.asarray(cs.active_values(x), dtype=float)
+        C_q = Bq @ cov_x @ Bq.T
+        C_q = 0.5 * (C_q + C_q.T)
+        std, _info = std_err_from_covariance(
+            C_q, context="internal_coordinate_posterior")
+
+        # Prior-only variance along each coordinate, over the same physical
+        # directions; a direction no prior constrains has infinite variance.
+        Mp = basis.T @ H_prior @ basis
+        w_p, V_p = np.linalg.eigh(0.5 * (Mp + Mp.T))
+        tiny = 1e-12 * max(float(np.max(np.abs(w_p))) if w_p.size else 0.0, 1e-300)
+        hi, lo = self._DATA_FRACTION_LABELS
+        fractions, labels = [], []
+        for b in Bq:
+            v_post = float(b @ cov_lap @ b)
+            proj = V_p.T @ (basis.T @ b)
+            nb = float(proj @ proj)
+            free = w_p <= tiny
+            if nb <= 0.0 or v_post <= 0.0:
+                frac = float("nan")
+            elif np.any(proj[free] ** 2 > 1e-12 * nb):
+                frac = 1.0
+            else:
+                v_prior = float(np.sum(proj[~free] ** 2 / w_p[~free]))
+                frac = float(np.clip(1.0 - v_post / v_prior, 0.0, 1.0))
+            fractions.append(frac)
+            if not np.isfinite(frac):
+                labels.append("unidentifiable")
+            elif v_post > 1e4:
+                labels.append("unidentifiable")      # held by the ridge alone
+            elif frac >= hi:
+                labels.append("data-constrained")
+            elif frac <= lo:
+                labels.append("prior-dominated")
+            else:
+                labels.append("mixed information")
+
+        blocks = ["spectral data"] + list(parts)
+        if np.any(C_sys != 0.0):
+            blocks.append("systematic model error")
+        st = self._last_ic_prior
+        ic_sigma = (st["sigma"].tolist()
+                    if st is not None and st["weight"] > 0.0
+                    and st["sigma"].size == q.size else None)
+        try:
+            gn = list(self.gauss_newton_warnings(coords=x))
+        except Exception as exc:  # a diagnostic must not cost the report
+            gn = [f"Gauss-Newton check unavailable: {type(exc).__name__}"]
+        # Where each internal-prior centre and width came from, for the fit
+        # that had one: the rule library's provenance, with the centre and
+        # width overwritten by the ones the fit actually used.
+        provenance = None
+        if ic_sigma is not None:
+            try:
+                q_init = (np.asarray(st["coord_set"].active_values(self._ic_initial_coords), dtype=float)
+                          if self._ic_initial_coords is not None else None)
+                _jp, _rp, _sp, meta = build_internal_priors(
+                    st["coord_set"], x,
+                    sigma_bond=self._ic_prior_sigma_bond,
+                    sigma_angle_deg=self._ic_prior_sigma_angle_deg,
+                    sigma_dihedral_deg=self._ic_prior_sigma_dihedral_deg,
+                    prior_values=q_init, prior_mode=self._ic_prior_mode,
+                    prior_specs=self._ic_user_priors, elems=self.elems,
+                    freeze_sigma_floor=self._ic_freeze_sigma_floor,
+                    configured_kinds=self._ic_prior_configured_kinds,
+                    return_metadata=True)
+                provenance = []
+                for k, m in enumerate(meta):
+                    m = dict(m)
+                    m["atoms"] = [int(a) for a in (m.get("atoms") or ())]
+                    m["atom_types"] = list(m.get("atom_types") or ())
+                    m["target_value"] = float(st["q0"][k])
+                    m["sigma"] = float(st["sigma"][k])
+                    provenance.append(m)
+            except Exception:  # provenance is a nicety; the widths are not
+                provenance = None
+        return {
+            "names": list(cs.active_names()),
+            "kinds": [ic.kind for ic in cs.active_coords()],
+            "values": q.tolist(),
+            "covariance": C_q.tolist(),
+            "std_err": np.asarray(std, dtype=float).tolist(),
+            "data_fraction": fractions,
+            "labels": labels,
+            "blocks": blocks,
+            "objective_mode": str(self.optimizer.objective_mode),
+            "alpha_q": (None if self.spectral_only or self.quantum is None
+                        else float(self.quantum_prior_weight(refresh=True))),
+            "chi2_per_observation": float(rw @ rw) / max(rw.size, 1),
+            "n_observations": int(rw.size),
+            "n_removed_directions": int(n_removed),
+            "internal_prior_sigma": ic_sigma,
+            "internal_prior_provenance": provenance,
+            "warnings": gn,
+        }
+
     def _systematic_covariance(self, J, cov):
         """Propagate model error in the constants through to the parameters.
 
@@ -3272,14 +3427,9 @@ class MolecularOptimizer:
         _, residual_w = self.spectral.stacked(trial_coords, want_jacobian=False)
         chi_sq_spectral = np.sum(residual_w**2)
 
-        # 2. Structural Priors
-        chi_sq_prior = 0.0
-        if self.internal_prior is not None and self.coordinate_mode == "cartesian":
-            _, rp = self.internal_prior.stacked(trial_coords, want_jacobian=False)
-            chi_sq_prior = self.prior_weight * np.sum(rp**2)
-        elif self.coordinate_mode == "internal" and self._ic_prior_weight > 0.0:
-            # q-space priors are evaluated inside the sampler if using internal coords
-            pass 
+        # 2. Structural priors -- every non-quantum prior the fit carried,
+        # including the q-space internal prior this used to skip with `pass`.
+        chi_sq_prior = self.structural_prior_chi2(trial_coords)
 
         # The quantum prior, weighted as the fit weighted it rather than with
         # the legacy alpha_quantum. These two readings differ by 1811x on
@@ -3290,6 +3440,125 @@ class MolecularOptimizer:
 
         log_p = -0.5 * (chi_sq_spectral + chi_sq_prior)
         return log_p - (self.quantum_prior_weight() * energy_term)
+
+    # ── The objective the fit minimised, for everything that reports on it ──
+
+    def _fit_alpha(self, J, H_projected):
+        """The quantum weight the fit's step used.
+
+        With a calibrated sigma_x it depends on the Hessian alone, which the
+        step reads in Cartesian form in both coordinate modes, so recomputing
+        it here gives the step's own number. The legacy heuristic depends on
+        the rank of the step's Jacobian -- q-space in internal mode -- so there
+        the value the last step recorded is the one the fit used.
+        """
+        if (self.optimizer.quantum_prior_sigma_ang is None
+                and self._last_alpha_q_eff is not None):
+            return float(self._last_alpha_q_eff)
+        return float(self.optimizer.effective_quantum_weight(
+            J, int(np.linalg.matrix_rank(J)), hessian=H_projected))
+
+    def _internal_prior_rows(self, x):
+        """sqrt(w) diag(1/sigma) B(x): the q-space internal prior's
+        Gauss-Newton rows in Cartesian coordinates, as the fit last weighted
+        it -- or None when the fit carried no internal prior."""
+        st = self._last_ic_prior
+        if st is None or self.coordinate_mode != "internal" or st["weight"] <= 0.0:
+            return None
+        B = np.asarray(st["coord_set"].active_B_matrix(x), dtype=float)
+        if B.shape[0] != st["sigma"].size:
+            return None
+        return np.sqrt(st["weight"]) * (B / st["sigma"][:, None])
+
+    def _isotropic_prior_active(self):
+        sig = self.optimizer.isotropic_prior_sigma_ang
+        return (self.optimizer.objective_mode == "joint" and sig is not None
+                and float(sig) > 0.0 and self._prior_target_coords is not None
+                and self.coordinate_mode == "cartesian")
+
+    def structural_prior_chi2(self, coords):
+        """Every non-quantum prior in the fitted objective, as chi-square.
+
+        The fit minimises 1/2 |r|^2 over the spectral rows and the rows of
+        each of these priors, so -1/2 of this is their log-density: the
+        InternalPriorEngine rows (Cartesian mode), the q-space internal prior
+        (internal mode, as the fit last weighted it) and the isotropic prior
+        on the displacement from the prior target (joint, Cartesian). The
+        log-probability used to skip the q-space prior with a bare `pass`,
+        so the sampler and the posterior-state report described an objective
+        with one term fewer than the fit's.
+        """
+        x = np.asarray(coords, dtype=float)
+        chi2 = 0.0
+        if self.internal_prior is not None and self.coordinate_mode == "cartesian":
+            _, rp = self.internal_prior.stacked(x, want_jacobian=False)
+            chi2 += float(self.prior_weight) * float(np.sum(np.asarray(rp) ** 2))
+        st = self._last_ic_prior
+        if st is not None and self.coordinate_mode == "internal" and st["weight"] > 0.0:
+            cs = st["coord_set"]
+            d = np.asarray(st["q0"], dtype=float) - np.asarray(cs.active_values(x), dtype=float)
+            for k, ic in enumerate(cs.active_coords()):
+                if ic.kind == "dihedral":
+                    d[k] = (d[k] + np.pi) % (2.0 * np.pi) - np.pi
+            chi2 += st["weight"] * float(np.sum((d / st["sigma"]) ** 2))
+        if self._isotropic_prior_active():
+            dd = (x - _kabsch_align(self._prior_target_coords, x)).ravel()
+            chi2 += float(dd @ dd) / float(self.optimizer.isotropic_prior_sigma_ang) ** 2
+        return chi2
+
+    def _split_null_projector(self, x, J_spec, prior_rows):
+        """Null space of the split step's stacked Jacobian, in Cartesians."""
+        J_st = np.vstack([J_spec] + list(prior_rows)) if prior_rows else J_spec
+        _U, _s, Vt, rank = self.optimizer.decompose(J_st)
+        return self.optimizer.null_projector(Vt, rank)
+
+    def _posterior_blocks(self, coords=None):
+        """Gauss-Newton curvature of the objective the fit minimised.
+
+        Returns ``(H_spec, H_prior, parts)``: the spectral block J^T J, the sum
+        of every other block, and those blocks by name. One builder, so the
+        Laplace, the Gauss-Newton check and the run report cannot drift apart
+        again -- they had: the Laplace carried a quantum block the split
+        objective only uses in the data's null space, and none of the
+        internal prior that internal-mode fits did carry.
+
+        * quantum: alpha_q spd(H), as the joint step weights it; under the
+          split objective only on the null space of the stacked Jacobian,
+          which is where that step lets it act;
+        * internal prior: the q-space prior's rows, when the fit had one;
+        * structural prior: the InternalPriorEngine rows (Cartesian mode);
+        * isotropic prior: I / sigma_iso^2 (joint, Cartesian, prior target).
+        """
+        x = self.coords if coords is None else np.asarray(coords, dtype=float)
+        x = np.asarray(x, dtype=float)
+        J, _ = self.spectral.stacked(x)
+        H_spec = J.T @ J
+        parts = {}
+        rows = []
+        R_ic = self._internal_prior_rows(x)
+        if R_ic is not None:
+            parts["internal prior"] = R_ic.T @ R_ic
+            rows.append(R_ic)
+        if self.internal_prior is not None and self.coordinate_mode == "cartesian":
+            Jp, _rp = self.internal_prior.stacked(x)
+            R_cp = np.sqrt(float(self.prior_weight)) * np.asarray(Jp, dtype=float)
+            parts["structural prior"] = R_cp.T @ R_cp
+            rows.append(R_cp)
+        if not self.spectral_only and self.quantum is not None:
+            _g, Hp = self._project_quantum_terms(self.quantum.gradient, self.quantum.hessian)
+            Hq = self._fit_alpha(J, Hp) * self.optimizer._spd_hessian(Hp)
+            if self.optimizer.objective_mode == "joint":
+                parts["quantum"] = Hq
+            else:
+                Pn = self._split_null_projector(x, J, rows)
+                parts["quantum (data null space)"] = Pn @ Hq @ Pn
+        if self._isotropic_prior_active():
+            sig = float(self.optimizer.isotropic_prior_sigma_ang)
+            parts["isotropic prior"] = np.eye(H_spec.shape[0]) / (sig * sig)
+        H_prior = np.zeros_like(H_spec)
+        for blk in parts.values():
+            H_prior = H_prior + blk
+        return H_spec, H_prior, parts
 
     def laplace_approximation(self, coords=None, regularization: float = 1e-8,
                               check_gauss_newton: bool = True):
@@ -3330,19 +3599,13 @@ class MolecularOptimizer:
         reported below from the unridged block.
         """
         x = self.coords if coords is None else np.asarray(coords, dtype=float)
-        J, _ = self.spectral.stacked(x)
-        H_spec = J.T @ J
-        H_quant = np.zeros_like(H_spec)
-        if not self.spectral_only and self.quantum is not None:
-            g = self.quantum.gradient
-            H = self.quantum.hessian
-            g, H = self._project_quantum_terms(g, H)
-            rank = int(np.linalg.matrix_rank(J))
-            alpha_q = self.optimizer.effective_quantum_weight(J, rank, hessian=H)
-            H_quant = alpha_q * self.optimizer._spd_hessian(H)
-        # Kept apart so the Gauss-Newton check below can be handed both
-        # without rebuilding a finite-differenced Jacobian.
-        H_total = H_spec + H_quant
+        # Every block of the objective the fit minimised (_posterior_blocks):
+        # the internal prior when the fit carried one, the quantum block where
+        # the objective lets it act. Kept apart so the Gauss-Newton check
+        # below can be handed both without rebuilding a finite-differenced
+        # Jacobian.
+        H_spec, H_prior, _parts = self._posterior_blocks(x)
+        H_total = H_spec + H_prior
 
         reg_scalar = float(max(regularization, 0.0))
         basis = self.physical_basis(coords=x, n=H_total.shape[0])
@@ -3389,7 +3652,7 @@ class MolecularOptimizer:
         # artefact rather than an uncertainty. Reported, not assumed away.
         if check_gauss_newton:
             for _msg in self.gauss_newton_warnings(
-                    coords=x, _blocks=(H_spec, H_quant)):
+                    coords=x, _blocks=(H_spec, H_prior)):
                 self._warn_once("laplace_approximation: " + _msg,
                                 key="laplace_gauss_newton_" + _msg[:48])
 
@@ -3449,8 +3712,7 @@ class MolecularOptimizer:
         J, _ = self.spectral.stacked(x, want_jacobian=True)
         _g, H = self._project_quantum_terms(
             self.quantum.gradient, self.quantum.hessian)
-        alpha = float(self.optimizer.effective_quantum_weight(
-            J, int(np.linalg.matrix_rank(J)), hessian=H))
+        alpha = self._fit_alpha(J, H)
         self._quantum_prior_weight_cache = alpha
         return alpha
 
@@ -3479,9 +3741,38 @@ class MolecularOptimizer:
                 return float(energy)
             return float(self.quantum.energy)
         g, H = self._projected_reference_terms()
+        target = self._prior_target_coords
+        if (target is not None and self.coordinate_mode == "cartesian"
+                and np.shape(target) == xx.shape):
+            # With a prior target the fit's quantum prior IS this quadratic,
+            # centred on the Kabsch-aligned target (see _prior_gradient) --
+            # not the surface's expansion about the last quantum point, which
+            # put the sampler's mode somewhere the fit's was not.
+            d = (xx - _kabsch_align(target, xx)).ravel()
+            return float(0.5 * np.dot(d, H @ d))
         dx = (xx - self._orca_ref_coords).ravel()
+        if self.optimizer.objective_mode != "joint":
+            # The split step lets the quantum surface act only on the null
+            # space of its stacked Jacobian; so does its posterior.
+            dx = self._split_energy_projector() @ dx
         return float(self.quantum.energy + np.dot(g, dx)
                      + 0.5 * np.dot(dx, H @ dx))
+
+    def _split_energy_projector(self):
+        """The split objective's null-space projector at the fitted geometry,
+        cached on it (a finite-differenced Jacobian per call otherwise)."""
+        key = np.asarray(self.coords, dtype=float)
+        cached = getattr(self, "_split_proj_cache", None)
+        if cached is not None and np.array_equal(cached[0], key):
+            return cached[1]
+        J, _ = self.spectral.stacked(key)
+        rows = [r for r in (self._internal_prior_rows(key),) if r is not None]
+        if self.internal_prior is not None and self.coordinate_mode == "cartesian":
+            Jp, _rp = self.internal_prior.stacked(key)
+            rows.append(np.sqrt(float(self.prior_weight)) * np.asarray(Jp, dtype=float))
+        Pn = self._split_null_projector(key, J, rows)
+        self._split_proj_cache = (key.copy(), Pn)
+        return Pn
 
     def _projected_reference_terms(self):
         """The reference gradient and Hessian, rigid-projected, cached.
@@ -3557,16 +3848,11 @@ class MolecularOptimizer:
             # Jacobian for no new information.
             H_spec, H_quant = _blocks
         else:
-            J, _ = self.spectral.stacked(x)
-            H_spec = J.T @ J
-            H_quant = np.zeros_like(H_spec)
-            if not self.spectral_only and self.quantum is not None:
-                g_q, H_q = self._project_quantum_terms(
-                    self.quantum.gradient, self.quantum.hessian)
-                rank = int(np.linalg.matrix_rank(J))
-                alpha_q = self.optimizer.effective_quantum_weight(
-                    J, rank, hessian=H_q)
-                H_quant = alpha_q * self.optimizer._spd_hessian(H_q)
+            # H_quant here is every non-spectral block of the objective --
+            # the quantum prior, and the internal or isotropic prior when the
+            # fit had one. All are exactly quadratic in the step's own model,
+            # so the omitted term this check measures is the spectral one.
+            H_spec, H_quant, _parts = self._posterior_blocks(x)
         H_gn = H_spec + H_quant
         n = H_gn.shape[0]
 

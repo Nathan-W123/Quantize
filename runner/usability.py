@@ -1422,24 +1422,32 @@ def write_uncertainty_csv(path: Path, rows: list[dict[str, Any]]) -> None:
 
 
 def generate_uncertainty_report_section(result: dict[str, Any]) -> str:
-    """The uncertainty table, or an explicit statement that there is none."""
+    """The uncertainty table, or an explicit statement that there is none.
+
+    What the widths are a posterior OF is stated from the blocks the fit
+    actually carried (result["uncertainty_meta"]), not from a fixed sentence:
+    the old fixed text said the widths included the quantum prior while the
+    computation behind them had none.
+    """
     rows = result.get("uncertainty_rows")
+    meta = result.get("uncertainty_meta") or {}
     lines = ["## Parameter Uncertainty", ""]
     if not rows:
         mode = str((result.get("cfg") or {}).get("coordinate_mode", "internal"))
+        why = meta.get("error")
         lines.extend([
             f"No parameter uncertainty was computed (coordinate_mode = `{mode}`).",
             "",
-            "Uncertainties are only available in internal-coordinate mode. A "
-            "structure without one cannot be used for anything that depends on "
-            "its precision, so this is recorded as an absence rather than left "
-            "out of the report.",
+            (f"The posterior could not be formed: {why}." if why else
+             "The fit produced no posterior to report."),
+            "A structure without an uncertainty cannot be used for anything that "
+            "depends on its precision, so this is recorded as an absence rather "
+            "than left out of the report.",
         ])
         return "\n".join(lines)
 
-    infl = max((float(r.get("chi2_scale", 1.0)) for r in rows), default=1.0)
     lines.extend([
-        "| coordinate | value | std err | 95% interval | prior |",
+        "| coordinate | value | std err | 95% interval | support |",
         "|---|---:|---:|:---:|---|",
     ])
     for r in rows:
@@ -1453,17 +1461,32 @@ def generate_uncertainty_report_section(result: dict[str, Any]) -> str:
             f"| {float(r['ci_lo']):.5f} to {float(r['ci_hi']):.5f} "
             f"| {both} |"
         )
+    blocks = [str(b) for b in (meta.get("blocks") or [])]
+    of = ", ".join(blocks) if blocks else "the fitted objective"
+    has_prior = any(b not in {"spectral data", "systematic model error"} for b in blocks)
     lines.extend([
         "",
-        f"- chi-square inflation applied: `{infl:.3f}`"
-        + ("" if infl > 1.0 else " (none; residuals within their stated sigma)"),
-        "- These are POSTERIOR widths and include the quantum prior, so a "
-        "coordinate the spectrum cannot see reports the prior's width rather "
-        "than infinity. The `prior` column says which is which.",
+        f"- These are POSTERIOR widths of the objective the fit minimised: {of}."
+        + (" A coordinate the spectrum cannot see therefore reports the prior's "
+           "width rather than infinity; the `support` column says which is which."
+           if has_prior else
+           " No prior carries any direction, so a coordinate the spectrum cannot "
+           "see is reported as unidentifiable rather than given a width."),
+    ])
+    chi2 = meta.get("chi2_per_observation")
+    if chi2 is not None and np.isfinite(float(chi2)):
+        chi2 = float(chi2)
+        verdict = ("residuals within their stated sigma" if chi2 <= 1.0 else
+                   f"residuals {np.sqrt(chi2):.2f}x their stated sigma")
+        lines.append(
+            f"- Spectral chi-square per observation: `{chi2:.3f}` ({verdict}). "
+            "Reported, not applied: no width is rescaled by it.")
+    lines.append(
         "- They are a PRECISION, not an accuracy: they propagate the stated "
         "uncertainties on the constants and know nothing about residual "
-        "B0-versus-Be correction bias. Expect them to be optimistic.",
-    ])
+        "B0-versus-Be correction bias. Expect them to be optimistic.")
+    for w in (meta.get("warnings") or []):
+        lines.append(f"- Warning: {w}")
     if result.get("uncertainty_covariance_npy"):
         lines.append(f"- Full covariance: `{result['uncertainty_covariance_npy']}`")
     return "\n".join(lines)
@@ -1575,8 +1598,6 @@ def write_markdown_report(path: Path, result: dict[str, Any], artifacts: dict[st
             lines.append("- `exports/internal_covariance.csv`")
         if artifacts.get("internal_identifiability_csv") is not None:
             lines.append("- `exports/internal_identifiability.csv`")
-        if artifacts.get("internal_prior_sensitivity_csv") is not None:
-            lines.append("- `exports/internal_prior_sensitivity.csv`")
         if artifacts.get("internal_prior_provenance_csv") is not None:
             lines.append("- `exports/internal_prior_provenance.csv`")
         if artifacts.get("conformer_weights_history_csv") is not None:
@@ -1660,13 +1681,6 @@ def write_html_report(path: Path, result: dict[str, Any], artifacts: dict[str, A
         "<li>plots/normalized_residuals.png</li>",
         "</ul>",
     ]
-    if artifacts and artifacts.get("internal_prior_sensitivity_csv") is not None:
-        out_lines.extend(
-            [
-                "<h2>Prior Sensitivity</h2>",
-                "<p class='muted'>See <code>exports/internal_prior_sensitivity.csv</code> for coordinate-level sensitivity labels.</p>",
-            ]
-        )
     out_lines.extend(["</body>", "</html>"])
     path.write_text("\n".join(out_lines) + "\n", encoding="utf-8")
 
@@ -1872,234 +1886,126 @@ def write_outputs(result: dict[str, Any]) -> dict[str, Path | list[Path]]:
         artifacts["rovib_warnings_json"] = warn_json
 
     # Internal-coordinate uncertainty / identifiability exports.
+    #
+    # From the fit's own posterior (MolecularOptimizer.internal_coordinate_
+    # posterior, computed by the worker that ran the fit). This block used to
+    # rebuild one here from the config -- the config's internal-prior widths,
+    # no quantum prior, chi-square rescaling -- so the exports described a
+    # different objective from the one minimised. The prior-sensitivity
+    # export went with it: it re-solved the fit without the quantum term, so
+    # it described no fit this engine runs.
     cfg = result.get("cfg", {}) or {}
-    coord_mode = str(cfg.get("coordinate_mode", "cartesian")).strip().lower()
-    if coord_mode == "internal" and iso_snapshot:
-        from backend.internal.internal_fit import InternalCoordinateSet, spectral_jacobian_q, build_internal_priors
-        from backend.spectral.spectral import SpectralEngine
-        from backend.uncertainty import uncertainty_table, compute_uncertainty
+    posterior = (result.get("best") or {}).get("posterior") or {}
+    if posterior.get("names") and "error" not in posterior and iso_snapshot:
+        from backend.internal.internal_fit import InternalCoordinateSet, spectral_jacobian_q
         from backend.internal.identifiability import identifiability_table
-        from backend.priors.prior_sensitivity import classify_prior_dominance, prior_sensitivity_analysis
+        from backend.spectral.spectral import SpectralEngine
 
-        ic_cfg = cfg.get("internal_coordinates", {}) or {}
-        use_dihedrals = bool(ic_cfg.get("use_dihedrals", False))
-        damping = max(float(ic_cfg.get("damping", 1e-6)), 1e-14)
-        sigma_bond = float(ic_cfg.get("prior_sigma_bond", 0.04))
-        sigma_angle_deg = float(ic_cfg.get("prior_sigma_angle_deg", 2.0))
-        sigma_dihedral_deg = float(ic_cfg.get("prior_sigma_dihedral_deg", 15.0))
-        ip_cfg = cfg.get("internal_priors", {}) or {}
+        def _deg_if_angular(kind, units, value):
+            if value is None:
+                return value, units
+            if kind in {"angle", "dihedral"} and units in {"radian", "rad"}:
+                return float(np.degrees(float(value))), "deg"
+            if kind == "bond" and units in {"angstrom", "a", "å"}:
+                return float(value), "Å"
+            return value, units
 
-        coord_set = InternalCoordinateSet(result["best"]["coords"], result["elems"], use_dihedrals=use_dihedrals)
-        B_active = coord_set.active_B_matrix(result["best"]["coords"])
-        if B_active.shape[0] > 0:
-            Bplus = InternalCoordinateSet.damped_pseudoinverse(B_active, damping)
-            J_spectral, residual_w = SpectralEngine(iso_snapshot).stacked(result["best"]["coords"])
-            Jq = spectral_jacobian_q(J_spectral, Bplus)
-            _, _, sigma_prior, prior_meta = build_internal_priors(
-                coord_set,
-                result["best"]["coords"],
-                sigma_bond=sigma_bond,
-                sigma_angle_deg=sigma_angle_deg,
-                sigma_dihedral_deg=sigma_dihedral_deg,
-                prior_mode=str(ip_cfg.get("mode", "soft")).strip().lower(),
-                prior_specs=list(ip_cfg.get("user_priors", []) or []),
-                elems=result["elems"],
-                freeze_sigma_floor=float(ip_cfg.get("freeze_sigma_floor", 1e-6)),
-                spectral_jacobian_q=Jq,
-                adaptive_config=dict(ip_cfg.get("adaptive", {}) or {}),
-                return_metadata=True,
+        provenance = list(posterior.get("internal_prior_provenance") or [])
+        prov_map = {str(m.get("name", "")): m for m in provenance}
+        unc_rows = result.get("uncertainty_rows") or []
+        unc_csv = exports_dir / "internal_uncertainty.csv"
+        with unc_csv.open("w", newline="", encoding="utf-8") as fh:
+            writer = csv.DictWriter(
+                fh,
+                fieldnames=[
+                    "name", "value", "value_unit", "std_err", "std_err_unit",
+                    "ci_lo", "ci_hi", "ci_unit", "prior_dominance", "data_fraction",
+                    "prior_source", "prior_target", "prior_target_unit",
+                    "prior_sigma", "prior_sigma_unit", "prior_notes",
+                ],
+                extrasaction="ignore",
             )
-            prior_meta_map = {str(m.get("name", "")): m for m in prior_meta}
+            writer.writeheader()
+            for r in unc_rows:
+                meta = prov_map.get(str(r.get("name", "")), {})
+                kind = str(meta.get("kind", ""))
+                units = str(meta.get("units", ""))
+                target, t_unit = _deg_if_angular(kind, units, meta.get("target_value"))
+                sigma, s_unit = _deg_if_angular(kind, units, meta.get("sigma"))
+                row = dict(r)
+                row.update({
+                    "prior_source": meta.get("source", ""),
+                    "prior_target": target if meta else "",
+                    "prior_target_unit": t_unit if meta else "",
+                    "prior_sigma": sigma if meta else "",
+                    "prior_sigma_unit": s_unit if meta else "",
+                    "prior_notes": meta.get("notes", "") if meta else "",
+                })
+                writer.writerow(row)
+        artifacts["internal_uncertainty_csv"] = unc_csv
 
-            dominance = classify_prior_dominance(Jq, sigma_prior, coord_set.active_names())
-            sensitivity_rows = prior_sensitivity_analysis(
-                coord_set,
-                result["best"]["coords"],
-                Jq,
-                residual_w,
-                sigma_bond=sigma_bond,
-                sigma_angle_deg=sigma_angle_deg,
-                sigma_dihedral_deg=sigma_dihedral_deg,
-                prior_mode=str(ip_cfg.get("mode", "soft")).strip().lower(),
-                prior_specs=list(ip_cfg.get("user_priors", []) or []),
-                elems=result["elems"],
-                freeze_sigma_floor=float(ip_cfg.get("freeze_sigma_floor", 1e-6)),
-                spectral_jacobian_q=Jq,
-                adaptive_config=dict(ip_cfg.get("adaptive", {}) or {}),
-                sv_rel_threshold=1e-3,
-                lambda_reg=damping,
-            )
-            unc_rows = uncertainty_table(
-                coord_set,
-                result["best"]["coords"],
-                Jq,
-                sigma_prior=sigma_prior,
-                lambda_reg=damping,
-                dominance_labels=dominance,
-                sensitivity_rows=sensitivity_rows,
-                residual_w=residual_w,
-            )
-            unc_csv = exports_dir / "internal_uncertainty.csv"
-            with unc_csv.open("w", newline="", encoding="utf-8") as fh:
-                writer = csv.DictWriter(
-                    fh,
-                    fieldnames=[
-                        "name",
-                        "value",
-                        "value_unit",
-                        "std_err",
-                        "std_err_unit",
-                        "ci_lo",
-                        "ci_hi",
-                        "ci_unit",
-                        "prior_dominance",
-                        "prior_sensitivity",
-                        "prior_delta",
-                        "prior_delta_unit",
-                        "prior_source",
-                        "prior_mode",
-                        "prior_target",
-                        "prior_target_unit",
-                        "prior_sigma",
-                        "prior_sigma_unit",
-                        "prior_confidence",
-                        "prior_notes",
-                        "prior_identifiability_score",
-                        "prior_sigma_scale",
-                        "chi2_scale",
-                    ],
-                )
-                writer.writeheader()
-                for r in unc_rows:
-                    meta = prior_meta_map.get(str(r.get("name", "")), {})
-                    target = meta.get("target_value")
-                    sig_v = meta.get("sigma")
-                    units = str(meta.get("units", ""))
-                    kind = str(meta.get("kind", ""))
-                    if kind in {"angle", "dihedral"} and units in {"radian", "rad"}:
-                        target = np.degrees(float(target)) if target is not None else target
-                        sig_v = np.degrees(float(sig_v)) if sig_v is not None else sig_v
-                        units = "deg"
-                    elif kind == "bond" and units in {"angstrom", "a", "å"}:
-                        units = "Å"
-                    row = dict(r)
-                    row.update(
-                        {
-                            "prior_source": meta.get("source", ""),
-                            "prior_mode": meta.get("mode", ""),
-                            "prior_target": target,
-                            "prior_target_unit": units,
-                            "prior_sigma": sig_v,
-                            "prior_sigma_unit": units,
-                            "prior_confidence": meta.get("confidence"),
-                            "prior_notes": meta.get("notes"),
-                            "prior_identifiability_score": meta.get("identifiability_score"),
-                            "prior_sigma_scale": meta.get("sigma_scale"),
-                        }
-                    )
-                    writer.writerow(row)
-            artifacts["internal_uncertainty_csv"] = unc_csv
-
+        if provenance:
             prior_csv = exports_dir / "internal_prior_provenance.csv"
             with prior_csv.open("w", newline="", encoding="utf-8") as fh:
                 writer = csv.DictWriter(
                     fh,
                     fieldnames=[
-                        "name",
-                        "kind",
-                        "atoms",
-                        "atom_types",
-                        "bond_order",
-                        "source",
-                        "mode",
-                        "target_value",
-                        "target_unit",
-                        "sigma",
-                        "sigma_unit",
-                        "confidence",
-                        "notes",
-                        "identifiability_score",
-                        "sigma_scale",
-                        "global_sigma_scale",
+                        "name", "kind", "atoms", "atom_types", "bond_order", "source",
+                        "mode", "target_value", "target_unit", "sigma", "sigma_unit",
+                        "confidence", "notes",
                     ],
                 )
                 writer.writeheader()
-                for m in prior_meta:
+                for m in provenance:
                     kind = str(m.get("kind", ""))
                     units = str(m.get("units", ""))
-                    target = m.get("target_value")
-                    sig_v = m.get("sigma")
-                    if kind in {"angle", "dihedral"} and units in {"radian", "rad"}:
-                        target = np.degrees(float(target)) if target is not None else target
-                        sig_v = np.degrees(float(sig_v)) if sig_v is not None else sig_v
-                        units = "deg"
-                    elif kind == "bond" and units in {"angstrom", "a", "å"}:
-                        units = "Å"
-                    writer.writerow(
-                        {
-                            "name": m.get("name"),
-                            "kind": kind,
-                            "atoms": "-".join(str(int(a) + 1) for a in (m.get("atoms") or ())),
-                            "atom_types": "-".join(str(a) for a in (m.get("atom_types") or ())),
-                            "bond_order": m.get("bond_order"),
-                            "source": m.get("source"),
-                            "mode": m.get("mode"),
-                            "target_value": target,
-                            "target_unit": units,
-                            "sigma": sig_v,
-                            "sigma_unit": units,
-                            "confidence": m.get("confidence"),
-                            "notes": m.get("notes"),
-                            "identifiability_score": m.get("identifiability_score"),
-                            "sigma_scale": m.get("sigma_scale"),
-                            "global_sigma_scale": m.get("global_sigma_scale"),
-                        }
-                    )
+                    target, t_unit = _deg_if_angular(kind, units, m.get("target_value"))
+                    sigma, s_unit = _deg_if_angular(kind, units, m.get("sigma"))
+                    writer.writerow({
+                        "name": m.get("name"),
+                        "kind": kind,
+                        "atoms": "-".join(str(int(a) + 1) for a in (m.get("atoms") or ())),
+                        "atom_types": "-".join(str(a) for a in (m.get("atom_types") or ())),
+                        "bond_order": m.get("bond_order"),
+                        "source": m.get("source"),
+                        "mode": m.get("mode"),
+                        "target_value": target,
+                        "target_unit": t_unit,
+                        "sigma": sigma,
+                        "sigma_unit": s_unit,
+                        "confidence": m.get("confidence"),
+                        "notes": m.get("notes"),
+                    })
             artifacts["internal_prior_provenance_csv"] = prior_csv
 
-            sens_csv = exports_dir / "internal_prior_sensitivity.csv"
-            with sens_csv.open("w", newline="", encoding="utf-8") as fh:
-                writer = csv.DictWriter(
-                    fh,
-                    fieldnames=[
-                        "name",
-                        "delta",
-                        "unit",
-                        "sensitivity_label",
-                        "q_0p5x",
-                        "q_1p0x",
-                        "q_2p0x",
-                    ],
-                )
-                writer.writeheader()
-                for r in sensitivity_rows:
-                    writer.writerow(r)
-            artifacts["internal_prior_sensitivity_csv"] = sens_csv
+        names = list(posterior["names"])
+        cov = np.asarray(posterior["covariance"], dtype=float)
+        cov_csv = exports_dir / "internal_covariance.csv"
+        with cov_csv.open("w", newline="", encoding="utf-8") as fh:
+            writer = csv.writer(fh)
+            writer.writerow(["coordinate"] + names)
+            for i, row_name in enumerate(names):
+                writer.writerow([row_name] + [f"{float(v):.12e}" for v in cov[i]])
+        artifacts["internal_covariance_csv"] = cov_csv
 
-            # Same chi2 inflation as the uncertainty table above, so the exported
-            # covariance and the exported std_errs describe the same posterior.
-            cov, _, _, _ = compute_uncertainty(
-                Jq,
-                sigma_prior=sigma_prior,
-                lambda_reg=damping,
-                residual_w=residual_w,
-            )
-            cov_csv = exports_dir / "internal_covariance.csv"
-            with cov_csv.open("w", newline="", encoding="utf-8") as fh:
-                active_names = [ic.name for ic in coord_set.active_coords()]
-                writer = csv.writer(fh)
-                writer.writerow(["coordinate"] + active_names)
-                for i, row_name in enumerate(active_names):
-                    writer.writerow([row_name] + [f"{float(v):.12e}" for v in cov[i]])
-            artifacts["internal_covariance_csv"] = cov_csv
-
-            id_rows, sv, rank = identifiability_table(coord_set, Jq, sigma_prior)
+        # Identifiability is a property of the data at the fitted geometry; the
+        # prior widths it is scored against are the fit's own, or none.
+        ic_cfg = cfg.get("internal_coordinates", {}) or {}
+        coords_best = np.asarray(result["best"]["coords"], dtype=float)
+        coord_set = InternalCoordinateSet(
+            coords_best, result["elems"], use_dihedrals=bool(ic_cfg.get("use_dihedrals", False)))
+        B_active = coord_set.active_B_matrix(coords_best)
+        if B_active.shape[0] > 0 and list(coord_set.active_names()) == names:
+            damping = max(float(ic_cfg.get("damping", 1e-6)), 1e-14)
+            Bplus = InternalCoordinateSet.damped_pseudoinverse(B_active, damping)
+            J_spectral, _rw = SpectralEngine(iso_snapshot).stacked(coords_best)
+            Jq = spectral_jacobian_q(J_spectral, Bplus)
+            ic_sigma = posterior.get("internal_prior_sigma")
+            id_rows, sv, rank = identifiability_table(
+                coord_set, Jq, None if ic_sigma is None else np.asarray(ic_sigma, dtype=float))
             id_csv = exports_dir / "internal_identifiability.csv"
             with id_csv.open("w", newline="", encoding="utf-8") as fh:
-                writer = csv.DictWriter(
-                    fh,
-                    fieldnames=["name", "score", "label", "sv_rank"],
-                )
+                writer = csv.DictWriter(fh, fieldnames=["name", "score", "label", "sv_rank"])
                 writer.writeheader()
                 for r in id_rows:
                     writer.writerow(r)

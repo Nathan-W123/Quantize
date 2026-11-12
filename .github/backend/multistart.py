@@ -81,9 +81,19 @@ def _run_one_start(payload):
             "sv_gap": sv_gap,
         }
 
+    # The fit's own posterior, while the optimizer that produced it still
+    # exists: once this returns only the result dict crosses back, and a
+    # posterior rebuilt from that dict -- which is what the run report used to
+    # do -- describes whatever objective the rebuild assumes, not the fit's.
+    try:
+        posterior = opt.internal_coordinate_posterior()
+    except Exception as exc:  # a reporting failure must not lose the fit
+        posterior = {"error": f"{type(exc).__name__}: {exc}"}
+
     return {
         "idx": idx,
         "coords": final_coords,
+        "posterior": posterior,
         "start_coords": np.asarray(coords, dtype=float).copy(),
         "freq_rms": float(_fr if _fr is not None else np.inf),
         "energy": float(_e if _e is not None else np.inf),

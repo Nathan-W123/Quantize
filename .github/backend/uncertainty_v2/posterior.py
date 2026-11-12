@@ -21,10 +21,10 @@ def evaluate_posterior_state(
     _, residual_w = optimizer.spectral.stacked(trial_coords)
     chi_sq_spectral = float(np.sum(residual_w ** 2))
 
-    chi_sq_prior = 0.0
-    if optimizer.internal_prior is not None and optimizer.coordinate_mode == "cartesian":
-        _, rp = optimizer.internal_prior.stacked(trial_coords)
-        chi_sq_prior = float(optimizer.prior_weight * np.sum(rp ** 2))
+    # Every non-quantum prior the fit carried, from the optimizer's own
+    # accounting -- this used to count the Cartesian prior rows only, so an
+    # internal-coordinate fit's q-space prior reported chi-square 0.
+    chi_sq_prior = float(optimizer.structural_prior_chi2(trial_coords))
 
     # Third copy of the quantum-prior term, gone the same way as the second:
     # this read alpha_quantum (1.0) where the optimiser and the Laplace use
