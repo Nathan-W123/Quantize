@@ -27,6 +27,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+from copy import deepcopy
 import pytest
 
 _ROOT = Path(__file__).resolve().parent.parent.parent
@@ -387,3 +388,23 @@ def test_the_cli_prints_the_distortion_rows(observed_cd, tmp_path, monkeypatch):
     assert code == 0, err.getvalue()[-2000:]
     assert "Centrifugal-distortion rows (fitted)" in out.getvalue()
     assert "rotational-constant residuals" in out.getvalue()
+
+
+def test_the_fit_s_predictions_skip_the_reduction_residual(cd_fit, monkeypatch):
+    """The residual is a diagnostic of the reduction and feeds no constant;
+    computing it was half of every prediction, and a distortion fit makes
+    hundreds (water: 1.43 -> 0.70 s per fit, bit-identical)."""
+    import backend.spectral.centrifugal_distortion as CDm
+    hb = cd_fit.spectral._hess_bohr_for_cd
+    x = np.asarray(cd_fit.coords, float)
+    m = cd_fit.spectral.isotopologues[0]["masses"]
+    full = CDm.compute_cd_constants(hb, x, m)
+    fast = CDm.compute_cd_constants(hb, x, m, with_residual=False)
+    assert fast.as_dict() == full.as_dict()
+    assert np.isnan(fast.reduction_residual_mhz) and np.isfinite(full.reduction_residual_mhz)
+    calls = []
+    real = CDm.reduction_residual_mhz
+    monkeypatch.setattr(CDm, "reduction_residual_mhz", lambda *a, **k: (calls.append(1), real(*a, **k))[1])
+    opt = deepcopy(cd_fit)
+    opt.spectral.stacked(opt.coords)
+    assert calls == []

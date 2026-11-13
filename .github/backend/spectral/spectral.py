@@ -595,6 +595,7 @@ class SpectralEngine:
             min_freq_cm=self._cd_min_freq_cm,
             fd_delta=self._cd_fd_delta,
             sigma_fraction=self._cd_sigma_fraction,
+            with_residual=False,
         )
 
     def _cd_rows_active(self) -> bool:

@@ -417,9 +417,17 @@ def compute_cd_constants(
     sigma_fraction: float = 0.05,
     reduction: str = "auto",
     reduction_order: int = 4,
+    with_residual: bool = True,
 ) -> CDConstants:
     """
     Harmonic CD constants from Hessian and equilibrium geometry.
+
+    ``with_residual=False`` skips the reduction's representation residual
+    (``reduction_residual_mhz`` comes back NaN). It is a diagnostic of the
+    reduction and feeds no constant, but it costs a second reduction fit and
+    two level calculations: half of every call. The distortion rows of a fit
+    call this hundreds of times per fit (rows, their finite-difference
+    Jacobian, the Gauss-Newton probes) and never read it.
 
     ``reduction`` is "A", "S" or "auto". Which one suits a molecule is a
     property of the molecule and not a house style: A is ill-conditioned for a
@@ -485,7 +493,8 @@ def compute_cd_constants(
     if red == "AUTO":
         red = reduction_for_asymmetry(B0_ref)
     cd_mhz = reduction_from_tau(B0_ref, tau_mhz, reduction=red, order=order)
-    resid = reduction_residual_mhz(B0_ref, tau_mhz, reduction=red, order=order)
+    resid = (reduction_residual_mhz(B0_ref, tau_mhz, reduction=red, order=order)
+             if with_residual else float("nan"))
     # Validated against H2-16O's measured constants on the analytic water PES:
     # DJ +38.2 vs +37.59, DK +899 vs +973.3, DJK -235 vs -172.9 -- correct
     # signs and the right magnitudes, where the previous closed-form mapping
@@ -519,7 +528,8 @@ def compute_cd_constants(
         notes=(
             f"Harmonic tau' -> Watson {red}-reduction, by numerical reduction "
             f"(backend.spectral.cd_reduction); representation residual "
-            f"{resid:.2e} MHz. Validated against H2-16O."
+            + (f"{resid:.2e} MHz" if with_residual else "not computed")
+            + ". Validated against H2-16O."
         ),
     )
 
