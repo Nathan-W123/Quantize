@@ -199,9 +199,11 @@ def laplace_approximation(
     # summary too, because this is the object that gets serialised and read
     # later, when nobody is watching stdout.
     warnings.extend(optimizer.gauss_newton_warnings(coords=coords))
+    # The CLI prints this summary, not internal_coordinate_posterior's, and
+    # its bundle keeps these warnings.
+    warnings.extend(optimizer.distortion_warnings())
     split_gap = optimizer.split_inconsistency()
     if split_gap is not None:
-        # The CLI prints this summary, not internal_coordinate_posterior's.
         warnings.append(
             f"split objective: {split_gap}; these widths, and the MCMC chains "
             f"that sample the same posterior, do not describe the split fit's spread.")

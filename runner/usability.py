@@ -1290,18 +1290,50 @@ def residual_rows(coords: np.ndarray, spectral_isotopologues: list[dict[str, Any
                     "calculated_mhz": calc,
                     "residual_mhz": float(target[j] - calc),
                     "sigma_mhz": float(iso["sigma_constants"][j]),
+                    "kind": "rotational",
                 }
             )
     return rows
 
 
+def _row_kind(row: dict[str, Any]) -> str:
+    """'rotational' or 'distortion'; rows from before the kind existed are
+    rotational."""
+    return str(row.get("kind") or "rotational")
+
+
+def _distortion_rows_for_report(result: dict[str, Any]) -> list[dict[str, Any]]:
+    """The fitted distortion rows: the posterior's own (with z and the
+    reduction), or -- for a payload written without them -- the residual
+    rows of that kind, so a rebuilt report does not drop them."""
+    cd_rows = (result.get("uncertainty_meta") or {}).get("distortion_rows") or []
+    if cd_rows:
+        return list(cd_rows)
+    out = []
+    for r in result.get("residual_rows", []) or []:
+        if _row_kind(r) != "distortion":
+            continue
+        sg = float(r.get("sigma_mhz", np.nan))
+        res = float(r["residual_mhz"])
+        out.append({"isotopologue": r["isotopologue"], "constant": r["component"],
+                    "observed_mhz": float(r["target_mhz"]), "predicted_mhz": float(r["calculated_mhz"]),
+                    "residual_mhz": res, "sigma_mhz": sg,
+                    "z": res / sg if np.isfinite(sg) and sg > 0 else float("nan"),
+                    "reduction": r.get("reduction", ""), "reduction_source": r.get("reduction_source", "")})
+    return out
+
+
 def write_residuals_csv(path: Path, rows: list[dict[str, Any]]) -> None:
-    fields = ["isotopologue", "component", "target_mhz", "calculated_mhz", "residual_mhz", "sigma_mhz"]
+    # kind separates the rotational rows from the distortion rows (MHz both,
+    # but constants of 10^5 against 10^1-10^3); without it a reader could
+    # tell them apart only by the component's name.
+    fields = ["isotopologue", "component", "kind", "target_mhz", "calculated_mhz",
+              "residual_mhz", "sigma_mhz"]
     with path.open("w", newline="", encoding="utf-8") as fh:
         writer = csv.DictWriter(fh, fieldnames=fields, extrasaction="ignore")
         writer.writeheader()
         for row in rows:
-            writer.writerow(row)
+            writer.writerow(dict(row, kind=_row_kind(row)))
 
 
 def singular_values(coords: np.ndarray, spectral_isotopologues: list[dict[str, Any]]) -> np.ndarray:
@@ -1543,13 +1575,13 @@ def write_markdown_report(path: Path, result: dict[str, Any], artifacts: dict[st
         lines.append(f"| {i} | {elem} | {xyz[0]:.8f} | {xyz[1]:.8f} | {xyz[2]:.8f} |")
     lines.extend(["", "## Residuals", "", "| isotopologue | component | target MHz | calculated MHz | residual MHz |", "|---|---:|---:|---:|---:|"])
     for row in result.get("residual_rows", []):
-        if row.get("kind") == "distortion":
+        if _row_kind(row) == "distortion":
             continue
         lines.append(
             f"| {row['isotopologue']} | {row['component']} | {row['target_mhz']:.6f} | "
             f"{row['calculated_mhz']:.6f} | {row['residual_mhz']:.6f} |"
         )
-    cd_rows = (result.get("uncertainty_meta") or {}).get("distortion_rows") or []
+    cd_rows = _distortion_rows_for_report(result)
     if cd_rows:
         lines.extend(["", "### Centrifugal distortion (fitted rows)", "",
                       "Observed against the harmonic prediction at the fitted geometry, in the "
@@ -1632,6 +1664,36 @@ def write_markdown_report(path: Path, result: dict[str, Any], artifacts: dict[st
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def _html_distortion_table(result: dict[str, Any]) -> list[str]:
+    """The distortion rows as the markdown report shows them: their own
+    table, not mixed into the rotational residuals."""
+    import html as _html
+    cd_rows = _distortion_rows_for_report(result)
+    if not cd_rows:
+        return []
+    body = []
+    for r in cd_rows:
+        red = r.get("reduction") or "?"
+        src = r.get("reduction_source") or ""
+        body.append(
+            "<tr>"
+            f"<td>{_html.escape(str(r['isotopologue']))}</td><td>{_html.escape(str(r['constant']))}</td>"
+            f"<td>{_html.escape(red + (f' ({src})' if src else ''))}</td>"
+            f"<td>{float(r['observed_mhz']):.6g}</td><td>{float(r['predicted_mhz']):.6g}</td>"
+            f"<td>{float(r['residual_mhz']):.6g}</td><td>{float(r['sigma_mhz']):.6g}</td>"
+            f"<td>{float(r['z']):+.2f}</td>"
+            "</tr>")
+    return [
+        "<h3>Centrifugal distortion (fitted rows)</h3>",
+        "<p class='muted'>Observed against the harmonic prediction at the fitted geometry, in the "
+        "Watson reduction shown; sigma is the noise the row's weight implies.</p>",
+        "<table><thead><tr><th>isotopologue</th><th>constant</th><th>reduction</th><th>observed MHz</th>"
+        "<th>predicted MHz</th><th>residual MHz</th><th>sigma MHz</th><th>z</th></tr></thead><tbody>",
+        *body,
+        "</tbody></table>",
+    ]
+
+
 def write_html_report(path: Path, result: dict[str, Any], artifacts: dict[str, Any] | None = None) -> None:
     """Write a lightweight publication-friendly HTML report."""
     best = result["best"]
@@ -1648,6 +1710,8 @@ def write_html_report(path: Path, result: dict[str, Any], artifacts: dict[str, A
 
     residual_rows_html = []
     for r in rows:
+        if _row_kind(r) == "distortion":
+            continue
         residual_rows_html.append(
             "<tr>"
             f"<td>{r['isotopologue']}</td><td>{r['component']}</td>"
@@ -1692,6 +1756,7 @@ def write_html_report(path: Path, result: dict[str, Any], artifacts: dict[str, A
         "<table><thead><tr><th>isotopologue</th><th>component</th><th>target MHz</th><th>calculated MHz</th><th>residual MHz</th><th>sigma MHz</th></tr></thead><tbody>",
         *residual_rows_html,
         "</tbody></table>",
+        *_html_distortion_table(result),
         "<h2>Artifacts</h2>",
         "<ul>",
         "<li>exports/final_geometry.csv</li>",
@@ -1717,7 +1782,11 @@ def write_plots(run_dir: Path, result: dict[str, Any]) -> list[Path]:
 
     paths: list[Path] = []
     plots_dir = run_dir / "plots"
-    rows = result.get("residual_rows", [])
+    all_rows = list(result.get("residual_rows", []) or [])
+    # The plots in MHz show the rotational rows only: a distortion constant
+    # of 37 MHz on the axes of one of 836,000 is a point at the origin. The
+    # normalized plot keeps both, since a pull is a pull.
+    rows = [r for r in all_rows if _row_kind(r) != "distortion"]
     if rows:
         labels = [f"{r['isotopologue']} {r['component']}" for r in rows]
         values = [float(r["residual_mhz"]) for r in rows]
@@ -1781,14 +1850,20 @@ def write_plots(run_dir: Path, result: dict[str, Any]) -> list[Path]:
         plt.close(fig)
         paths.append(path)
 
-        sigma = [max(float(r.get("sigma_mhz", 1.0)), 1e-12) for r in rows]
-        z = [float(r["residual_mhz"]) / s for r, s in zip(rows, sigma)]
-        labels = [f"{r['isotopologue']} {r['component']}" for r in rows]
+        zrows = all_rows
+        sigma = [max(float(r.get("sigma_mhz", 1.0)), 1e-12) for r in zrows]
+        z = [float(r["residual_mhz"]) / s for r, s in zip(zrows, sigma)]
+        labels = [f"{r['isotopologue']} {r['component']}" for r in zrows]
+        is_cd = [_row_kind(r) == "distortion" for r in zrows]
         fig, ax = plt.subplots(figsize=(max(6, 0.55 * len(labels)), 4))
         ax.axhline(0.0, color="black", linewidth=0.8)
         ax.axhline(+3.0, color="#b22222", linewidth=0.7, linestyle="--")
         ax.axhline(-3.0, color="#b22222", linewidth=0.7, linestyle="--")
-        ax.bar(range(len(z)), z, color="#1f7a8c")
+        ax.bar(range(len(z)), z, color=["#c77d2e" if c else "#1f7a8c" for c in is_cd])
+        if any(is_cd):
+            from matplotlib.patches import Patch
+            ax.legend(handles=[Patch(color="#1f7a8c", label="rotational"),
+                               Patch(color="#c77d2e", label="distortion")], fontsize=8)
         ax.set_ylabel("Normalized residual (sigma)")
         ax.set_xticks(range(len(labels)))
         ax.set_xticklabels(labels, rotation=45, ha="right")
@@ -1798,6 +1873,15 @@ def write_plots(run_dir: Path, result: dict[str, Any]) -> list[Path]:
         plt.close(fig)
         paths.append(path)
     return paths
+
+
+def _json_default(v: Any) -> Any:
+    """numpy scalars and arrays as plain JSON; anything else as text."""
+    if isinstance(v, np.generic):
+        return v.item()
+    if isinstance(v, np.ndarray):
+        return v.tolist()
+    return str(v)
 
 
 def write_outputs(result: dict[str, Any]) -> dict[str, Path | list[Path]]:
@@ -1827,7 +1911,8 @@ def write_outputs(result: dict[str, Any]) -> dict[str, Path | list[Path]]:
         rows.append({"isotopologue": r["isotopologue"], "component": r["constant"],
                      "target_mhz": r["observed_mhz"], "calculated_mhz": r["predicted_mhz"],
                      "residual_mhz": r["residual_mhz"], "sigma_mhz": r["sigma_mhz"],
-                     "kind": "distortion"})
+                     "kind": "distortion", "reduction": r.get("reduction", ""),
+                     "reduction_source": r.get("reduction_source", "")})
     result["residual_rows"] = rows
     result["singular_values"] = singular_values(result["best"]["coords"], iso_snapshot).tolist()
     write_residuals_csv(residual_csv, rows)
@@ -2100,9 +2185,17 @@ def write_outputs(result: dict[str, Any]) -> dict[str, Path | list[Path]]:
         "score": result.get("score", {}),
         "residual_rows": rows,
         "singular_values": list(result.get("singular_values", [])),
+        # A rebuilt report.md lost its whole uncertainty section (and with
+        # it the distortion table and the chi-square's row counts): the
+        # payload did not carry them.
+        "uncertainty_rows": result.get("uncertainty_rows"),
+        "uncertainty_meta": result.get("uncertainty_meta"),
+        "uncertainty_covariance_npy": result.get("uncertainty_covariance_npy"),
+        "cfg": {"coordinate_mode": (result.get("cfg") or {}).get("coordinate_mode", "internal")},
     }
     report_payload_path = run_dir / "report_payload.json"
-    report_payload_path.write_text(json.dumps(report_payload, indent=2), encoding="utf-8")
+    report_payload_path.write_text(json.dumps(report_payload, indent=2, default=_json_default),
+                                   encoding="utf-8")
     artifacts["report_payload_json"] = report_payload_path
     # Artifact manifest for quick navigation.
     def _jsonify_artifact_value(v: Any) -> Any:

@@ -506,3 +506,80 @@ def test_the_report_names_each_row_s_reduction(tmp_path):
     path = tmp_path / "report.md"
     write_markdown_report(path, result)
     assert "| H2-16O | DJ | A (auto (kappa -0.436 at the start)) |" in path.read_text(encoding="utf-8")
+
+
+def _report_result(tmp_path):
+    coords = np.array([[0.0, 0.0, 0.1174], [0.0, 0.7572, -0.4696], [0.0, -0.7572, -0.4696]])
+    cd = [{"isotopologue": "H2-16O", "constant": k, "observed_mhz": o, "predicted_mhz": p,
+           "residual_mhz": o - p, "sigma_mhz": s, "z": (o - p) / s, "reduction": "A",
+           "reduction_source": "auto (kappa -0.433 at the start)"}
+          for k, o, p, s in (("DJ", 37.59, 36.91, 15.05), ("DJK", -172.9, -203.3, 69.2),
+                             ("DK", 973.3, 858.9, 389.8))]
+    return {
+        "name": "w", "run_dir": str(tmp_path), "elems": ["O", "H", "H"],
+        "best": {"idx": 1, "coords": coords, "freq_rms": 1.2, "energy": -76.0,
+                 "history": [{"iteration": 1, "freq_rms": 1.2, "step_norm": 1e-3}],
+                 "spectral_isotopologues_snapshot": [{
+                     "name": "H2-16O", "masses": [M_O, M_H, M_H],
+                     "obs_constants": [835840.3, 435351.7, 278138.7], "sigma_constants": [0.2] * 3,
+                     "alpha_constants": [0.0] * 3, "component_indices": [0, 1, 2]}]},
+        "score": {"score": 75.0, "constrained_rank": 3, "internal_dof": 3},
+        "uncertainty_rows": [{"name": "bond 1-2", "value": 0.96, "std_err": 0.006,
+                              "ci_lo": 0.948, "ci_hi": 0.972}],
+        "uncertainty_meta": {"chi2_per_observation": 0.05, "n_observations": 6,
+                             "n_rotational_rows": 3, "n_distortion_rows": 3,
+                             "blocks": ["spectral data"], "distortion_rows": cd, "warnings": []},
+    }
+
+
+def test_a_rebuilt_report_keeps_the_distortion_rows(tmp_path):
+    """`quantize report <run_dir>` rebuilt report.md without them (39 lines
+    against 89): the payload carried no uncertainty block and the residual
+    table skips the distortion rows. The payload now carries the block, and
+    a payload written before it still gives the rows from residual_rows."""
+    import json
+    from runner.usability import rebuild_report_from_run_dir, write_outputs
+    write_outputs(_report_result(tmp_path))
+    first = (tmp_path / "report.md").read_text(encoding="utf-8")
+    rebuilt = rebuild_report_from_run_dir(tmp_path)["report_md"].read_text(encoding="utf-8")
+    assert "Centrifugal distortion (fitted rows)" in rebuilt
+    assert "over 6 rows (3 rotational + 3 distortion)" in rebuilt
+
+    def section(md, head):
+        tail = md.split(head, 1)[1]
+        return head + tail.split("\n## ", 1)[0]
+    for head in ("## Parameter Uncertainty", "### Centrifugal distortion (fitted rows)"):
+        assert section(rebuilt, head) == section(first, head)
+    payload_path = tmp_path / "report_payload.json"
+    payload = json.loads(payload_path.read_text(encoding="utf-8"))
+    for k in ("uncertainty_meta", "uncertainty_rows"):
+        payload.pop(k)
+    payload_path.write_text(json.dumps(payload), encoding="utf-8")
+    old = rebuild_report_from_run_dir(tmp_path)["report_md"].read_text(encoding="utf-8")
+    assert "| H2-16O | DK | A (auto (kappa -0.433 at the start)) | 973.3 |" in old
+
+
+def test_the_csv_html_and_plots_keep_the_two_kinds_apart(tmp_path, monkeypatch):
+    """The HTML listed DJ/DJK/DK in the rotational table, the plots in MHz
+    drew 37 MHz on the axes of 836,000, and the CSV had no kind column."""
+    import csv
+    from runner.usability import write_outputs
+    pytest.importorskip("matplotlib")
+    import matplotlib.axes
+    counts = {}
+    real_bar, real_scatter = matplotlib.axes.Axes.bar, matplotlib.axes.Axes.scatter
+    monkeypatch.setattr(matplotlib.axes.Axes, "bar", lambda self, x, h, *a, **k: (
+        counts.setdefault("bar", []).append(len(h)), real_bar(self, x, h, *a, **k))[1])
+    monkeypatch.setattr(matplotlib.axes.Axes, "scatter", lambda self, x, y, *a, **k: (
+        counts.setdefault("scatter", []).append(len(x)), real_scatter(self, x, y, *a, **k))[1])
+    artifacts = write_outputs(_report_result(tmp_path))
+    with artifacts["residuals_csv"].open(newline="", encoding="utf-8") as fh:
+        rows = list(csv.DictReader(fh))
+    assert [(r["component"], r["kind"]) for r in rows] == [
+        ("A", "rotational"), ("B", "rotational"), ("C", "rotational"),
+        ("DJ", "distortion"), ("DJK", "distortion"), ("DK", "distortion")]
+    html = (tmp_path / "report.html").read_text(encoding="utf-8")
+    main, _, cd = html.partition("Centrifugal distortion (fitted rows)")
+    assert "<td>DJ</td>" not in main and "<td>DJ</td>" in cd
+    assert counts["bar"] == [3, 6], "MHz residuals: rotational; pulls: both kinds"
+    assert counts["scatter"] == [3]
