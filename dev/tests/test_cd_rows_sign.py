@@ -481,10 +481,18 @@ def test_the_reduction_is_pinned_for_the_fit(monkeypatch):
 
 
 def test_cd_weight_is_said_to_scale_the_model_error():
-    """Each row's noise is sigma / sqrt(cd_weight): only 1 keeps the 40%."""
-    assert not any("cd_weight" in w for w in _water_cd().internal_coordinate_posterior()["warnings"])
+    """Each row's noise is sigma / sqrt(cd_weight): only 1 keeps the stated
+    model sigma. The warning quotes each row's own model share: it said
+    '40% enters as 20%' for rows whose model part was 30% (cd_sigma_fraction
+    0.6 at cd_weight 4) or 2.8% (a stated cd_model_sigma), and nothing at
+    cd_weight 1 when cd_sigma_fraction put the model part at 60%."""
+    assert not any("distortion rows" in w for w in _water_cd().internal_coordinate_posterior()["warnings"])
     w4 = _water_cd(cd_weight=4.0).internal_coordinate_posterior()["warnings"]
-    assert any("cd_weight 4" in w and "enters as 20%" in w for w in w4)
+    assert any("cd_weight 4" in w and "enters as DJ 20%, DJK 20%, DK 20%" in w for w in w4)
+    f6 = _water_cd(cd_weight=4.0, cd_sigma_fraction=0.6).internal_coordinate_posterior()["warnings"]
+    assert any("enters as DJ 30%, DJK 30%, DK 30%" in w for w in f6)
+    f6w1 = _water_cd(cd_sigma_fraction=0.6).internal_coordinate_posterior()["warnings"]
+    assert any("model error is DJ 60%, DJK 60%, DK 60%" in w for w in f6w1)
 
 
 def test_a_config_can_state_the_reduction_and_the_model_sigma():
@@ -608,3 +616,57 @@ def test_a_moved_run_rebuilds_with_its_own_covariance_and_the_html_warns(tmp_pat
     rebuilt = rebuild_report_from_run_dir(moved)["report_md"].read_text(encoding="utf-8")
     assert str(moved / "start_01" / "uncertainty_covariance.npy") in rebuilt
     assert str(cov) not in rebuilt
+
+
+
+@pytest.mark.parametrize("bad", [0.0, -5.0, float("nan"), float("inf"), "abc"])
+def test_a_stated_model_sigma_must_be_a_positive_number(bad):
+    """Zero, negative and NaN fell back to 40% without a word, inf dropped
+    the row from the fit while the report still listed it, and a string
+    raised without naming the key."""
+    from backend.spectral.spectral import SpectralEngine
+    isos = _isos(None)
+    isos[0]["cd_observed"] = dict(EXP_H2O)
+    isos[0]["cd_model_sigma"] = {"DJ": bad}
+    with pytest.raises(ValueError, match=r"cd_model_sigma\['DJ'\] on H2-16O"):
+        SpectralEngine(isos, cd_weight=1.0, fit_cd_constants=True)
+
+
+def test_a_model_sigma_for_an_unobserved_constant_is_said_to_be_ignored(capsys, monkeypatch):
+    import backend.spectral.spectral as SP
+    monkeypatch.setattr(SP, "_CD_PRINTED", set())
+    isos = _isos(None)
+    isos[0]["cd_observed"] = {"DJ": EXP_H2O["DJ"]}
+    isos[0]["cd_model_sigma"] = {"DJ": 2.0, "DK": 50.0}
+    eng = SP.SpectralEngine(isos, cd_weight=1.0, fit_cd_constants=True)
+    assert eng.isotopologues[0]["cd_model_sigma"] == {"DJ": 2.0}
+    assert "names DK, which has no observed value: ignored" in capsys.readouterr().out
+
+
+def test_auto_takes_the_reduction_from_the_observed_constants():
+    """'auto' was decided from the start geometry: water started at 150
+    degrees pinned S (kappa -0.99) against the observed constants' -0.44,
+    and each multistart start could pin its own. The observed A, B, C decide
+    it now -- the isotopologue's own, or the parent's when it has fewer."""
+    isos = _isos(None)
+    isos[0]["cd_observed"] = dict(EXP_H2O)
+    with contextlib.redirect_stdout(io.StringIO()):
+        opt = MolecularOptimizer(elems=["O", "H", "H"], coords=_x0(deg=150.0), isotopologues=isos,
+                                 quantum_backend="analytic_water", use_autoconfig=False,
+                                 max_iter=2, auto_systematic_sigma=False,
+                                 fit_cd_constants=True, cd_weight=1.0)
+        opt.run()
+    iso = opt.spectral.isotopologues[0]
+    assert iso["cd_reduction"] == "A"
+    assert iso["cd_reduction_source"] == "auto (kappa -0.436 of the observed constants)"
+    from backend.spectral.spectral import SpectralEngine
+    two = _isos(None)
+    two[1]["cd_observed"] = {"DJ": 13.0}
+    two[1]["obs_constants"] = [two[1]["obs_constants"][2]]
+    two[1]["sigma_constants"] = [0.2]
+    two[1]["sigma_systematic_constants"] = [two[1]["sigma_systematic_constants"][2]]
+    two[1]["component_indices"] = [2]
+    eng = SpectralEngine(two, cd_weight=1.0, fit_cd_constants=True)
+    d2o = eng.isotopologues[1]
+    eng._cd_reduction(d2o, _x0())
+    assert d2o["cd_reduction_source"].endswith("of H2-16O's observed constants)")

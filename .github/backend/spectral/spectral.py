@@ -580,10 +580,9 @@ class SpectralEngine:
             if not cd_obs:
                 continue
             default = self._default_cd_sigma(cd_obs)
-            given = entry.get("cd_model_sigma") or {}
             entry["cd_model_sigma"] = {
-                k: (float(given[k]) if k in given and float(given[k]) > 0.0 else v)
-                for k, v in default.items()}
+                k: v for k, v in {**default, **self._stated_cd_model_sigma(entry, cd_obs)}.items()
+                if k in default}
             red = entry.get("cd_reduction")
             if red is not None:
                 red = str(red).strip().upper()
@@ -604,6 +603,30 @@ class SpectralEngine:
                 f"harmonic mapping is validated on {', '.join(CD_FIT_KEYS)} only (on "
                 f"water the predicted delta_K has the opposite sign to the observed one).")
         self._cd_jacobian_cache: dict[tuple, np.ndarray] = {}
+
+    @staticmethod
+    def _stated_cd_model_sigma(entry: dict, cd_obs: dict) -> dict:
+        """The model sigmas an entry states, checked: each a finite, positive
+        number of MHz for an observed constant. A zero, negative or NaN used
+        to fall back to 40% without a word, inf silently dropped the row from
+        the fit, and a string raised without naming the key."""
+        name = entry.get("name", "iso")
+        out = {}
+        for k, v in dict(entry.get("cd_model_sigma") or {}).items():
+            try:
+                fv = float(v)
+            except (TypeError, ValueError):
+                fv = float("nan")
+            if not np.isfinite(fv) or fv <= 0.0:
+                raise ValueError(
+                    f"cd_model_sigma[{k!r}] on {name} is {v!r}; it must be a finite, "
+                    f"positive number of MHz (the model's error on that constant)")
+            if k not in cd_obs:
+                _cd_print_once(f"[cd-warning] cd_model_sigma on {name} names {k}, which has "
+                               f"no observed value: ignored.")
+                continue
+            out[k] = fv
+        return out
 
     def set_hessian_for_cd(self, hess_bohr) -> None:
         """Update Hessian used to predict harmonic CD constants during optimization."""
@@ -654,18 +677,41 @@ class SpectralEngine:
         red = iso.get("cd_reduction")
         if red:
             return str(red)
-        abc = rotational_constants_mhz(coords, iso["masses"])
+        abc, where = self._observed_abc(iso)
+        if abc is None:
+            abc, where = rotational_constants_mhz(coords, iso["masses"]), "at the start geometry"
         red = reduction_for_asymmetry(abc)
         a, b, c = (float(v) for v in abc)
         kappa = (2.0 * b - a - c) / (a - c) if abs(a - c) > 1e-12 else float("nan")
         iso["cd_reduction"] = red
-        iso["cd_reduction_source"] = f"auto (kappa {kappa:+.3f} at the start)"
+        iso["cd_reduction_source"] = f"auto (kappa {kappa:+.3f} {where})"
         if self._cd_rows_active():
             _cd_print_once(
                 f"[cd-note] {iso.get('name', 'iso')}: distortion rows are predicted in the "
-                f"Watson {red} reduction (kappa {kappa:+.3f}); state cd_reduction if the "
-                f"observed constants are quoted in the other one.")
+                f"Watson {red} reduction (kappa {kappa:+.3f} {where}); state cd_reduction "
+                f"if the observed constants are quoted in the other one.")
         return red
+
+    def _observed_abc(self, iso: dict):
+        """Observed A, B, C to take 'auto' from, and where they came from: the
+        isotopologue's own when it has all three, else the first (parent)
+        isotopologue's that has, else (None, ''). The data choose the same
+        reduction in every start and restart; the start geometry did not
+        (water started at 150 degrees pinned S, kappa -0.99, against the
+        observed constants' -0.44)."""
+        def full(entry):
+            idx = [int(i) for i in entry.get("component_indices", [])]
+            obs = [float(v) for v in entry.get("obs_constants", [])]
+            have = dict(zip(idx, obs))
+            return [have[i] for i in (0, 1, 2)] if all(i in have for i in (0, 1, 2)) else None
+        own = full(iso)
+        if own is not None:
+            return own, "of the observed constants"
+        for other in self.isotopologues:
+            abc = full(other)
+            if abc is not None:
+                return abc, f"of {other.get('name', 'iso')}'s observed constants"
+        return None, ""
 
     def _cd_rows_active(self) -> bool:
         return bool(self.cd_weight > 0.0 and self.fit_cd_constants
