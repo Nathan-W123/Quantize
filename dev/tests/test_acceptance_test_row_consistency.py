@@ -90,8 +90,15 @@ CONFIG = _ROOT / "dev" / "configs" / "water_analytic_endtoend.yaml"
 
 @pytest.fixture(scope="module")
 def converged():
-    """A converged optimizer on the analytic water surface, internal mode."""
+    """A converged optimizer on the analytic water surface, internal mode.
+
+    The split objective with the rule-library prior, both stated: that is the
+    acceptance test this module is about (the joint step is judged by its own
+    ratio test), and config runs no longer default to either.
+    """
     cfg = load_config(CONFIG)
+    cfg["optimizer"] = {"objective_mode": "split"}
+    cfg["internal_coordinates"]["prior_weight"] = 1.0
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         opt = build_optimizer_from_config(cfg, multistart=False, verbose=False)

@@ -34,9 +34,12 @@ def normalize_config(cfg: dict[str, Any]) -> dict[str, Any]:
     ic.setdefault("use_dihedrals", False)
     ic.setdefault("damping", 1e-6)
     ic.setdefault("microiterations", 20)
-    ic.setdefault("prior_weight", 1.0)
-    ic.setdefault("prior_sigma_bond", 0.04)
-    ic.setdefault("prior_sigma_angle_deg", 2.0)
+    # No prior_weight, prior_sigma_bond or prior_sigma_angle_deg: an unstated
+    # value has to stay unstated. Filling them in made every config loaded
+    # here look as if it had asked for the rule-library internal prior at
+    # weight 1 with widths 0.04 A / 2 deg, so the engine's rules -- no library
+    # prior while the quantum prior is on, the library's own widths where a
+    # width is not given -- never reached a CLI run.
     ic.setdefault("prior_sigma_dihedral_deg", 15.0)
     c["internal_coordinates"] = ic
 

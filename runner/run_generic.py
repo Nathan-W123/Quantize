@@ -1949,13 +1949,22 @@ def build_run_inputs(cfg: dict[str, Any], *, verbose: bool = True) -> dict[str, 
     preset_name, preset = _resolve_preset(cfg.get("preset"))
     rng_seed = int(cfg.get("rng_seed", 42))
     write_xyz = bool(cfg.get("write_xyz", False))
-    symmetry_spec = cfg.get("symmetry") or None
+    # No symmetry key means the engine's default, "auto": detect the point
+    # group and impose it. An explicit null means unconstrained, as configured.
+    # The config path used to read a missing key as unconstrained too, while
+    # the API and the benchmark imposed the detected group -- and without it
+    # formyl fluoride leaves the plane and fluoroacetylene bends.
+    symmetry_spec = (cfg["symmetry"] if "symmetry" in cfg else "auto") or None
     coordinate_mode = str(cfg.get("coordinate_mode", "internal")).strip().lower()
     internal_cfg = cfg.get("internal_coordinates", {}) or {}
     ic_use_dihedrals = bool(internal_cfg.get("use_dihedrals", False))
     ic_damping = float(internal_cfg.get("damping", 1e-6))
     ic_micro_iter = int(internal_cfg.get("microiterations", 20))
-    ic_prior_weight = float(internal_cfg.get("prior_weight", 1.0))
+    # Unstated means the engine's rule: no rule-library prior while the
+    # quantum prior is on (the fit is spectra + quantum, D-09). A stated
+    # weight is used as given.
+    _pw = internal_cfg.get("prior_weight")
+    ic_prior_weight = None if _pw is None else float(_pw)
     # Widths only when the config states them: a stated width is used as
     # stated, and an unstated one lets the rule library supply its own where
     # it has a rule. Passing a fallback number here would make every run look
@@ -1990,6 +1999,20 @@ def build_run_inputs(cfg: dict[str, Any], *, verbose: bool = True) -> dict[str, 
     ac_cfg = cfg.get("autoconfig") if isinstance(cfg.get("autoconfig"), dict) else {}
     opt_cfg = cfg.get("optimizer") if isinstance(cfg.get("optimizer"), dict) else {}
 
+    # ── The objective ─────────────────────────────────────────────────────────
+    # Joint, with the quantum prior's width calibrated to the level of theory
+    # (prior_widths.PRIOR_SIGMA_BY_LEVEL; uncalibrated levels fall back to the
+    # default with a message) -- the objective MolecularOptimizer defaults to
+    # and the benchmark measures. Config runs used to get split with
+    # quantum_prior_sigma_ang=None and alpha_quantum 0.278, a legacy weight
+    # 1e-4 to 1e-6 of the data's curvature: the quantum prior was inert, which
+    # is why switching objective_mode alone changed geometries by <= 0.0064 mA.
+    # An explicit split keeps that legacy weight unless it also states a
+    # width: the calibrated alpha (~1e3) would otherwise multiply split's
+    # null-space Newton step.
+    _split = str(opt_cfg.get("objective_mode", "joint")).strip().lower() == "split"
+    _legacy_weight = _split and "quantum_prior_sigma_ang" not in opt_cfg
+
     # ── Optimizer kwargs ──────────────────────────────────────────────────────
     optimizer_kwargs = dict(
         quantum_backend=backend if not spectral_only else "orca",
@@ -2016,9 +2039,10 @@ def build_run_inputs(cfg: dict[str, Any], *, verbose: bool = True) -> dict[str, 
         trust_radius=float(preset["trust_radius"]),
         null_trust_radius=None,
         lambda_damp=0.00016370045068111915,
-        objective_mode="split",
-        alpha_quantum=0.2778639378704326,
-        quantum_prior_sigma_ang=None,
+        objective_mode="split" if _split else "joint",
+        # Under a calibrated width alpha_quantum multiplies it, so it is 1.
+        alpha_quantum=0.2778639378704326 if _legacy_weight else 1.0,
+        quantum_prior_sigma_ang=None,      # removed below unless legacy
         robust_loss="none",
         robust_param=1.0,
         torsion_aware_weighting=False,
@@ -2031,7 +2055,9 @@ def build_run_inputs(cfg: dict[str, Any], *, verbose: bool = True) -> dict[str, 
         sigma_floor_mhz=float(preset["sigma_floor_mhz"]),
         max_spectral_weight=float(preset["max_spectral_weight"]),
         enable_geometry_guardrails=True,
-        enforce_quantum_descent=bool(preset["enforce_quantum_descent"]),
+        # A split-objective gate: the joint step is accepted on its own
+        # objective's ratio test, so the preset's setting applies to split.
+        enforce_quantum_descent=bool(preset["enforce_quantum_descent"]) and _split,
         use_internal_priors=bool(preset["use_internal_priors"]),
         prior_weight=1.0,
         prior_auto_from_initial=True,
@@ -2121,6 +2147,21 @@ def build_run_inputs(cfg: dict[str, Any], *, verbose: bool = True) -> dict[str, 
         "quantum_weight_max",
         "quantum_prior_sigma_ang",
     }
+    if not _legacy_weight:
+        # Absent, not None: None selects the legacy weight, absence the
+        # level-table calibration.
+        optimizer_kwargs.pop("quantum_prior_sigma_ang")
+    if not _split:
+        # The engine's convergence scale, not the preset's. conv_freq is the
+        # MHz range the plateau stop calls "flat" and the scale the adaptive
+        # Hessian schedule calls progress; BALANCED's 1000 MHz made both fire
+        # on any fit. Measured on 9 molecules (HF/6-31G, joint): isocyanic
+        # acid stopped 15 mA / 11 deg from its optimum and moved 9.7 mA on a
+        # restart; with the engine's 1 MHz it converges (restart 0.03 mA) and
+        # needs 3 Hessians, not 6. Restart-stationary 6/9 -> 8/9, mean angle
+        # error 2.22 -> 0.97 deg, QM cost -14% (the extra iterations make no
+        # quantum call). A config's optimizer.conv_freq still wins.
+        optimizer_kwargs.pop("conv_freq")
     for key, value in opt_cfg.items():
         if key in _optimizer_overrides:
             optimizer_kwargs[key] = value

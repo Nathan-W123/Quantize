@@ -59,6 +59,10 @@ BASE_SETTINGS = {
 }
 
 
+# spectral_accept_relax, enforce_quantum_descent and conv_freq are settings of
+# the SPLIT objective. Config runs fit the joint objective by default: its
+# steps are accepted on the joint objective's own ratio test, and it converges
+# on the engine's scale, so run_generic passes these only for split.
 GLOBAL_PRESETS = {
     "FAST_DEBUG": dict(
         n_starts=1,

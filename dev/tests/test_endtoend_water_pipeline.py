@@ -106,26 +106,41 @@ def test_hybrid_beats_both_theory_and_experiment_alone():
     """The point of the package: combining a biased quantum surface with
     vibrationally-averaged constants should beat either on its own.
 
-    Bond length only. With one isotopologue the angle stays prior-dominated --
-    the run reports a standard error over a degree on it -- so it is not a
-    parameter either leg determines.
+    With the joint objective -- the default -- the hybrid beats both on the
+    pair taken together, each error as a fraction of theory's own (measured:
+    hybrid 0.74, experiment 1.23, theory 2.0), and beats theory on each
+    parameter. With one isotopologue the bond and angle pull against each
+    other (see the test below): the joint fit buys the angle (0.34 deg
+    against experiment's 0.77) with some of the bond (3.5 mA against 3.0).
+    Handing the bond to the data outright is what the split objective does,
+    and there the bond alone beats both (0.4 mA).
+
+    This used to assert the bond-only win against the config default, which
+    was split until config runs moved to the joint objective.
     """
     import scripts.theory_vs_experiment_vs_hybrid as tve
 
-    r_theory, _ = tve.theory_alone()
-    (r_expt, _), _ = tve._pipeline("none", False, False)
-    (r_hybrid, _), _ = tve._pipeline("analytic_water_detuned", True, True)
+    r_theory, th_theory = tve.theory_alone()
 
-    err_theory = abs(r_theory - R_E)
-    err_expt = abs(r_expt - R_E)
-    err_hybrid = abs(r_hybrid - R_E)
+    def frac(r, th):        # 2.0 is theory alone, by construction
+        return (abs(r - R_E) / abs(r_theory - R_E)
+                + abs(th - THETA_E) / abs(th_theory - THETA_E))
 
-    assert err_hybrid < err_theory, (
-        f"hybrid {err_hybrid * 1000:.1f} mA vs theory {err_theory * 1000:.1f} mA"
-    )
-    assert err_hybrid < err_expt, (
-        f"hybrid {err_hybrid * 1000:.1f} mA vs experiment {err_expt * 1000:.1f} mA"
-    )
+    (r_expt, th_expt), _ = tve._pipeline("none", False, False)
+    (r_joint, th_joint), _ = tve._pipeline("analytic_water_detuned", True, True)
+    (r_split, _th_split), _ = tve._pipeline("analytic_water_detuned", True, True,
+                                           objective_mode="split")
+
+    assert frac(r_joint, th_joint) < frac(r_expt, th_expt) < frac(r_theory, th_theory)
+    assert abs(r_joint - R_E) < abs(r_theory - R_E)
+    assert abs(th_joint - THETA_E) < abs(th_theory - THETA_E)
+    assert abs(th_joint - THETA_E) < abs(th_expt - THETA_E)
+
+    err_split = abs(r_split - R_E)
+    assert err_split < abs(r_theory - R_E), (
+        f"split hybrid {err_split * 1000:.1f} mA vs theory {abs(r_theory - R_E) * 1000:.1f} mA")
+    assert err_split < abs(r_expt - R_E), (
+        f"split hybrid {err_split * 1000:.1f} mA vs experiment {abs(r_expt - R_E) * 1000:.1f} mA")
     # Experiment alone returns an r_0-like structure, longer than r_e.
     assert r_expt > R_E
 
@@ -146,57 +161,57 @@ def test_calibrated_quantum_prior_improves_the_weakly_determined_angle():
     multi-isotopologue data the same fixes improve the bond length too: water's
     parent-only RHF fit goes from 3.29 to 1.75 mA RMS.
 
-    WHY SIGMA IS 0.003 HERE AND WAS 0.005. sigma_x is the displacement over
-    which theory is trusted, and alpha_q = 1 / (1/2 lambda_bar sigma_x^2)
-    turns it into a weight through a typical curvature lambda_bar. In internal
-    coordinates lambda_bar used to come from the q-space Hessian, which mixes
-    Hartree/Angstrom^2 with Hartree/rad^2; it now comes from the Cartesian
-    Hessian, as in Cartesian mode, so sigma_x means the same thing in both. On
-    this water fit the q-space value made alpha_q 1.5-2.1x stronger, so the
-    0.005 tuned under it is about 0.0035 now. The same change landed with the
-    re-expanded quantum gradient and the joint-objective step test, after
-    which the fit converges to the optimum of its objective (it used to stop
-    short). Swept again on the corrected engine (2.0 = theory alone):
+    WHY SIGMA IS 0.010 HERE (IT WAS 0.005, THEN 0.003). sigma_x is the
+    displacement over which theory is trusted, and alpha_q = 1 / (1/2
+    lambda_bar sigma_x^2) turns it into a weight through a typical curvature.
+    The earlier tunings were made with a second prior in the objective: this
+    config states internal-prior widths but no weight, and config runs used
+    to default that weight to 1, so the rule-library prior (0.12 A / 5 deg)
+    pulled alongside the quantum one and sigma_x had to be tightened to
+    0.003 to compensate. With the library prior off while the quantum prior
+    is on (D-09, now on the config path too), swept again (2.0 = theory
+    alone):
 
         sigma_x   bond (mA)   angle (deg)   combined
-        0.0020     +9.40       -0.129        1.021
-        0.00225    +9.07       -0.008        0.842
-        0.0030     +8.03       +0.325        1.139
-        0.0040     +6.63       +0.675        1.444
-        0.0050     +5.38       +0.928        1.642
-        split      -1.21       +1.730        2.252
+        0.0030    +10.32      -0.654        1.756
+        0.0050     +9.51      -0.465        1.448
+        0.0075     +8.24      -0.237        1.049
+        0.0100     +6.91      -0.049        0.695
+        0.0200     +3.46      +0.336        0.733   (the level-table default)
+        split      +0.44      +0.615        0.801
 
-    The trade is monotone: a tighter prior buys the angle with the bond. The
-    combined minimum sits where the angle error crosses zero, a knife edge, so
-    the test is pinned at 0.003 instead -- the same combined score as the old
-    tuning (1.139 against 1.127), with the angle at 0.40x theory's own error
-    and the bond at 0.74x.
+    The best width now sits at the detuned surface's own error (theory alone
+    is 10.9 mA long), which is what sigma_x is meant to be. The trade is
+    still monotone -- a tighter prior buys the angle with the bond -- and the
+    combined minimum is near where the angle error crosses zero, so the
+    assertions are inequalities with margin rather than pins to that edge.
     """
     import scripts.tune_quantum_prior as tune
 
-    r_split, th_split = tune.run()
-    r_joint, th_joint = tune.run(objective_mode="joint", quantum_prior_sigma_ang=0.003)
+    r_split, th_split = tune.run(objective_mode="split")
+    r_joint, th_joint = tune.run(objective_mode="joint", quantum_prior_sigma_ang=0.010)
 
-    # The weakly determined direction, which is what the calibrated prior is for.
+    # The weakly determined direction, which is what the calibrated prior is for
+    # (0.049 against the split objective's 0.615 deg).
     assert abs(th_joint - THETA_E) < abs(th_split - THETA_E)
 
-    # The bond beats theory alone (8.03 against 10.9 mA).
+    # The bond beats theory alone (6.91 against 10.9 mA).
     assert abs(r_joint - R_E) * 1000 < tune.THEORY_DR
 
-    # So does the angle, outright: 0.40x theory's own error. The ceiling keeps
-    # it from drifting back toward the split objective's 2.1x.
+    # So does the angle, outright: 0.06x theory's own error. The ceiling keeps
+    # it from drifting back toward the split objective's 0.76x.
     angle_vs_theory = abs(th_joint - THETA_E) / abs(tune.THEORY_DTHETA)
     assert angle_vs_theory < 0.5, (
         f"the angle is now {angle_vs_theory:.3f}x theory's own error, past the "
-        f"0.5 ceiling; it measured 0.402x"
+        f"0.5 ceiling; it measured 0.061x"
     )
 
-    # And the pair together beats theory alone. 2.0 is theory; this measured
-    # 1.139.
+    # And the pair together beats theory alone and the split objective. 2.0 is
+    # theory; this measured 0.695 against split's 0.801.
     combined = tune._combined(r_joint, th_joint)
-    assert combined < 1.25, (
-        f"combined error {combined:.3f} against 1.139 when measured and 2.0 for "
-        f"theory alone"
+    assert combined < min(1.0, tune._combined(r_split, th_split)), (
+        f"combined error {combined:.3f} against 0.695 when measured, "
+        f"{tune._combined(r_split, th_split):.3f} for split and 2.0 for theory alone"
     )
 
     # And the trade is recorded rather than hidden: against the split objective
@@ -232,9 +247,11 @@ def test_absolute_singular_value_floor_returns_directions_to_theory():
     """
     import scripts.tune_quantum_prior as tune
 
-    r_floor, th_floor = tune.run(sv_min_abs=1e5)
+    # A split-objective mechanism: under joint the floor only moves the
+    # range/null bookkeeping, not the step.
+    r_floor, th_floor = tune.run(objective_mode="split", sv_min_abs=1e5)
     r_joint, th_joint = tune.run(objective_mode="joint",
-                                 quantum_prior_sigma_ang=0.003)
+                                 quantum_prior_sigma_ang=0.010)
 
     # Theory alone errs long on the bond and small on the angle; the floor hands
     # both directions back to it, so both errors must take theory's sign.
@@ -243,7 +260,7 @@ def test_absolute_singular_value_floor_returns_directions_to_theory():
 
     # But handing a direction back wholesale is worse than leaving it contested:
     # the calibrated prior keeps the data's influence in proportion and lands
-    # the angle closer (0.325 against 0.803 deg; sigma_x as in the test above).
+    # the angle closer (0.049 against 0.795 deg; sigma_x as in the test above).
     assert abs(th_joint - THETA_E) < abs(th_floor - THETA_E), (
         f"calibrated prior {abs(th_joint - THETA_E):.3f} deg should beat the "
         f"blunt floor {abs(th_floor - THETA_E):.3f} deg"

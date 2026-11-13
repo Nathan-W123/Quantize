@@ -13,9 +13,11 @@ different question, and each has a characteristic failure:
                     r_0-like effective structure, not r_e. It also cannot
                     resolve directions the data does not see.
 
-  HYBRID            map B_0 to B_e with the correction chain, then let the SVD
-                    split give spectroscopy the directions it constrains and the
-                    quantum surface the rest.
+  HYBRID            map B_0 to B_e with the correction chain, then fit both in
+                    one joint objective, every direction weighted by how well
+                    each source knows it (the default). The SVD split -- which
+                    gives spectroscopy the directions it constrains outright
+                    and the quantum surface the rest -- is shown beside it.
 
 Everything is run through the real pipeline -- the same path `python -m cli run`
 takes -- via the analytic backends in dev/analytic_water_backend.py, so it works
@@ -63,11 +65,13 @@ def structure(coords):
     return 0.5 * (r1 + r2), theta
 
 
-def _pipeline(backend, harmonic, anharmonic):
+def _pipeline(backend, harmonic, anharmonic, **optimizer):
     cfg = copy.deepcopy(yaml.safe_load(_CONFIG.read_text(encoding="utf-8")))
     cfg["quantum"]["backend"] = backend
     cfg["rovibrational_corrections"]["harmonic_from_hessian"] = harmonic
     cfg["rovibrational_corrections"]["anharmonic_from_hessian"] = anharmonic
+    if optimizer:
+        cfg.setdefault("optimizer", {}).update(optimizer)
     validate_config(cfg)
     prepare_run_directory(cfg, _CONFIG)
     with contextlib.redirect_stdout(io.StringIO()):
@@ -111,14 +115,18 @@ def main() -> None:
 
     (r, t), res = _pipeline("analytic_water_detuned", True, True)
     score = float((res.get("score") or {}).get("score", float("nan")))
-    _row("HYBRID (theory + experiment)", r, t, "corrected B_e + null-space prior")
+    _row("HYBRID, joint (default)", r, t, "corrected B_e + calibrated quantum prior")
+    (r, t), _ = _pipeline("analytic_water_detuned", True, True, objective_mode="split")
+    _row("HYBRID, split", r, t, "data owns what it resolves, theory the rest")
 
     print("\n  Experiment alone converges on an r_0-like effective structure: B_0 is a")
     print("  vibrationally averaged quantity, so fitting it directly returns the average,")
     print("  not the equilibrium geometry, however precisely the constants are measured.")
     print("  Theory alone returns an equilibrium structure but carries its method error.")
-    print("  The hybrid corrects B_0 toward B_e and lets the quantum surface hold the")
-    print("  directions the data cannot see.")
+    print("  The hybrid corrects B_0 toward B_e and weighs the quantum surface against")
+    print("  the data. With one isotopologue the bond and angle pull against each")
+    print("  other: the joint fit buys the angle with some of the bond, the split one")
+    print("  hands the bond to the data outright.")
     print(f"\n  Run confidence for the hybrid leg: score {score:.1f}/100. One isotopologue")
     print("  cannot determine water's structure; the angle in particular stays")
     print("  prior-dominated, and the run reports that rather than hiding it.")

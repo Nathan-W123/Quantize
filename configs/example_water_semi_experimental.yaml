@@ -122,7 +122,10 @@ internal_priors:
 # which you trust the quantum surface, i.e. roughly the geometry error of the
 # method. Scan it -- see scripts/tune_quantum_prior.py. On the water test case
 # 0.005 A beat theory alone, experiment alone and the split default on both the
-# bond length and the angle simultaneously.
+# bond length and the angle simultaneously -- but that scan ran when config
+# runs scaled the weight by alpha_quantum 0.28, so 0.005 acted as about 0.011.
+# The width is now used as stated (alpha_quantum 1); re-scan before relying on
+# the number.
 optimizer:
   objective_mode: joint
   quantum_prior_sigma_ang: 0.005

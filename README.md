@@ -126,9 +126,16 @@ out worse than either theory or experiment alone would give.
 | `optimizer.objective_mode: joint` with `optimizer.quantum_prior_sigma_ang` | The default. Solves $`(J^TJ + \alpha_q H + \lambda I)\,\Delta p = J^T r - \alpha_q g`$, leaving every direction contested and weighted by how well each source knows it. `quantum_prior_sigma_ang` is the displacement over which the quantum surface is trusted, roughly the geometry error of the method, which is what makes $\alpha_q$ interpretable rather than an arbitrary knob. |
 | `optimizer.objective_mode: split` with `optimizer.sv_min_abs` | The SVD partition. `sv_min_abs` is an absolute floor on the singular value. The Jacobian is σ-weighted, so $1/s$ is the parameter uncertainty along a direction — the floor means "only trust what the data resolves this well". All-or-nothing per direction. |
 
-> **Note.** The config-driven runner (`python -m cli run`) still passes
-> `objective_mode="split"` unless the config sets `optimizer.objective_mode: joint`,
-> as [`configs/example_water_semi_experimental.yaml`](configs/example_water_semi_experimental.yaml) does.
+> **Note.** The config-driven runner (`python -m cli run`) fits the same
+> objective as the API and the benchmark: `joint`, with `quantum_prior_sigma_ang`
+> calibrated to the level of theory unless the config states one, the detected
+> point group imposed unless the config has a `symmetry` key (an explicit `null`
+> means unconstrained), no rule-library internal prior while the quantum prior is
+> on unless `internal_coordinates.prior_weight` is stated, and the engine's
+> convergence scale. It used to pass `split` with an inert legacy quantum weight;
+> an explicit `optimizer.objective_mode: split` still gets that legacy set-up.
+> On 9 molecules at HF/6-31G the change took config runs from 2 of 9 to 8 of 9
+> restart-stationary and the mean angle error from 4.05 to 0.97 degrees.
 
 ### Which objective to use depends on how much data you have
 
