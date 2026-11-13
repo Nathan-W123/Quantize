@@ -340,3 +340,50 @@ def test_a_supplied_fixed_prediction_is_said_to_be_unused(capsys):
                        fit_cd_constants=True, cd_weight=1.0)
     assert "pred_cd on H2-16O is not used for fitting" in capsys.readouterr().out
 
+
+
+def test_the_posterior_lists_the_distortion_rows_it_counts(cd_fit):
+    """The rows drive the fit and its chi-square; the report could not show
+    them because the posterior did not carry them."""
+    post = cd_fit.internal_coordinate_posterior()
+    rows = post["distortion_rows"]
+    assert post["n_distortion_rows"] == len(rows) == 6
+    assert post["n_rotational_rows"] + post["n_distortion_rows"] == post["n_observations"]
+    r, sg, labels = cd_fit.spectral.cd_residuals_mhz(cd_fit.coords)
+    np.testing.assert_allclose([x["residual_mhz"] for x in rows], r, rtol=0, atol=1e-12)
+    w = np.sqrt(cd_fit.spectral.cd_weight)
+    np.testing.assert_allclose([x["z"] for x in rows], r / (sg / w), rtol=1e-12)
+
+
+def test_the_report_counts_the_rows_behind_its_chi_square():
+    from runner.usability import generate_uncertainty_report_section
+    result = {"uncertainty_rows": [{"name": "bond 1-2", "value": 0.96, "std_err": 0.006,
+                                    "ci_lo": 0.948, "ci_hi": 0.972}],
+              "uncertainty_meta": {"chi2_per_observation": 0.05, "n_observations": 6,
+                                   "n_rotational_rows": 3, "n_distortion_rows": 3,
+                                   "blocks": ["spectral data"]}}
+    txt = generate_uncertainty_report_section(result)
+    assert "over 6 rows (3 rotational + 3 distortion)" in txt
+    result["uncertainty_meta"]["n_distortion_rows"] = 0
+    assert "rotational +" not in generate_uncertainty_report_section(result)
+
+
+def test_the_cli_prints_the_distortion_rows(observed_cd, tmp_path, monkeypatch):
+    import yaml
+    import cli
+    from runner.usability import load_config
+    cfg = load_config(_ROOT / "dev" / "configs" / "water_analytic_endtoend.yaml")
+    cfg["isotopologues"][0]["cd_observed"] = dict(observed_cd["H2-16O"])
+    cfg.setdefault("rovibrational_corrections", {})
+    cfg["rovibrational_corrections"].update({"fit_cd_constants": True, "cd_weight": 1.0})
+    path = tmp_path / "water_cd.yaml"
+    path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    out, err = io.StringIO(), io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        code = cli.main(["uncertainty", str(path), "--mode", "bootstrap", "--samples", "4",
+                         "--workers", "1", "--seed", "3", "--no-bootstrap-persist",
+                         "--no-laplace-persist"])
+    assert code == 0, err.getvalue()[-2000:]
+    assert "Centrifugal-distortion rows (fitted)" in out.getvalue()
+    assert "rotational-constant residuals" in out.getvalue()

@@ -1298,7 +1298,7 @@ def residual_rows(coords: np.ndarray, spectral_isotopologues: list[dict[str, Any
 def write_residuals_csv(path: Path, rows: list[dict[str, Any]]) -> None:
     fields = ["isotopologue", "component", "target_mhz", "calculated_mhz", "residual_mhz", "sigma_mhz"]
     with path.open("w", newline="", encoding="utf-8") as fh:
-        writer = csv.DictWriter(fh, fieldnames=fields)
+        writer = csv.DictWriter(fh, fieldnames=fields, extrasaction="ignore")
         writer.writeheader()
         for row in rows:
             writer.writerow(row)
@@ -1478,8 +1478,12 @@ def generate_uncertainty_report_section(result: dict[str, Any]) -> str:
         chi2 = float(chi2)
         verdict = ("residuals within their stated sigma" if chi2 <= 1.0 else
                    f"residuals {np.sqrt(chi2):.2f}x their stated sigma")
+        n_cd = int(meta.get("n_distortion_rows") or 0)
+        over = (f" over {int(meta.get('n_observations') or 0)} rows "
+                f"({int(meta.get('n_rotational_rows') or 0)} rotational + {n_cd} distortion)"
+                if n_cd else "")
         lines.append(
-            f"- Spectral chi-square per observation: `{chi2:.3f}` ({verdict}). "
+            f"- Spectral chi-square per observation: `{chi2:.3f}`{over} ({verdict}). "
             "Reported, not applied: no width is rescaled by it.")
     lines.append(
         "- They are a PRECISION, not an accuracy: they propagate the stated "
@@ -1539,10 +1543,24 @@ def write_markdown_report(path: Path, result: dict[str, Any], artifacts: dict[st
         lines.append(f"| {i} | {elem} | {xyz[0]:.8f} | {xyz[1]:.8f} | {xyz[2]:.8f} |")
     lines.extend(["", "## Residuals", "", "| isotopologue | component | target MHz | calculated MHz | residual MHz |", "|---|---:|---:|---:|---:|"])
     for row in result.get("residual_rows", []):
+        if row.get("kind") == "distortion":
+            continue
         lines.append(
             f"| {row['isotopologue']} | {row['component']} | {row['target_mhz']:.6f} | "
             f"{row['calculated_mhz']:.6f} | {row['residual_mhz']:.6f} |"
         )
+    cd_rows = (result.get("uncertainty_meta") or {}).get("distortion_rows") or []
+    if cd_rows:
+        lines.extend(["", "### Centrifugal distortion (fitted rows)", "",
+                      "Observed against the harmonic prediction at the fitted geometry; sigma "
+                      "is the noise the row's weight implies (measurement and the model's error).",
+                      "", "| isotopologue | constant | observed MHz | predicted MHz | residual MHz | sigma MHz | z |",
+                      "|---|---|---:|---:|---:|---:|---:|"])
+        for r in cd_rows:
+            lines.append(
+                f"| {r['isotopologue']} | {r['constant']} | {r['observed_mhz']:.6g} | "
+                f"{r['predicted_mhz']:.6g} | {r['residual_mhz']:.6g} | {r['sigma_mhz']:.6g} | "
+                f"{r['z']:+.2f} |")
     if result.get("torsion_objective_rows"):
         torsion_rows = result["torsion_objective_rows"]
         is_transition_mode = "J_lo" in torsion_rows[0]
@@ -1798,6 +1816,14 @@ def write_outputs(result: dict[str, Any]) -> dict[str, Path | list[Path]]:
 
     iso_snapshot = result["best"].get("spectral_isotopologues_snapshot", [])
     rows = residual_rows(result["best"]["coords"], iso_snapshot)
+    # The distortion rows the fit carried, from its own posterior: the CSV
+    # held the rotational rows only, so rows that drove the fit and its
+    # chi-square were in no export.
+    for r in ((result.get("uncertainty_meta") or {}).get("distortion_rows") or []):
+        rows.append({"isotopologue": r["isotopologue"], "component": r["constant"],
+                     "target_mhz": r["observed_mhz"], "calculated_mhz": r["predicted_mhz"],
+                     "residual_mhz": r["residual_mhz"], "sigma_mhz": r["sigma_mhz"],
+                     "kind": "distortion"})
     result["residual_rows"] = rows
     result["singular_values"] = singular_values(result["best"]["coords"], iso_snapshot).tolist()
     write_residuals_csv(residual_csv, rows)

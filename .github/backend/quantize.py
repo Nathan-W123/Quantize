@@ -1766,6 +1766,31 @@ class MolecularOptimizer:
             return np.inf
         return float(np.sqrt(np.mean((self.coords - self._orca_ref_coords) ** 2)))
 
+    def distortion_rows(self, coords=None):
+        """The centrifugal-distortion rows the fit carries, as the report shows
+        them: per isotopologue and constant, observed and predicted (MHz), the
+        noise their weight implies (sigma / sqrt(cd_weight)) and the pull z.
+        Empty when the rows are off. They drive the fit and the chi-square
+        like the rotational rows, and used to appear in no report at all."""
+        sp = self.spectral
+        if not sp._cd_rows_active():
+            return []
+        x = self.coords if coords is None else np.asarray(coords, dtype=float)
+        root_w = float(np.sqrt(sp.cd_weight))
+        out = []
+        for iso in sp.isotopologues:
+            rows = sp._cd_rows(iso, x)
+            if rows is None:
+                continue
+            keys, obs_v, pred_v, sig_v = rows
+            for k, o, pr, sg in zip(keys, obs_v, pred_v, sig_v):
+                eff = float(sg) / root_w
+                out.append({"isotopologue": str(iso.get("name", "iso")), "constant": k,
+                            "observed_mhz": float(o), "predicted_mhz": float(pr),
+                            "residual_mhz": float(o - pr), "sigma_mhz": eff,
+                            "z": float((o - pr) / eff)})
+        return out
+
     #: Below this, split_coupling is round-off (full-rank split fits read
     #: 1e-16) and the split posterior is exact; one-constant water reads 0.085.
     SPLIT_COUPLING_TOL = 1e-8
@@ -3350,6 +3375,7 @@ class MolecularOptimizer:
         cov_lap, basis, n_removed = self.physical_covariance(cov_lap, coords=x)
         J, rw, row_scale = self.spectral.stacked(x, return_row_scale=True)
         rw = np.asarray(rw, dtype=float)
+        cd_rows = self.distortion_rows(x)
         C_sys = self._systematic_covariance(J, cov_lap, coords=x, row_scale=row_scale)
         cov_x = cov_lap + C_sys
         _H_spec, H_prior, parts = self._posterior_blocks(x)
@@ -3444,6 +3470,11 @@ class MolecularOptimizer:
                         else float(self.quantum_prior_weight(refresh=True))),
             "chi2_per_observation": float(rw @ rw) / max(rw.size, 1),
             "n_observations": int(rw.size),
+            # The observations behind that chi-square: the rotational rows and,
+            # when they are on, the distortion rows (listed).
+            "n_distortion_rows": len(cd_rows),
+            "n_rotational_rows": int(rw.size) - len(cd_rows),
+            "distortion_rows": cd_rows,
             "n_removed_directions": int(n_removed),
             "internal_prior_sigma": ic_sigma,
             "internal_prior_provenance": provenance,

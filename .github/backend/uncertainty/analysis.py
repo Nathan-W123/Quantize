@@ -108,7 +108,7 @@ def posterior_predictive_check(cloud_xyz, spectral_engine: SpectralEngine):
 def print_ppc_summary(ppc_stats):
     """Prints the results of the Posterior Predictive Check."""
     print("\n" + "="*60)
-    print("  POSTERIOR PREDICTIVE CHECK (Spectral Residuals)")
+    print("  POSTERIOR PREDICTIVE CHECK (rotational-constant residuals)")
     print("="*60)
     print(f"  Mean RMS Residual   : {ppc_stats['mean_rmse_mhz']:.4f} MHz")
     print(f"  Median RMS Residual : {ppc_stats['median_rmse_mhz']:.4f} MHz")

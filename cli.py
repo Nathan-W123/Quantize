@@ -467,6 +467,15 @@ def _cmd_uncertainty(args) -> int:
     laplace = laplace_approximation(opt, regularization=args.laplace_regularization)
     print("\n" + format_posterior_state(posterior_state))
     print(format_laplace_summary(laplace))
+    cd_rows = opt.distortion_rows()
+    if cd_rows:
+        # They drive the fit and its chi-square like the rotational rows;
+        # the predictive check below covers the rotational rows only.
+        print("\nCentrifugal-distortion rows (fitted)")
+        for r in cd_rows:
+            print(f"  {r['isotopologue']:<12} {r['constant']:<4} observed {r['observed_mhz']:>12.6g}  "
+                  f"predicted {r['predicted_mhz']:>12.6g}  sigma {r['sigma_mhz']:>10.4g}  z {r['z']:+.2f}")
+        summary_bundle["distortion_rows"] = cd_rows
     summary_bundle["posterior_state"] = posterior_state.to_dict()
     summary_bundle["laplace"] = laplace.to_dict()
     if not args.no_laplace_persist:

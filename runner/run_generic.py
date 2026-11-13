@@ -2426,7 +2426,8 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
         "uncertainty_meta": {
             k: (best.get("posterior") or {}).get(k)
             for k in ("blocks", "objective_mode", "chi2_per_observation",
-                      "n_observations", "alpha_q", "warnings", "error")
+                      "n_observations", "n_rotational_rows", "n_distortion_rows",
+                      "distortion_rows", "alpha_q", "warnings", "error")
         },
         "uncertainty_covariance_npy": _cov_path,
         "results": results,
