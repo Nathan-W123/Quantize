@@ -346,6 +346,7 @@ def sanitize_isotopologues(
             "sigma_correction_constants",
             "sigma_effective_constants",
             "sigma_systematic_constants",
+            "sigma_measurement_constants",
         ):
             sliced = _slice_optional(key)
             if sliced is not None:
@@ -437,12 +438,17 @@ class SpectralEngine:
                 "alpha_constants": np.asarray(
                     iso.get("alpha_constants", np.zeros(len(iso["obs_constants"]))), dtype=float
                 ),
-                # Model error, carried for reporting only. Deliberately absent
-                # from every weighting path: a systematic that shifts every
-                # isotopologue the same way does not make any single constant
-                # less worth fitting, and folding it into the weights makes the
-                # fit under-use the data and over-state the answer at once.
+                # Model error. It reaches the weights only through the opt-in
+                # systematic_in_weighting floor (and the chi-square rescaling
+                # floor, where sigma_constants carries it); the reported
+                # covariance propagates it with its correlation across
+                # isotopologues (MolecularOptimizer._systematic_covariance).
                 "sigma_systematic_constants": _opt_arr(iso, "sigma_systematic_constants"),
+                # The measurement part of sigma_constants, where sigma_constants
+                # also carries model error (MolecularOptimizer derives it from
+                # sigma_constants_include_systematic, and corrections set it).
+                # Absent means sigma_constants is measurement only.
+                "sigma_measurement_constants": _opt_arr(iso, "sigma_measurement_constants"),
                 "torsion_sensitive": bool(iso.get("torsion_sensitive", False)),
                 "rovib_table": iso.get("rovib_table", None),
             }
@@ -663,16 +669,23 @@ class SpectralEngine:
                     out[k] = max(float(sc_arr[k]), 0.0)
         return out
 
-    def _effective_sigma(self, sigma, iso=None):
+    def _effective_sigma(self, sigma, iso=None, model_error=True):
         """
         Apply optional sigma floor/cap and maximum weighting.
 
         When ``iso`` is provided and contains correction-uncertainty data, the
         observation sigma is first combined in quadrature with the correction
         sigma so downstream weights reflect the full uncertainty budget on Be.
+
+        ``model_error=False`` leaves out the two model-error channels -- the
+        correction sigma and the systematic floor -- and keeps the weighting
+        policy (relative and absolute floors, cap, maximum weight). That is
+        the measurement part of the weighting sigma, which the systematic
+        propagation needs so that model error already inside the weights is
+        not added a second time (MolecularOptimizer._systematic_covariance).
         """
         sigma_eff = np.asarray(sigma, dtype=float).copy()
-        if iso is not None:
+        if iso is not None and model_error:
             sigma_corr = self._correction_sigma(iso, sigma_eff.size)
             if np.any(sigma_corr > 0.0):
                 sigma_eff = np.sqrt(np.maximum(sigma_eff, 0.0) ** 2 + sigma_corr ** 2)
@@ -704,16 +717,21 @@ class SpectralEngine:
         # numerically the same here, since the model gap exceeds the quoted
         # precision by around 1e5 -- but adding in quadrature would assert
         # that the model error is INDEPENDENT noise per constant, and it is
-        # not: the B0-versus-Be gap is coherent across a species' constants.
-        # Treating a coherent error as independent down-weights the data more
-        # than the physics justifies. A floor claims only that the data cannot
-        # be better than the model, which is all that is known here.
+        # not: the B0-versus-Be gap of one constant type (A, B or C) moves
+        # every isotopologue together, measured correlation 0.94-1.00 on
+        # water, ozone, formyl fluoride and vinyl fluoride. (It is NOT coherent
+        # across a species' A, B and C: water's gap is -1.8%, +0.4%, +2.6%.)
+        # A floor claims only that the data cannot be better than the model,
+        # which is all a diagonal weight can say; the correlation is carried
+        # by the reported covariance (MolecularOptimizer._systematic_covariance),
+        # which removes this floor from the measurement part so the error is
+        # counted once.
         #
         # Skipped when a vibrational correction is in play: that correction
         # supersedes the gap, its residual uncertainty is already in
         # sigma_corr above, and flooring at the uncorrected gap as well would
         # count the same error twice.
-        if (self.systematic_in_weighting and iso is not None
+        if (self.systematic_in_weighting and iso is not None and model_error
                 and not np.any(self._correction_sigma(iso, sigma_eff.size) > 0.0)):
             sys_sig = iso.get("sigma_systematic_constants")
             if sys_sig is not None:
@@ -909,33 +927,46 @@ class SpectralEngine:
     def scale_sigma(self, factor: float) -> None:
         """Multiply every observation sigma by ``factor``.
 
-        Scaling down is floored at each constant's systematic sigma when one is
-        supplied. A common-mode model offset -- the B0-versus-Be gap that
-        dominates here -- produces no isotopologue-to-isotopologue scatter, so
-        a small chi-square is structurally incapable of proving the systematic
-        part of sigma too large; rescaling below that floor calibrates away an
-        error the residuals cannot see. Measured consequence before this guard:
-        ethylene oxide's ring bonds rescaled to sigma 1.7 mA against a +12 mA
-        error (z = +4.6) on a chi2/nu of 0.05.
-        """
-        """Multiply every observation sigma by `factor`.
-
         Used for chi-square rescaling: when a converged fit cannot reach a
         reduced chi-square near one, the stated uncertainties were optimistic,
         and the honest response is to widen them rather than to keep chasing
         residuals the model cannot represent.
+
+        Scaling down is floored at the model-error part each sigma carries,
+        sqrt(sigma^2 - sigma_measurement^2), where a separate
+        sigma_measurement_constants says how much that is. A common-mode model offset -- the
+        B0-versus-Be gap that dominates here -- produces no
+        isotopologue-to-isotopologue scatter, so a small chi-square is
+        structurally incapable of proving the systematic part of sigma too
+        large; rescaling below that floor calibrates away an error the
+        residuals cannot see. Measured consequence before this guard:
+        ethylene oxide's ring bonds rescaled to sigma 1.7 mA against a +12 mA
+        error (z = +4.6) on a chi2/nu of 0.05.
+
+        Where sigma_constants is measurement only there is no systematic
+        inside it to protect, and flooring it at the systematic folded the
+        model error into the weights: a 0.2 MHz water constant "tightened" to
+        2.4% of 835 GHz. No floor applies there.
+
+        The measurement part follows the scaled total: chi-square sees the
+        scatter that is not shared, so the rescaling is attributed to it.
         """
         f = float(factor)
         if not np.isfinite(f) or f <= 0.0:
             raise ValueError(f"sigma scale factor must be positive and finite, got {factor!r}")
         for iso in self.isotopologues:
-            scaled = np.asarray(iso["sigma_constants"], dtype=float) * f
-            if f < 1.0:
-                floor = iso.get("sigma_systematic_constants")
-                if floor is not None:
-                    floor = np.asarray(floor, dtype=float).ravel()
-                    if floor.size == scaled.size:
-                        scaled = np.maximum(scaled, floor)
+            sig = np.abs(np.asarray(iso["sigma_constants"], dtype=float))
+            scaled = sig * f
+            meas = iso.get("sigma_measurement_constants")
+            if meas is not None and np.asarray(meas).size == scaled.size:
+                meas = np.abs(np.asarray(meas, dtype=float).ravel())
+                # Per row: a corrected row carries its correction's error, an
+                # untouched one in the same species may carry none.
+                inside = np.sqrt(np.maximum((sig - meas) * (sig + meas), 0.0))
+                if f < 1.0:
+                    scaled = np.maximum(scaled, inside)
+                iso["sigma_measurement_constants"] = np.sqrt(
+                    np.maximum((scaled - inside) * (scaled + inside), 0.0))
             iso["sigma_constants"] = scaled
 
     def _robust_weight(self, scaled_residual):
@@ -953,7 +984,7 @@ class SpectralEngine:
             return 1.0 / (1.0 + (a / c) ** 2)
         raise ValueError(f"Unknown robust_loss='{self.robust_loss}'. Use none|huber|cauchy.")
 
-    def stacked(self, coords, want_jacobian: bool = True):
+    def stacked(self, coords, want_jacobian: bool = True, return_row_scale: bool = False):
         """
         Stacked (3k × 3N) Jacobian and (3k,) residual vector across all k isotopologues.
         The SVD of the Jacobian determines which structural parameters are experimentally
@@ -972,9 +1003,16 @@ class SpectralEngine:
         centrifugal-distortion block -- is what must not be reimplemented
         anywhere. The residuals this returns are bit-identical to the ones
         the full call returns.
+
+        ``return_row_scale=True`` appends a third value: the factor each
+        rotational-constant row was multiplied by (component weight times the
+        square root of the robust weight, over the effective sigma), one per
+        stacked constant, so a caller propagating a shift in the constants
+        uses the units J carries. Centrifugal-distortion rows follow the
+        constants in J and r and are not included.
         """
         coords = np.asarray(coords, dtype=float)
-        J_blocks, r_blocks = [], []
+        J_blocks, r_blocks, scale_blocks = [], [], []
         conf_coords = [coords]
         conf_weights = np.array([1.0], dtype=float)
         if self.conformer_mixture is not None:
@@ -1002,6 +1040,7 @@ class SpectralEngine:
             rw = comp_w * rw
             robust_w = np.sqrt(self._robust_weight(rw))
             r_blocks.append(robust_w * rw)
+            scale_blocks.append(robust_w * comp_w / sigma)
             if want_jacobian:
                 Jw = comp_w[:, None] * (j_mix / sigma[:, None])
                 J_blocks.append(robust_w[:, None] * Jw)
@@ -1041,11 +1080,13 @@ class SpectralEngine:
         # deliberately empty whenever want_jacobian is False.
         if not r_blocks:
             n = len(np.asarray(coords, dtype=float)) * 3
-            return (np.zeros((0, n)) if want_jacobian else None), np.array([])
+            out = ((np.zeros((0, n)) if want_jacobian else None), np.array([]))
+            return out + (np.array([]),) if return_row_scale else out
         r_all = np.concatenate(r_blocks)
-        if not want_jacobian:
-            return None, r_all
-        return np.vstack(J_blocks), r_all
+        J_all = np.vstack(J_blocks) if want_jacobian else None
+        if return_row_scale:
+            return J_all, r_all, np.concatenate(scale_blocks)
+        return J_all, r_all
 
     def stacked_unweighted(self, coords):
         """

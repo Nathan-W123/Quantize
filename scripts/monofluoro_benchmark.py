@@ -146,10 +146,13 @@ def build_isotopologues(mol: ReferenceMolecule, limit=None) -> list[dict]:
             "masses": sp.masses(mol.masses).tolist(),
             "obs_constants": sp.observed(),
             "sigma_constants": sp.sigmas(),
-            # Floor for downward chi-square rescaling, not a weighting channel:
-            # the coherent part of the model error cannot be shrunk by a small
-            # chi-square, because it produces no scatter for chi-square to see.
+            # The model-error part of sigma_constants. It floors downward
+            # chi-square rescaling -- the shared part of the model error
+            # produces no scatter for chi-square to see -- and the reported
+            # covariance propagates it once, correlated across isotopologues,
+            # because the flag says sigma_constants already contains it.
             "sigma_systematic_constants": sp.sigmas_systematic(),
+            "sigma_constants_include_systematic": True,
             "alpha_constants": [0.0] * len(sp.observed()),
             "component_indices": list(sp.component_indices),
         })

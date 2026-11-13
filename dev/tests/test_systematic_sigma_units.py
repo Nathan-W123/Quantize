@@ -17,6 +17,11 @@ This is the reconciliation the note in `__init__` recorded as "not done yet"
 -- "floor the weighting sigma at the model error, then propagate against
 that floor". The floor arrived, in `_effective_sigma`. This propagation kept
 reading around it.
+
+The model error is now propagated as shared across isotopologues for each
+constant type (systematic_isotopologue_correlation, 0.99), so the widths
+below are pinned against a rigid rotor carrying the same correlation; the
+correlation model itself is tested in test_systematic_correlation.py.
 """
 
 from __future__ import annotations
@@ -130,11 +135,12 @@ def _rigid_rotor_constants(r, theta, masses):
     return _AMU_A2_TO_MHZ / np.sort(np.linalg.eigvalsh(inertia))
 
 
-def _independent_systematic_bond_sigma(opt, correlated):
+def _rigid_rotor_systematic_bond_sigma(opt, R):
     """The systematic bond width from a rigid rotor, with none of the engine's
     covariance code: J by finite differences in (r, theta), the engine's own
     effective sigmas as weights, and the model error propagated through the
-    least-squares estimator as A Sigma_sys A^T."""
+    least-squares estimator as A D R D A^T, D = diag(sigma_sys), for the
+    correlation R between the six stacked constants (H2O A, B, C, then D2O)."""
     def model(p):
         return np.concatenate([_rigid_rotor_constants(p[0], p[1], MASSES_H2O),
                                _rigid_rotor_constants(p[0], p[1], MASSES_D2O)])
@@ -149,48 +155,62 @@ def _independent_systematic_bond_sigma(opt, correlated):
     W = np.diag(1.0 / seff ** 2)
     F = np.linalg.inv(J.T @ W @ J)
     d = WATER_MODEL_ERROR_FRAC * np.concatenate([B0_H2O, B0_D2O])
-    S = np.outer(d, d) if correlated else np.diag(d ** 2)
+    S = np.outer(d, d) * R
     C = F @ J.T @ W @ S @ W @ J @ F
     return float(np.sqrt(C[0, 0]))
+
+
+def _r_between_isotopologues(rho):
+    """The engine's correlation for these rows: rho between the same constant
+    of H2O and D2O, nothing between different constants."""
+    same_comp = np.equal.outer(np.tile(np.arange(3), 2), np.tile(np.arange(3), 2))
+    same_iso = np.equal.outer(np.repeat([0, 1], 3), np.repeat([0, 1], 3))
+    return np.where(same_comp, np.where(same_iso, 1.0, rho), 0.0)
 
 
 def test_width_matches_an_independent_physics_estimate(with_systematic):
     """Pinned against a rigid rotor computed here, not against a hand formula.
 
     This used to compare with B ~ 1/r^2, dr/r = (1/2) dB/B, i.e. 0.0115 Ang,
-    and the engine's 0.0128 passed. It passed by coincidence. 93% of that
-    0.0128 was not systematic at all: it was the prior-only width of the
-    antisymmetric stretch, a direction the imposed C2v holds fixed (0.0119 of
-    it, against 0.0048 that was genuinely the model error). With that
-    direction removed the engine reports 0.00478.
+    and the engine's 0.0128 passed. It passed by coincidence: 93% of that
+    0.0128 was the prior-only width of the antisymmetric stretch, a direction
+    the imposed C2v holds fixed.
 
-    And the hand formula answers a different question. dr/r = (1/2) dB/B is
-    exact for a COHERENT error -- every constant scaled by the same 1 + eps --
-    which a rigid rotor confirms (0.01143 Ang). The engine propagates model
-    error as INDEPENDENT per constant, diag(sigma_sys^2), and six independent
-    errors on two parameters average down: the same rigid rotor gives 0.00473
-    Ang for that, against the engine's 0.00478. So the engine is right about
-    the model it implements, to 1%.
+    The hand formula is exact for a COHERENT error -- every constant scaled by
+    the same 1 + eps -- which a rigid rotor confirms (0.01143 Ang). That is not
+    this error: water's B0-versus-Be gap is -1.8%, +0.4%, +2.6% on A, B, C,
+    with no common sign across the three. What it does share is each
+    constant's error across isotopologues -- one potential surface for both --
+    measured at 0.94-1.00. The engine propagates exactly that (rho 0.99
+    between the same constant of H2O and D2O, nothing between A, B and C),
+    and a rigid rotor carrying the same correlation agrees with it to 1%
+    (0.00674 against 0.00667 Ang).
 
-    Which model is right is not settled here and is flagged rather than
-    decided: `ReferenceMolecule.sigmas_systematic` describes the error as "an
-    offset that biases every isotopologue the same way", which is the coherent
-    case, and on this configuration the coherent width is 2.4x the reported
-    one. A B0-versus-Be offset is coherent in sign within a species but not
-    uniform across A, B and C, so the truth lies between the two.
+    With rho = 0 the engine returns the independent model it used to ship,
+    and the rigid rotor agrees with that too (0.00478 against 0.00473): the
+    two differ by the correlation, not by the arithmetic.
     """
     opt, unc = with_systematic
     bond, _angle = _bond_and_angle(unc)
-    independent = _independent_systematic_bond_sigma(opt, correlated=False)
-    coherent = _independent_systematic_bond_sigma(opt, correlated=True)
-    assert bond == pytest.approx(independent, rel=0.05), (
-        f"bond width {bond:.5f} Ang against an independent rigid-rotor "
-        f"estimate of {independent:.5f} Ang for per-constant model error")
-    # The hand formula is the coherent limit, and the rigid rotor agrees with
-    # it -- which is what makes the 2.4x gap a statement about the error
-    # model rather than about the arithmetic.
+    rho = opt.systematic_isotopologue_correlation
+    assert rho == pytest.approx(0.99)
+    expect = _rigid_rotor_systematic_bond_sigma(opt, _r_between_isotopologues(rho))
+    assert bond == pytest.approx(expect, rel=0.05), (
+        f"bond width {bond:.5f} Ang against a rigid-rotor estimate of "
+        f"{expect:.5f} Ang with the same correlation")
+
+    opt0, unc0 = _fit(sys_frac=WATER_MODEL_ERROR_FRAC,
+                      systematic_isotopologue_correlation=0.0)
+    bond0, _a0 = _bond_and_angle(unc0)
+    independent = _rigid_rotor_systematic_bond_sigma(opt0, np.eye(6))
+    assert bond0 == pytest.approx(independent, rel=0.05)
+
+    # The hand formula is the uniformly coherent limit, and the rigid rotor
+    # agrees with it -- so the correlated width sits where it should, between
+    # the independent and the uniformly coherent ones.
+    coherent = _rigid_rotor_systematic_bond_sigma(opt, np.ones((6, 6)))
     assert coherent == pytest.approx(0.5 * WATER_MODEL_ERROR_FRAC * R_OH, rel=0.02)
-    assert coherent / bond > 2.0
+    assert bond0 < bond < coherent
 
 
 def test_systematic_widens_rather_than_narrows(no_systematic, with_systematic):
@@ -202,33 +222,41 @@ def test_systematic_widens_rather_than_narrows(no_systematic, with_systematic):
 
 
 def test_model_error_inflates_every_coordinate_by_the_same_factor(no_systematic, with_systematic):
-    """sqrt(1 + (sigma_sys / sigma_eff)^2), for the bond and the angle alike.
+    """sqrt(1 + (1 + rho) (sigma_sys / sigma_eff)^2), for the bond and the angle.
 
     The statistical and systematic widths propagate through the same matrix,
     A = C J^T, so when sigma_sys / sigma_eff is the same on every row the
-    ratio of total to statistical width is that one number for every
-    coordinate. Here sigma_eff is the relative floor (0.001 of each constant)
-    and sigma_sys is 0.024 of it, so the prediction is sqrt(1 + 24^2) =
-    24.0208. Measured: 24.0175 on the bond, 24.0200 on the angle.
+    ratio of total to statistical width is one number for every coordinate.
+    Here sigma_eff is the relative floor (0.001 of each constant) and
+    sigma_sys is 0.024 of it. In XY2 water d ln B / dr = -2/r for every
+    constant of both species, so H2O's and D2O's rows for one constant are
+    the same row, and errors correlated at rho add to (1 + rho) times one
+    species' variance where independent ones would add to 1x: predicted
+    sqrt(1 + 1.99 * 24^2) = 33.871, measured 33.866 on both.
 
-    This replaces an assertion that the angle is hit five times harder than
-    the bond. That held only because the bond's statistical width was inflated
-    by the antisymmetric stretch -- a direction the imposed C2v holds fixed --
-    which made its ratio look small.
+    (At rho = 0 this is the old sqrt(1 + 24^2) = 24.0208, measured 24.0174.)
     """
     o1, unc1 = with_systematic
     _o0, unc0 = no_systematic
     b0, a0 = _bond_and_angle(unc0)
     b1, a1 = _bond_and_angle(unc1)
     floor = float(o1.spectral.sigma_floor_rel)
-    predicted = float(np.sqrt(1.0 + (WATER_MODEL_ERROR_FRAC / floor) ** 2))
+    rho = o1.systematic_isotopologue_correlation
+    predicted = float(np.sqrt(1.0 + (1.0 + rho) * (WATER_MODEL_ERROR_FRAC / floor) ** 2))
     assert b1 / b0 == pytest.approx(predicted, rel=1e-3)
     assert a1 / a0 == pytest.approx(predicted, rel=1e-3)
 
+    _o, unc_ind = _fit(sys_frac=WATER_MODEL_ERROR_FRAC,
+                       systematic_isotopologue_correlation=0.0)
+    b_ind, a_ind = _bond_and_angle(unc_ind)
+    predicted0 = float(np.sqrt(1.0 + (WATER_MODEL_ERROR_FRAC / floor) ** 2))
+    assert b_ind / b0 == pytest.approx(predicted0, rel=1e-3)
+    assert a_ind / a0 == pytest.approx(predicted0, rel=1e-3)
+
 
 def test_variance_scales_as_the_square_of_the_systematic():
-    """The propagation is C_sys = A diag(sigma_sys^2) A^T, so the systematic
-    part of the VARIANCE must be quadratic in sigma_sys. Checked by
+    """The propagation is C_sys = A D R D A^T with D = diag(sigma_sys), so the
+    systematic part of the VARIANCE must be quadratic in sigma_sys. Checked by
     subtracting the statistical part rather than by eyeballing the width."""
     _o, unc_stat = _fit()
     b_stat, _a = _bond_and_angle(unc_stat)

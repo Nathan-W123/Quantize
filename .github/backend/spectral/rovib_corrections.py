@@ -279,6 +279,13 @@ def _propagate_sigma(sigma_exp: float, correction_sigmas: list) -> float:
     return float(total ** 0.5)
 
 
+def _is_vibrational(record) -> bool:
+    """A real vibrational correction: neither the electronic nor the BOB term
+    nor the explicit no-correction placeholder, and not zero."""
+    return (record.method not in ("elec", "BOB", "none") and record.source != "none"
+            and record.delta_mhz != 0.0)
+
+
 # ── Correction resolution ─────────────────────────────────────────────────────
 
 #: Electron-to-proton mass ratio, and the largest rotational g-tensor
@@ -568,11 +575,7 @@ def resolve_corrections(
             # on a list of method names instead silently missed
             # "VPT2_semidiag", which is what the Hessian-built table stamps --
             # i.e. every correction this engine generates itself.
-            corrected_vib = any(
-                r.method not in ("elec", "BOB", "none") and r.source != "none"
-                and r.delta_mhz != 0.0
-                for r in records
-            )
+            corrected_vib = any(_is_vibrational(r) for r in records)
             if corrected_vib:
                 s_sys = None
                 if sigma_sys is not None and k < sigma_sys.size:
@@ -942,6 +945,19 @@ def apply_corrections_to_isotopologues(
       alpha_constants → 0.0   (correction already absorbed)
       sigma_constants → sigma_eff (propagated uncertainty)
 
+    and the error budget is split into what is model error and what is not,
+    so the reported covariance charges each once:
+      sigma_systematic_constants → the vibrational correction's own sigma,
+          where a vibrational correction with a stated sigma was applied. The
+          B0-versus-Be gap it stood for has been removed; what is left of the
+          model error is how well the correction is known, and that is shared
+          across isotopologues as the gap was (one force field for all of
+          them). A correction of unstated quality leaves the gap in place:
+          an unknown uncertainty is not zero.
+      sigma_measurement_constants → everything else in sigma_eff: the
+          measurement part of the original sigma (its stated measurement part
+          if it had one, else all of it) and any electronic or BOB term.
+
     The corrected dicts are otherwise identical to the originals and remain
     compatible with SpectralEngine without any changes to that class.
     """
@@ -960,6 +976,22 @@ def apply_corrections_to_isotopologues(
             iso.get("component_indices", list(range(len(obs)))), dtype=int
         )
 
+        n = len(obs)
+
+        def _vec(key):
+            v = iso.get(key)
+            if v is None:
+                return None
+            v = np.asarray(v, dtype=float).ravel()
+            return v.copy() if v.size == n else None
+
+        meas_in = _vec("sigma_measurement_constants")
+        sys_in = _vec("sigma_systematic_constants")
+        meas = sigma.copy() if meas_in is None else meas_in.copy()
+        sys_out = np.zeros(n) if sys_in is None else sys_in.copy()
+        touched = False
+        vib_corrected = False
+
         for k, comp in enumerate(idx):
             key = (name, int(comp))
             if key in lookup:
@@ -967,11 +999,26 @@ def apply_corrections_to_isotopologues(
                 obs[k] = t.value_mhz
                 sigma[k] = t.sigma_mhz
                 # alpha[k] remains 0.0 — correction absorbed into obs
+                touched = True
+                vib_sq = sum(float(r.sigma_mhz) ** 2 for r in t.correction_records
+                             if _is_vibrational(r) and r.sigma_mhz is not None)
+                other_sq = sum(float(r.sigma_mhz) ** 2 for r in t.correction_records
+                               if not _is_vibrational(r) and r.sigma_mhz is not None)
+                m0 = (float(t.sigma_exp_mhz) if meas_in is None or k >= meas_in.size
+                      else float(meas_in[k]))
+                meas[k] = float(np.sqrt(m0 ** 2 + other_sq))
+                if vib_sq > 0.0:
+                    sys_out[k] = float(np.sqrt(vib_sq))
+                    vib_corrected = True
 
         new_iso = dict(iso)
         new_iso["obs_constants"] = obs
         new_iso["alpha_constants"] = alpha
         new_iso["sigma_constants"] = sigma
+        if touched:
+            new_iso["sigma_measurement_constants"] = meas
+            if vib_corrected or sys_in is not None:
+                new_iso["sigma_systematic_constants"] = sys_out
         result.append(new_iso)
 
     return result

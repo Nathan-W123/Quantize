@@ -156,10 +156,13 @@ class Isotopologue:
         """Model error: the r_s-versus-r_0 and B0-versus-Be mismatch.
 
         This does not describe the measurement; it describes the gap between
-        what was measured and what a rigid structure can reproduce. It is
-        propagated into the reported uncertainty but never used to weight the
-        fit -- an offset that biases every isotopologue the same way does not
-        make any single constant less worth fitting.
+        what was measured and what a rigid structure can reproduce. It is the
+        model-error PART of sigmas(), which is hypot(this, quoted precision)
+        and weights the fit -- so pass both with
+        sigma_constants_include_systematic=True, and the reported covariance
+        counts it once, correlated across isotopologues (the gap of one
+        constant type moves every isotopologue together), instead of once as
+        independent noise in the weights and again as the systematic term.
         """
         rel = self.sigma_rel or SIGMA_REL
         return [rel[k] * abs(float(self.abc_mhz[k])) for k in self.component_indices]

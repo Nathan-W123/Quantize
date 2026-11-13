@@ -25,9 +25,10 @@ Better on the angle in 5 of 5 starts (by about 0.49 deg) and worse on the
 bond in 5 of 5 (by about 2.2 mA). This test once recorded the angle as WORSE
 in 5 of 5 (+1.27 to +1.63 deg): that was the rule-library prior, then on by
 default, pulling the down-weighted fit toward its own angle. The decision
-belongs with the double-counting question -- reference sigmas already carry
-the model error, so flooring them at it counts it twice -- and is not made
-here.
+is not made here. The double counting that sat beside it is resolved on the
+reporting side: with the model error in the weights, the reported covariance
+takes that copy out before it adds the correlated one
+(test_systematic_correlation.py) -- so it is a choice about the fit alone.
 
 MECHANISM. Spectral data alone, no prior, gives dr +1.435 mA and dang
 +0.690 -- essentially the weighting-OFF answer. So this fit is
@@ -142,13 +143,20 @@ def test_it_does_fix_the_statistics():
     assert rms(opt_on) < 2.0, f"residuals still {rms(opt_on):.2f} sigma"
 
 
-def test_the_reported_width_stops_tracking_the_quoted_sigma():
-    """A consequence worth knowing: with the model gap as the floor, better
-    measurements no longer narrow the interval. Honest -- the model error
-    dominates -- but it means the engine cannot reward better data until the
-    B0-versus-Be correction is applied."""
+def test_the_reported_width_tracks_the_quoted_sigma_only_through_its_own_part():
+    """With the model gap as the floor, better measurements narrow the
+    interval only by their own share of the error: the model error dominates,
+    so the engine cannot reward better data much until the B0-versus-Be
+    correction is applied.
+
+    This used to assert the widths were IDENTICAL for 2 and 2000 MHz. That
+    was the floor's max() hiding the measurement part, plus the model error
+    counted twice. Counted once, in quadrature with the measurement part,
+    2000 MHz against a 7.9-71 GHz model gap widens the bond by 5%
+    (0.00768 -> 0.00808 Ang), and 2 MHz is already at the model-error limit.
+    """
     widths = []
-    for sigma in (2.0, 2000.0):
+    for sigma in (0.002, 2.0, 2000.0):
         isos = [{"name": n, "masses": m, "obs_constants": list(b),
                  "sigma_constants": [sigma] * 3}
                 for n, m, b in (("H2-16O", MASSES_H2O, B0_H2O),
@@ -163,7 +171,8 @@ def test_the_reported_width_stops_tracking_the_quoted_sigma():
             opt.run()
             unc = opt.geometry_uncertainty()
         widths.append(max(v for k, v in unc.items() if k.count("-") == 1))
-    assert widths[0] == pytest.approx(widths[1], rel=1e-9), widths
+    assert widths[0] == pytest.approx(widths[1], rel=1e-5), widths
+    assert widths[1] < widths[2] < 1.1 * widths[1], widths
 
 
 def test_but_it_trades_the_bond_for_the_angle_so_it_stays_off():

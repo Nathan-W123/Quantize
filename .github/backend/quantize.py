@@ -390,6 +390,25 @@ class MolecularOptimizer:
         # available and verified, and off.
         auto_systematic_sigma=False,
         systematic_in_weighting=False,
+        # How the model error is shared between the stacked constants, for the
+        # reported covariance (the fit's weights stay diagonal). The
+        # B0-versus-Be gap of one constant type moves every isotopologue
+        # together -- one potential surface, one force-field error, smooth mass
+        # scaling -- measured correlation 0.94-1.00 across isotopologues on
+        # water, ozone, formyl fluoride and vinyl fluoride, from level-of-theory
+        # differences and, for water and ozone, from the experimental gap.
+        # Across A, B and C it has no consistent sign (formyl fluoride A-B
+        # -0.30 against one reference level, +0.73 against another), so the
+        # components are independent unless a 3x3 correlation matrix says
+        # otherwise (B-C runs +0.98 to +1.00 in the near-prolate tops). 0.99,
+        # not 1: the isotopologue-specific remainder is what sets the width in
+        # an ill-conditioned fit (formyl fluoride spectral-only rms z 0.74 at
+        # 0.99, 4.55 at 1). Against ozone's real gap (r_e to 0.15 mA) the
+        # independent model leaves the shift at z 2.9 / 3.5 on bond / angle,
+        # this one at 1.3 / 1.6 (test_systematic_correlation). 0 restores the
+        # independent model.
+        systematic_isotopologue_correlation=0.99,
+        systematic_component_correlation=None,
         max_spectral_weight=None,
         component_weight_map=None,
         torsion_aware_weighting=False,
@@ -573,9 +592,11 @@ class MolecularOptimizer:
         # when it cannot be formed (linear species, partial measurements).
         #
         # sigma_systematic_constants is filled from the same estimate: it is
-        # the coherent, common-mode part, which for this error source is all of
-        # it, and the post-correction sigma logic in resolve_corrections needs
-        # to know how much of sigma the vibrational correction supersedes.
+        # the model-error part, which for this error source is all of it, and
+        # the post-correction sigma logic in resolve_corrections needs to know
+        # how much of sigma the vibrational correction supersedes. (It is
+        # propagated as shared across isotopologues per constant type; see
+        # systematic_isotopologue_correlation.)
         # NOT auto-derived when sigma_constants was supplied, and the reason is
         # worth recording because the obvious fix does not work.
         #
@@ -614,8 +635,30 @@ class MolecularOptimizer:
         # term without saying so.
         self.auto_systematic_sigma = bool(auto_systematic_sigma)
         self.systematic_in_weighting = bool(systematic_in_weighting)
+        _rho = float(systematic_isotopologue_correlation)
+        if not (np.isfinite(_rho) and 0.0 <= _rho <= 1.0):
+            raise ValueError("systematic_isotopologue_correlation must lie in "
+                             f"[0, 1], got {systematic_isotopologue_correlation!r}")
+        self.systematic_isotopologue_correlation = _rho
+        if systematic_component_correlation is None:
+            self.systematic_component_correlation = None
+        else:
+            _Qc = np.asarray(systematic_component_correlation, dtype=float)
+            if (_Qc.shape != (3, 3) or not np.all(np.isfinite(_Qc))
+                    or not np.allclose(_Qc, _Qc.T, atol=1e-12)
+                    or not np.allclose(np.diag(_Qc), 1.0, atol=1e-12)):
+                raise ValueError("systematic_component_correlation must be a "
+                                 "symmetric 3x3 correlation matrix (unit "
+                                 "diagonal) over A, B, C")
+            _Qc = 0.5 * (_Qc + _Qc.T)
+            if float(np.linalg.eigvalsh(_Qc).min()) < -1e-10:
+                raise ValueError("systematic_component_correlation is not "
+                                 "positive semidefinite, so it is not a "
+                                 "correlation matrix")
+            self.systematic_component_correlation = _Qc
         _filled = []
         _sys_filled = []
+        _both_from_model = set()
         for _iso in isotopologues:
             _obs = np.asarray(_iso["obs_constants"], dtype=float)
             _ci = _iso.get("component_indices", list(range(len(_obs))))
@@ -642,6 +685,10 @@ class MolecularOptimizer:
                 # silently got intervals missing the dominant term.
                 _iso["sigma_systematic_constants"] = _sig.copy()
                 _sys_filled.append(f"{_iso.get('name', 'iso')} [{_how}]")
+                if _needs_meas:
+                    # Both from one model estimate: sigma_constants IS the
+                    # model error, and none of it is measurement.
+                    _both_from_model.add(id(_iso))
         _no_sys = [str(_i.get("name", "iso")) for _i in isotopologues
                    if _i.get("sigma_systematic_constants") is None]
         if _no_sys:
@@ -662,6 +709,39 @@ class MolecularOptimizer:
                   f"{' ...' if len(_sys_filled) > 3 else ''}. Reported "
                   f"intervals include it; pass auto_systematic_sigma=False "
                   f"for measurement precision only.")
+
+        # WHICH PART OF sigma_constants IS MEASUREMENT.
+        #
+        # _systematic_covariance counts the model error once: it takes out
+        # whatever of it the weighting sigma already holds and adds it back
+        # with its correlation. So it has to know how much of sigma_constants
+        # is model error. None of it, unless the species says so:
+        # sigma_constants_include_systematic=True (the reference module's
+        # sigmas() are hypot(model error, quoted precision)), or both were just
+        # filled from the same model estimate. sigma_measurement_constants,
+        # when given, states the measurement part directly and wins. Without
+        # this, those runs carried the model error twice -- once as independent
+        # noise in the weights, once more as the systematic term: on the
+        # reference water fit the reported O-H width was 1.36x the Laplace,
+        # nearly twice the variance.
+        _normalised = []
+        for _iso in isotopologues:
+            if (_iso.get("sigma_measurement_constants") is None
+                    and (bool(_iso.get("sigma_constants_include_systematic", False))
+                         or id(_iso) in _both_from_model)):
+                _sc = np.asarray(_iso["sigma_constants"], dtype=float).ravel()
+                _ss = _iso.get("sigma_systematic_constants")
+                _ss = (np.zeros_like(_sc) if _ss is None
+                       else np.abs(np.asarray(_ss, dtype=float).ravel()))
+                if _ss.size != _sc.size:
+                    _ss = np.zeros_like(_sc)
+                _iso = dict(_iso)
+                # Factored, so the difference of two nearly equal numbers is
+                # taken once (they differ by 1e5 on the reference sigmas).
+                _iso["sigma_measurement_constants"] = np.sqrt(np.maximum(
+                    (np.abs(_sc) - _ss) * (np.abs(_sc) + _ss), 0.0))
+            _normalised.append(_iso)
+        isotopologues = _normalised
 
         self._raw_isotopologues = list(isotopologues)   # preserved for harmonic updates
         # Fitting distortion constants needs OBSERVED ones to fit against, and
@@ -1522,6 +1602,12 @@ class MolecularOptimizer:
             old_iso["obs_constants"]   = new_iso["obs_constants"]
             old_iso["alpha_constants"] = new_iso["alpha_constants"]
             old_iso["sigma_constants"] = new_iso["sigma_constants"]
+            # And the split of that sigma into model error and measurement, so
+            # the reported covariance does not charge a gap just corrected away.
+            for _key in ("sigma_measurement_constants", "sigma_systematic_constants"):
+                _v = new_iso.get(_key)
+                if _v is not None and np.asarray(_v).size == np.asarray(new_iso["obs_constants"]).size:
+                    old_iso[_key] = np.asarray(_v, dtype=float)
 
     def _apply_harmonic_cd_corrections(self):
         """Attach harmonic CD predictions from the current Hessian to rovib_correction.pred_cd."""
@@ -2903,10 +2989,15 @@ class MolecularOptimizer:
           coordinate is floored at its class error scaled by the fraction of
           the coordinate the data cannot see, replacing the isotropic
           assumption with the measured anisotropy of the level of theory.
-        * It is a precision, not an accuracy. It propagates the stated
-          uncertainties on the constants; it knows nothing about the
-          B0-versus-Be offset left uncorrected, which is the dominant
-          systematic here. Expect it to be optimistic, and calibrate it against
+        * It includes the model error only where one is supplied
+          (sigma_systematic_constants, or auto_systematic_sigma): the
+          B0-versus-Be gap left uncorrected, or a vibrational correction's own
+          uncertainty where one was applied. That error is propagated as
+          shared across isotopologues for each constant type
+          (systematic_isotopologue_correlation, default 0.99) and counted once,
+          even when the weighting sigma already contains it
+          (_systematic_covariance). Without one it is a precision, not an
+          accuracy -- expect it to be optimistic, and calibrate it against
           molecules whose structures are known before trusting it on one whose
           structure is not.
 
@@ -2937,8 +3028,9 @@ class MolecularOptimizer:
         # Drop the rigid-body subspace, which no observable constrains.
         cov, _basis, _n_gauge = self.physical_covariance(cov)
 
-        J, _ = self.spectral.stacked(self.coords)
-        cov = cov + self._systematic_covariance(J, cov)
+        J, _, row_scale = self.spectral.stacked(self.coords, return_row_scale=True)
+        cov = cov + self._systematic_covariance(J, cov, coords=self.coords,
+                                                row_scale=row_scale)
 
         # IS THIS COVARIANCE USABLE AT ALL? Checked once, on the matrix, rather
         # than per coordinate on the sign of a quadratic form.
@@ -3140,9 +3232,9 @@ class MolecularOptimizer:
             return {"error": "no Laplace width exists at this geometry -- " + saddle[1],
                     "warnings": gn}
         cov_lap, basis, n_removed = self.physical_covariance(cov_lap, coords=x)
-        J, rw = self.spectral.stacked(x)
+        J, rw, row_scale = self.spectral.stacked(x, return_row_scale=True)
         rw = np.asarray(rw, dtype=float)
-        C_sys = self._systematic_covariance(J, cov_lap)
+        C_sys = self._systematic_covariance(J, cov_lap, coords=x, row_scale=row_scale)
         cov_x = cov_lap + C_sys
         _H_spec, H_prior, parts = self._posterior_blocks(x)
 
@@ -3186,7 +3278,8 @@ class MolecularOptimizer:
                 labels.append("mixed information")
 
         blocks = ["spectral data"] + list(parts)
-        if np.any(C_sys != 0.0):
+        has_sys = bool(np.any(C_sys != 0.0))
+        if has_sys:
             blocks.append("systematic model error")
         st = self._last_ic_prior
         ic_sigma = (st["sigma"].tolist()
@@ -3237,70 +3330,123 @@ class MolecularOptimizer:
             "n_removed_directions": int(n_removed),
             "internal_prior_sigma": ic_sigma,
             "internal_prior_provenance": provenance,
+            # The correlation the model error was propagated with, when it was.
+            "systematic_isotopologue_correlation": (
+                self.systematic_isotopologue_correlation if has_sys else None),
+            "systematic_component_correlation": (
+                None if not has_sys or self.systematic_component_correlation is None
+                else self.systematic_component_correlation.tolist()),
             "warnings": gn,
         }
 
-    def _systematic_covariance(self, J, cov):
-        """Propagate model error in the constants through to the parameters.
+    def _systematic_covariance(self, J, cov, coords=None, row_scale=None):
+        """The model-error term of the reported covariance, counted once.
 
-        Model error -- the r_s-versus-r_0 mismatch, and the B0-versus-Be offset
-        this engine does not correct -- is not measurement noise and must not
-        weight the fit. It does still move the answer, so it belongs in the
-        reported uncertainty, and until now it appeared nowhere at all.
+        Model error -- the B0-versus-Be gap a rigid structure cannot
+        reproduce or, where a vibrational correction removed that gap, the
+        correction's own uncertainty -- is not measurement noise, but it moves
+        the answer: a shift e in the constants moves the optimum by A D e,
+        with A = C J^T the estimator's response and D the row scale J carries
+        (stacked divides each row by its effective sigma and multiplies it by
+        its component and robust weights).
 
-        A shift `d` in the constants moves the optimum by `A d` with
-        `A = C J^T Sigma^-1`. The shift's sign is unknown, so it is treated as a
-        random variable of zero mean and covariance diag(sigma_sys^2), giving
-        `C_sys = A diag(sigma_sys^2) A^T`, which is added to the statistical
-        covariance. Zero when no systematic sigmas were supplied.
+        The covariance of the constants is then Sigma_meas + S R S rather than
+        the diag(sigma_eff^2) the Laplace assumed, so the reported covariance
+        is the sandwich C J^T D (Sigma_meas + S R S) D J C + C H_prior C. This
+        returns its difference from the Laplace, which callers add to C:
+
+            A [D (Sigma_meas + S R S) D - I] A^T
+
+        * S: the model-error sigma of each row -- sigma_systematic_constants,
+          or the correction sigma on a row a vibrational correction with a
+          stated sigma was applied to (the gap it stood for is gone; a
+          correction of unstated quality does not retire it).
+        * R: its correlation between rows, R_ab = Q[comp_a, comp_b] * (1 if
+          the same isotopologue else rho). rho
+          (systematic_isotopologue_correlation, 0.99) couples the same
+          constant type across isotopologues, which share one potential
+          surface and so one force-field error; Q
+          (systematic_component_correlation, identity by default) couples A,
+          B and C, whose gaps have no consistent sign.
+        * Sigma_meas: the measurement part of the weighting sigma -- the
+          weighting with its model-error channels left out (the systematic
+          floor, the correction sigma) and, where sigma_constants itself
+          carries model error (sigma_measurement_constants), that too.
+
+        When the weighting holds no model error, D Sigma_meas D = I and this
+        is A D S R S D A^T. When it does -- reference sigmas that are
+        hypot(model error, quoted precision), systematic_in_weighting, a
+        correction sigma -- the copy the Laplace already counted as
+        independent noise is taken out before the correlated one goes in;
+        the old form added it on top, nearly doubling the variance. With
+        rho = 0 and no model error in the weights this is the independent
+        model, A diag((D s)^2) A^T. Centrifugal-distortion rows carry no
+        model error and keep their Laplace weighting. Exactly zero when no
+        model error is given.
+
+        ``row_scale`` is the third value of ``stacked(coords,
+        return_row_scale=True)``; callers that have just stacked J at
+        ``coords`` pass it rather than paying for a second evaluation.
         """
-        rows = []
-        for iso in self.spectral.isotopologues:
-            sys_sig = iso.get("sigma_systematic_constants")
-            n_comp = len(iso["component_indices"])
-            if sys_sig is None:
-                rows.extend([0.0] * n_comp)
-            else:
-                s = np.asarray(sys_sig, dtype=float).ravel()
-                rows.extend([float(s[k]) if k < s.size else 0.0
-                             for k in range(n_comp)])
-        sys_sig = np.asarray(rows, dtype=float)
         J = np.asarray(J, dtype=float)
-        if sys_sig.size != J.shape[0] or not np.any(sys_sig > 0):
+        cov = np.asarray(cov, dtype=float)
+        sp = self.spectral
+        x = np.asarray(self.coords if coords is None else coords, dtype=float)
+        s_rows, m2_rows, iso_rows, comp_rows = [], [], [], []
+        for i_iso, iso in enumerate(sp.isotopologues):
+            idx = np.asarray(iso["component_indices"], dtype=int)
+            n = idx.size
+
+            def _row_vec(key, _iso=iso, _n=n):
+                v = _iso.get(key)
+                if v is None:
+                    return None
+                v = np.asarray(v, dtype=float).ravel()
+                return v if v.size == _n else None
+
+            sig_eff = np.asarray(sp._effective_sigma(iso["sigma_constants"], iso=iso),
+                                 dtype=float).ravel()
+            meas_raw = _row_vec("sigma_measurement_constants")
+            if meas_raw is None:
+                meas_raw = np.asarray(iso["sigma_constants"], dtype=float).ravel()
+            sig_meas = np.asarray(sp._effective_sigma(meas_raw, iso=iso, model_error=False),
+                                  dtype=float).ravel()
+            sys_sig = _row_vec("sigma_systematic_constants")
+            s_model = np.zeros(n) if sys_sig is None else np.abs(sys_sig)
+            # A row a vibrational correction with a stated sigma was applied
+            # to: the gap is gone, and what is left of the model error is the
+            # correction's sigma. A correction of unstated quality does not
+            # retire the gap -- the same rule the weighting's floor follows.
+            corr = np.asarray(sp._correction_sigma(iso, n), dtype=float)
+            s_model = np.where(corr > 0.0, corr, s_model)
+            s_rows.append(s_model)
+            m2_rows.append((sig_meas / sig_eff) ** 2)
+            iso_rows.append(np.full(n, i_iso))
+            comp_rows.append(idx)
+        if not s_rows:
             return np.zeros_like(cov)
-        # THE SAME SIGMA J WAS WEIGHTED BY, NOT THE RAW ONE.
-        #
-        # `stacked` divides each row by `_effective_sigma`, so J is
-        # d(residual)/dp in units of effective sigma. The shift d therefore
-        # enters as d/sigma_eff, and the denominator here must be sigma_eff
-        # too. This read iso["sigma_constants"] -- the raw quoted value --
-        # which on water differs from the effective one by 1090x to 4179x,
-        # because `sigma_floor_rel` floors the weighting sigma at a fraction
-        # of each constant. Mixing the two scaled the propagated variance by
-        # (sigma_eff/sigma_raw)^2 and the width by that ratio: a 2.4%
-        # systematic gave a 9.4045 Angstrom width on a 0.958 Angstrom bond,
-        # against 0.0128 Angstrom with consistent units -- and an independent
-        # estimate from B ~ 1/r^2 puts it at 0.0115. 735x too large.
-        #
-        # This is the reconciliation the note in __init__ called for and
-        # recorded as "not done yet": floor the weighting sigma at the model
-        # error, then propagate against that floor. The floor arrived, in
-        # `_effective_sigma`; this propagation kept reading around it. It is
-        # not a choice of convention -- J fixes the units, and these have to
-        # match them.
-        meas = []
-        for iso in self.spectral.isotopologues:
-            meas.extend(np.asarray(
-                self.spectral._effective_sigma(iso["sigma_constants"], iso=iso),
-                dtype=float).ravel().tolist())
-        meas = np.asarray(meas, dtype=float)
-        if meas.size != sys_sig.size:
+        s_model = np.concatenate(s_rows)
+        m2 = np.concatenate(m2_rows)
+        n_rot = s_model.size
+        if J.shape[0] < n_rot or (not np.any(s_model > 0.0) and np.all(m2 == 1.0)):
             return np.zeros_like(cov)
-        A = cov @ J.T                      # J already carries 1/sigma_meas
-        scale = sys_sig / np.maximum(meas, 1e-30)
-        out = (A * scale**2) @ A.T
-        # A systematic cannot be better determined than the prior allows; if the
-        # ratio above has run away, the statistical part is the honest answer.
+        if row_scale is None:
+            _J0, _r0, row_scale = sp.stacked(x, want_jacobian=False, return_row_scale=True)
+        scale = np.asarray(row_scale, dtype=float).ravel()
+        if scale.size != n_rot:
+            return np.zeros_like(cov)
+        t = scale * s_model
+        iso_i = np.concatenate(iso_rows)
+        comp = np.concatenate(comp_rows)
+        Qc = (np.eye(3) if self.systematic_component_correlation is None
+              else self.systematic_component_correlation)
+        R = Qc[np.ix_(comp, comp)] * np.where(
+            iso_i[:, None] == iso_i[None, :], 1.0, self.systematic_isotopologue_correlation)
+        K = (t[:, None] * R) * t[None, :]
+        K[np.diag_indices_from(K)] += m2 - 1.0
+        A = cov @ J[:n_rot].T
+        out = A @ K @ A.T
+        out = 0.5 * (out + out.T)
         if not np.all(np.isfinite(out)):
             return np.zeros_like(cov)
         return out
