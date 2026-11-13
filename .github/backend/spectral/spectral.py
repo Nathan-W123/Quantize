@@ -105,6 +105,8 @@ def default_sigma_constants(obs_constants, component_indices=None):
     return out
 
 from backend.spectral.centrifugal_distortion import (
+    reduction_for_asymmetry,
+    rotational_constants_mhz,
     CD_NAMES,
     CDConstants,
     cd_observed_from_iso,
@@ -120,6 +122,17 @@ from backend.spectral.correction_models import RovibCorrection
 #: on water the predicted delta_K is -19.8 MHz against an observed +41.05,
 #: so observed values of them are not fitted.
 CD_FIT_KEYS = ("DJ", "DJK", "DK")
+
+#: Distortion notes already printed in this process: an engine is built per
+#: fit, per restart and per bootstrap worker, and the same line each time
+#: buried the first one.
+_CD_PRINTED: set = set()
+
+
+def _cd_print_once(message: str) -> None:
+    if message not in _CD_PRINTED:
+        _CD_PRINTED.add(message)
+        print(message)
 
 # h / (8π² · amu · Å²) → MHz; converts principal moments [amu·Å²] to rotational constants [MHz]
 _INERTIA_TO_MHZ = (constants.h / (8 * np.pi**2 * constants.atomic_mass * (1e-10)**2)) * 1e-6
@@ -369,7 +382,8 @@ def sanitize_isotopologues(
         # fit_cd_constants a silent no-op on the default path: the warning
         # for "no isotopologue carries a cd_observed block" reads the raw
         # isotopologues, which did carry them.
-        for key in ("cd_observed", "centrifugal_distortion", "cd_sigma"):
+        for key in ("cd_observed", "centrifugal_distortion", "cd_sigma",
+                    "cd_model_sigma", "cd_reduction", "cd_reduction_source"):
             if iso.get(key):
                 cleaned_iso[key] = iso[key]
         cleaned.append(cleaned_iso)
@@ -487,6 +501,9 @@ class SpectralEngine:
                 entry["cd_observed"] = cd_obs
             if cd_sig:
                 entry["cd_sigma"] = cd_sig
+            for key in ("cd_model_sigma", "cd_reduction", "cd_reduction_source"):
+                if iso.get(key):
+                    entry[key] = iso[key]
             self.isotopologues.append(entry)
         for iso in self.isotopologues:
             n = len(iso["obs_constants"])
@@ -545,22 +562,47 @@ class SpectralEngine:
         self._cd_fd_delta = float(cd_fd_delta)
         self._cd_min_freq_cm = float(cd_min_freq_cm)
         self._cd_sigma_fraction = max(float(cd_sigma_fraction), 1e-6)
-        # The model part of each distortion row's sigma, fixed here from the
+        # The model part of each distortion row's sigma, fixed from the
         # constants as observed so it is a constant of the objective: one
         # computed from the current values would move with a bootstrap draw
         # of them (and, from the prediction, with the geometry). A given
-        # cd_sigma is the measurement part and is added in quadrature.
+        # cd_sigma is the measurement part and is added in quadrature. One
+        # that arrives with the entry (cd_model_sigma: stated, or carried by
+        # an engine rebuilt from another's entries) is kept rather than
+        # recomputed from whatever the observed values now are.
+        #
+        # cd_weight scales every distortion row by sqrt(cd_weight), so a
+        # row's noise is its sigma / sqrt(cd_weight): only cd_weight = 1
+        # keeps the 40% its model part stands for (1e4 states 0.4%).
         unfitted = set()
         for entry in self.isotopologues:
             cd_obs = entry.get("cd_observed") or {}
             if not cd_obs:
                 continue
-            entry["cd_model_sigma"] = self._default_cd_sigma(cd_obs)
+            default = self._default_cd_sigma(cd_obs)
+            given = entry.get("cd_model_sigma") or {}
+            entry["cd_model_sigma"] = {
+                k: (float(given[k]) if k in given and float(given[k]) > 0.0 else v)
+                for k, v in default.items()}
+            red = entry.get("cd_reduction")
+            if red is not None:
+                red = str(red).strip().upper()
+                if red not in ("A", "S"):
+                    raise ValueError(
+                        f"cd_reduction on {entry.get('name', 'iso')} is {entry['cd_reduction']!r}; "
+                        f"it names the Watson reduction the observed distortion constants "
+                        f"are quoted in, 'A' or 'S'")
+                entry["cd_reduction"] = red
+                entry.setdefault("cd_reduction_source", "stated")
             unfitted.update(k for k in cd_obs if k not in CD_FIT_KEYS)
+        #: Observed distortion constants no row is built for (reported by
+        #: the posterior as well as printed: the print is once per process).
+        self.cd_unfitted_keys = sorted(unfitted)
         if unfitted and self.cd_weight > 0.0 and self.fit_cd_constants:
-            print(f"[cd-warning] observed {', '.join(sorted(unfitted))} not fitted: the "
-                  f"harmonic mapping is validated on {', '.join(CD_FIT_KEYS)} only (on "
-                  f"water the predicted delta_K has the opposite sign to the observed one).")
+            _cd_print_once(
+                f"[cd-warning] observed {', '.join(sorted(unfitted))} not fitted: the "
+                f"harmonic mapping is validated on {', '.join(CD_FIT_KEYS)} only (on "
+                f"water the predicted delta_K has the opposite sign to the observed one).")
         self._cd_jacobian_cache: dict[tuple, np.ndarray] = {}
 
     def set_hessian_for_cd(self, hess_bohr) -> None:
@@ -592,11 +634,38 @@ class SpectralEngine:
             self._hess_bohr_for_cd,
             coords,
             iso["masses"],
+            reduction=self._cd_reduction(iso, coords),
             min_freq_cm=self._cd_min_freq_cm,
             fd_delta=self._cd_fd_delta,
             sigma_fraction=self._cd_sigma_fraction,
             with_residual=False,
         )
+
+    def _cd_reduction(self, iso: dict, coords) -> str:
+        """The Watson reduction an isotopologue's distortion rows are predicted
+        in, fixed for the fit.
+
+        DJ, DJK and DK are reduction-specific: from the same tau, A - S is
+        -2 d2, +12 d2 and -10 d2 (water: -3.8%, +3.7%, -0.8%). The observed
+        block's reduction, cd_reduction, is used when stated. Otherwise the
+        asymmetry rule ('auto': S when |kappa| >= 0.9) is taken once, at the
+        first geometry predicted, and kept: re-deciding it per call stepped
+        every row by those amounts whenever kappa crossed 0.9 mid-fit."""
+        red = iso.get("cd_reduction")
+        if red:
+            return str(red)
+        abc = rotational_constants_mhz(coords, iso["masses"])
+        red = reduction_for_asymmetry(abc)
+        a, b, c = (float(v) for v in abc)
+        kappa = (2.0 * b - a - c) / (a - c) if abs(a - c) > 1e-12 else float("nan")
+        iso["cd_reduction"] = red
+        iso["cd_reduction_source"] = f"auto (kappa {kappa:+.3f} at the start)"
+        if self._cd_rows_active():
+            _cd_print_once(
+                f"[cd-note] {iso.get('name', 'iso')}: distortion rows are predicted in the "
+                f"Watson {red} reduction (kappa {kappa:+.3f}); state cd_reduction if the "
+                f"observed constants are quoted in the other one.")
+        return red
 
     def _cd_rows_active(self) -> bool:
         return bool(self.cd_weight > 0.0 and self.fit_cd_constants

@@ -322,13 +322,20 @@ def test_a_partial_cd_sigma_block_gives_the_rest_the_model_error():
     assert sig["DK"] == pytest.approx(0.40 * abs(EXP_H2O["DK"]), rel=1e-12)
 
 
-def test_unvalidated_distortion_constants_are_named_and_not_fitted(capsys):
-    from backend.spectral.spectral import SpectralEngine
+def test_unvalidated_distortion_constants_are_named_and_not_fitted(capsys, monkeypatch):
+    """Named once per process (an engine is built per fit, start and worker,
+    and the repeats buried the first), and kept in the posterior's warnings,
+    which the report prints: the print alone was lost from every record."""
+    import backend.spectral.spectral as SP
+    monkeypatch.setattr(SP, "_CD_PRINTED", set())
     isos = _isos(None)
     isos[0]["cd_observed"] = dict(EXP_H2O)
-    SpectralEngine(isos, cd_weight=1.0, fit_cd_constants=True)
+    SP.SpectralEngine(deepcopy(isos), cd_weight=1.0, fit_cd_constants=True)
+    SP.SpectralEngine(deepcopy(isos), cd_weight=1.0, fit_cd_constants=True)
     out = capsys.readouterr().out
-    assert "delta_J, delta_K not fitted" in out
+    assert out.count("delta_J, delta_K not fitted") == 1
+    post = _water_cd().internal_coordinate_posterior()
+    assert any("delta_J, delta_K not fitted" in w for w in post["warnings"])
 
 
 def test_a_supplied_fixed_prediction_is_said_to_be_unused(capsys):
@@ -408,3 +415,94 @@ def test_the_fit_s_predictions_skip_the_reduction_residual(cd_fit, monkeypatch):
     opt = deepcopy(cd_fit)
     opt.spectral.stacked(opt.coords)
     assert calls == []
+
+
+# ── Round 4 ──────────────────────────────────────────────────────────────────
+
+def test_a_stated_or_carried_model_sigma_is_kept():
+    """The engine recomputed cd_model_sigma from cd_observed on every build,
+    so an engine rebuilt from drawn constants moved the rows' weights with
+    the draw (a 30% draw on DK moved its sigma 30%). A model sigma that
+    arrives with the entry -- stated in the config, or carried from another
+    engine -- is kept; keys it does not name get the model's 40%."""
+    from backend.spectral.spectral import SpectralEngine
+    isos = _isos(None)
+    isos[0]["cd_observed"] = dict(EXP_H2O)
+    isos[0]["cd_model_sigma"] = {"DJ": 1.5}
+    eng = SpectralEngine(deepcopy(isos), cd_weight=1.0, fit_cd_constants=True)
+    ms = eng.isotopologues[0]["cd_model_sigma"]
+    assert ms["DJ"] == 1.5 and ms["DK"] == pytest.approx(0.40 * EXP_H2O["DK"])
+    drawn = deepcopy(eng.isotopologues)
+    drawn[0]["cd_observed"] = {k: 1.3 * v for k, v in drawn[0]["cd_observed"].items()}
+    again = SpectralEngine(drawn, cd_weight=1.0, fit_cd_constants=True)
+    assert again.isotopologues[0]["cd_model_sigma"] == ms
+    with contextlib.redirect_stdout(io.StringIO()):
+        opt = MolecularOptimizer(elems=["O", "H", "H"], coords=_x0(), isotopologues=deepcopy(isos),
+                                 quantum_backend="analytic_water", use_autoconfig=False,
+                                 max_iter=2, fit_cd_constants=True, cd_weight=1.0)
+    assert opt.spectral.isotopologues[0]["cd_model_sigma"]["DJ"] == 1.5, "through the sanitizer"
+
+
+def test_the_reduction_is_pinned_for_the_fit(monkeypatch):
+    """DJ, DJK and DK are reduction-specific (A - S = -2, +12, -10 x d2: on
+    water -3.8%, +3.7%, -0.8%). 'auto' was re-decided at every prediction,
+    so a fit whose kappa crossed 0.9 stepped its rows mid-fit; and nothing
+    said which reduction the observed block was compared in."""
+    import backend.spectral.spectral as SP
+    calls = []
+    real = SP.reduction_for_asymmetry
+    monkeypatch.setattr(SP, "reduction_for_asymmetry", lambda abc: (calls.append(1), real(abc))[1])
+    opt = _water_cd()
+    iso = opt.spectral.isotopologues[0]
+    assert iso["cd_reduction"] == "A" and iso["cd_reduction_source"].startswith("auto (kappa -0.4")
+    assert len(calls) == 1, "decided once, at the first prediction"
+    rows = opt.distortion_rows()
+    assert {r["reduction"] for r in rows} == {"A"}
+    # Stated: predicted in that reduction from the start.
+    isos = _isos(None)
+    isos[0]["cd_observed"] = dict(EXP_H2O)
+    isos[0]["cd_reduction"] = "s"
+    with contextlib.redirect_stdout(io.StringIO()):
+        opt_s = MolecularOptimizer(elems=["O", "H", "H"], coords=opt.coords, isotopologues=isos,
+                                   quantum_backend="analytic_water", use_autoconfig=False,
+                                   max_iter=2, fit_cd_constants=True, cd_weight=1.0)
+    opt_s.spectral.set_hessian_for_cd(opt.spectral._hess_bohr_for_cd)
+    iso_s = opt_s.spectral.isotopologues[0]
+    assert iso_s["cd_reduction"] == "S" and iso_s["cd_reduction_source"] == "stated"
+    hb = opt.spectral._hess_bohr_for_cd
+    want = compute_cd_constants(hb, opt.coords, iso_s["masses"], reduction="S").as_dict()
+    got = opt_s.spectral._predict_cd_for_iso(iso_s, opt.coords).as_dict()
+    for k in ("DJ", "DJK", "DK"):
+        assert got[k] == pytest.approx(want[k], rel=1e-12)
+    isos[0]["cd_reduction"] = "Ir"
+    from backend.spectral.spectral import SpectralEngine
+    with pytest.raises(ValueError, match="'A' or 'S'"):
+        SpectralEngine(isos, cd_weight=1.0, fit_cd_constants=True)
+
+
+def test_cd_weight_is_said_to_scale_the_model_error():
+    """Each row's noise is sigma / sqrt(cd_weight): only 1 keeps the 40%."""
+    assert not any("cd_weight" in w for w in _water_cd().internal_coordinate_posterior()["warnings"])
+    w4 = _water_cd(cd_weight=4.0).internal_coordinate_posterior()["warnings"]
+    assert any("cd_weight 4" in w and "enters as 20%" in w for w in w4)
+
+
+def test_a_config_can_state_the_reduction_and_the_model_sigma():
+    from runner.run_generic import _build_isotopologue
+    iso = {"name": "H2-16O", "masses": [M_O, M_H, M_H], "obs_b0_mhz": [278138.70],
+           "sigma_mhz": [0.2], "components": ["C"],
+           "cd_observed": dict(EXP_H2O), "cd_model_sigma": {"DJ": 1.5}, "cd_reduction": "A"}
+    out = _build_isotopologue(iso)
+    assert out["cd_model_sigma"] == {"DJ": 1.5} and out["cd_reduction"] == "A"
+
+
+def test_the_report_names_each_row_s_reduction(tmp_path):
+    from runner.usability import write_markdown_report
+    row = {"isotopologue": "H2-16O", "constant": "DJ", "observed_mhz": 37.59,
+           "predicted_mhz": 38.2, "residual_mhz": -0.61, "sigma_mhz": 15.0, "z": -0.04,
+           "reduction": "A", "reduction_source": "auto (kappa -0.436 at the start)"}
+    result = {"name": "w", "elems": ["O"], "best": {"coords": [[0.0, 0.0, 0.0]]},
+              "residual_rows": [], "uncertainty_meta": {"distortion_rows": [row]}}
+    path = tmp_path / "report.md"
+    write_markdown_report(path, result)
+    assert "| H2-16O | DJ | A (auto (kappa -0.436 at the start)) |" in path.read_text(encoding="utf-8")

@@ -100,10 +100,18 @@ for a complete worked example, and `dev/tests/test_alpha_against_experiment.py`
 for the validation suite (closed-form Dunham/Pekeris results, C₂ᵥ symmetry
 constraints, and published CO/H₂O constants — no Psi4 or ORCA needed).
 
-> **Known limitation.** The $\tau' \to$ Watson A-reduction mapping in
-> `centrifugal_distortion.py` is unvalidated and does not reproduce published
-> constants. `compute_cd_constants` reports 100% uncertainty accordingly, and
-> `fit_cd_constants` defaults to off.
+> **Centrifugal distortion.** With `fit_cd_constants: true` and `cd_weight > 0`,
+> observed $\Delta_J$, $\Delta_{JK}$ and $\Delta_K$ (`cd_observed`, MHz) become fit rows
+> against the harmonic prediction from the quantum Hessian at each trial geometry.
+> The $\tau' \to$ Watson mapping is validated on water only (DJ +1.6%, DJK −36%,
+> DK −7.6% against experiment), so each row's sigma is its measurement sigma
+> (`cd_sigma`) and a 40% model error (`cd_model_sigma` states another, in MHz) in
+> quadrature. `cd_weight` scales every row by $\sqrt{\texttt{cd\_weight}}$: a row's noise
+> is its sigma $/\sqrt{\texttt{cd\_weight}}$, so only 1 keeps the stated model error.
+> The three constants differ between the A and S reductions (water: 3.8%, 3.7%,
+> 0.8%); state the observed block's with `cd_reduction: A` or `S`, otherwise the
+> fit picks one from the asymmetry at its start (S when $|\kappa| \ge 0.9$) and keeps
+> it. $\delta_J$ and $\delta_K$ are not fitted. `fit_cd_constants` defaults to off.
 
 ## How data and theory share authority
 

@@ -555,7 +555,9 @@ def build_cd_table_from_hessian(
             hess_bohr,
             coords_ang,
             masses,
-            reduction=reduction,
+            # An isotopologue's own (stated, or pinned by the fit) reduction
+            # first, so this table and the fitted rows quote the same thing.
+            reduction=iso.get("cd_reduction") or reduction,
             reduction_order=reduction_order,
             min_freq_cm=min_freq_cm,
             fd_delta=fd_delta,

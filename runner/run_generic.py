@@ -312,10 +312,16 @@ def _build_isotopologue(iso: dict, spectral_model: str = "rigid") -> dict:
     # isotopologue, for rovibrational_corrections.fit_cd_constants. They were
     # dropped here, so no config could supply them: the optimizer warned "no
     # isotopologue carries a cd_observed block" and fitted none.
-    for key in ("cd_observed", "centrifugal_distortion", "cd_sigma"):
+    # cd_model_sigma (MHz per constant) replaces the harmonic model's 40% for
+    # the constants it names; cd_reduction ("A" or "S") is the Watson
+    # reduction the observed constants are quoted in -- without it the fit
+    # picks one from the asymmetry at its start and keeps it.
+    for key in ("cd_observed", "centrifugal_distortion", "cd_sigma", "cd_model_sigma"):
         block = iso.get(key)
         if block:
             out[key] = {str(k): float(v) for k, v in dict(block).items() if v is not None}
+    if iso.get("cd_reduction"):
+        out["cd_reduction"] = str(iso["cd_reduction"])
     return out
 
 

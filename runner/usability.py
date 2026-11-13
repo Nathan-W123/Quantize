@@ -1552,15 +1552,19 @@ def write_markdown_report(path: Path, result: dict[str, Any], artifacts: dict[st
     cd_rows = (result.get("uncertainty_meta") or {}).get("distortion_rows") or []
     if cd_rows:
         lines.extend(["", "### Centrifugal distortion (fitted rows)", "",
-                      "Observed against the harmonic prediction at the fitted geometry; sigma "
-                      "is the noise the row's weight implies (measurement and the model's error).",
-                      "", "| isotopologue | constant | observed MHz | predicted MHz | residual MHz | sigma MHz | z |",
-                      "|---|---|---:|---:|---:|---:|---:|"])
+                      "Observed against the harmonic prediction at the fitted geometry, in the "
+                      "Watson reduction shown (DJ, DJK and DK differ between A and S); sigma is "
+                      "the noise the row's weight implies (measurement and the model's error).",
+                      "", "| isotopologue | constant | reduction | observed MHz | predicted MHz | "
+                      "residual MHz | sigma MHz | z |",
+                      "|---|---|---|---:|---:|---:|---:|---:|"])
         for r in cd_rows:
+            red = r.get("reduction") or "?"
+            src = r.get("reduction_source") or ""
             lines.append(
-                f"| {r['isotopologue']} | {r['constant']} | {r['observed_mhz']:.6g} | "
-                f"{r['predicted_mhz']:.6g} | {r['residual_mhz']:.6g} | {r['sigma_mhz']:.6g} | "
-                f"{r['z']:+.2f} |")
+                f"| {r['isotopologue']} | {r['constant']} | {red}{f' ({src})' if src else ''} | "
+                f"{r['observed_mhz']:.6g} | {r['predicted_mhz']:.6g} | {r['residual_mhz']:.6g} | "
+                f"{r['sigma_mhz']:.6g} | {r['z']:+.2f} |")
     if result.get("torsion_objective_rows"):
         torsion_rows = result["torsion_objective_rows"]
         is_transition_mode = "J_lo" in torsion_rows[0]

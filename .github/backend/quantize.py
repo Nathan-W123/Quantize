@@ -1659,10 +1659,13 @@ class MolecularOptimizer:
                 "not a validation\n"
                 "                set; see dev/tests/test_cd_mapping_validation.py."
             )
+        pinned = {str(i.get("name", "iso")): i.get("cd_reduction")
+                  for i in self.spectral.isotopologues}
         cd_table = build_cd_table_from_hessian(
             hess_bohr,
             self.coords,
-            self._raw_isotopologues,
+            [dict(i, cd_reduction=pinned.get(str(i.get("name", "iso"))) or i.get("cd_reduction"))
+             for i in self._raw_isotopologues],
             sigma_fraction=self._cd_sigma_fraction,
         )
         if not cd_table:
@@ -1788,7 +1791,32 @@ class MolecularOptimizer:
                 out.append({"isotopologue": str(iso.get("name", "iso")), "constant": k,
                             "observed_mhz": float(o), "predicted_mhz": float(pr),
                             "residual_mhz": float(o - pr), "sigma_mhz": eff,
-                            "z": float((o - pr) / eff)})
+                            "z": float((o - pr) / eff),
+                            "reduction": str(iso.get("cd_reduction", "")),
+                            "reduction_source": str(iso.get("cd_reduction_source", ""))})
+        return out
+
+    def distortion_warnings(self):
+        """What the distortion rows' weights and coverage mean, for the
+        report: printed once when the engine is built, and lost from any
+        record kept after that."""
+        from backend.spectral.spectral import CD_FIT_KEYS
+        sp = self.spectral
+        if not sp._cd_rows_active() or not any(
+                k in (iso.get("cd_observed") or {})
+                for iso in sp.isotopologues for k in CD_FIT_KEYS):
+            return []
+        out = []
+        w = float(sp.cd_weight)
+        if abs(w - 1.0) > 1e-12:
+            out.append(
+                f"distortion rows carry cd_weight {w:g}: each row's noise is its sigma / "
+                f"sqrt({w:g}), so the harmonic model's 40% error enters as "
+                f"{40.0 / np.sqrt(w):.3g}%; only cd_weight 1 keeps the stated sigma")
+        if sp.cd_unfitted_keys:
+            out.append(
+                f"observed {', '.join(sp.cd_unfitted_keys)} not fitted: the harmonic "
+                f"mapping is validated on DJ, DJK and DK only")
         return out
 
     #: Below this, split_coupling is round-off: a split fit whose data reach
@@ -3407,6 +3435,7 @@ class MolecularOptimizer:
                 f"refreshes its quantum point: the widths and the quantum prior's "
                 f"weight carry that curvature, not the curvature here (formyl "
                 f"fluoride: a Hessian at the answer moves its widths by up to 3%)"]
+        gn = gn + self.distortion_warnings()
         split_gap = self.split_inconsistency()
         if split_gap is not None:
             gn = gn + [
