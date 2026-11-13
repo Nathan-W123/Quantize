@@ -50,7 +50,7 @@ sys.path.insert(0, str(_ROOT))
 import dev.analytic_water_backend  # noqa: F401,E402  (registers analytic_water)
 from backend.quantize import MolecularOptimizer  # noqa: E402
 from backend.uncertainty_v2.bootstrap import (  # noqa: E402
-    BootstrapEngine, _freeze_corrections, _run_bootstrap_worker)
+    BootstrapEngine, _freeze_corrections, _refit_model, _run_bootstrap_worker, _same_model)
 from backend.uncertainty_v2.models import BootstrapConfig  # noqa: E402
 from backend.uncertainty_v2.reporting import format_bootstrap_summary  # noqa: E402
 from backend.uncertainty_v2.resampling import (  # noqa: E402
@@ -244,6 +244,130 @@ def test_without_the_freeze_the_refresh_erases_the_draw(config_fit, tmp_path):
     frozen = deepcopy(base)
     _freeze_corrections(frozen)
     assert not frozen._harmonic_from_hessian and not frozen._anharmonic_from_hessian
+
+
+def test_the_kept_check_sees_the_targets_and_the_weighting(fixture_fit):
+    """draw_kept used to compare the drawn constants only. A mass-dependent
+    refit rewrites the B0->Be targets on top of them, and a rescale the
+    sigmas, and neither showed."""
+    opt = deepcopy(fixture_fit)
+    ref = _refit_model(opt)
+    assert _same_model(ref, _refit_model(opt))
+    iso = opt.spectral.isotopologues[0]
+    iso["delta_total_constants"] = np.asarray(
+        iso.get("delta_total_constants", np.zeros(3)), float) + np.array([0.0, 5.0, 0.0])
+    assert not _same_model(ref, _refit_model(opt))
+    opt = deepcopy(fixture_fit)
+    opt.spectral.scale_sigma(2.0)
+    assert not _same_model(ref, _refit_model(opt))
+
+
+def test_a_refit_keeps_the_base_s_targets_and_weighting(tmp_path):
+    """The rm1 model refitted its B0->Be offsets at every refit iteration,
+    which the reported covariance and the certificate both hold fixed; a
+    chi-square rescale re-weighted the refit under the error model."""
+    isos = [{"name": n, "masses": m, "obs_constants": list(b), "sigma_constants": [0.2] * 3,
+             "sigma_systematic_constants": list(0.024 * b)}
+            for n, m, b in (("H2-16O", MASSES_H2O, B0_H2O), ("D2-16O", MASSES_D2O, B0_D2O))]
+    with contextlib.redirect_stdout(io.StringIO()):
+        opt = MolecularOptimizer(elems=["O", "H", "H"], coords=_coords(), isotopologues=isos,
+                                 quantum_backend="analytic_water", use_autoconfig=False,
+                                 max_iter=60, quantum_prior_sigma_ang=0.02,
+                                 auto_systematic_sigma=False,
+                                 mass_dependent_model="rm1", chi2_rescale=True)
+        opt.run()
+    frozen = deepcopy(opt)
+    _freeze_corrections(frozen)
+    assert frozen._mass_dependent_model is None and frozen.chi2_rescale is False
+    calls = []
+    _orig = type(opt.spectral).fit_mass_dependent_correction
+    opt.spectral.fit_mass_dependent_correction = (
+        lambda *a, **k: (calls.append(1), _orig(opt.spectral, *a, **k))[1])
+    pert = resample_error_model(opt.spectral.isotopologues, opt.constant_error_covariance(),
+                                np.random.default_rng(4))
+    with contextlib.redirect_stdout(io.StringIO()):
+        res = _run_bootstrap_worker((opt, pert, str(tmp_path / "s"), 1, 4, None))
+    assert res.success and res.draw_kept is True and calls == []
+    assert res.mode_distance is not None and res.mode_distance < 0.02
+
+
+def test_a_refit_that_runs_out_of_iterations_at_its_optimum_is_a_draw(config_fit, tmp_path):
+    """With max_iter 8 every refit ends on max_iter (the plateau stop cannot
+    fire before iteration 11); they used to be refused, all of them, even at
+    their optimum."""
+    base = deepcopy(config_fit)
+    base.max_iter = 8
+    s = _cloud(base, "error-model", 6, 3, tmp_path)
+    assert all(r.termination == "max_iter" for r in s.sample_results), "premise"
+    assert s.usable_samples == 6
+    assert all(r.mode_distance < 0.02 for r in s.sample_results)
+
+
+def test_the_gate_is_stated_in_the_cloud_s_own_widths(config_fit):
+    """distance_to_mode is in posterior widths; the error-model cloud is the
+    posterior less its prior part, so the limit and the polish threshold
+    shrink by the smallest cloud-to-posterior width ratio (0.83 here, 0.075
+    on formyl fluoride)."""
+    em = BootstrapEngine(config_fit, BootstrapConfig(n_samples=2, strategy="error-model"))
+    a = em.analytic_reference()
+    ratio = min(t / p for t, p in zip(a["target_std"], a["posterior_std"]))
+    assert ratio < 0.9, "premise: the prior holds part of this posterior"
+    limit, polish = em._gate_limits()
+    assert limit == pytest.approx(0.25 * ratio)
+    assert polish == pytest.approx(0.02 * ratio)
+    rto = BootstrapEngine(config_fit, BootstrapConfig(n_samples=2, strategy="rto"))
+    assert rto._gate_limits() == (0.25, 0.02)
+
+
+def test_split_refits_keep_following_their_quantum_reference(tmp_path):
+    """The split step's quantum gradient Pn (g + H dx) and its posterior's
+    Pn (g + H Pn dx) agree only near the reference, so split refits keep
+    refreshing it. Held, 4 of 12 error-model refits on this one-constant
+    water were refused at 0.25-0.35 widths; refreshed, 12 of 12 usable."""
+    iso = [{"name": "H2-16O", "masses": MASSES_H2O, "obs_constants": [278138.70],
+            "sigma_constants": [0.2], "component_indices": [2],
+            "sigma_systematic_constants": [0.024 * 278138.70]}]
+    x0 = _coords() + np.array([[0.0, 0.0, 0.0], [0.01, 0.0, 0.0], [-0.01, 0.0, 0.0]])
+    with contextlib.redirect_stdout(io.StringIO()):
+        opt = MolecularOptimizer(elems=["O", "H", "H"], coords=x0, isotopologues=iso,
+                                 quantum_backend="analytic_water", use_autoconfig=False,
+                                 max_iter=200, quantum_prior_sigma_ang=0.02,
+                                 auto_systematic_sigma=False, objective_mode="split",
+                                 symmetry="C2v")
+        opt.run()
+    held = deepcopy(opt)
+    _freeze_corrections(held)
+    assert held.orca_update_thresh == opt.orca_update_thresh
+    s = _cloud(opt, "error-model", 12, 5, tmp_path)
+    assert s.usable_samples == 12
+
+
+def test_rto_refuses_the_split_objective(tmp_path):
+    with contextlib.redirect_stdout(io.StringIO()):
+        opt = MolecularOptimizer(
+            elems=["O", "H", "H"], coords=_coords(),
+            isotopologues=[{"name": "H2-16O", "masses": MASSES_H2O,
+                            "obs_constants": list(B0_H2O), "sigma_constants": [0.2] * 3}],
+            quantum_backend="analytic_water", use_autoconfig=False, max_iter=2,
+            quantum_prior_sigma_ang=0.02, objective_mode="split")
+        opt.run()
+    with pytest.raises(ValueError, match="joint objective only"):
+        BootstrapEngine(opt, BootstrapConfig(n_samples=2, strategy="rto")).run(str(tmp_path))
+
+
+def test_the_projected_reference_follows_a_quantum_update(config_fit):
+    """_projected_reference_terms was cached on the coordinates alone, so a
+    quantum update at unchanged coordinates paired the new reference point
+    with the old gradient and Hessian."""
+    opt = deepcopy(config_fit)
+    before = opt.distance_to_mode()
+    with contextlib.redirect_stdout(io.StringIO()):
+        opt._run_hessian()                       # a new reference, same coordinates
+    after = opt.distance_to_mode()
+    opt._proj_ref_terms_cache = None
+    opt._quantum_prior_weight_cache = None
+    assert after == pytest.approx(opt.distance_to_mode(), rel=1e-12)
+    assert after != pytest.approx(before, rel=1e-3), "premise: the reference moved"
 
 
 # ── The weight belongs to the current quantum reference ──────────────────────

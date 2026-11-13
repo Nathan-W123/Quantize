@@ -30,7 +30,9 @@ class BootstrapConfig:
     #: A sample is a draw only if its refit reached its own optimum: it is
     #: refused when it ends further than this many posterior widths from it
     #: (distance_to_mode, the largest Newton-step component in that
-    #: direction's own width).
+    #: direction's own width). For a cloud narrower than the posterior --
+    #: every strategy but "rto" -- the engine scales it by the cloud's width
+    #: over the posterior's, so it is stated in the cloud's own widths.
     max_mode_distance: float = 0.25
 
     STRATEGIES = ("error-model", "rto", "isotopologue-gaussian")
@@ -68,9 +70,11 @@ class BootstrapSampleResult:
     #: The refit's distance to its own optimum in posterior widths, measured
     #: in the worker on the sample's own objective (distance_to_mode).
     mode_distance: float | None = None
-    #: Whether the drawn constants were still the fit's targets when it
-    #: ended. A correction rebuild during the refit used to overwrite them
-    #: with the unperturbed ones, so the "sample" refitted the base data.
+    #: Whether the refit ended fitting the model it started with: the drawn
+    #: constants, the B0 -> Be targets built on them, their sigmas and the
+    #: effective sigma. A correction rebuild during the refit used to
+    #: overwrite the constants with the unperturbed ones, so the "sample"
+    #: refitted the base data.
     draw_kept: bool | None = None
     #: Whether this sample may enter the cloud an interval is taken from.
     #: `success` only says the fit did not raise; these are different facts

@@ -78,6 +78,12 @@ def _gate(results, rms=BASE_RMS):
     return results
 
 
+def _gate_with(results, limit):
+    eng = _engine()
+    eng._gate_samples(results, eng._base_rms_mhz(), limit=limit)
+    return results
+
+
 # ── the no-accepted-step refusal ─────────────────────────────────────────────
 
 def test_a_sample_that_accepted_no_step_is_refused():
@@ -124,9 +130,22 @@ def test_a_refit_that_stopped_short_of_its_own_optimum_is_refused():
     assert far.usable is False and "from its own optimum" in far.unusable_reason
 
 
-def test_a_refit_that_ran_out_of_iterations_is_refused():
-    (r,) = _gate([_sample(1, rms=BASE_RMS, moved=1e-3, termination="max_iter")])
-    assert r.usable is False and "ran out of iterations" in r.unusable_reason
+def test_a_refit_that_ran_out_of_iterations_is_judged_by_its_certificate():
+    """How the loop ended is not a reason. With max_iter 8 every water refit
+    ended on it -- the plateau stop cannot fire before iteration 11 -- and 17
+    of 20 were within 0.002 widths of their optimum; all 20 were refused."""
+    at, short = _gate([_sample(1, rms=BASE_RMS, moved=1e-3, termination="max_iter",
+                               distance=1e-3),
+                       _sample(2, rms=BASE_RMS, moved=1e-3, termination="max_iter",
+                               distance=1.0)])
+    assert at.usable is True
+    assert short.usable is False and "from its own optimum" in short.unusable_reason
+
+
+def test_the_gate_takes_the_limit_it_is_given():
+    """The engine passes a limit scaled to the cloud's widths."""
+    (r,) = _gate_with([_sample(1, rms=BASE_RMS, moved=1e-3, distance=0.05)], limit=0.02)
+    assert r.usable is False and "limit 0.02" in r.unusable_reason
 
 
 def test_a_refit_whose_constants_were_replaced_is_refused():
@@ -134,6 +153,7 @@ def test_a_refit_whose_constants_were_replaced_is_refused():
     unperturbed ones; such a refit fitted the base data."""
     (r,) = _gate([_sample(1, rms=BASE_RMS, moved=1e-3, kept=False)])
     assert r.usable is False and "replaced" in r.unusable_reason
+    assert "another model" in r.unusable_reason
 
 
 def test_an_unmeasured_distance_is_accepted_only_on_a_converged_fit():
@@ -184,7 +204,7 @@ def _summary(results, n_samples=None):
 def test_usable_results_excludes_every_refusal():
     results = _gate([_sample(1, rms=BASE_RMS, moved=1e-3),
                      _sample(2, rms=BASE_RMS, moved=0.0),
-                     _sample(3, rms=BASE_RMS, moved=1e-3, termination="max_iter"),
+                     _sample(3, rms=BASE_RMS, moved=1e-3, distance=1.0),
                      _sample(4, rms=BASE_RMS, moved=2e-3)])
     s = _summary(results)
     assert s.successful_samples == 4, "all four ran without raising"

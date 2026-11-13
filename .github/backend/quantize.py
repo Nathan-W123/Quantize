@@ -1327,7 +1327,12 @@ class MolecularOptimizer:
         result = self._backend.run_hessian(self.coords)
         self.quantum = QuantumState(result.energy, result.gradient_bohr, result.hessian_bohr)
         self._orca_ref_coords = self.coords.copy()
-        self._quantum_prior_weight_cache = None     # a new reference, a new weight
+        # A new reference: a new weight, and new projected reference terms
+        # (that cache is keyed on the coordinates alone, so an update at the
+        # same coordinates paired the new reference point with the old
+        # gradient and Hessian; distance_to_mode read 0.035 for 0.002).
+        self._quantum_prior_weight_cache = None
+        self._proj_ref_terms_cache = None
 
     def _run_gradient(self):
         """Cheap gradient-only job: refreshes gradient, keeps existing Hessian."""
@@ -1338,6 +1343,7 @@ class MolecularOptimizer:
         self.quantum._gradient_bohr = result.gradient_bohr
         self._orca_ref_coords = self.coords.copy()
         self._quantum_prior_weight_cache = None
+        self._proj_ref_terms_cache = None
 
 
     def _refresh_iso_delta_total(self, iso, correction: RovibCorrection):
@@ -1737,6 +1743,7 @@ class MolecularOptimizer:
         self.quantum = QuantumState(eng.energy, eng._gradient_bohr.copy(), eng._hessian_bohr.copy())
         self._orca_ref_coords = self.coords.copy()
         self._quantum_prior_weight_cache = None
+        self._proj_ref_terms_cache = None
         print(f"Loaded ORCA files.  Energy = {self.quantum.energy:.10f} Hartree")
 
     # ── Drift check ───────────────────────────────────────────────────────────
@@ -4075,10 +4082,11 @@ class MolecularOptimizer:
         4,000 steps -- so paying for the same SVD each time cost 26% of the
         sampler's runtime for an answer that cannot change while it runs.
 
-        The inputs are the reference gradient and Hessian, which are fixed,
-        and `self.coords`, which is not: it moves during the fit. So the
-        cache is validated against the coordinates it was built at rather
-        than assumed. np.array_equal on 3N floats costs about a microsecond
+        The inputs are the reference gradient and Hessian, which change only
+        when a quantum update replaces them (and every update clears this
+        cache), and `self.coords`, which moves during the fit. So the cache
+        is validated against the coordinates it was built at rather than
+        assumed. np.array_equal on 3N floats costs about a microsecond
         against the 146 it saves.
         """
         key = np.asarray(self.coords, dtype=float)

@@ -45,23 +45,78 @@ def _freeze_corrections(opt: MolecularOptimizer) -> None:
     within 2.2% on every coordinate, at the cost of an error-model refit.
     Whether that quadratic describes the surface near the fit is a property
     of the base fit, not something a refit can check.
+
+    Under the joint objective only. The split step's quantum gradient is
+    Pn (g + H dx), while the split posterior's energy has gradient
+    Pn (g + H Pn dx); they agree only while dx, the distance from the
+    reference, stays small, which the refreshes ensure. Held, error-model
+    refits under split stopped a median 0.18 widths from their optimum by
+    the posterior's measure and 4 of 12 were refused (12 of 12 usable,
+    median 0.004, with the refreshes), on water with one constant.
+
+    The targets and the weighting. The draw was made with the base's sigmas
+    (already rescaled, when chi2_rescale fired on the base), so a refit
+    that rescaled itself fitted with sigmas the error model does not
+    describe: one formyl fluoride refit in 40 widened all twelve by 2.1x
+    and was admitted. And the rm1 mass-dependent model refits its B0 -> Be
+    offsets at every iteration, which the reported covariance and the
+    convergence certificate both hold fixed: such refits all ended on
+    max_iter, and continued to a plateau they moved a further 0.04-0.32
+    widths. Held at the base's offsets, a refit has one objective.
     """
     opt._harmonic_from_hessian = False
     opt._anharmonic_from_hessian = False
     opt._harmonic_cd_from_hessian = False
     opt.use_orca_rovib = False
-    opt.orca_update_thresh = float("inf")
+    if opt.optimizer.objective_mode == "joint":
+        opt.orca_update_thresh = float("inf")
+    opt.chi2_rescale = False
+    opt._mass_dependent_model = None
+
+
+def _refit_model(opt) -> list:
+    """What a refit must still be fitting when it ends, per isotopologue:
+    the drawn constants, the B0 -> Be target built on them, the sigmas and
+    the effective sigma the weighting makes of them (and the structural
+    prior's weight when that prior is in the objective). Anything that
+    rewrites one of these mid-refit -- a correction rebuild, a mass-dependent
+    refit, a chi-square rescale, an adaptive sigma floor -- makes the sample
+    a draw from another model."""
+    sp = opt.spectral
+    out = []
+    for iso in sp.isotopologues:
+        sig = np.asarray(iso["sigma_constants"], dtype=float)
+        out.append(np.asarray(iso["obs_constants"], dtype=float).copy())
+        out.append(np.asarray(sp._be_target(iso), dtype=float).copy())
+        out.append(sig.copy())
+        out.append(np.asarray(sp._effective_sigma(sig, iso=iso), dtype=float).copy())
+    if opt.internal_prior is not None and opt.coordinate_mode == "cartesian":
+        out.append(np.array([float(opt.prior_weight)]))
+    return out
+
+
+def _same_model(a: list, b: list) -> bool:
+    return len(a) == len(b) and all(
+        x.shape == y.shape and np.allclose(
+            x, y, rtol=0.0, atol=1e-9 * max(1.0, float(np.max(np.abs(x))) if x.size else 1.0))
+        for x, y in zip(a, b))
 
 
 #: A refit that stopped further than this from its own optimum, in posterior
-#: widths, is continued from where it stopped, at most _POLISH_PASSES times.
-#: The plateau stop ends a fit on one small step, which is loose for a refit
-#: that has a full posterior width to travel: under "rto" on water 5% of
-#: refits stopped beyond 0.1 widths short, up to 0.2, which narrows the cloud
-#: (the bond came out 4% narrow). Refusing them instead would remove exactly
-#: the draws that travelled furthest.
+#: widths (scaled to the cloud's own widths, see BootstrapEngine._gate_limits),
+#: is continued from where it stopped, at most _POLISH_PASSES times, whatever
+#: ended its loop. A safety net: on the shipped settings every refit measured
+#: (about 10,000 on water and formyl fluoride) ended within 5e-4 widths, so it
+#: does not fire. It does when a fit is stopped early: with the plateau stop
+#: loosened, 18 of 20 water refits were polished, at most 3 passes each, and
+#: a restart confirmed the ones it then refused. Refusing without polishing
+#: would remove exactly the draws that travelled furthest.
 _POLISH_DISTANCE = 0.02
 _POLISH_PASSES = 3
+#: A coordinate whose cloud width is under this fraction of its posterior
+#: width is held by the prior, and the cloud does not resolve it, so it does
+#: not set the gate's scale.
+_RESOLVED_FRACTION = 0.02
 
 
 def _distance(opt, coords):
@@ -74,6 +129,7 @@ def _distance(opt, coords):
 def _run_bootstrap_worker(args: tuple) -> BootstrapSampleResult:
     base_opt, isotopologues, workdir, idx, seed = args[:5]
     rto_shift = args[5] if len(args) > 5 else None
+    polish = float(args[6]) if len(args) > 6 else _POLISH_DISTANCE
     start = time.time()
     opt = deepcopy(base_opt)
     _freeze_corrections(opt)
@@ -82,28 +138,26 @@ def _run_bootstrap_worker(args: tuple) -> BootstrapSampleResult:
     opt.workdir = workdir
     os.makedirs(workdir, exist_ok=True)
     start_coords = np.asarray(opt.coords, dtype=float).copy()
-    drawn = [np.asarray(iso["obs_constants"], dtype=float).copy() for iso in isotopologues]
+    model = _refit_model(opt)
     try:
-        coords = opt.run()
+        coords = np.asarray(opt.run(), dtype=float)
+        dist = _distance(opt, coords)
+        passes = 0
+        # Whatever ended the loop, max_iter included: the certificate, not
+        # the stopping rule, says whether the refit is at its optimum. With
+        # max_iter 8 every water refit ended on it (the plateau stop cannot
+        # fire before iteration 11) and 17 of 20 were within 0.002 widths.
+        while dist is not None and dist > polish and passes < _POLISH_PASSES:
+            coords = np.asarray(opt.run(), dtype=float)
+            dist = _distance(opt, coords)
+            passes += 1
         rms = float(opt.history[-1]["freq_rms"]) if opt.history else None
-        coords = np.asarray(coords, dtype=float)
         # Measured in the worker, where the starting geometry is in hand.
         # Exactly 0.0 means run() accepted no step, so this "sample" is the
         # starting point again -- see BootstrapRunSummary.usable.
         moved = float(np.abs(coords - start_coords).max())
-        kept = all(
-            np.allclose(np.asarray(iso["obs_constants"], dtype=float), d,
-                        rtol=0.0, atol=1e-9 * max(1.0, float(np.max(np.abs(d)))))
-            for iso, d in zip(opt.spectral.isotopologues, drawn))
-        dist = _distance(opt, coords)
-        passes = 0
-        while (dist is not None and dist > _POLISH_DISTANCE and passes < _POLISH_PASSES
-               and (getattr(opt, "termination", None) or {}).get("reason") != "max_iter"):
-            coords = np.asarray(opt.run(), dtype=float)
-            dist = _distance(opt, coords)
-            passes += 1
-        rms = float(opt.history[-1]["freq_rms"]) if opt.history else rms
-        moved = float(np.abs(coords - start_coords).max())
+        # After the polish passes, which are refits too.
+        kept = _same_model(model, _refit_model(opt))
         return BootstrapSampleResult(
             idx=idx,
             seed=seed,
@@ -158,6 +212,12 @@ class BootstrapEngine:
             return
         if opt.spectral_only or opt.quantum is None:
             raise ValueError("strategy 'rto' needs a quantum prior to randomise")
+        if opt.optimizer.objective_mode != "joint":
+            raise ValueError(
+                "strategy 'rto' samples the joint objective only: under the split "
+                "objective the quantum prior acts in the data's null space alone, "
+                "so its centre would have to be drawn there (measured on water with "
+                "one constant: 39 of 200 draws usable, the cloud 0.19x the posterior)")
         if getattr(opt, "_prior_target_coords", None) is not None:
             raise ValueError(
                 "strategy 'rto' does not support prior_target_coords: the prior "
@@ -179,6 +239,7 @@ class BootstrapEngine:
             f"(strategy={self.config.strategy}, workers={self.config.max_workers})..."
         )
 
+        limit, polish = self._gate_limits()
         seed_seq = np.random.SeedSequence(self.config.seed)
         child_sequences = seed_seq.spawn(self.config.n_samples)
         error_cov = None
@@ -200,7 +261,7 @@ class BootstrapEngine:
                 raise ValueError(f"Unsupported bootstrap strategy: {self.config.strategy}")
 
             sample_dir = os.path.join(run_dir, f"sample_{i:03d}")
-            jobs.append((self.optimizer, perturbed, sample_dir, i, seed, shift))
+            jobs.append((self.optimizer, perturbed, sample_dir, i, seed, shift, polish))
 
         results: list[BootstrapSampleResult] = []
         with ProcessPoolExecutor(max_workers=self.config.max_workers) as pool:
@@ -218,7 +279,7 @@ class BootstrapEngine:
         success = [r for r in results if r.success]
         mean_rms = float(np.mean([r.rms_mhz for r in success if r.rms_mhz is not None])) if success else None
         base_rms = self._base_rms_mhz()
-        self._gate_samples(results, base_rms)
+        self._gate_samples(results, base_rms, limit=limit)
         summary = BootstrapRunSummary(
             config=self.config,
             total_samples=len(results),
@@ -250,27 +311,58 @@ class BootstrapEngine:
         except (KeyError, TypeError, ValueError):
             return None
 
+    def _gate_limits(self) -> tuple[float, float]:
+        """The refusal limit and the polish threshold, in posterior widths.
+
+        distance_to_mode is measured in widths of the posterior, which is
+        "rto"'s cloud, so for it these are max_mode_distance and
+        _POLISH_DISTANCE as they stand. The other clouds are narrower --
+        "error-model"'s is the reported covariance less its prior part, up to
+        13x narrower on formyl fluoride, where 0.25 posterior widths let a
+        refit stop up to 3.2 of the cloud's own widths short. So for them
+        both are scaled by the smallest cloud-to-posterior width ratio over
+        the coordinates the cloud resolves, which states them, near enough,
+        in the cloud's own widths.
+        """
+        limit = float(self.config.max_mode_distance)
+        if self.config.strategy == "rto":
+            return limit, _POLISH_DISTANCE
+        try:
+            ref = self.analytic_reference()
+            t = np.asarray(ref["target_std"], dtype=float)
+            p = np.asarray(ref["posterior_std"], dtype=float)
+            ratio = t[p > 0.0] / p[p > 0.0]
+            ratio = ratio[ratio >= _RESOLVED_FRACTION]
+            scale = float(min(1.0, ratio.min())) if ratio.size else 1.0
+        except Exception:  # no analytic reference: the unscaled gate
+            scale = 1.0
+        return limit * scale, _POLISH_DISTANCE * scale
+
     def _gate_samples(
         self,
         results: list[BootstrapSampleResult],
         base_rms: float | None = None,
+        limit: float | None = None,
     ) -> None:
         """Mark which samples may enter the cloud, and why the rest may not.
 
-        A sample is a draw when its refit fitted the constants it was given
-        and reached its own optimum. In order:
+        A sample is a draw when its refit fitted the model it was given and
+        reached its own optimum. In order:
 
         1. It raised, or returned no geometry.
         2. ``moved_ang == 0.0``: no step was accepted, so the geometry is the
            start. Measured on water with four samples, two came back
            bit-identical to the base geometry and were counted as successes.
-        3. The drawn constants were not the targets it ended with -- a
-           correction rebuild overwrote them -- so it refitted other data.
-        4. Its loop ran out of iterations.
-        5. It stopped more than ``max_mode_distance`` posterior widths from
-           its own optimum (distance_to_mode on the sample's own objective),
-           or that distance could not be measured on a fit that did not
-           report convergence.
+        3. Its targets or weighting were not the ones it started with -- a
+           correction rebuild, a mass-dependent refit or a rescale rewrote
+           them -- so it fitted another model.
+        4. It stopped more than ``limit`` posterior widths from its own
+           optimum (distance_to_mode on the sample's own objective; the
+           config's max_mode_distance unless the engine scaled it to the
+           cloud, see _gate_limits), or that distance could not be measured
+           on a fit that did not report convergence. How the loop ended is
+           not itself a reason: a refit that ran out of iterations at its
+           optimum is a draw.
 
         This replaces a gate on the final residual RMS relative to the base
         fit's. Perturbed constants fit worse by construction, so the ratio
@@ -278,7 +370,7 @@ class BootstrapEngine:
         water config and 39 of 48 on formyl fluoride, most of which sat at
         their own optimum, and kept the ones that happened to fit well.
         """
-        limit = float(self.config.max_mode_distance)
+        limit = float(self.config.max_mode_distance if limit is None else limit)
         for r in results:
             r.usable = False
             if not r.success:
@@ -294,11 +386,8 @@ class BootstrapEngine:
                 continue
             if r.draw_kept is False:
                 r.unusable_reason = (
-                    "the drawn constants were replaced during the refit, so it "
-                    "fitted other data")
-                continue
-            if r.termination == "max_iter":
-                r.unusable_reason = "the refit ran out of iterations"
+                    "the drawn constants, their B0->Be targets or their weighting "
+                    "were replaced during the refit, so it fitted another model")
                 continue
             if r.mode_distance is None:
                 if r.termination not in (None, "converged"):
@@ -308,8 +397,8 @@ class BootstrapEngine:
                     continue
             elif r.mode_distance > limit:
                 r.unusable_reason = (
-                    f"the refit stopped {r.mode_distance:.2f} posterior widths "
-                    f"from its own optimum (limit {limit:g})")
+                    f"the refit stopped {r.mode_distance:.3g} posterior widths "
+                    f"from its own optimum (limit {limit:.3g})")
                 continue
             r.usable = True
             r.unusable_reason = None
