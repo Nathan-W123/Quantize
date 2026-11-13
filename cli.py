@@ -319,6 +319,39 @@ _V1_REMOVED = (
     "could give a different answer for the same fit. Use v2, which is the default."
 )
 
+#: Geometries drawn from the reported posterior when no sampler produced
+#: posterior draws: enough for the 2.5/97.5 percentiles to settle to about
+#: a twentieth of a width.
+_ANALYTIC_DRAWS = 2000
+
+
+def _interval_cloud(mode, mcmc_cloud, boot_posterior, opt, seed):
+    """Which cloud the interval table, the predictive check and the plots
+    describe, and what it is.
+
+    Only a sample of the posterior. The MCMC chains are one when they pass
+    their convergence checks; an "rto" bootstrap is one, refit by refit.
+    The other bootstrap strategies are not -- "error-model" is the reported
+    covariance less its prior part, up to 13x narrower (formyl fluoride) --
+    so they are printed as the check they are, and the interval comes from
+    the reported posterior itself. Two clouds are never pooled: the CLI
+    used to append the bootstrap draws to the MCMC chains, mixing in
+    proportion to two sample counts that have nothing to do with each other.
+    """
+    import numpy as np
+    from backend.uncertainty_v2 import reported_posterior_draws
+
+    if mode in ("mcmc", "both") and mcmc_cloud:
+        return list(mcmc_cloud), "the MCMC chains (posterior samples)"
+    if mode == "mcmc":
+        return [], None
+    if boot_posterior:
+        return list(boot_posterior), "the rto refits (posterior draws)"
+    rng = np.random.default_rng(seed)
+    draws = reported_posterior_draws(opt, _ANALYTIC_DRAWS, rng)
+    return list(draws), (f"the reported posterior (Laplace covariance plus shared "
+                         f"model error, {_ANALYTIC_DRAWS} draws)")
+
 
 def _cmd_uncertainty(args) -> int:
     """Run Bayesian/Bootstrap uncertainty analysis from config."""
@@ -341,6 +374,11 @@ def _cmd_uncertainty(args) -> int:
     from scripts.uncertainty_plots import plot_coordinate_distributions, plot_mcmc_traces, plot_parameter_corner, plot_autocorrelations
     import numpy as np
 
+    if args.uncertainty_engine != "v2":
+        # Before the config is loaded: this used to run the whole base fit
+        # first and then exit, and the default was this engine.
+        print(f"Error: {_V1_REMOVED}", file=sys.stderr)
+        return 2
     if args.samples < 1:
         print("Error: --samples must be >= 1.", file=sys.stderr)
         return 2
@@ -361,8 +399,26 @@ def _cmd_uncertainty(args) -> int:
             print("Error: --burn-in must be smaller than --mcmc-steps.", file=sys.stderr)
             return 2
 
+    boot_cfg = None
+    if args.mode in ["bootstrap", "both"]:
+        boot_cfg = BootstrapConfig(
+            n_samples=args.samples,
+            max_workers=args.workers,
+            seed=args.seed,
+            strategy=args.bootstrap_strategy,
+            output_dir=args.bootstrap_output_dir,
+            persist_samples=not args.no_bootstrap_persist,
+        )
+
     cfg = load_config(args.config)
     opt = build_optimizer_from_config(cfg)
+    if boot_cfg is not None:
+        # What can be known before the fit is checked before the fit: rto on
+        # a spectral-only config used to fail with a traceback after it.
+        problem = BootstrapEngine.strategy_problem(opt, boot_cfg.strategy, fitted=False)
+        if problem:
+            print(f"Error: --bootstrap-strategy {boot_cfg.strategy}: {problem}", file=sys.stderr)
+            return 2
     summary_bundle = {
         "generated_at": datetime.now(UTC).isoformat(),
         "config_path": str(args.config),
@@ -375,57 +431,51 @@ def _cmd_uncertainty(args) -> int:
     print("\nConverging initial geometry to the global minimum...")
     opt.run()
 
-    if args.uncertainty_engine == "v2":
-        posterior_state = evaluate_posterior_state(opt, opt.coords, use_proxy=True)
-        laplace = laplace_approximation(opt, regularization=args.laplace_regularization)
-        print("\n" + format_posterior_state(posterior_state))
-        print(format_laplace_summary(laplace))
-        summary_bundle["posterior_state"] = posterior_state.to_dict()
-        summary_bundle["laplace"] = laplace.to_dict()
-        if not args.no_laplace_persist:
-            out_dir = os.path.join(opt.workdir, "uncertainty_v2")
-            os.makedirs(out_dir, exist_ok=True)
-            with open(os.path.join(out_dir, "posterior_laplace_summary.json"), "w", encoding="utf-8") as fh:
-                json.dump(
-                    {
-                        "posterior_state": posterior_state.to_dict(),
-                        "laplace": laplace.to_dict(),
-                    },
-                    fh,
-                    indent=2,
-                )
+    posterior_state = evaluate_posterior_state(opt, opt.coords, use_proxy=True)
+    laplace = laplace_approximation(opt, regularization=args.laplace_regularization)
+    print("\n" + format_posterior_state(posterior_state))
+    print(format_laplace_summary(laplace))
+    summary_bundle["posterior_state"] = posterior_state.to_dict()
+    summary_bundle["laplace"] = laplace.to_dict()
+    if not args.no_laplace_persist:
+        out_dir = os.path.join(opt.workdir, "uncertainty_v2")
+        os.makedirs(out_dir, exist_ok=True)
+        with open(os.path.join(out_dir, "posterior_laplace_summary.json"), "w", encoding="utf-8") as fh:
+            json.dump(
+                {
+                    "posterior_state": posterior_state.to_dict(),
+                    "laplace": laplace.to_dict(),
+                },
+                fh,
+                indent=2,
+            )
     
-    cloud = []
-    # Hoisted above the mode branches on purpose: both are read after
-    # them, and initialising inside `if args.mode in [...]` makes
-    # --mode bootstrap raise NameError on the empty-cloud path.
+    # Hoisted above the mode branches on purpose: all are read after them,
+    # and initialising inside `if args.mode in [...]` makes --mode bootstrap
+    # raise NameError on the empty-cloud path.
+    mcmc_cloud: list = []
+    boot_posterior: list = []
     all_chains: list = []
     mcmc_refused = False
-    
-    if args.mode in ["bootstrap", "both"]:
-        if args.uncertainty_engine == "v2":
-            boot_cfg = BootstrapConfig(
-                n_samples=args.samples,
-                max_workers=args.workers,
-                seed=args.seed,
-                strategy=args.bootstrap_strategy,
-                output_dir=args.bootstrap_output_dir,
-                persist_samples=not args.no_bootstrap_persist,
-            )
-            engine = BootstrapEngine(opt, boot_cfg)
-            summary = engine.run(base_workdir=opt.workdir)
-            print("\n" + format_bootstrap_summary(summary))
-            summary_bundle["bootstrap"] = summary.to_dict()
-            # Usable, not merely non-raising. A sample whose fit accepted no
-            # step returns the geometry it started from; counting it put a
-            # duplicate of the cloud's own centre into the cloud, which makes
-            # the reported interval NARROWER the more often the sampler fails.
-            # Measured on water: two of four samples came back bit-identical
-            # to the base geometry and were reported as successes.
-            successes = summary.usable_results
-            n_refused = summary.refused_samples
-        else:
-            raise SystemExit(_V1_REMOVED)
+
+    if boot_cfg is not None:
+        engine = BootstrapEngine(opt, boot_cfg)
+        try:
+            engine._check_strategy()     # the checks that needed the fit
+        except ValueError as exc:
+            print(f"Error: --bootstrap-strategy {boot_cfg.strategy}: {exc}", file=sys.stderr)
+            return 2
+        summary = engine.run(base_workdir=opt.workdir)
+        print("\n" + format_bootstrap_summary(summary))
+        summary_bundle["bootstrap"] = summary.to_dict()
+        # Usable, not merely non-raising. A sample whose fit accepted no
+        # step returns the geometry it started from; counting it put a
+        # duplicate of the cloud's own centre into the cloud, which makes
+        # the reported interval NARROWER the more often the sampler fails.
+        # Measured on water: two of four samples came back bit-identical
+        # to the base geometry and were reported as successes.
+        successes = summary.usable_results
+        n_refused = summary.refused_samples
 
         if n_refused:
             print(f"\n[warning] {n_refused}/{args.samples} bootstrap samples ran but "
@@ -444,7 +494,7 @@ def _cmd_uncertainty(args) -> int:
         if not summary.usable:
             reason = summary.unusable_reason()
             print(f"[warning] {reason}")
-            print("          No bootstrap interval is reported from this run.")
+            print("          These refits are not used for the interval.")
             summary_bundle["warnings"].append(reason)
             summary_bundle["bootstrap_interval_refused"] = True
             successes = []
@@ -452,70 +502,69 @@ def _cmd_uncertainty(args) -> int:
             print("          High failure rate suggests the geometry is unstable or poorly constrained.")
             summary_bundle["warnings"].append("High bootstrap failure rate suggests unstable/weakly constrained geometry.")
 
-        for res in successes:
-            if args.uncertainty_engine == "v2":
-                cloud.append(np.asarray(res.coords, dtype=float))
-            elif res["success"]:
-                cloud.append(res["coords"])
+        if boot_cfg.strategy == "rto":
+            boot_posterior = [np.asarray(res.coords, dtype=float) for res in successes]
 
     if args.mode in ["mcmc", "both"]:
         print(f"\n[mcmc] Running {args.chains} parallel chains...")
-        if args.uncertainty_engine == "v2":
-            mcfg = MCMCConfig(
-                n_steps=args.mcmc_steps,
-                burn_in=args.burn_in,
-                thin=args.mcmc_thin,
-                n_chains=args.chains,
-                proposal_scale=args.mcmc_scale,
-                adapt_every=args.mcmc_adapt_every,
-                seed=args.seed,
-                checkpoint_every=args.mcmc_checkpoint_every,
-                persist_chain_samples=not args.no_mcmc_persist,
-                output_dir=args.mcmc_output_dir,
-            )
-            mcmc_summary = AdaptiveMetropolisV2(opt, mcfg).run(base_workdir=opt.workdir)
-            print("\n" + format_mcmc_summary(mcmc_summary))
-            summary_bundle["mcmc"] = mcmc_summary.to_dict()
-            # Traces are kept either way -- looking at a bad trace is how you
-            # diagnose one. The INTERVAL cloud is what gets refused: feeding
-            # unmixed chains into analyze_coordinate_distribution reports the
-            # spread of the chains' starting points as a posterior width.
-            _mcmc_refusal = mcmc_summary.unusable_reason()
+        mcfg = MCMCConfig(
+            n_steps=args.mcmc_steps,
+            burn_in=args.burn_in,
+            thin=args.mcmc_thin,
+            n_chains=args.chains,
+            proposal_scale=args.mcmc_scale,
+            adapt_every=args.mcmc_adapt_every,
+            seed=args.seed,
+            checkpoint_every=args.mcmc_checkpoint_every,
+            persist_chain_samples=not args.no_mcmc_persist,
+            output_dir=args.mcmc_output_dir,
+        )
+        mcmc_summary = AdaptiveMetropolisV2(opt, mcfg).run(base_workdir=opt.workdir)
+        print("\n" + format_mcmc_summary(mcmc_summary))
+        summary_bundle["mcmc"] = mcmc_summary.to_dict()
+        # Traces are kept either way -- looking at a bad trace is how you
+        # diagnose one. The INTERVAL cloud is what gets refused: feeding
+        # unmixed chains into analyze_coordinate_distribution reports the
+        # spread of the chains' starting points as a posterior width.
+        _mcmc_refusal = mcmc_summary.unusable_reason()
+        for c in mcmc_summary.chains:
+            all_chains.append(c.samples)
+        if _mcmc_refusal is None:
             for c in mcmc_summary.chains:
-                all_chains.append(c.samples)
-            if _mcmc_refusal is None:
-                for c in mcmc_summary.chains:
-                    for s in c.samples:
-                        cloud.append(s)
-            else:
-                print(f"\n[mcmc] REFUSED: {_mcmc_refusal}")
-                print("[mcmc] These samples are excluded from the reported "
-                      "distribution. Traces are still written so the failure "
-                      "can be inspected.")
-                summary_bundle["warnings"].append(
-                    "MCMC samples excluded from the reported distribution: "
-                    + _mcmc_refusal)
-                mcmc_refused = True
-            if mcmc_summary.convergence is not None:
-                from backend.internal.internal_fit import InternalCoordinateSet
-
-                ic_set = InternalCoordinateSet(opt.coords, opt.elems)
-                ic_names = ic_set.active_names()
-                print("\n" + "=" * 60)
-                print("  MCMC CONVERGENCE DIAGNOSTICS (v2 split-Rhat/ESS)")
-                print("=" * 60)
-                print(f"{'Parameter':<30} {'R-hat':>10} {'ESS':>10}")
-                print("-" * 60)
-                for name, r, e in zip(ic_names, mcmc_summary.convergence.r_hat, mcmc_summary.convergence.ess):
-                    mark = "(!)" if r > 1.1 else "   "
-                    print(f"{mark}{name:<30} {r:10.3f} {e:10.1f}")
-                print("\n  (Target: R-hat < 1.1; ESS > 100)")
-                print("=" * 60)
-            else:
-                print("\n[mcmc] v2 convergence diagnostics unavailable (too few chains/samples).")
-                summary_bundle["warnings"].append("MCMC convergence diagnostics unavailable (too few chains/samples).")
+                for s in c.samples:
+                    mcmc_cloud.append(s)
         else:
-            raise SystemExit(_V1_REMOVED)
+            print(f"\n[mcmc] REFUSED: {_mcmc_refusal}")
+            print("[mcmc] These samples are excluded from the reported "
+                  "distribution. Traces are still written so the failure "
+                  "can be inspected.")
+            summary_bundle["warnings"].append(
+                "MCMC samples excluded from the reported distribution: "
+                + _mcmc_refusal)
+            mcmc_refused = True
+        if mcmc_summary.convergence is not None:
+            from backend.internal.internal_fit import InternalCoordinateSet
+
+            ic_set = InternalCoordinateSet(opt.coords, opt.elems)
+            ic_names = ic_set.active_names()
+            print("\n" + "=" * 60)
+            print("  MCMC CONVERGENCE DIAGNOSTICS (v2 split-Rhat/ESS)")
+            print("=" * 60)
+            print(f"{'Parameter':<30} {'R-hat':>10} {'ESS':>10}")
+            print("-" * 60)
+            for name, r, e in zip(ic_names, mcmc_summary.convergence.r_hat, mcmc_summary.convergence.ess):
+                mark = "(!)" if r > 1.1 else "   "
+                print(f"{mark}{name:<30} {r:10.3f} {e:10.1f}")
+            print("\n  (Target: R-hat < 1.1; ESS > 100)")
+            print("=" * 60)
+        else:
+            print("\n[mcmc] v2 convergence diagnostics unavailable (too few chains/samples).")
+            summary_bundle["warnings"].append("MCMC convergence diagnostics unavailable (too few chains/samples).")
+    try:
+        cloud, cloud_source = _interval_cloud(args.mode, mcmc_cloud, boot_posterior, opt, args.seed)
+    except ValueError as exc:
+        print(f"Error: {exc}")
+        return 1
     if not cloud:
         if mcmc_refused:
             print("Error: every MCMC sample was refused as unconverged, so "
@@ -526,10 +575,11 @@ def _cmd_uncertainty(args) -> int:
             print("Error: No uncertainty samples were generated.")
         return 1
 
-    print("\nProcessing sample cloud...")
+    print(f"\nProcessing sample cloud: {cloud_source}...")
     stats, corr, names = analyze_coordinate_distribution(np.array(cloud), opt.elems)
     print_distribution_summary(stats)
     summary_bundle["cloud"] = {
+        "source": cloud_source,
         "n_samples": int(len(cloud)),
         "n_parameters": int(np.asarray(cloud[0]).size) if cloud else 0,
         "coordinate_stats": _json_safe(stats),
@@ -559,7 +609,7 @@ def _cmd_uncertainty(args) -> int:
             plot_autocorrelations(_trace, opt.elems, plot_dir)
     summary_bundle["plot_dir"] = plot_dir
 
-    out_dir = os.path.join(opt.workdir, "uncertainty_v2" if args.uncertainty_engine == "v2" else "uncertainty_legacy")
+    out_dir = os.path.join(opt.workdir, "uncertainty_v2")
     os.makedirs(out_dir, exist_ok=True)
     out_path = os.path.join(out_dir, "uncertainty_run_summary.json")
     with open(out_path, "w", encoding="utf-8") as fh:
@@ -681,8 +731,9 @@ def main(argv: list[str] | None = None) -> int:
     unc_p.add_argument(
         "--uncertainty-engine",
         choices=["legacy", "v2"],
-        default="legacy",
-        help="Uncertainty engine implementation. 'v2' enables greenfield Phase-1 bootstrap.",
+        default="v2",
+        help=("Uncertainty engine. Only v2 exists; 'legacy' is still accepted so an "
+              "old command line stops with an explanation instead of a usage error."),
     )
     unc_p.add_argument(
         "--bootstrap-strategy",
@@ -693,7 +744,9 @@ def main(argv: list[str] | None = None) -> int:
               "so the cloud checks the reported covariance less its prior "
               "part. rto: also the quantum prior's centre, so the cloud checks "
               "the reported covariance itself. isotopologue-gaussian: the "
-              "legacy independent draw by the quoted sigma."),
+              "legacy independent draw by the quoted sigma. Only rto's cloud "
+              "is a posterior sample; for the others the interval is taken "
+              "from the reported posterior and the cloud is printed as a check."),
     )
     unc_p.add_argument(
         "--seed",

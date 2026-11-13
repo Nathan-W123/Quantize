@@ -1088,10 +1088,16 @@ class SpectralEngine:
             return J_all, r_all, np.concatenate(scale_blocks)
         return J_all, r_all
 
-    def stacked_unweighted(self, coords):
+    def stacked_unweighted(self, coords, want_jacobian: bool = True):
         """
         Return unweighted stacked Jacobian and residual vector in physical units.
         Jacobian units: MHz/Å, residual units: MHz.
+
+        ``want_jacobian=False`` returns ``(None, residuals)`` without the
+        finite-differenced Jacobian, which is 6N rotational-constant
+        evaluations per isotopologue against one for the residuals: the
+        posterior predictive check over 2000 formyl fluoride draws spent
+        3.3 s of its 3.4 on Jacobians it discarded.
         """
         coords = np.asarray(coords, dtype=float)
         J_blocks, r_blocks = [], []
@@ -1106,17 +1112,19 @@ class SpectralEngine:
             calc_mix = None
             be_target = self._be_target(iso)
             for w, cxyz in zip(conf_weights, conf_coords):
-                Jc = self.jacobian(cxyz, iso["masses"], idx)
+                Jc = self.jacobian(cxyz, iso["masses"], idx) if want_jacobian else None
                 calc_c = _rotational_constants(np.asarray(cxyz), np.asarray(iso["masses"]))[idx]
-                if j_mix is None:
-                    j_mix = w * Jc
+                if calc_mix is None:
+                    j_mix = None if Jc is None else w * Jc
                     calc_mix = w * calc_c
                 else:
-                    j_mix += w * Jc
+                    if Jc is not None:
+                        j_mix += w * Jc
                     calc_mix += w * calc_c
             J_blocks.append(j_mix)
             r_blocks.append(be_target - calc_mix)
-        return np.vstack(J_blocks), np.concatenate(r_blocks)
+        J_all = np.vstack(J_blocks) if want_jacobian else None
+        return J_all, np.concatenate(r_blocks)
 
     def conformer_diagnostics(self):
         if self.conformer_mixture is None:

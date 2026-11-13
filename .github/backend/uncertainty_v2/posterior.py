@@ -50,6 +50,43 @@ def evaluate_posterior_state(
     )
 
 
+def reported_covariance(optimizer: MolecularOptimizer, coords: np.ndarray | None = None):
+    """The covariance the engine reports, in Cartesians (Angstrom^2).
+
+    The Laplace posterior over the physical directions plus the model error
+    propagated as shared across isotopologues -- the matrix
+    internal_coordinate_posterior turns into the reported widths. Returns
+    ``(total, laplace)`` so a caller can also take the parts.
+    """
+    x = np.asarray(optimizer.coords if coords is None else coords, dtype=float)
+    cov, _ = optimizer.laplace_approximation(coords=x, check_gauss_newton=False)
+    if cov is None:
+        return None, None
+    cov, _basis, _n = optimizer.physical_covariance(cov, coords=x)
+    J, _r, scale = optimizer.spectral.stacked(x, return_row_scale=True)
+    total = cov + optimizer._systematic_covariance(J, cov, coords=x, row_scale=scale)
+    return total, cov
+
+
+def reported_posterior_draws(optimizer: MolecularOptimizer, n: int,
+                             rng: np.random.Generator) -> np.ndarray:
+    """``n`` geometries from N(x_hat, reported_covariance): the reported
+    uncertainty as a cloud, so the interval table, the predictive check and
+    the plots describe it rather than a refitting check of part of it.
+    Raises ValueError where the engine reports no width at this geometry."""
+    from .resampling import symmetric_sqrt
+
+    post = optimizer.internal_coordinate_posterior()
+    if post is None or "error" in post:
+        reason = "the Laplace has no answer" if post is None else post["error"]
+        raise ValueError(f"no reported posterior to draw from: {reason}")
+    x = np.asarray(optimizer.coords, dtype=float)
+    total, _cov = reported_covariance(optimizer, x)
+    root = symmetric_sqrt(total)
+    z = rng.standard_normal((int(n), x.size))
+    return x[None, :, :] + (z @ root).reshape(int(n), *x.shape)
+
+
 def laplace_approximation(
     optimizer: MolecularOptimizer,
     *,

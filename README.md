@@ -350,7 +350,6 @@ Run uncertainty with the greenfield v2 engine:
 
 ```bash
 python -m cli uncertainty configs/example_water_semi_experimental.yaml \
-  --uncertainty-engine v2 \
   --mode both \
   --samples 20 \
   --mcmc-steps 5000 \
@@ -358,6 +357,17 @@ python -m cli uncertainty configs/example_water_semi_experimental.yaml \
   --chains 4 \
   --seed 42
 ```
+
+The reported uncertainty is the analytic posterior (the Laplace covariance
+plus the model error, shared across isotopologues). The interval table, the
+predictive check and the plots describe a sample of it: the MCMC chains when
+they pass their convergence checks, an `rto` bootstrap when one was run,
+otherwise draws from the reported posterior itself; clouds are never pooled.
+`--bootstrap-strategy` says what each refit draws: `error-model` (default)
+the constants from the engine's error model, a check of the posterior less
+its prior part; `rto` the quantum prior's centre as well, a sample of the
+posterior; `isotopologue-gaussian` the legacy independent draw. Each run
+prints its cloud beside the analytic value it should match.
 
 Outputs are written under the run workdir, including:
 

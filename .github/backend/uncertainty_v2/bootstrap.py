@@ -206,27 +206,37 @@ class BootstrapEngine:
         self.config = config
         self.config.validate()
 
-    def _check_strategy(self) -> None:
-        opt = self.optimizer
-        if self.config.strategy != "rto":
-            return
-        if opt.spectral_only or opt.quantum is None:
-            raise ValueError("strategy 'rto' needs a quantum prior to randomise")
+    @staticmethod
+    def strategy_problem(opt: MolecularOptimizer, strategy: str,
+                         fitted: bool = True) -> str | None:
+        """Why ``strategy`` cannot sample this optimizer, or None.
+
+        ``fitted=False`` asks only what is known before the base fit -- so a
+        caller can refuse before paying for it -- and leaves out the checks
+        that need the fit's state (a quantum point, an internal prior the
+        fit weighted)."""
+        if strategy != "rto":
+            return None
+        if opt.spectral_only or (fitted and opt.quantum is None):
+            return "strategy 'rto' needs a quantum prior to randomise"
         if opt.optimizer.objective_mode != "joint":
-            raise ValueError(
-                "strategy 'rto' samples the joint objective only: under the split "
-                "objective the quantum prior acts in the data's null space alone, "
-                "so its centre would have to be drawn there (measured on water with "
-                "one constant: 39 of 200 draws usable, the cloud 0.19x the posterior)")
+            return ("strategy 'rto' samples the joint objective only: under the split "
+                    "objective the quantum prior acts in the data's null space alone, "
+                    "so its centre would have to be drawn there (measured on water with "
+                    "one constant: 39 of 200 draws usable, the cloud 0.19x the posterior)")
         if getattr(opt, "_prior_target_coords", None) is not None:
-            raise ValueError(
-                "strategy 'rto' does not support prior_target_coords: the prior "
-                "target recomputes the quantum gradient, so the shift would be lost")
+            return ("strategy 'rto' does not support prior_target_coords: the prior "
+                    "target recomputes the quantum gradient, so the shift would be lost")
         anchored = opt.internal_prior is not None and opt.coordinate_mode == "cartesian"
-        if opt._internal_prior_rows(opt.coords) is not None or anchored:
-            raise ValueError(
-                "strategy 'rto' randomises the data and the quantum prior only; an "
-                "internal-coordinate prior is active and would not be sampled")
+        if anchored or (fitted and opt._internal_prior_rows(opt.coords) is not None):
+            return ("strategy 'rto' randomises the data and the quantum prior only; an "
+                    "internal-coordinate prior is active and would not be sampled")
+        return None
+
+    def _check_strategy(self) -> None:
+        problem = self.strategy_problem(self.optimizer, self.config.strategy)
+        if problem:
+            raise ValueError(problem)
 
     def run(self, base_workdir: str | None = None) -> BootstrapRunSummary:
         base = os.path.abspath(base_workdir or self.optimizer.workdir or ".")
@@ -415,13 +425,12 @@ class BootstrapEngine:
         """
         from backend.internal.internal_fit import InternalCoordinateSet
 
+        from .posterior import reported_covariance
+
         opt = self.optimizer
         x = np.asarray(opt.coords, dtype=float)
-        cov, _ = opt.laplace_approximation(coords=x, check_gauss_newton=False)
-        cov, basis, _n = opt.physical_covariance(cov, coords=x)
+        c_total, cov = reported_covariance(opt, x)
         J, _r, scale = opt.spectral.stacked(x, return_row_scale=True)
-        c_sys = opt._systematic_covariance(J, cov, coords=x, row_scale=scale)
-        c_total = cov + c_sys
         strategy = self.config.strategy
         if strategy == "rto":
             target_cov = c_total

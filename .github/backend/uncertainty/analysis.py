@@ -58,7 +58,9 @@ def analyze_coordinate_distribution(cloud_xyz, elems, use_dihedrals=False):
             "unit": unit,
             "mean": float(np.mean(data)),
             "median": float(np.median(data)),
-            "std": float(np.std(data)),
+            # ddof=1, as the bootstrap summary prints it: the same cloud
+            # used to show two standard deviations (3.39 and 3.17 mA at 8).
+            "std": float(np.std(data, ddof=1)) if data.size > 1 else 0.0,
             "ci_95": [float(np.percentile(data, 2.5)), float(np.percentile(data, 97.5))],
             "skew": float(skew(data)),
             "kurtosis": float(kurtosis(data)),
@@ -91,7 +93,7 @@ def posterior_predictive_check(cloud_xyz, spectral_engine: SpectralEngine):
     """
     all_rmses = []
     for xyz in cloud_xyz:
-        _, residual_mhz = spectral_engine.stacked_unweighted(xyz)
+        _, residual_mhz = spectral_engine.stacked_unweighted(xyz, want_jacobian=False)
         rmse = np.sqrt(np.mean(residual_mhz**2))
         all_rmses.append(rmse)
     
