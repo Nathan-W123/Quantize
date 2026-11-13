@@ -755,6 +755,14 @@ class MolecularOptimizer:
         # measuring a feature that was switched on, reported no error, and did
         # nothing, and the next person to try would spend the same hour.
         if self._fit_cd_constants and self._cd_weight > 0.0:
+            _fixed = [str(_iso.get("name", "iso")) for _iso in self._raw_isotopologues
+                      if _iso.get("pred_cd") is not None]
+            if _fixed:
+                print(
+                    "[cd-warning] pred_cd on " + ", ".join(_fixed) + " is not used for "
+                    "fitting: the distortion rows predict from the Hessian at each\n"
+                    "             trial geometry, since a fixed prediction cannot "
+                    "constrain the geometry.")
             _n_cd = sum(
                 1 for _iso in self._raw_isotopologues
                 if (_iso.get("cd_observed") or _iso.get("centrifugal_distortion"))

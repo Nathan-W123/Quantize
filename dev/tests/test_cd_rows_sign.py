@@ -100,7 +100,10 @@ def _n_rot(opt):
 
 def test_the_default_path_keeps_the_observed_distortion_constants(cd_fit):
     J, _r = cd_fit.spectral.stacked(cd_fit.coords)
-    assert J.shape[0] - _n_rot(cd_fit) == 10, "five constants on each of two isotopologues"
+    assert J.shape[0] - _n_rot(cd_fit) == 6, "DJ, DJK, DK on each of two isotopologues"
+    # delta_J and delta_K are observed here but not fitted (no validation;
+    # water's predicted delta_K has the wrong sign).
+    assert "delta_K" in cd_fit.spectral.isotopologues[0]["cd_observed"]
 
 
 def test_the_distortion_rows_point_the_gradient_downhill(cd_fit):
@@ -125,11 +128,18 @@ def test_the_distortion_rows_point_the_gradient_downhill(cd_fit):
 
 
 def test_a_fit_with_distortion_rows_reaches_its_own_optimum(cd_fit):
+    """And the rows pull toward the observed constants: the fit that has them
+    ends with a smaller distortion residual than the same fit without them
+    (with the old sign it ended with a larger one)."""
     n = _n_rot(cd_fit)
-    _J, r_end = cd_fit.spectral.stacked(cd_fit.coords, want_jacobian=False)
-    _J, r_start = cd_fit.spectral.stacked(_x0(), want_jacobian=False)
     assert cd_fit.distance_to_mode() < 0.01
-    assert np.linalg.norm(r_end[n:]) < np.linalg.norm(r_start[n:])
+    plain = _make(None)
+    with contextlib.redirect_stdout(io.StringIO()):
+        plain.run()
+    sp = cd_fit.spectral
+    _J, r_with = sp.stacked(cd_fit.coords, want_jacobian=False)
+    _J, r_without = sp.stacked(plain.coords, want_jacobian=False)
+    assert np.linalg.norm(r_with[n:]) < np.linalg.norm(r_without[n:])
 
 
 def test_the_distortion_draws_carry_the_rows_weights(cd_fit):
@@ -145,9 +155,11 @@ def test_the_distortion_draws_carry_the_rows_weights(cd_fit):
                   for i in range(len(p)) for k in CD_NAMES if k in sig[i]])
     z = np.array(z)
     np.testing.assert_allclose(z.std(axis=0), 1.0, atol=0.05)
-    # and the weight is what stacked applies: sqrt(cd_weight) / sigma_cd
+    # and the weight is what stacked applies: sqrt(cd_weight) / sigma, with
+    # sigma the given 2% and the model's 40% in quadrature
     keys0 = [k for k in CD_NAMES if k in sig[0]]
-    sig_cd = np.array([max(0.02 * abs(sp.isotopologues[0]["cd_observed"][k]), 0.01) for k in keys0])
+    obs0 = sp.isotopologues[0]["cd_observed"]
+    sig_cd = np.array([max(np.hypot(0.02 * abs(obs0[k]), 0.40 * abs(obs0[k])), 0.01) for k in keys0])
     np.testing.assert_allclose([sig[0][k] for k in keys0], sig_cd / np.sqrt(sp.cd_weight))
 
 
@@ -197,22 +209,25 @@ def test_the_default_cd_sigma_is_a_constant_of_the_objective(observed_cd):
             auto_systematic_sigma=False, fit_cd_constants=True, cd_weight=1e4)
         opt.run()
     iso = opt.spectral.isotopologues[0]
-    for k, v in iso["cd_observed"].items():
-        assert iso["cd_sigma"][k] == pytest.approx(max(0.40 * abs(v), 0.01))
+    rows = opt.spectral.cd_row_sigmas(opt.coords)[0]
+    for k, v in rows.items():
+        assert iso["cd_model_sigma"][k] == pytest.approx(max(0.40 * abs(iso["cd_observed"][k]), 0.01))
+        assert v == pytest.approx(iso["cd_model_sigma"][k] / np.sqrt(1e4))
     assert opt.distance_to_mode() < 0.01
 
 
 def test_the_cd_draws_carry_their_share_of_the_target(observed_cd, tmp_path):
-    """Where the distortion rows matter (cd_weight 1e4: about a fifth of the
-    target variance here), the error-model draws' linear prediction has the
-    target's covariance only with the distortion constants drawn too."""
+    """Where the distortion rows matter (cd_weight 4e6 with the model's 40%
+    in their sigma: a material share of the target variance here), the
+    error-model draws' linear prediction has the target's covariance only
+    with the distortion constants drawn too."""
     from backend.internal.internal_fit import InternalCoordinateSet
     from backend.uncertainty_v2.resampling import resample_error_model
     with contextlib.redirect_stdout(io.StringIO()):
         opt = MolecularOptimizer(
             elems=["O", "H", "H"], coords=_x0(), isotopologues=_isos(observed_cd),
             quantum_backend="analytic_water", use_autoconfig=False, max_iter=60,
-            auto_systematic_sigma=False, fit_cd_constants=True, cd_weight=1e4)
+            auto_systematic_sigma=False, fit_cd_constants=True, cd_weight=4e6)
         opt.run()
     x = np.asarray(opt.coords, float)
     cov, _ = opt.laplace_approximation(coords=x, check_gauss_newton=False)
@@ -264,3 +279,64 @@ def test_a_config_can_supply_observed_distortion_constants(observed_cd):
     assert opt.spectral.isotopologues[0].get("cd_observed")
     J, _r = opt.spectral.stacked(opt.coords)
     assert J.shape[0] > _n_rot(opt)
+
+
+# ── Round 3 ──────────────────────────────────────────────────────────────────
+
+EXP_H2O = {"DJ": 37.59, "DJK": -172.9, "DK": 973.3, "delta_J": 15.26, "delta_K": 41.05}
+
+
+def _water_cd(cd_sigma=None, cd_weight=1.0, **kw):
+    isos = _isos(None)
+    isos[0]["cd_observed"] = dict(EXP_H2O)
+    if cd_sigma is not None:
+        isos[0]["cd_sigma"] = cd_sigma
+    with contextlib.redirect_stdout(io.StringIO()):
+        opt = MolecularOptimizer(elems=["O", "H", "H"], coords=_x0(), isotopologues=isos,
+                                 quantum_backend="analytic_water", use_autoconfig=False,
+                                 max_iter=80, auto_systematic_sigma=False,
+                                 fit_cd_constants=True, cd_weight=cd_weight, **kw)
+        opt.run()
+    return opt
+
+
+def test_a_given_cd_sigma_is_the_measurement_part():
+    """A literature-precision sigma (1%) used alone treated the harmonic
+    model as exact: pulls up to 31 on DJK, the geometry moved 0.4-0.6
+    widths. The model's 40% now goes in quadrature."""
+    opt = _water_cd({k: 0.01 * abs(v) for k, v in EXP_H2O.items()})
+    sig = opt.spectral.cd_row_sigmas(opt.coords)[0]
+    for k, v in sig.items():
+        assert v == pytest.approx(np.hypot(0.01, 0.40) * abs(EXP_H2O[k]), rel=1e-12)
+    keys, obs, pred, sg = opt.spectral._cd_rows(opt.spectral.isotopologues[0], opt.coords)
+    assert np.all(np.abs((obs - pred) / sg) < 2.0), "pulls at the model's accuracy"
+
+
+def test_a_partial_cd_sigma_block_gives_the_rest_the_model_error():
+    """A key missing from a given block used to get 5% of its value, 8x
+    tighter than an absent block's 40%."""
+    opt = _water_cd({"DJ": 0.01 * EXP_H2O["DJ"]})
+    sig = opt.spectral.cd_row_sigmas(opt.coords)[0]
+    assert sig["DJK"] == pytest.approx(0.40 * abs(EXP_H2O["DJK"]), rel=1e-12)
+    assert sig["DK"] == pytest.approx(0.40 * abs(EXP_H2O["DK"]), rel=1e-12)
+
+
+def test_unvalidated_distortion_constants_are_named_and_not_fitted(capsys):
+    from backend.spectral.spectral import SpectralEngine
+    isos = _isos(None)
+    isos[0]["cd_observed"] = dict(EXP_H2O)
+    SpectralEngine(isos, cd_weight=1.0, fit_cd_constants=True)
+    out = capsys.readouterr().out
+    assert "delta_J, delta_K not fitted" in out
+
+
+def test_a_supplied_fixed_prediction_is_said_to_be_unused(capsys):
+    isos = _isos(None)
+    isos[0]["cd_observed"] = dict(EXP_H2O)
+    from backend.spectral.centrifugal_distortion import CDConstants
+    isos[0]["pred_cd"] = CDConstants(DJ=38.0, DJK=-200.0, DK=900.0)
+    MolecularOptimizer(elems=["O", "H", "H"], coords=_x0(), isotopologues=isos,
+                       quantum_backend="analytic_water", use_autoconfig=False, max_iter=2,
+                       fit_cd_constants=True, cd_weight=1.0)
+    assert "pred_cd on H2-16O is not used for fitting" in capsys.readouterr().out
+

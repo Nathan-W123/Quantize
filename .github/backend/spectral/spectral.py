@@ -113,6 +113,14 @@ from backend.spectral.centrifugal_distortion import (
 )
 from backend.spectral.correction_models import RovibCorrection
 
+#: The distortion constants a fit uses. The harmonic mapping is validated
+#: against experiment on these three only (water: DJ +1.6%, DJK -36%, DK
+#: -7.6%; dev/tests/test_cd_mapping_validation.py), which is also where the
+#: 40% model accuracy comes from. delta_J and delta_K have no validation, and
+#: on water the predicted delta_K is -19.8 MHz against an observed +41.05,
+#: so observed values of them are not fitted.
+CD_FIT_KEYS = ("DJ", "DJK", "DK")
+
 # h / (8π² · amu · Å²) → MHz; converts principal moments [amu·Å²] to rotational constants [MHz]
 _INERTIA_TO_MHZ = (constants.h / (8 * np.pi**2 * constants.atomic_mass * (1e-10)**2)) * 1e-6
 
@@ -537,23 +545,22 @@ class SpectralEngine:
         self._cd_fd_delta = float(cd_fd_delta)
         self._cd_min_freq_cm = float(cd_min_freq_cm)
         self._cd_sigma_fraction = max(float(cd_sigma_fraction), 1e-6)
-        # Each distortion row's sigma, fixed here from the constants as
-        # observed, so it is a constant of the objective: a weight computed
-        # from the current values would move with a bootstrap draw of them
-        # (and, from the prediction, with the geometry). Given sigmas are
-        # kept; a key without one gets the configured fraction of its
-        # observed value, a block without any the model's accuracy.
+        # The model part of each distortion row's sigma, fixed here from the
+        # constants as observed so it is a constant of the objective: one
+        # computed from the current values would move with a bootstrap draw
+        # of them (and, from the prediction, with the geometry). A given
+        # cd_sigma is the measurement part and is added in quadrature.
+        unfitted = set()
         for entry in self.isotopologues:
             cd_obs = entry.get("cd_observed") or {}
             if not cd_obs:
                 continue
-            given = dict(entry.get("cd_sigma") or {})
-            if not given:
-                entry["cd_sigma"] = self._default_cd_sigma(cd_obs)
-            else:
-                for k, v in cd_obs.items():
-                    given.setdefault(k, max(abs(float(v)) * self._cd_sigma_fraction, 0.01))
-                entry["cd_sigma"] = given
+            entry["cd_model_sigma"] = self._default_cd_sigma(cd_obs)
+            unfitted.update(k for k in cd_obs if k not in CD_FIT_KEYS)
+        if unfitted and self.cd_weight > 0.0 and self.fit_cd_constants:
+            print(f"[cd-warning] observed {', '.join(sorted(unfitted))} not fitted: the "
+                  f"harmonic mapping is validated on {', '.join(CD_FIT_KEYS)} only (on "
+                  f"water the predicted delta_K has the opposite sign to the observed one).")
         self._cd_jacobian_cache: dict[tuple, np.ndarray] = {}
 
     def set_hessian_for_cd(self, hess_bohr) -> None:
@@ -603,26 +610,33 @@ class SpectralEngine:
         pred = self._predict_cd_for_iso(iso, coords)
         if pred is None:
             return None
-        keys = [k for k in CD_NAMES if k in obs]
+        keys = [k for k in CD_FIT_KEYS if k in obs]
         if not keys:
             return None
         pred_d = pred.as_dict()
-        sig_block = iso.get("cd_sigma") or self._default_cd_sigma(obs)
+        # The measurement sigma (cd_sigma, when given) and the model's error
+        # (cd_model_sigma, fixed at construction) in quadrature: the residual
+        # is observed minus a harmonic prediction good to about 40%. A given
+        # sigma alone treated the model as exact: at 1% (a literature-like
+        # precision) the rows pulled water's geometry 0.4-0.6 widths with
+        # pulls up to 31 on DJK.
+        meas = iso.get("cd_sigma") or {}
+        model = iso.get("cd_model_sigma") or self._default_cd_sigma(obs)
         sigma = np.array(
-            [max(float(sig_block.get(k, abs(obs[k]) * self._cd_sigma_fraction)), 0.01)
+            [max(float(np.hypot(float(meas.get(k, 0.0)), float(model[k]))), 0.01)
              for k in keys], dtype=float)
         return (keys, np.array([float(obs[k]) for k in keys], dtype=float),
                 np.array([float(pred_d[k]) for k in keys], dtype=float), sigma)
 
     def _default_cd_sigma(self, obs: dict) -> dict:
-        """The distortion rows' weight when no cd_sigma is given: the harmonic
-        model's accuracy (_CD_REDUCTION_ACCURACY, 40%, or the configured
-        fraction if larger) times the OBSERVED constant. It was the same
-        fraction of the PREDICTED constant, pred.sigma, which moves with the
-        geometry while its derivative is not in J: the merit the fit stops on
-        and the gradient its certificate reads then have different stationary
-        points (water, cd_weight 1e4, 20% offset: the base fit stopped 4.2
-        widths from its own optimum, with no warning)."""
+        """The model part of the distortion rows' sigma: the harmonic model's
+        accuracy (_CD_REDUCTION_ACCURACY, 40%, or the configured fraction if
+        larger) times the OBSERVED constant. It was the same fraction of the
+        PREDICTED constant, pred.sigma, which moves with the geometry while
+        its derivative is not in J: the merit the fit stops on and the
+        gradient its certificate reads then have different stationary points
+        (water, cd_weight 1e4, 20% offset: the base fit stopped 4.2 widths
+        from its own optimum, with no warning)."""
         frac = max(float(self._cd_sigma_fraction), _CD_REDUCTION_ACCURACY)
         return {k: max(abs(float(v)) * frac, 0.01) for k, v in obs.items()}
 
@@ -674,7 +688,7 @@ class SpectralEngine:
             return np.zeros((0, 3 * len(coords)))
         masses = np.asarray(iso["masses"], dtype=float)
         obs = iso.get("cd_observed") or {}
-        keys = [k for k in CD_NAMES if k in obs]
+        keys = [k for k in CD_FIT_KEYS if k in obs]
         if not keys:
             return np.zeros((0, 3 * len(coords)))
         cache_key = (
