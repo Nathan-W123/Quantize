@@ -541,10 +541,10 @@ def _cmd_uncertainty(args) -> int:
             if args.mode == "bootstrap":
                 print(f"\n[uncertainty] Summary written: {_write_bundle(opt, summary_bundle)}")
                 return 2
-            # --mode both: the refusal is about the bootstrap's check column,
-            # not about the posterior the chains sample, so they still run
-            # (this used to return here and lose the MCMC half as well). The
-            # exit status still says part of the request was refused.
+            # --mode both: the refusal says no refit can be certified against
+            # this posterior; the chains sample that posterior as it is, so
+            # they still run (this used to return here and lose the MCMC half
+            # as well), and the interval carries the split caveat below.
             print("[bootstrap] refused; running the MCMC half of --mode both.")
             boot_refused = True
             boot_cfg = None
@@ -666,6 +666,20 @@ def _cmd_uncertainty(args) -> int:
             f"Laplace (its summary, the bootstrap's analytic and posterior columns, "
             f"draws of the reported posterior); {cloud_source} sample the objective "
             f"itself and do not carry it, so this interval is not that posterior")
+    caveat = None
+    if cloud_source:
+        try:
+            split_gap = opt.split_inconsistency()
+        except Exception as exc:
+            split_gap = f"the split check could not be made ({type(exc).__name__}: {exc})"
+        if split_gap:
+            # Under split the interval can only be the chains' or the reported
+            # posterior's draws (rto is refused), and both sample the split
+            # posterior -- which this check says need not describe the fit.
+            caveat = (f"split objective: {split_gap}. This interval ({cloud_source}) is the "
+                      f"split posterior's and need not be the split fit's spread; an "
+                      f"error-model bootstrap of this fit measures that spread")
+            notes.append(caveat)
     for note in notes:
         print(f"\n[note] {note}")
         summary_bundle["warnings"].append(note)
@@ -693,6 +707,8 @@ def _cmd_uncertainty(args) -> int:
         "coordinate_stats": _json_safe(stats),
         "parameter_names": _json_safe(names),
     }
+    if caveat:
+        summary_bundle["cloud"]["caveat"] = caveat
     
     # --- Posterior Predictive Check (PPC) ---
     ppc_stats = posterior_predictive_check(np.array(cloud), opt.spectral)

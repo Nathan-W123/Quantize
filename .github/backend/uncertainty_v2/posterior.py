@@ -202,11 +202,14 @@ def laplace_approximation(
     # The CLI prints this summary, not internal_coordinate_posterior's, and
     # its bundle keeps these warnings.
     warnings.extend(optimizer.distortion_warnings())
-    split_gap = optimizer.split_inconsistency()
+    try:
+        split_gap = optimizer.split_inconsistency()
+    except Exception as exc:  # a diagnostic must not cost the summary
+        split_gap = f"the split check could not be made ({type(exc).__name__}: {exc})"
     if split_gap is not None:
         warnings.append(
-            f"split objective: {split_gap}; these widths, and the MCMC chains "
-            f"that sample the same posterior, do not describe the split fit's spread.")
+            f"split objective: {split_gap}. These widths, and the MCMC chains that "
+            f"sample the same posterior, need not describe the split fit's spread.")
 
     return LaplaceSummary(
         n_params=n_full,

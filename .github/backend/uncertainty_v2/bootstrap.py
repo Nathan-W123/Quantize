@@ -225,26 +225,25 @@ class BootstrapEngine:
         that need the fit's state (a quantum point, an internal prior the
         fit weighted)."""
         if not opt.spectral_only and opt.optimizer.objective_mode != "joint":
-            # The split step's quantum gradient is Pn (g + H dx); the posterior
-            # it is reported with has Pn (g + H Pn dx) and so leaves out the
-            # coupling Pn H Pr between the data's range and its null space.
-            # Where that coupling exists the refits follow the step and their
-            # cloud is not the analytic column's: error-model on one-constant
-            # water came out 0.04x its target on the angle (the step's own
-            # linear response predicts 0.05x). Where the data reach every
-            # physical direction it is round-off, the split posterior is exact
-            # and the split cloud matches it (water with A, B, C: 0.99-1.00).
-            # rto is refused either way: under split the prior acts in the
-            # null space only, and the shift and the certificate do not follow.
+            # Under split the refits ARE the split estimator, so their cloud
+            # measures what no closed form here predicts: whether the split
+            # posterior (whose quantum term Pn H Pn leaves out the step's
+            # range-null coupling) describes the fit's spread. Refusing on the
+            # coupling refused accurate checks (C1 water from an asymmetric
+            # start, null response 0.058: refits within 1% of the analytic
+            # column) and passed bad ones; the summary now flags a departure
+            # instead. Refused: rto, whose prior centre would have to be drawn
+            # in the null space alone, and a converged fit off its posterior's
+            # mode, whose refits the gate would refuse for the wrong reason.
             if strategy == "rto":
                 return ("strategy 'rto' samples the joint objective only: under the split "
                         "objective the quantum prior acts in the data's null space alone, "
                         "so its centre would have to be drawn there")
-            gap = opt.split_inconsistency() if fitted else None
-            if gap is not None:
+            off = opt.split_off_mode() if fitted else None
+            if off is not None:
                 return (f"strategy '{strategy}' checks the reported covariance, and under "
-                        f"the split objective here {gap}, so no cloud of split refits "
-                        f"estimates the analytic column beside it")
+                        f"the split objective here {off}, so no refit can be certified "
+                        f"against it")
             return None
         if strategy != "rto":
             return None
@@ -505,12 +504,37 @@ class BootstrapEngine:
                # how far its Hessian is from the curvature here; say how old
                # that Hessian is instead.
                "hessian_distance_ang": opt.hessian_distance(x)}
+        split = (not opt.spectral_only) and opt.optimizer.objective_mode != "joint"
+        out["objective"] = "spectral only" if opt.spectral_only else opt.optimizer.objective_mode
+        if split:
+            out["null_response"] = opt.split_coupling()
         use = [r for r in (results or []) if r.success and r.usable and r.coords is not None]
         if len(use) > 2:
             q = np.array([np.asarray(cs.active_values(np.asarray(r.coords, dtype=float)), dtype=float)
                           for r in use])
             out["bootstrap_std"] = (q.std(axis=0, ddof=1) * conv).tolist()
+            out["check"] = self._cloud_check(out["names"], out["bootstrap_std"],
+                                             out["target_std"], len(use))
         return out
+
+    #: A cloud width departs from the analytic one beyond this many Monte
+    #: Carlo standard errors of an sd ratio (1/sqrt(2(n-1))).
+    _CHECK_SIGMAS = 3.0
+
+    @classmethod
+    def _cloud_check(cls, names, cloud_sd, target_sd, n):
+        """Cloud over analytic width per coordinate, its Monte Carlo error,
+        and the coordinates where the two differ beyond _CHECK_SIGMAS of it.
+        The cloud is refits of the estimator; the analytic column is the
+        engine's account of their spread, so a departure says that account
+        does not describe the fit there."""
+        mc = 1.0 / np.sqrt(2.0 * max(int(n) - 1, 1))
+        ratio = [float(b) / float(t) if t and t > 0 else float("nan")
+                 for b, t in zip(cloud_sd, target_sd)]
+        departs = [nm for nm, r in zip(names, ratio)
+                   if np.isfinite(r) and abs(r - 1.0) > cls._CHECK_SIGMAS * mc]
+        return {"n": int(n), "ratio": ratio, "mc_sd": float(mc), "departs": departs,
+                "sigmas": float(cls._CHECK_SIGMAS)}
 
     @staticmethod
     def _persist_summary(summary: BootstrapRunSummary, run_dir: str) -> None:

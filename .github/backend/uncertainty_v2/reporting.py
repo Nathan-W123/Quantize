@@ -39,6 +39,26 @@ def format_bootstrap_summary(summary: BootstrapRunSummary) -> str:
             u = "mA" if unit == "angstrom" else "deg"
             cloud = "-" if b is None else f"{b * f:.4f}"
             lines.append(f"  {name:<16}{cloud:>11}{t_sd * f:>11.4f}{p_sd * f:>11.4f}  {u}")
+        chk = a.get("check")
+        if chk:
+            pairs = ", ".join(f"{nm} {r:.3f}" for nm, r in zip(a["names"], chk["ratio"]))
+            lines.append(f"  cloud/analytic: {pairs}  (Monte Carlo +-{chk['mc_sd']:.3f} at "
+                         f"{chk['n']} refits)")
+            if chk["departs"]:
+                lines.append(f"  DEPARTS beyond {chk['sigmas']:g}x Monte Carlo error on: "
+                             + ", ".join(chk["departs"]) + ".")
+                if a.get("objective") == "split":
+                    lines.append("  Under the split objective the refits are the split estimator, so")
+                    lines.append("  the reported (split posterior) widths do not describe its spread there.")
+                else:
+                    lines.append("  The analytic column is a Laplace approximation; a departure says it")
+                    lines.append("  does not describe the refits' spread there (nonlinearity, or a")
+                    lines.append("  curvature the Gauss-Newton blocks leave out).")
+        if a.get("objective") == "split":
+            nr = a.get("null_response")
+            lines.append("  objective: split -- the cloud is the split estimator's spread; its")
+            lines.append("  posterior leaves out the step's range-null coupling"
+                         + (f" (null response {nr:.2g})." if nr is not None else "."))
         hd = a.get("hessian_distance_ang")
         if hd is not None:
             lines.append(f"  Refits hold the base's quantum quadratic, so the cloud cannot detect "

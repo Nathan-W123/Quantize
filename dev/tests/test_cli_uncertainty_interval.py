@@ -280,3 +280,20 @@ def test_the_ridge_note_needs_a_ridge_that_moves_the_widths(tmp_path, monkeypatc
     b = _bundle(tmp_path)
     assert "rto refits" in b["cloud"]["source"]
     assert not any("do not carry it" in w for w in b["warnings"])
+
+
+def test_an_interval_from_a_doubtful_split_posterior_says_so(tmp_path, monkeypatch):
+    """After a split refusal --mode both quoted the chains' 95% interval with
+    no caveat, though the Laplace summary above it said those chains need
+    not describe the split fit. The caveat now sits at the interval, in the
+    bundle's warnings and on its cloud block."""
+    from backend.quantize import MolecularOptimizer
+    monkeypatch.setattr(MolecularOptimizer, "split_inconsistency",
+                        lambda self: "the split step couples the data's range and null space")
+    code, out, err = _run(["--mode", "bootstrap", "--samples", "4"] + _QUIET, tmp_path, monkeypatch)
+    assert code == 0, err[-2000:]
+    b = _bundle(tmp_path)
+    assert "reported posterior" in b["cloud"]["source"]
+    assert "need not be the split fit's spread" in b["cloud"]["caveat"]
+    assert any("need not be the split fit's spread" in w for w in b["warnings"])
+    assert "[note] split objective" in out

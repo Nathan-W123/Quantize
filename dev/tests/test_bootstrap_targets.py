@@ -326,13 +326,15 @@ def _split_iso(name, masses, consts, components):
             "sigma_systematic_constants": [0.024 * float(consts[c]) for c in components]}
 
 
-def _split_water(components=(2,), isotopologues=None, symmetry="C2v", **kw):
+def _split_water(components=(2,), isotopologues=None, symmetry="C2v", sigma=0.02,
+                 x0=None, max_iter=200, **kw):
     iso = isotopologues or [_split_iso("H2-16O", MASSES_H2O, B0_H2O, components)]
-    x0 = _coords() + np.array([[0.0, 0.0, 0.0], [0.01, 0.0, 0.0], [-0.01, 0.0, 0.0]])
+    if x0 is None:
+        x0 = _coords() + np.array([[0.0, 0.0, 0.0], [0.01, 0.0, 0.0], [-0.01, 0.0, 0.0]])
     with contextlib.redirect_stdout(io.StringIO()):
         opt = MolecularOptimizer(elems=["O", "H", "H"], coords=x0, isotopologues=iso,
                                  quantum_backend="analytic_water", use_autoconfig=False,
-                                 max_iter=200, quantum_prior_sigma_ang=0.02,
+                                 max_iter=max_iter, quantum_prior_sigma_ang=sigma,
                                  auto_systematic_sigma=False, objective_mode="split",
                                  symmetry=symmetry, **kw)
         opt.run()
@@ -341,10 +343,10 @@ def _split_water(components=(2,), isotopologues=None, symmetry="C2v", **kw):
 
 def test_split_coupling_is_the_null_response():
     """|K|, K the null coordinates' response per unit range displacement over
-    the physical directions: 0.46 for one constant (whose split refits read
-    the angle 0.05x their target), 0 when the data reach every physical
-    direction, round-off when symmetry decouples the null direction. The raw
-    |Pn H Pr| it replaces read 0.085 here and 0.043 for a 6% error."""
+    the physical directions: 0.46 for one constant, 0 when the data reach
+    every physical direction, round-off when symmetry decouples the null
+    direction. A detector, not a measure of the error (see
+    SPLIT_COUPLING_TOL)."""
     assert _split_water((2,)).split_coupling() == pytest.approx(0.461, abs=0.01)
     assert _split_water((1, 2)).split_coupling() == 0.0
     assert _split_water((0, 1, 2), symmetry="C1").split_coupling() < 1e-9
@@ -369,30 +371,82 @@ def test_a_split_fit_off_its_posterior_s_mode_is_refused(case):
     assert opt.distance_to_mode() > 1.0
     why = BootstrapEngine.strategy_problem(opt, "error-model")
     assert why and "posterior widths from the mode" in why
+    assert ("q-space stack" in why) == (opt.coordinate_mode == "internal")
     assert any("split objective" in w for w in opt.internal_coordinate_posterior()["warnings"])
     from backend.uncertainty_v2.posterior import laplace_approximation
     assert any("split objective" in w for w in laplace_approximation(opt).warnings)
 
 
 @pytest.mark.parametrize("strategy", ["error-model", "isotopologue-gaussian"])
-def test_a_coupled_split_fit_is_refused_and_says_why(strategy, tmp_path):
+def test_a_coupled_split_fit_is_bootstrapped_and_its_check_departs(strategy, tmp_path):
     """One constant: a physical direction is in the data's null space and the
     quantum curvature couples it to the range (null response 0.46), which
-    the split posterior leaves out: error-model refits read 0.04x their
-    target on the angle."""
+    the split posterior leaves out. The refits are the split estimator, so
+    their cloud measures what the posterior gets wrong (the angle at 0.04x
+    the analytic column) -- refusing the bootstrap hid exactly that, and the
+    same refusal hit accurate C1 fits. The summary flags the departure."""
     opt = _split_water((2,))
     assert opt.split_coupling() > 0.01, "premise: a coupled split fit"
-    with pytest.raises(ValueError, match="split objective"):
-        BootstrapEngine(opt, BootstrapConfig(n_samples=2, strategy=strategy)).run(str(tmp_path))
-    assert BootstrapEngine.strategy_problem(opt, strategy, fitted=False) is None, \
-        "the coupling needs the fit, so nothing is refused before it"
+    assert BootstrapEngine.strategy_problem(opt, strategy) is None
     post = opt.internal_coordinate_posterior()
     assert any("split objective" in w and "null response" in w for w in post["warnings"])
+    if strategy == "error-model":
+        s = _cloud(opt, strategy, 40, 5, tmp_path)
+        assert s.usable_samples == 40
+        chk = s.analytic["check"]
+        assert "angle 2-1-3" in chk["departs"]
+        assert chk["ratio"][2] < 0.2
+        txt = format_bootstrap_summary(s)
+        assert "DEPARTS" in txt and "split estimator" in txt
     # A worker called directly still refreshes under split (the hold is
     # for the joint objective's quadratic only).
     held = deepcopy(opt)
     _freeze_corrections(held)
     assert held.orca_update_thresh == opt.orca_update_thresh
+
+
+def test_an_accurate_c1_split_fit_is_bootstrapped(tmp_path):
+    """C1 water with A, B, C at a 0.005 A prior width reads null response
+    1.6e-4: refused by the coupling test, yet its forced cloud matched the
+    accepted control's (1.031 / 1.032 / 1.066 against the same at 0.02)."""
+    opt = _split_water((0, 1, 2), symmetry="C1", sigma=0.005)
+    assert opt.split_coupling() > opt.SPLIT_COUPLING_TOL, "premise: the old test refused it"
+    assert BootstrapEngine.strategy_problem(opt, "error-model") is None
+    s = _cloud(opt, "error-model", 100, 11, tmp_path)
+    assert s.usable_samples == 100
+    assert s.analytic["check"]["departs"] == []
+    for r in s.analytic["check"]["ratio"]:
+        assert r == pytest.approx(1.0, abs=0.25)          # 100 draws: 7% Monte Carlo error
+
+
+def test_an_early_stopped_split_fit_is_said_unconverged_not_refused():
+    """C2v B,C stopped after two iterations, 0.66 widths from its mode: its
+    refits converge and matched the target (200/200, 0.998/0.998/1.07), so
+    it is not refused, and the report says it has not converged rather than
+    that the step and its posterior disagree."""
+    far = _coords() + np.array([[0.0, 0.0, 0.0], [0.08, 0.05, 0.0], [-0.06, 0.04, 0.0]])
+    opt = _split_water((1, 2), x0=far, max_iter=2)
+    assert opt.termination["reason"] == "max_iter"
+    assert opt.distance_to_mode() > opt.SPLIT_MODE_LIMIT, "premise: stopped short"
+    assert opt.split_off_mode() is None
+    assert BootstrapEngine.strategy_problem(opt, "error-model") is None
+    assert "has not converged" in opt.split_inconsistency()
+
+
+def test_the_split_checks_survive_a_failing_diagnostic(monkeypatch):
+    """distance_to_mode raising let the bootstrap run (9 of 200 usable on
+    the case it should refuse); a raising split check took the Laplace
+    summary down with it."""
+    from backend.uncertainty_v2.posterior import laplace_approximation
+    opt = _split_water((1, 2))
+    monkeypatch.setattr(type(opt), "distance_to_mode",
+                        lambda self, *a, **k: (_ for _ in ()).throw(np.linalg.LinAlgError("boom")))
+    assert "could not be computed" in BootstrapEngine.strategy_problem(opt, "error-model")
+    monkeypatch.undo()
+    monkeypatch.setattr(type(opt), "split_coupling",
+                        lambda self: (_ for _ in ()).throw(np.linalg.LinAlgError("boom")))
+    lap = laplace_approximation(opt)
+    assert any("split check could not be made" in w for w in lap.warnings)
 
 
 def test_a_full_rank_split_fit_is_bootstrapped(tmp_path):
