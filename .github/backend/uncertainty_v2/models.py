@@ -68,8 +68,14 @@ class BootstrapSampleResult:
     #: "max_iter" (MolecularOptimizer.termination).
     termination: str | None = None
     #: The refit's distance to its own optimum in posterior widths, measured
-    #: in the worker on the sample's own objective (distance_to_mode).
+    #: in the worker on the sample's own objective: the Newton distance to
+    #: the posterior's mode (distance_to_mode) under the joint objective,
+    #: and under split how far one more run of the step moves it, since the
+    #: split step's fixed point is not the posterior's mode (see
+    #: ``certificate``).
     mode_distance: float | None = None
+    #: How mode_distance was measured: "gradient" or "restart".
+    certificate: str | None = None
     #: Whether the refit ended fitting the model it started with: the drawn
     #: constants, the B0 -> Be targets built on them, their sigmas and the
     #: effective sigma. A correction rebuild during the refit used to

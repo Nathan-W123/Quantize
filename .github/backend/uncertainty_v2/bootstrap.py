@@ -131,6 +131,30 @@ def _distance(opt, coords):
         return None
 
 
+def _split_objective(opt) -> bool:
+    return (not opt.spectral_only) and opt.optimizer.objective_mode != "joint"
+
+
+def _restart_distance(opt, before, after):
+    """How far one more run of the step moved a refit, in posterior widths
+    along each eigendirection of the posterior precision (the units of
+    distance_to_mode).
+
+    The split refit's certificate. The split step stops where
+    Pn (g + H dx) = 0, the posterior's gradient is Pn (g + H Pn dx), and the
+    two differ by exactly the range-null coupling the split bootstrap is run
+    to measure -- so the distance to the posterior's mode refused converged
+    split refits as unconverged (26 of 40 on one-constant water through the
+    CLI, at 0.06-0.15 widths against a limit of 0.055). A converged step
+    does not move when run again, wherever its fixed point is."""
+    try:
+        _z, basis, w, V = opt._mode_decomposition(np.asarray(after, dtype=float))
+    except Exception:
+        return None
+    d = basis.T @ (np.asarray(after, dtype=float) - np.asarray(before, dtype=float)).ravel()
+    return float(np.max(np.abs(V.T @ d) * np.sqrt(w))) if d.size else 0.0
+
+
 def _run_bootstrap_worker(args: tuple) -> BootstrapSampleResult:
     base_opt, isotopologues, workdir, idx, seed = args[:5]
     rto_shift = args[5] if len(args) > 5 else None
@@ -146,16 +170,29 @@ def _run_bootstrap_worker(args: tuple) -> BootstrapSampleResult:
     model = _refit_model(opt)
     try:
         coords = np.asarray(opt.run(), dtype=float)
-        dist = _distance(opt, coords)
         passes = 0
-        # Whatever ended the loop, max_iter included: the certificate, not
-        # the stopping rule, says whether the refit is at its optimum. With
-        # max_iter 8 every water refit ended on it (the plateau stop cannot
-        # fire before iteration 11) and 17 of 20 were within 0.002 widths.
-        while dist is not None and dist > polish and passes < _POLISH_PASSES:
-            coords = np.asarray(opt.run(), dtype=float)
+        if _split_objective(opt):
+            certificate = "restart"
+            dist = None
+            while passes < _POLISH_PASSES:
+                again = np.asarray(opt.run(), dtype=float)
+                dist = _restart_distance(opt, coords, again)
+                coords = again
+                passes += 1
+                if dist is not None and dist <= polish:
+                    break
+        else:
+            certificate = "gradient"
             dist = _distance(opt, coords)
-            passes += 1
+            # Whatever ended the loop, max_iter included: the certificate,
+            # not the stopping rule, says whether the refit is at its
+            # optimum. With max_iter 8 every water refit ended on it (the
+            # plateau stop cannot fire before iteration 11) and 17 of 20
+            # were within 0.002 widths.
+            while dist is not None and dist > polish and passes < _POLISH_PASSES:
+                coords = np.asarray(opt.run(), dtype=float)
+                dist = _distance(opt, coords)
+                passes += 1
         rms = float(opt.history[-1]["freq_rms"]) if opt.history else None
         # Measured in the worker, where the starting geometry is in hand.
         # Exactly 0.0 means run() accepted no step, so this "sample" is the
@@ -174,6 +211,7 @@ def _run_bootstrap_worker(args: tuple) -> BootstrapSampleResult:
             moved_ang=moved,
             termination=(getattr(opt, "termination", None) or {}).get("reason"),
             mode_distance=dist,
+            certificate=certificate,
             draw_kept=bool(kept),
         )
     except Exception as exc:
@@ -228,22 +266,26 @@ class BootstrapEngine:
             # Under split the refits ARE the split estimator, so their cloud
             # measures what no closed form here predicts: whether the split
             # posterior (whose quantum term Pn H Pn leaves out the step's
-            # range-null coupling) describes the fit's spread. Refusing on the
+            # range-null coupling, and which may disagree with the step about
+            # the data's rank) describes the fit's spread. Refusing on the
             # coupling refused accurate checks (C1 water from an asymmetric
             # start, null response 0.058: refits within 1% of the analytic
-            # column) and passed bad ones; the summary now flags a departure
-            # instead. Refused: rto, whose prior centre would have to be drawn
-            # in the null space alone, and a converged fit off its posterior's
-            # mode, whose refits the gate would refuse for the wrong reason.
+            # column) and passed bad ones; the summary flags a departure
+            # instead, and split refits are certified by a restart, not by
+            # the posterior's gradient (_restart_distance). Refused: rto,
+            # whose prior centre would have to be drawn in the null space
+            # alone, and a fit whose posterior widths cannot be formed.
             if strategy == "rto":
                 return ("strategy 'rto' samples the joint objective only: under the split "
                         "objective the quantum prior acts in the data's null space alone, "
                         "so its centre would have to be drawn there")
-            off = opt.split_off_mode() if fitted else None
-            if off is not None:
-                return (f"strategy '{strategy}' checks the reported covariance, and under "
-                        f"the split objective here {off}, so no refit can be certified "
-                        f"against it")
+            if fitted:
+                try:
+                    opt.distance_to_mode()
+                except Exception as exc:
+                    return (f"strategy '{strategy}' measures refits in the posterior's widths, "
+                            f"which could not be formed at this split fit "
+                            f"({type(exc).__name__}: {exc})")
             return None
         if strategy != "rto":
             return None
@@ -405,7 +447,8 @@ class BootstrapEngine:
            correction rebuild, a mass-dependent refit or a rescale rewrote
            them -- so it fitted another model.
         4. It stopped more than ``limit`` posterior widths from its own
-           optimum (distance_to_mode on the sample's own objective; the
+           optimum (distance_to_mode on the sample's own objective under
+           joint; under split, how far a restart of the step moved it; the
            config's max_mode_distance unless the engine scaled it to the
            cloud, see _gate_limits), or that distance could not be measured
            on a fit that did not report convergence. How the loop ended is
@@ -444,9 +487,15 @@ class BootstrapEngine:
                         f"and the refit ended on '{r.termination}'")
                     continue
             elif r.mode_distance > limit:
-                r.unusable_reason = (
-                    f"the refit stopped {r.mode_distance:.3g} posterior widths "
-                    f"from its own optimum (limit {limit:.3g})")
+                if r.certificate == "restart":
+                    r.unusable_reason = (
+                        f"the refit stopped short of its own optimum: one more run "
+                        f"of the split step moved it {r.mode_distance:.3g} posterior "
+                        f"widths (limit {limit:.3g})")
+                else:
+                    r.unusable_reason = (
+                        f"the refit stopped {r.mode_distance:.3g} posterior widths "
+                        f"from its own optimum (limit {limit:.3g})")
                 continue
             r.usable = True
             r.unusable_reason = None

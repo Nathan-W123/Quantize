@@ -60,7 +60,11 @@ def format_bootstrap_summary(summary: BootstrapRunSummary) -> str:
             lines.append("  posterior leaves out the step's range-null coupling"
                          + (f" (null response {nr:.2g})." if nr is not None else "."))
         hd = a.get("hessian_distance_ang")
-        if hd is not None:
+        if hd is not None and a.get("objective") == "split":
+            lines.append(f"  Split refits refresh the quantum point as the base fit did (only joint "
+                         f"refits hold it); the base's Hessian was computed {1e3 * hd:.2f} mA from "
+                         f"this geometry.")
+        elif hd is not None:
             lines.append(f"  Refits hold the base's quantum quadratic, so the cloud cannot detect "
                          f"error in it; its Hessian was computed {1e3 * hd:.2f} mA from this geometry.")
         if a.get("no_posterior"):

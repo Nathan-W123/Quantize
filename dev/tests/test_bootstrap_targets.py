@@ -299,6 +299,7 @@ def test_a_refit_that_runs_out_of_iterations_at_its_optimum_is_a_draw(config_fit
     base.max_iter = 8
     s = _cloud(base, "error-model", 6, 3, tmp_path)
     assert all(r.termination == "max_iter" for r in s.sample_results), "premise"
+    assert {r.certificate for r in s.sample_results} == {"gradient"}, "joint: the posterior's gradient"
     assert s.usable_samples == 6
     assert all(r.mode_distance < 0.02 for r in s.sample_results)
 
@@ -353,14 +354,15 @@ def test_split_coupling_is_the_null_response():
 
 
 @pytest.mark.parametrize("case", ["internal prior, one constant", "two isotopologues, C only"])
-def test_a_split_fit_off_its_posterior_s_mode_is_refused(case):
+def test_a_split_fit_off_its_posterior_s_mode_is_warned_and_checked(case, tmp_path):
     """The coupling reads the posterior's null space; the step decides its
-    own rank (on the q-space stack in internal mode, with its own cutoff in
-    both), and where they disagree the coupling reads round-off while the
-    fit stands widths from the mode its posterior describes. Measured: the
-    internal-prior fit 2.2 widths off, 0 of 400 refits usable; the
-    two-isotopologue fit converges 'to rank-1 spectral floor' against a
-    rank-2 posterior, 3.8 widths off, weighted residuals -2.75 and 2.65."""
+    own rank (on the q-space stack in internal mode), and where they
+    disagree the coupling reads round-off while the fit stands widths from
+    the mode its posterior describes (internal-prior C only 2.2; two
+    isotopologues 3.8, the step at rank 1 against a rank-2 posterior). The
+    report says so. Its refits, certified by a restart rather than by the
+    posterior's gradient, are draws of the split estimator, and the check
+    shows the posterior's angle is not theirs (measured 0.65x and 0.10x)."""
     if case.startswith("internal"):
         opt = _split_water((2,), coordinate_mode="internal", ic_prior_weight=1.0)
     else:
@@ -369,12 +371,17 @@ def test_a_split_fit_off_its_posterior_s_mode_is_refused(case):
                            symmetry="C1")
     assert opt.split_coupling() <= opt.SPLIT_COUPLING_TOL, "premise: the coupling cannot see it"
     assert opt.distance_to_mode() > 1.0
-    why = BootstrapEngine.strategy_problem(opt, "error-model")
-    assert why and "posterior widths from the mode" in why
-    assert ("q-space stack" in why) == (opt.coordinate_mode == "internal")
+    off = opt.split_off_mode()
+    assert off and "posterior widths from the mode" in off
+    assert ("q-space stack" in off) == (opt.coordinate_mode == "internal")
     assert any("split objective" in w for w in opt.internal_coordinate_posterior()["warnings"])
     from backend.uncertainty_v2.posterior import laplace_approximation
     assert any("split objective" in w for w in laplace_approximation(opt).warnings)
+    assert BootstrapEngine.strategy_problem(opt, "error-model") is None
+    s = _cloud(opt, "error-model", 40, 5, tmp_path)
+    assert s.usable_samples >= 36
+    assert {r.certificate for r in s.sample_results} == {"restart"}
+    assert "angle 2-1-3" in s.analytic["check"]["departs"]
 
 
 @pytest.mark.parametrize("strategy", ["error-model", "isotopologue-gaussian"])
@@ -434,14 +441,14 @@ def test_an_early_stopped_split_fit_is_said_unconverged_not_refused():
 
 
 def test_the_split_checks_survive_a_failing_diagnostic(monkeypatch):
-    """distance_to_mode raising let the bootstrap run (9 of 200 usable on
-    the case it should refuse); a raising split check took the Laplace
-    summary down with it."""
+    """With no posterior widths to measure refits in, the split bootstrap is
+    refused rather than run (distance_to_mode raising had let it run, 9 of
+    200 usable); a raising split check took the Laplace summary down."""
     from backend.uncertainty_v2.posterior import laplace_approximation
     opt = _split_water((1, 2))
     monkeypatch.setattr(type(opt), "distance_to_mode",
                         lambda self, *a, **k: (_ for _ in ()).throw(np.linalg.LinAlgError("boom")))
-    assert "could not be computed" in BootstrapEngine.strategy_problem(opt, "error-model")
+    assert "could not be formed" in BootstrapEngine.strategy_problem(opt, "error-model")
     monkeypatch.undo()
     monkeypatch.setattr(type(opt), "split_coupling",
                         lambda self: (_ for _ in ()).throw(np.linalg.LinAlgError("boom")))
@@ -460,8 +467,10 @@ def test_a_full_rank_split_fit_is_bootstrapped(tmp_path):
     assert not any("split objective" in w for w in opt.internal_coordinate_posterior()["warnings"])
     s = _cloud(opt, "error-model", 40, 5, tmp_path)
     assert s.usable_samples == 40
+    assert {r.certificate for r in s.sample_results} == {"restart"}
     for b, t in zip(s.analytic["bootstrap_std"], s.analytic["target_std"]):
         assert b / t == pytest.approx(1.0, abs=0.35)      # 40 draws: 11% Monte Carlo error
+    assert s.analytic["check"]["departs"] == []
     assert BootstrapEngine.strategy_problem(opt, "rto", fitted=False), "rto stays refused"
 
 

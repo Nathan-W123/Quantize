@@ -1870,18 +1870,16 @@ class MolecularOptimizer:
     SPLIT_MODE_LIMIT = 0.25
 
     def split_off_mode(self):
-        """Why no refit of this split fit can be certified against its
-        posterior, or None (also None off the split objective).
+        """Why this split fit does not stand at its posterior's mode, or None
+        (also None off the split objective).
 
-        A converged split fit standing more than SPLIT_MODE_LIMIT posterior
-        widths from its posterior's mode: the step has settled where the
-        posterior's gradient is not zero, so every refit stands about as far
-        from its own (one-constant water with an internal prior: 2.2 widths,
-        0 of 400 refits usable; two-isotopologue C-only water, whose step
-        settles at rank 1 against a rank-2 posterior: 3.8 widths, 9 of 200).
-        A fit stopped at max_iter is not refused here -- its refits run to
-        convergence and the gate judges each (C2v B,C stopped after two
-        iterations at 0.66 widths: 200 of 200 usable, on target)."""
+        A converged split fit more than SPLIT_MODE_LIMIT posterior widths
+        from its posterior's mode: the step has settled where the
+        posterior's gradient is not zero (one-constant water with an internal
+        prior: 2.2 widths; two-isotopologue C-only water, whose step settles
+        at rank 1 against a rank-2 posterior: 3.8 widths), so the posterior
+        is centred somewhere the fit is not. A fit stopped at max_iter is
+        not counted here; split_inconsistency says it has not converged."""
         if self.split_coupling() is None:
             return None
         try:
