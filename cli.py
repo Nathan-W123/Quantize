@@ -498,6 +498,7 @@ def _cmd_uncertainty(args) -> int:
     boot_posterior: list = []
     all_chains: list = []
     mcmc_refused = False
+    boot_refused = False
 
     if boot_cfg is not None:
         engine = BootstrapEngine(opt, boot_cfg,
@@ -507,8 +508,17 @@ def _cmd_uncertainty(args) -> int:
         except ValueError as exc:
             print(f"Error: --bootstrap-strategy {boot_cfg.strategy}: {exc}", file=sys.stderr)
             summary_bundle["bootstrap_refused"] = str(exc)
-            print(f"\n[uncertainty] Summary written: {_write_bundle(opt, summary_bundle)}")
-            return 2
+            if args.mode == "bootstrap":
+                print(f"\n[uncertainty] Summary written: {_write_bundle(opt, summary_bundle)}")
+                return 2
+            # --mode both: the refusal is about the bootstrap's check column,
+            # not about the posterior the chains sample, so they still run
+            # (this used to return here and lose the MCMC half as well). The
+            # exit status still says part of the request was refused.
+            print("[bootstrap] refused; running the MCMC half of --mode both.")
+            boot_refused = True
+            boot_cfg = None
+    if boot_cfg is not None:
         summary = engine.run(base_workdir=opt.workdir)
         print("\n" + format_bootstrap_summary(summary))
         summary_bundle["bootstrap"] = summary.to_dict()
@@ -676,7 +686,7 @@ def _cmd_uncertainty(args) -> int:
     summary_bundle["plot_dir"] = plot_dir
 
     print(f"\n[uncertainty] Summary written: {_write_bundle(opt, summary_bundle)}")
-    return 0
+    return 2 if boot_refused else 0
 
 
 def _cmd_benchmark(args) -> int:

@@ -240,13 +240,11 @@ class BootstrapEngine:
                 return ("strategy 'rto' samples the joint objective only: under the split "
                         "objective the quantum prior acts in the data's null space alone, "
                         "so its centre would have to be drawn there")
-            coupling = opt.split_coupling() if fitted else None
-            if coupling is not None and coupling > opt.SPLIT_COUPLING_TOL:
+            gap = opt.split_inconsistency() if fitted else None
+            if gap is not None:
                 return (f"strategy '{strategy}' checks the reported covariance, and under "
-                        f"the split objective here that covariance leaves out the coupling "
-                        f"the split step makes between the data's range and its null space "
-                        f"({coupling:.2g} of the quantum curvature), so no cloud of split "
-                        f"refits estimates the analytic column beside it")
+                        f"the split objective here {gap}, so no cloud of split refits "
+                        f"estimates the analytic column beside it")
             return None
         if strategy != "rto":
             return None

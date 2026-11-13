@@ -1791,23 +1791,33 @@ class MolecularOptimizer:
                             "z": float((o - pr) / eff)})
         return out
 
-    #: Below this, split_coupling is round-off (full-rank split fits read
-    #: 1e-16) and the split posterior is exact; one-constant water reads 0.085.
-    SPLIT_COUPLING_TOL = 1e-8
+    #: Below this, split_coupling is round-off: a split fit whose data reach
+    #: every physical direction has no null space to couple (exactly 0), and
+    #: one whose null direction is decoupled by symmetry reads about 1e-11.
+    #: Two-isotopologue C-only water reads 0.054 (the split estimator 6% off
+    #: the error-model target), one-constant water 0.46 (95% off).
+    SPLIT_COUPLING_TOL = 1e-6
 
     def split_coupling(self):
-        """How much of the quantum curvature the split posterior leaves out,
-        or None off the split objective.
+        """How strongly the split step moves the data's null space with the
+        range, which its posterior leaves out -- or None off the split
+        objective.
 
         The split step's quantum gradient is Pn (g + H dx); the posterior it
-        is reported with keeps only Pn H Pn. The part dropped is the coupling
-        between the data's null space and its range, measured over the
-        physical directions B as |B^T Pn Hs (I - Pn) B| / |B^T Hs B|, with Pn
-        the split null projector at the fit and Hs the curvature the posterior
-        uses. Zero (round-off) when the data reach every physical direction,
-        Pn B = 0: then the split estimator is the data's and its posterior is
-        exact. One-constant water: 0.085, and error-model refits read 0.04x
-        their target on the angle.
+        is reported with keeps only Pn H Pn. At the step's fixed point a
+        range displacement dx_r moves the null coordinates by
+        -K dx_r, K = (Vn^T Hb Vn)^-1 Vn^T Hb (I - Vn Vn^T), over the physical
+        directions B (Hb = B^T Hs B, Vn the physical part of the null space
+        of the stacked Jacobian). This returns |K|_2: dimensionless, zero
+        exactly when the split posterior is exact, and it scales with the
+        error it causes (the raw coupling |Pn Hs Pr| did not: 0.043 for a 6%
+        error, 0.085 for 95%).
+
+        It sees only the Cartesian null space the posterior uses. In internal
+        mode the step decides its rank on the q-space stack with its own
+        cutoff, and can call null a direction the posterior calls data
+        (found: one-constant water with an internal prior, coupling 3e-16,
+        fit 2.2 widths from its mode); split_inconsistency covers that.
         """
         if (self.spectral_only or self.quantum is None
                 or self.optimizer.objective_mode == "joint"):
@@ -1817,10 +1827,43 @@ class MolecularOptimizer:
         _g, Hp = self._projected_reference_terms()
         Hs = np.asarray(self.optimizer._spd_hessian(Hp), dtype=float)
         B = self.physical_basis(coords=x, n=Hs.shape[0])
-        rest = np.eye(Hs.shape[0]) - Pn
-        num = float(np.linalg.norm(B.T @ Pn @ Hs @ rest @ B))
-        den = float(np.linalg.norm(B.T @ Hs @ B))
-        return num / den if den > 0.0 else 0.0
+        N = B.T @ Pn @ B
+        w, V = np.linalg.eigh(0.5 * (N + N.T))
+        Vn = V[:, w > 0.5]
+        if Vn.shape[1] == 0:
+            return 0.0
+        Hb = B.T @ Hs @ B
+        rest = np.eye(Hb.shape[0]) - Vn @ Vn.T
+        K = np.linalg.solve(Vn.T @ Hb @ Vn, Vn.T @ Hb @ rest)
+        return float(np.linalg.norm(K, 2))
+
+    #: A split fit further than this from the mode its posterior describes,
+    #: in posterior widths (the bootstrap's default refusal limit), is one
+    #: whose step and posterior disagree about the objective.
+    SPLIT_MODE_LIMIT = 0.25
+
+    def split_inconsistency(self):
+        """Why the split posterior does not describe this split fit, or None
+        (also None off the split objective). Two tests: split_coupling above
+        SPLIT_COUPLING_TOL, and the fit itself standing more than
+        SPLIT_MODE_LIMIT widths from the mode its posterior describes
+        (distance_to_mode), which catches what the coupling cannot see."""
+        coupling = self.split_coupling()
+        if coupling is None:
+            return None
+        if coupling > self.SPLIT_COUPLING_TOL:
+            return (f"its posterior leaves out the coupling the split step makes between "
+                    f"the data's range and its null space (null response {coupling:.2g})")
+        try:
+            d = float(self.distance_to_mode())
+        except Exception:
+            d = None
+        if d is not None and d > self.SPLIT_MODE_LIMIT:
+            return (f"the split fit stands {d:.2g} posterior widths from the mode its "
+                    f"posterior describes, so the step and the posterior disagree about "
+                    f"the objective (in internal mode the step decides which directions "
+                    f"are null on its own q-space stack)")
+        return None
 
     def hessian_distance(self, coords=None):
         """RMS distance (Angstrom, the _orca_drift metric) from ``coords`` to
@@ -3364,16 +3407,13 @@ class MolecularOptimizer:
                 f"refreshes its quantum point: the widths and the quantum prior's "
                 f"weight carry that curvature, not the curvature here (formyl "
                 f"fluoride: a Hessian at the answer moves its widths by up to 3%)"]
-        coupling = self.split_coupling()
-        if coupling is not None and coupling > self.SPLIT_COUPLING_TOL:
+        split_gap = self.split_inconsistency()
+        if split_gap is not None:
             gn = gn + [
-                f"split objective: these widths come from the posterior blocks, whose "
-                f"quantum term Pn H Pn leaves out the coupling the split step makes "
-                f"between the data's range and its null space ({coupling:.2g} of the "
-                f"quantum curvature here), so they are not the split estimator's "
-                f"spread -- on one-constant water its error-model refits gave the "
-                f"angle 0.04x the error-model target (0.05x by the step's linear "
-                f"response). The joint objective has no such gap."]
+                f"split objective: these widths come from the posterior blocks, and "
+                f"{split_gap}; they are not the split estimator's spread (one-constant "
+                f"water: its error-model refits gave the angle 0.04x the error-model "
+                f"target). The joint objective has no such gap."]
         cov_lap, basis, n_removed = self.physical_covariance(cov_lap, coords=x)
         J, rw, row_scale = self.spectral.stacked(x, return_row_scale=True)
         rw = np.asarray(rw, dtype=float)

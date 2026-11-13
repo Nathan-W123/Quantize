@@ -319,29 +319,67 @@ def test_the_gate_is_stated_in_the_cloud_s_own_widths(config_fit):
     assert rto._gate_limits() == (0.25, 0.02)
 
 
-def _split_water(components=(2,)):
-    b = {0: 835840.29, 1: 435351.72, 2: 278138.70}
-    iso = [{"name": "H2-16O", "masses": MASSES_H2O,
-            "obs_constants": [b[c] for c in components], "sigma_constants": [0.2] * len(components),
-            "component_indices": list(components),
-            "sigma_systematic_constants": [0.024 * b[c] for c in components]}]
+def _split_iso(name, masses, consts, components):
+    return {"name": name, "masses": masses,
+            "obs_constants": [float(consts[c]) for c in components],
+            "sigma_constants": [0.2] * len(components), "component_indices": list(components),
+            "sigma_systematic_constants": [0.024 * float(consts[c]) for c in components]}
+
+
+def _split_water(components=(2,), isotopologues=None, symmetry="C2v", **kw):
+    iso = isotopologues or [_split_iso("H2-16O", MASSES_H2O, B0_H2O, components)]
     x0 = _coords() + np.array([[0.0, 0.0, 0.0], [0.01, 0.0, 0.0], [-0.01, 0.0, 0.0]])
     with contextlib.redirect_stdout(io.StringIO()):
         opt = MolecularOptimizer(elems=["O", "H", "H"], coords=x0, isotopologues=iso,
                                  quantum_backend="analytic_water", use_autoconfig=False,
                                  max_iter=200, quantum_prior_sigma_ang=0.02,
                                  auto_systematic_sigma=False, objective_mode="split",
-                                 symmetry="C2v")
+                                 symmetry=symmetry, **kw)
         opt.run()
     return opt
+
+
+def test_split_coupling_is_the_null_response():
+    """|K|, K the null coordinates' response per unit range displacement over
+    the physical directions: 0.46 for one constant (whose split refits read
+    the angle 0.05x their target), 0 when the data reach every physical
+    direction, round-off when symmetry decouples the null direction. The raw
+    |Pn H Pr| it replaces read 0.085 here and 0.043 for a 6% error."""
+    assert _split_water((2,)).split_coupling() == pytest.approx(0.461, abs=0.01)
+    assert _split_water((1, 2)).split_coupling() == 0.0
+    assert _split_water((0, 1, 2), symmetry="C1").split_coupling() < 1e-9
+
+
+@pytest.mark.parametrize("case", ["internal prior, one constant", "two isotopologues, C only"])
+def test_a_split_fit_off_its_posterior_s_mode_is_refused(case):
+    """The coupling reads the posterior's null space; the step decides its
+    own rank (on the q-space stack in internal mode, with its own cutoff in
+    both), and where they disagree the coupling reads round-off while the
+    fit stands widths from the mode its posterior describes. Measured: the
+    internal-prior fit 2.2 widths off, 0 of 400 refits usable; the
+    two-isotopologue fit converges 'to rank-1 spectral floor' against a
+    rank-2 posterior, 3.8 widths off, weighted residuals -2.75 and 2.65."""
+    if case.startswith("internal"):
+        opt = _split_water((2,), coordinate_mode="internal", ic_prior_weight=1.0)
+    else:
+        opt = _split_water(isotopologues=[_split_iso("H2-16O", MASSES_H2O, B0_H2O, (2,)),
+                                          _split_iso("D2-16O", MASSES_D2O, B0_D2O, (2,))],
+                           symmetry="C1")
+    assert opt.split_coupling() <= opt.SPLIT_COUPLING_TOL, "premise: the coupling cannot see it"
+    assert opt.distance_to_mode() > 1.0
+    why = BootstrapEngine.strategy_problem(opt, "error-model")
+    assert why and "posterior widths from the mode" in why
+    assert any("split objective" in w for w in opt.internal_coordinate_posterior()["warnings"])
+    from backend.uncertainty_v2.posterior import laplace_approximation
+    assert any("split objective" in w for w in laplace_approximation(opt).warnings)
 
 
 @pytest.mark.parametrize("strategy", ["error-model", "isotopologue-gaussian"])
 def test_a_coupled_split_fit_is_refused_and_says_why(strategy, tmp_path):
     """One constant: a physical direction is in the data's null space and the
-    quantum curvature couples it to the range (0.085), which the split
-    posterior leaves out: error-model refits read 0.04x their target on the
-    angle."""
+    quantum curvature couples it to the range (null response 0.46), which
+    the split posterior leaves out: error-model refits read 0.04x their
+    target on the angle."""
     opt = _split_water((2,))
     assert opt.split_coupling() > 0.01, "premise: a coupled split fit"
     with pytest.raises(ValueError, match="split objective"):
@@ -349,7 +387,7 @@ def test_a_coupled_split_fit_is_refused_and_says_why(strategy, tmp_path):
     assert BootstrapEngine.strategy_problem(opt, strategy, fitted=False) is None, \
         "the coupling needs the fit, so nothing is refused before it"
     post = opt.internal_coordinate_posterior()
-    assert any("split objective" in w for w in post["warnings"])
+    assert any("split objective" in w and "null response" in w for w in post["warnings"])
     # A worker called directly still refreshes under split (the hold is
     # for the joint objective's quadratic only).
     held = deepcopy(opt)
@@ -364,6 +402,7 @@ def test_a_full_rank_split_fit_is_bootstrapped(tmp_path):
     correct check; the report no longer warns either."""
     opt = _split_water((0, 1, 2))
     assert opt.split_coupling() < opt.SPLIT_COUPLING_TOL
+    assert opt.split_inconsistency() is None
     assert not any("split objective" in w for w in opt.internal_coordinate_posterior()["warnings"])
     s = _cloud(opt, "error-model", 40, 5, tmp_path)
     assert s.usable_samples == 40

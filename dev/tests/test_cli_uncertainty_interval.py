@@ -245,3 +245,25 @@ def test_a_sampler_interval_says_it_does_not_carry_the_ridge(tmp_path, monkeypat
     b = _bundle(tmp_path)
     assert "rto refits" in b["cloud"]["source"]
     assert any("do not carry it" in w for w in b["warnings"])
+
+
+def test_mode_both_still_runs_the_chains_when_the_bootstrap_is_refused(tmp_path, monkeypatch):
+    """A strategy refused after the fit (a split fit its posterior does not
+    describe, say) returned before the MCMC block, so --mode both lost its
+    chains too. The refusal is about the bootstrap's check column; the chains
+    sample the posterior and still run, and the exit status still says part
+    of the request was refused."""
+    from backend.uncertainty_v2 import BootstrapEngine
+
+    def refuse(self):
+        raise ValueError("refused for this test")
+
+    monkeypatch.setattr(BootstrapEngine, "_check_strategy", refuse)
+    monkeypatch.setattr(BootstrapEngine, "run", lambda *a, **k: pytest.fail("the bootstrap ran"))
+    code, out, err = _run(["--mode", "both", "--samples", "2", "--mcmc-steps", "60",
+                           "--burn-in", "10", "--chains", "2"] + _QUIET, tmp_path, monkeypatch)
+    assert code == 2
+    assert "refused for this test" in err
+    b = _bundle(tmp_path)
+    assert b["bootstrap_refused"] == "refused for this test"
+    assert "mcmc" in b and "bootstrap" not in b
