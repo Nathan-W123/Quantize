@@ -108,6 +108,7 @@ from backend.spectral.centrifugal_distortion import (
     CD_NAMES,
     CDConstants,
     cd_observed_from_iso,
+    _CD_REDUCTION_ACCURACY,
     compute_cd_constants,
 )
 from backend.spectral.correction_models import RovibCorrection
@@ -536,6 +537,23 @@ class SpectralEngine:
         self._cd_fd_delta = float(cd_fd_delta)
         self._cd_min_freq_cm = float(cd_min_freq_cm)
         self._cd_sigma_fraction = max(float(cd_sigma_fraction), 1e-6)
+        # Each distortion row's sigma, fixed here from the constants as
+        # observed, so it is a constant of the objective: a weight computed
+        # from the current values would move with a bootstrap draw of them
+        # (and, from the prediction, with the geometry). Given sigmas are
+        # kept; a key without one gets the configured fraction of its
+        # observed value, a block without any the model's accuracy.
+        for entry in self.isotopologues:
+            cd_obs = entry.get("cd_observed") or {}
+            if not cd_obs:
+                continue
+            given = dict(entry.get("cd_sigma") or {})
+            if not given:
+                entry["cd_sigma"] = self._default_cd_sigma(cd_obs)
+            else:
+                for k, v in cd_obs.items():
+                    given.setdefault(k, max(abs(float(v)) * self._cd_sigma_fraction, 0.01))
+                entry["cd_sigma"] = given
         self._cd_jacobian_cache: dict[tuple, np.ndarray] = {}
 
     def set_hessian_for_cd(self, hess_bohr) -> None:
@@ -547,10 +565,21 @@ class SpectralEngine:
         self._cd_jacobian_cache.clear()
 
     def _predict_cd_for_iso(self, iso: dict, coords) -> CDConstants | None:
-        corr = iso.get("rovib_correction")
-        if isinstance(corr, RovibCorrection) and corr.pred_cd is not None:
-            return corr.pred_cd
+        """The harmonic distortion constants at ``coords``, from the Hessian.
+
+        At the given coordinates, whenever a Hessian is set. A prediction
+        attached to the isotopologue (rovib_correction.pred_cd, which
+        harmonic_cd_from_hessian writes at each Hessian refresh) used to win,
+        and it does not move with the geometry: the rows built from it had a
+        zero Jacobian (|J_cd| = 0.000 on water against 974 without it), so
+        they constrained nothing and added a constant to the residual. The
+        attached prediction is used only when there is no Hessian -- where
+        no distortion rows are built at all.
+        """
         if self._hess_bohr_for_cd is None:
+            corr = iso.get("rovib_correction")
+            if isinstance(corr, RovibCorrection) and corr.pred_cd is not None:
+                return corr.pred_cd
             return None
         return compute_cd_constants(
             self._hess_bohr_for_cd,
@@ -578,12 +607,24 @@ class SpectralEngine:
         if not keys:
             return None
         pred_d = pred.as_dict()
-        sig_block = iso.get("cd_sigma") or pred.sigma
+        sig_block = iso.get("cd_sigma") or self._default_cd_sigma(obs)
         sigma = np.array(
             [max(float(sig_block.get(k, abs(obs[k]) * self._cd_sigma_fraction)), 0.01)
              for k in keys], dtype=float)
         return (keys, np.array([float(obs[k]) for k in keys], dtype=float),
                 np.array([float(pred_d[k]) for k in keys], dtype=float), sigma)
+
+    def _default_cd_sigma(self, obs: dict) -> dict:
+        """The distortion rows' weight when no cd_sigma is given: the harmonic
+        model's accuracy (_CD_REDUCTION_ACCURACY, 40%, or the configured
+        fraction if larger) times the OBSERVED constant. It was the same
+        fraction of the PREDICTED constant, pred.sigma, which moves with the
+        geometry while its derivative is not in J: the merit the fit stops on
+        and the gradient its certificate reads then have different stationary
+        points (water, cd_weight 1e4, 20% offset: the base fit stopped 4.2
+        widths from its own optimum, with no warning)."""
+        frac = max(float(self._cd_sigma_fraction), _CD_REDUCTION_ACCURACY)
+        return {k: max(abs(float(v)) * frac, 0.01) for k, v in obs.items()}
 
     def cd_row_sigmas(self, coords) -> list[dict]:
         """Per isotopologue, the noise each distortion row's weight implies:
@@ -606,33 +647,25 @@ class SpectralEngine:
         """
         CD residual vector and per-term labels for isotopologues with observations.
 
-        Returns (residuals, sigmas, labels). Empty arrays if CD fitting is inactive.
+        Returns (residuals, sigmas, labels): observed minus predicted, in MHz,
+        and the sigma each row is weighted with -- the rows stacked builds,
+        from the same helper, so a reader of this cannot pick up another sign
+        or floor. Empty arrays if CD fitting is inactive.
         """
         coords = np.asarray(coords, dtype=float)
-        if self.cd_weight <= 0.0 or not self.fit_cd_constants:
+        if not self._cd_rows_active():
             return np.array([]), np.array([]), []
         r_list: list[float] = []
         s_list: list[float] = []
         labels: list[str] = []
         for iso in self.isotopologues:
-            obs = iso.get("cd_observed") or {}
-            if not obs:
+            rows = self._cd_rows(iso, coords)
+            if rows is None:
                 continue
-            pred = self._predict_cd_for_iso(iso, coords)
-            if pred is None:
-                continue
-            sig_block = iso.get("cd_sigma") or pred.sigma
-            for k in CD_NAMES:
-                if k not in obs:
-                    continue
-                r_list.append(float(pred.as_dict()[k]) - float(obs[k]))
-                if k in sig_block:
-                    s_list.append(max(float(sig_block[k]), 1e-6))
-                else:
-                    s_list.append(max(abs(float(obs[k])) * self._cd_sigma_fraction, 0.01))
-                labels.append(f"{iso['name']}:{k}")
-        if not r_list:
-            return np.array([]), np.array([]), []
+            keys, obs_v, pred_v, sigma = rows
+            r_list.extend((obs_v - pred_v).tolist())
+            s_list.extend(sigma.tolist())
+            labels.extend(f"{iso.get('name', 'iso')}:{k}" for k in keys)
         return np.asarray(r_list, dtype=float), np.asarray(s_list, dtype=float), labels
 
     def _cd_jacobian(self, coords, iso: dict) -> np.ndarray:

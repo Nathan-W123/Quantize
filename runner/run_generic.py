@@ -308,6 +308,14 @@ def _build_isotopologue(iso: dict, spectral_model: str = "rigid") -> dict:
             out[dst_key] = [float(v) for v in iso[src_key]]
     if "rovib_source" in iso:
         out["rovib_source"] = str(iso["rovib_source"])
+    # Observed centrifugal-distortion constants (and their sigmas), per
+    # isotopologue, for rovibrational_corrections.fit_cd_constants. They were
+    # dropped here, so no config could supply them: the optimizer warned "no
+    # isotopologue carries a cd_observed block" and fitted none.
+    for key in ("cd_observed", "centrifugal_distortion", "cd_sigma"):
+        block = iso.get(key)
+        if block:
+            out[key] = {str(k): float(v) for k, v in dict(block).items() if v is not None}
     return out
 
 

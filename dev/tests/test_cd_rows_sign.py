@@ -158,3 +158,109 @@ def test_an_error_model_bootstrap_with_distortion_rows_is_usable(cd_fit, tmp_pat
                                                     persist_samples=False)).run(str(tmp_path))
     assert s.usable_samples == 12
     assert all(r.mode_distance < 0.01 for r in s.sample_results)
+
+
+# ── Round 2 ──────────────────────────────────────────────────────────────────
+
+def _isos_no_sigma(cd):
+    out = _isos(None)
+    for d in out:
+        d["cd_observed"] = cd[d["name"]]
+    return out
+
+
+def test_harmonic_cd_corrections_do_not_freeze_the_rows(observed_cd):
+    """harmonic_cd_from_hessian attached a fixed prediction that the rows
+    then used, so their Jacobian was zero (|J_cd| 0.000 against 974): the
+    rows constrained nothing and added a constant to the residual."""
+    fits = {}
+    for harm in (False, True):
+        opt = _make(observed_cd, harmonic_cd_from_hessian=harm)
+        with contextlib.redirect_stdout(io.StringIO()):
+            opt.run()
+        J, _r = opt.spectral.stacked(opt.coords)
+        fits[harm] = (np.asarray(opt.coords, float), np.linalg.norm(J[_n_rot(opt):]))
+    assert fits[True][1] > 0.5 * fits[False][1] > 0.0
+    np.testing.assert_allclose(fits[True][0], fits[False][0], atol=1e-9)
+
+
+def test_the_default_cd_sigma_is_a_constant_of_the_objective(observed_cd):
+    """Without a cd_sigma block the weight was 40% of the PREDICTED value,
+    which moves with the geometry while its derivative is not in J: at
+    cd_weight 1e4 and a 20% offset the fit stopped 4.2 widths from its own
+    optimum. Now 40% of the observed value, fixed when the engine is built."""
+    cd = {n: {k: 1.20 / 1.05 * v for k, v in block.items()} for n, block in observed_cd.items()}
+    with contextlib.redirect_stdout(io.StringIO()):
+        opt = MolecularOptimizer(
+            elems=["O", "H", "H"], coords=_x0(), isotopologues=_isos_no_sigma(cd),
+            quantum_backend="analytic_water", use_autoconfig=False, max_iter=60,
+            auto_systematic_sigma=False, fit_cd_constants=True, cd_weight=1e4)
+        opt.run()
+    iso = opt.spectral.isotopologues[0]
+    for k, v in iso["cd_observed"].items():
+        assert iso["cd_sigma"][k] == pytest.approx(max(0.40 * abs(v), 0.01))
+    assert opt.distance_to_mode() < 0.01
+
+
+def test_the_cd_draws_carry_their_share_of_the_target(observed_cd, tmp_path):
+    """Where the distortion rows matter (cd_weight 1e4: about a fifth of the
+    target variance here), the error-model draws' linear prediction has the
+    target's covariance only with the distortion constants drawn too."""
+    from backend.internal.internal_fit import InternalCoordinateSet
+    from backend.uncertainty_v2.resampling import resample_error_model
+    with contextlib.redirect_stdout(io.StringIO()):
+        opt = MolecularOptimizer(
+            elems=["O", "H", "H"], coords=_x0(), isotopologues=_isos(observed_cd),
+            quantum_backend="analytic_water", use_autoconfig=False, max_iter=60,
+            auto_systematic_sigma=False, fit_cd_constants=True, cd_weight=1e4)
+        opt.run()
+    x = np.asarray(opt.coords, float)
+    cov, _ = opt.laplace_approximation(coords=x, check_gauss_newton=False)
+    cov, _b, _n = opt.physical_covariance(cov, coords=x)
+    J, _r, scale = opt.spectral.stacked(x, return_row_scale=True)
+    n = scale.size
+    _hs, h_prior, _p = opt._posterior_blocks(x)
+    c_sys = opt._systematic_covariance(J, cov, coords=x, row_scale=scale)
+    target = cov + c_sys - cov @ h_prior @ cov
+    cs = InternalCoordinateSet(x, opt.elems, opt._ic_use_dihedrals)
+    Bq = np.asarray(cs.active_B_matrix(x), float)
+    Sigma = opt.constant_error_covariance()
+    sig = opt.spectral.cd_row_sigmas(x)
+    isos = opt.spectral.isotopologues
+    b0 = np.concatenate([np.asarray(i["obs_constants"], float) for i in isos])
+    rng = np.random.default_rng(2)
+    with_cd, without = [], []
+    for _ in range(4000):
+        p = resample_error_model(isos, Sigma, rng)
+        p = resample_cd_observed(p, sig, rng)
+        e = np.concatenate([np.asarray(i["obs_constants"], float) for i in p]) - b0
+        z = np.concatenate([[(p[i]["cd_observed"][k] - isos[i]["cd_observed"][k]) / sig[i][k]
+                             for k in CD_NAMES if k in sig[i]] for i in range(len(p))])
+        d_rot = cov @ (J[:n].T @ (scale * e))
+        with_cd.append(Bq @ (d_rot + cov @ (J[n:].T @ z)))
+        without.append(Bq @ d_rot)
+    t = np.sqrt(np.diag(Bq @ target @ Bq.T))
+    ratio = np.array(with_cd).std(axis=0) / t
+    short = np.array(without).std(axis=0) / t
+    assert np.all(np.abs(ratio - 1.0) < 0.04), ratio
+    assert np.any(short < 0.92), "premise: the distortion rows' share is material"
+
+
+def test_a_config_can_supply_observed_distortion_constants(observed_cd):
+    """run_generic._build_isotopologue copied obs/sigma/alpha/delta only, so
+    no config could carry cd_observed."""
+    from runner.run_from_config import build_optimizer_from_config
+    from runner.usability import load_config
+    cfg = load_config(_ROOT / "dev" / "configs" / "water_analytic_endtoend.yaml")
+    iso = cfg["isotopologues"][0]
+    name = iso.get("name", "H2-16O")
+    iso["cd_observed"] = dict(observed_cd.get(name, observed_cd["H2-16O"]))
+    cfg.setdefault("rovibrational_corrections", {})
+    cfg["rovibrational_corrections"]["fit_cd_constants"] = True
+    cfg["rovibrational_corrections"]["cd_weight"] = 1.0
+    with contextlib.redirect_stdout(io.StringIO()):
+        opt = build_optimizer_from_config(cfg, multistart=False, verbose=False)
+        opt.run()
+    assert opt.spectral.isotopologues[0].get("cd_observed")
+    J, _r = opt.spectral.stacked(opt.coords)
+    assert J.shape[0] > _n_rot(opt)
