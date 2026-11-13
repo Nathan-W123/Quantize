@@ -491,7 +491,11 @@ class BootstrapEngine:
                # Set where the Gauss-Newton check found a stationary saddle:
                # the columns are then the Laplace's arithmetic, not a width the
                # engine reports (internal_coordinate_posterior refuses).
-               "no_posterior": no_posterior_reason(opt, x)}
+               "no_posterior": no_posterior_reason(opt, x),
+               # Refits hold the base's quadratic, so this cloud cannot see
+               # how far its Hessian is from the curvature here; say how old
+               # that Hessian is instead.
+               "hessian_distance_ang": opt.hessian_distance(x)}
         use = [r for r in (results or []) if r.success and r.usable and r.coords is not None]
         if len(use) > 2:
             q = np.array([np.asarray(cs.active_values(np.asarray(r.coords, dtype=float)), dtype=float)

@@ -39,6 +39,10 @@ def format_bootstrap_summary(summary: BootstrapRunSummary) -> str:
             u = "mA" if unit == "angstrom" else "deg"
             cloud = "-" if b is None else f"{b * f:.4f}"
             lines.append(f"  {name:<16}{cloud:>11}{t_sd * f:>11.4f}{p_sd * f:>11.4f}  {u}")
+        hd = a.get("hessian_distance_ang")
+        if hd is not None:
+            lines.append(f"  Refits hold the base's quantum quadratic, so the cloud cannot detect "
+                         f"error in it; its Hessian was computed {1e3 * hd:.2f} mA from this geometry.")
         if a.get("no_posterior"):
             lines.append("  NO REPORTED POSTERIOR at this geometry: " + str(a["no_posterior"]))
             lines.append("  The analytic and posterior columns are the Laplace's arithmetic only.")

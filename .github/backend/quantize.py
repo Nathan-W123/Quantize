@@ -1195,6 +1195,9 @@ class MolecularOptimizer:
         self.quantum = None
         self._backend = None
         self._orca_ref_coords = None
+        # Where the current Hessian was computed. Gradient-only updates move
+        # _orca_ref_coords but keep the Hessian, so the two can be far apart.
+        self._hessian_ref_coords = None
         # What the last fit iteration actually used, kept so that everything
         # reporting on the fit -- the Laplace, the log-probability, the run
         # report -- describes the objective that was minimised rather than
@@ -1327,6 +1330,7 @@ class MolecularOptimizer:
         result = self._backend.run_hessian(self.coords)
         self.quantum = QuantumState(result.energy, result.gradient_bohr, result.hessian_bohr)
         self._orca_ref_coords = self.coords.copy()
+        self._hessian_ref_coords = self.coords.copy()
         # A new reference: a new weight, and new projected reference terms
         # (that cache is keyed on the coordinates alone, so an update at the
         # same coordinates paired the new reference point with the old
@@ -1742,6 +1746,7 @@ class MolecularOptimizer:
         eng = QuantumEngine(engrad_path, hess_path, self.elems)
         self.quantum = QuantumState(eng.energy, eng._gradient_bohr.copy(), eng._hessian_bohr.copy())
         self._orca_ref_coords = self.coords.copy()
+        self._hessian_ref_coords = self.coords.copy()
         self._quantum_prior_weight_cache = None
         self._proj_ref_terms_cache = None
         print(f"Loaded ORCA files.  Energy = {self.quantum.energy:.10f} Hartree")
@@ -1752,6 +1757,23 @@ class MolecularOptimizer:
         if self._orca_ref_coords is None:
             return np.inf
         return float(np.sqrt(np.mean((self.coords - self._orca_ref_coords) ** 2)))
+
+    def hessian_distance(self, coords=None):
+        """RMS distance (Angstrom, the _orca_drift metric) from ``coords`` to
+        where the quantum Hessian was computed, or None without one.
+
+        The adaptive schedule refreshes the gradient far more often than the
+        Hessian, and the reported widths, the quantum prior's weight and the
+        bootstrap's quadratic all take their curvature from the Hessian:
+        formyl fluoride's benchmark fit ends 5.1 mA from its only Hessian
+        (computed at the start), the water config 10.8 mA, and a fresh
+        Hessian at the answer moves their widths by up to 3%.
+        """
+        ref = getattr(self, "_hessian_ref_coords", None)
+        if ref is None or self.spectral_only or self.quantum is None:
+            return None
+        x = self.coords if coords is None else np.asarray(coords, dtype=float)
+        return float(np.sqrt(np.mean((np.asarray(x, dtype=float) - ref) ** 2)))
 
     def _rigid_mode_projector(self, coords, masses):
         """
@@ -3267,6 +3289,15 @@ class MolecularOptimizer:
         if saddle is not None and saddle[0] == x.tobytes():
             return {"error": "no Laplace width exists at this geometry -- " + saddle[1],
                     "warnings": gn}
+        hess_d = self.hessian_distance(x)
+        if hess_d is not None and hess_d > float(self.orca_update_thresh):
+            gn = gn + [
+                f"the quantum Hessian behind these widths was computed "
+                f"{1e3 * hess_d:.2f} mA (RMS) from this geometry, beyond the "
+                f"{1e3 * float(self.orca_update_thresh):.2f} mA at which the fit "
+                f"refreshes its quantum point: the widths and the quantum prior's "
+                f"weight carry that curvature, not the curvature here (formyl "
+                f"fluoride: a Hessian at the answer moves its widths by up to 3%)"]
         if not self.spectral_only and self.optimizer.objective_mode != "joint":
             gn = gn + [
                 "split objective: these widths come from the posterior blocks, whose "
@@ -3367,6 +3398,7 @@ class MolecularOptimizer:
             "labels": labels,
             "blocks": blocks,
             "objective_mode": str(self.optimizer.objective_mode),
+            "hessian_distance_ang": hess_d,
             "alpha_q": (None if self.spectral_only or self.quantum is None
                         else float(self.quantum_prior_weight(refresh=True))),
             "chi2_per_observation": float(rw @ rw) / max(rw.size, 1),

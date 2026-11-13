@@ -529,3 +529,25 @@ def test_the_fit_loop_does_not_finite_difference_a_jacobian_it_discards(config_f
     with contextlib.redirect_stdout(io.StringIO()):
         opt.run()
     assert calls and not any(calls)
+
+
+def test_the_report_says_how_old_its_hessian_is(config_fit, tmp_path):
+    """Gradient-only updates keep the quantum point near the answer (0.19 mA
+    here) while the Hessian the widths use stays where it was computed
+    (10.77 mA): nothing said so, and a held bootstrap cannot see it."""
+    opt = deepcopy(config_fit)
+    d = opt.hessian_distance()
+    assert d > opt.orca_update_thresh > opt._orca_drift(), "premise: an old Hessian"
+    post = opt.internal_coordinate_posterior()
+    assert post["hessian_distance_ang"] == pytest.approx(d)
+    assert any("Hessian behind these widths" in w for w in post["warnings"])
+    s = _cloud(opt, "error-model", 4, 3, tmp_path)
+    assert "cannot detect error in it" in format_bootstrap_summary(s)
+    with contextlib.redirect_stdout(io.StringIO()):
+        opt._run_gradient()                      # a gradient keeps the Hessian
+    assert opt.hessian_distance() == pytest.approx(d)
+    with contextlib.redirect_stdout(io.StringIO()):
+        opt._run_hessian()                       # a Hessian here: no warning
+    assert opt.hessian_distance() == 0.0
+    assert not any("Hessian behind these widths" in w
+                   for w in opt.internal_coordinate_posterior()["warnings"])
