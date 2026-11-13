@@ -13,17 +13,37 @@ class BootstrapConfig:
     n_samples: int = 50
     max_workers: int = 1
     seed: int | None = None
-    strategy: str = "isotopologue-gaussian"
+    #: What each refit draws, and so what the cloud estimates:
+    #:   "error-model"  the constants from the engine's own error model
+    #:                  (constant_error_covariance: measurement part plus the
+    #:                  model error, correlated across isotopologues). The
+    #:                  cloud is the spread the data and the model error alone
+    #:                  produce -- the reported covariance less its prior part.
+    #:   "rto"          the same, plus the quantum prior's centre drawn from
+    #:                  the prior (randomise-then-optimise). The cloud is the
+    #:                  posterior: a sampling check of the reported covariance.
+    #:   "isotopologue-gaussian"  the legacy draw: each constant independently
+    #:                  by its quoted sigma_constants, whatever that contains.
+    strategy: str = "error-model"
     output_dir: str = "bootstrap_v2"
     persist_samples: bool = True
+    #: A sample is a draw only if its refit reached its own optimum: it is
+    #: refused when it ends further than this many posterior widths from it
+    #: (distance_to_mode, the largest Newton-step component in that
+    #: direction's own width).
+    max_mode_distance: float = 0.25
+
+    STRATEGIES = ("error-model", "rto", "isotopologue-gaussian")
 
     def validate(self) -> None:
         if self.n_samples < 1:
             raise ValueError("BootstrapConfig.n_samples must be >= 1.")
         if self.max_workers < 1:
             raise ValueError("BootstrapConfig.max_workers must be >= 1.")
-        if self.strategy not in {"isotopologue-gaussian"}:
+        if self.strategy not in self.STRATEGIES:
             raise ValueError(f"Unsupported bootstrap strategy: {self.strategy}")
+        if not (self.max_mode_distance > 0.0):
+            raise ValueError("BootstrapConfig.max_mode_distance must be > 0.")
 
 
 @dataclass
@@ -42,6 +62,16 @@ class BootstrapSampleResult:
     #: as max|dx| in Angstrom. Exactly 0.0 means the optimiser accepted no
     #: step at all, so the "sample" is a copy of the starting point.
     moved_ang: float | None = None
+    #: Why the refit's loop ended: "converged", "plateau", "stall" or
+    #: "max_iter" (MolecularOptimizer.termination).
+    termination: str | None = None
+    #: The refit's distance to its own optimum in posterior widths, measured
+    #: in the worker on the sample's own objective (distance_to_mode).
+    mode_distance: float | None = None
+    #: Whether the drawn constants were still the fit's targets when it
+    #: ended. A correction rebuild during the refit used to overwrite them
+    #: with the unperturbed ones, so the "sample" refitted the base data.
+    draw_kept: bool | None = None
     #: Whether this sample may enter the cloud an interval is taken from.
     #: `success` only says the fit did not raise; these are different facts
     #: and were conflated, which is the defect these fields exist for.
@@ -65,10 +95,16 @@ class BootstrapRunSummary:
     failed_samples: int
     mean_rms_mhz: float | None
     sample_results: list[BootstrapSampleResult] = field(default_factory=list)
-    #: The base fit's residual RMS the samples were gated against, when the
-    #: optimizer had been run before sampling. None means only the
-    #: no-accepted-step gate could be applied.
+    #: The base fit's residual RMS, for information. Samples are no longer
+    #: gated on it: perturbed data fit worse by construction, and the ratio
+    #: refused draws that had reached their own optimum (25 of 48 on the
+    #: water config, 39 of 48 on formyl fluoride).
     base_rms_mhz: float | None = None
+    #: What the cloud estimates, and the engine's analytic value of it beside
+    #: the reported posterior: {"target", "names", "kinds", "units",
+    #: "target_std", "posterior_std", "bootstrap_std"} (bonds in Angstrom,
+    #: angles in degrees). None when it could not be formed.
+    analytic: dict | None = None
 
     #: Fewer usable samples than this fraction of the requested count and the
     #: cloud is not a sample of anything. The CLI already used one half as the
@@ -117,8 +153,7 @@ class BootstrapRunSummary:
             f"Only {self.usable_samples} of {n} bootstrap samples produced a "
             f"draw ({self.refused_samples} ran but were refused, "
             f"{self.failed_samples} raised); {need} are needed. An interval "
-            f"from what is left would be narrower than the truth, because a "
-            f"refused sample sits exactly on the starting geometry."
+            f"from what is left would not describe the draws that were made."
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -133,6 +168,7 @@ class BootstrapRunSummary:
             "refused_samples": self.refused_samples,
             "usable": self.usable,
             "unusable_reason": self.unusable_reason(),
+            "analytic": self.analytic,
             "sample_results": [s.to_dict() for s in self.sample_results],
         }
 

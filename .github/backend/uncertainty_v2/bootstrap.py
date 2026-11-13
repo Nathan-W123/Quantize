@@ -12,17 +12,61 @@ import numpy as np
 from backend.quantize import MolecularOptimizer
 
 from .models import BootstrapConfig, BootstrapRunSummary, BootstrapSampleResult
-from .resampling import resample_isotopologues_gaussian
+from .resampling import (
+    draw_quantum_prior_shift,
+    resample_error_model,
+    resample_isotopologues_gaussian,
+)
 
 
-def _run_bootstrap_worker(args: tuple[MolecularOptimizer, list[dict[str, Any]], str, int, int]) -> BootstrapSampleResult:
-    base_opt, isotopologues, workdir, idx, seed = args
+def _freeze_corrections(opt: MolecularOptimizer) -> None:
+    """Keep the base fit's vibrational corrections for the whole refit.
+
+    A Hessian refresh during a refit used to run _apply_harmonic_alpha_
+    corrections, which rebuilds the targets from the UNPERTURBED raw
+    isotopologues and writes them over the drawn ones: the sample then
+    refitted the base data. On the water config 51% of draws were wiped this
+    way, almost all on the bond-shortening side, so one tail of the cloud
+    went missing. Frozen, every refit fits the constants it was given, with
+    the base's corrections -- the linearised propagation the reported
+    covariance makes -- and refits are cheaper (no correction rebuilds).
+    """
+    opt._harmonic_from_hessian = False
+    opt._anharmonic_from_hessian = False
+    opt._harmonic_cd_from_hessian = False
+    opt.use_orca_rovib = False
+
+
+#: A refit that stopped further than this from its own optimum, in posterior
+#: widths, is continued from where it stopped, at most _POLISH_PASSES times.
+#: The plateau stop ends a fit on one small step, which is loose for a refit
+#: that has a full posterior width to travel: under "rto" on water 5% of
+#: refits stopped beyond 0.1 widths short, up to 0.2, which narrows the cloud
+#: (the bond came out 4% narrow). Refusing them instead would remove exactly
+#: the draws that travelled furthest.
+_POLISH_DISTANCE = 0.02
+_POLISH_PASSES = 3
+
+
+def _distance(opt, coords):
+    try:
+        return float(opt.distance_to_mode(coords=coords))
+    except Exception:
+        return None
+
+
+def _run_bootstrap_worker(args: tuple) -> BootstrapSampleResult:
+    base_opt, isotopologues, workdir, idx, seed = args[:5]
+    rto_shift = args[5] if len(args) > 5 else None
     start = time.time()
     opt = deepcopy(base_opt)
+    _freeze_corrections(opt)
     opt.spectral.isotopologues = isotopologues
+    opt._rto_quantum_shift = rto_shift
     opt.workdir = workdir
     os.makedirs(workdir, exist_ok=True)
     start_coords = np.asarray(opt.coords, dtype=float).copy()
+    drawn = [np.asarray(iso["obs_constants"], dtype=float).copy() for iso in isotopologues]
     try:
         coords = opt.run()
         rms = float(opt.history[-1]["freq_rms"]) if opt.history else None
@@ -30,6 +74,19 @@ def _run_bootstrap_worker(args: tuple[MolecularOptimizer, list[dict[str, Any]], 
         # Measured in the worker, where the starting geometry is in hand.
         # Exactly 0.0 means run() accepted no step, so this "sample" is the
         # starting point again -- see BootstrapRunSummary.usable.
+        moved = float(np.abs(coords - start_coords).max())
+        kept = all(
+            np.allclose(np.asarray(iso["obs_constants"], dtype=float), d,
+                        rtol=0.0, atol=1e-9 * max(1.0, float(np.max(np.abs(d)))))
+            for iso, d in zip(opt.spectral.isotopologues, drawn))
+        dist = _distance(opt, coords)
+        passes = 0
+        while (dist is not None and dist > _POLISH_DISTANCE and passes < _POLISH_PASSES
+               and (getattr(opt, "termination", None) or {}).get("reason") != "max_iter"):
+            coords = np.asarray(opt.run(), dtype=float)
+            dist = _distance(opt, coords)
+            passes += 1
+        rms = float(opt.history[-1]["freq_rms"]) if opt.history else rms
         moved = float(np.abs(coords - start_coords).max())
         return BootstrapSampleResult(
             idx=idx,
@@ -40,6 +97,9 @@ def _run_bootstrap_worker(args: tuple[MolecularOptimizer, list[dict[str, Any]], 
             workdir=workdir,
             elapsed_s=time.time() - start,
             moved_ang=moved,
+            termination=(getattr(opt, "termination", None) or {}).get("reason"),
+            mode_distance=dist,
+            draw_kept=bool(kept),
         )
     except Exception as exc:
         return BootstrapSampleResult(
@@ -53,17 +113,44 @@ def _run_bootstrap_worker(args: tuple[MolecularOptimizer, list[dict[str, Any]], 
 
 
 class BootstrapEngine:
-    """Phase-1 bootstrap orchestration with deterministic seeding and persistence."""
+    """Refit perturbed copies of a fitted optimizer, and say what the spread is.
+
+    The analytic answer is the reported covariance
+    (MolecularOptimizer.internal_coordinate_posterior), which costs
+    microseconds. This is a check of it by refitting: "error-model" draws the
+    constants from the error model that covariance propagates, so its cloud
+    is the reported covariance less its prior part; "rto" also draws the
+    quantum prior's centre, so its cloud is the reported covariance itself.
+    Each run carries the analytic value of its own target beside the cloud,
+    so a disagreement is visible rather than inferred.
+    """
 
     def __init__(self, optimizer: MolecularOptimizer, config: BootstrapConfig):
         self.optimizer = optimizer
         self.config = config
         self.config.validate()
 
+    def _check_strategy(self) -> None:
+        opt = self.optimizer
+        if self.config.strategy != "rto":
+            return
+        if opt.spectral_only or opt.quantum is None:
+            raise ValueError("strategy 'rto' needs a quantum prior to randomise")
+        if getattr(opt, "_prior_target_coords", None) is not None:
+            raise ValueError(
+                "strategy 'rto' does not support prior_target_coords: the prior "
+                "target recomputes the quantum gradient, so the shift would be lost")
+        anchored = opt.internal_prior is not None and opt.coordinate_mode == "cartesian"
+        if opt._internal_prior_rows(opt.coords) is not None or anchored:
+            raise ValueError(
+                "strategy 'rto' randomises the data and the quantum prior only; an "
+                "internal-coordinate prior is active and would not be sampled")
+
     def run(self, base_workdir: str | None = None) -> BootstrapRunSummary:
         base = os.path.abspath(base_workdir or self.optimizer.workdir or ".")
         run_dir = os.path.join(base, self.config.output_dir)
         os.makedirs(run_dir, exist_ok=True)
+        self._check_strategy()
 
         print(
             f"\n[bootstrap-v2] Launching {self.config.n_samples} samples "
@@ -72,18 +159,26 @@ class BootstrapEngine:
 
         seed_seq = np.random.SeedSequence(self.config.seed)
         child_sequences = seed_seq.spawn(self.config.n_samples)
-        jobs: list[tuple[MolecularOptimizer, list[dict[str, Any]], str, int, int]] = []
+        error_cov = None
+        if self.config.strategy in ("error-model", "rto"):
+            error_cov = self.optimizer.constant_error_covariance()
+        jobs: list[tuple] = []
 
         for i, child in enumerate(child_sequences, start=1):
             seed = int(child.generate_state(1)[0])
             rng = np.random.default_rng(seed)
+            shift = None
             if self.config.strategy == "isotopologue-gaussian":
                 perturbed = resample_isotopologues_gaussian(self.optimizer.spectral.isotopologues, rng)
+            elif self.config.strategy in ("error-model", "rto"):
+                perturbed = resample_error_model(self.optimizer.spectral.isotopologues, error_cov, rng)
+                if self.config.strategy == "rto":
+                    shift = draw_quantum_prior_shift(self.optimizer, rng)
             else:
                 raise ValueError(f"Unsupported bootstrap strategy: {self.config.strategy}")
 
             sample_dir = os.path.join(run_dir, f"sample_{i:03d}")
-            jobs.append((self.optimizer, perturbed, sample_dir, i, seed))
+            jobs.append((self.optimizer, perturbed, sample_dir, i, seed, shift))
 
         results: list[BootstrapSampleResult] = []
         with ProcessPoolExecutor(max_workers=self.config.max_workers) as pool:
@@ -111,6 +206,10 @@ class BootstrapEngine:
             sample_results=results,
             base_rms_mhz=base_rms,
         )
+        try:
+            summary.analytic = self.analytic_reference(results)
+        except Exception as exc:  # a comparison must not cost the run
+            print(f"  [bootstrap-v2] analytic reference unavailable: {type(exc).__name__}: {exc}")
         for r in results:
             if r.success and not r.usable:
                 print(f"  [sample {r.idx:03d}] REFUSED: {r.unusable_reason}")
@@ -118,14 +217,6 @@ class BootstrapEngine:
         if self.config.persist_samples:
             self._persist_summary(summary, run_dir)
         return summary
-
-    #: A sample is a draw from the posterior only if its own fit converged.
-    #: These are select_best_result's gate, as run_generic passes it when
-    #: choosing among multistart results -- the repository's existing answer to
-    #: "is this fit good enough to be considered", reused here rather than a
-    #: second threshold that could drift away from it.
-    SPECTRAL_GATE_REL = 2.0
-    SPECTRAL_GATE_ABS = 0.05
 
     def _base_rms_mhz(self) -> float | None:
         """The base fit's residual RMS, when the optimizer was run first."""
@@ -140,58 +231,122 @@ class BootstrapEngine:
     def _gate_samples(
         self,
         results: list[BootstrapSampleResult],
-        base_rms: float | None,
+        base_rms: float | None = None,
     ) -> None:
         """Mark which samples may enter the cloud, and why the rest may not.
 
-        Two refusals, in order of how certain they are:
+        A sample is a draw when its refit fitted the constants it was given
+        and reached its own optimum. In order:
 
-        1. ``moved_ang == 0.0``. The optimiser accepted no step, so the
-           returned geometry is the one it was handed. Measured on water with
-           four samples: two of four came back bit-identical to the base
-           geometry (max|dx| = 0.000e+00), were reported as successes, and put
-           a duplicate of the distribution's own centre into the cloud. This
-           needs no threshold and admits no argument.
-        2. The sample's final residual RMS is outside select_best_result's
-           spectral gate around the base fit's. A sample whose fit ended 3.9x
-           worse than the base fit (54,925 MHz against 14,061 MHz, measured on
-           the same run) did not find its own optimum, so its geometry is
-           wherever the optimiser gave up, not where the perturbed data put the
-           minimum.
+        1. It raised, or returned no geometry.
+        2. ``moved_ang == 0.0``: no step was accepted, so the geometry is the
+           start. Measured on water with four samples, two came back
+           bit-identical to the base geometry and were counted as successes.
+        3. The drawn constants were not the targets it ended with -- a
+           correction rebuild overwrote them -- so it refitted other data.
+        4. Its loop ran out of iterations.
+        5. It stopped more than ``max_mode_distance`` posterior widths from
+           its own optimum (distance_to_mode on the sample's own objective),
+           or that distance could not be measured on a fit that did not
+           report convergence.
+
+        This replaces a gate on the final residual RMS relative to the base
+        fit's. Perturbed constants fit worse by construction, so the ratio
+        measured the draw, not the fit: it refused 25 of 48 draws on the
+        water config and 39 of 48 on formyl fluoride, most of which sat at
+        their own optimum, and kept the ones that happened to fit well.
         """
+        limit = float(self.config.max_mode_distance)
         for r in results:
+            r.usable = False
             if not r.success:
-                r.usable = False
                 r.unusable_reason = "the fit raised"
                 continue
             if r.coords is None:
-                r.usable = False
                 r.unusable_reason = "no geometry was returned"
                 continue
             if r.moved_ang is not None and r.moved_ang == 0.0:
-                r.usable = False
                 r.unusable_reason = (
                     "the optimiser accepted no step, so this geometry is the "
                     "starting point rather than a draw")
                 continue
-            if base_rms is not None and r.rms_mhz is not None:
-                gate = max(base_rms * self.SPECTRAL_GATE_REL,
-                           base_rms + self.SPECTRAL_GATE_ABS)
-                if float(r.rms_mhz) > gate:
-                    ratio = float(r.rms_mhz) / base_rms if base_rms else float("inf")
-                    r.usable = False
+            if r.draw_kept is False:
+                r.unusable_reason = (
+                    "the drawn constants were replaced during the refit, so it "
+                    "fitted other data")
+                continue
+            if r.termination == "max_iter":
+                r.unusable_reason = "the refit ran out of iterations"
+                continue
+            if r.mode_distance is None:
+                if r.termination not in (None, "converged"):
                     r.unusable_reason = (
-                        f"final residual RMS {r.rms_mhz:.1f} MHz is {ratio:.1f}x "
-                        f"the base fit's {base_rms:.1f} MHz, outside the "
-                        f"{self.SPECTRAL_GATE_REL:g}x spectral gate, so this "
-                        f"fit did not reach its own minimum")
+                        "its distance to its own optimum could not be measured "
+                        f"and the refit ended on '{r.termination}'")
                     continue
+            elif r.mode_distance > limit:
+                r.unusable_reason = (
+                    f"the refit stopped {r.mode_distance:.2f} posterior widths "
+                    f"from its own optimum (limit {limit:g})")
+                continue
             r.usable = True
             r.unusable_reason = None
+
+    def analytic_reference(self, results=None) -> dict:
+        """The engine's analytic value of what this cloud estimates.
+
+        Per internal coordinate, at the base geometry: the target standard
+        deviation (the reported covariance less its prior part for
+        "error-model"; the reported covariance for "rto"; the sandwich of
+        independent quoted-sigma draws for "isotopologue-gaussian"), the
+        reported posterior's, and the cloud's own when samples are given.
+        Bonds in Angstrom, angles in degrees.
+        """
+        from backend.internal.internal_fit import InternalCoordinateSet
+
+        opt = self.optimizer
+        x = np.asarray(opt.coords, dtype=float)
+        cov, _ = opt.laplace_approximation(coords=x, check_gauss_newton=False)
+        cov, basis, _n = opt.physical_covariance(cov, coords=x)
+        J, _r, scale = opt.spectral.stacked(x, return_row_scale=True)
+        c_sys = opt._systematic_covariance(J, cov, coords=x, row_scale=scale)
+        c_total = cov + c_sys
+        strategy = self.config.strategy
+        if strategy == "rto":
+            target_cov = c_total
+            label = "posterior (reported covariance)"
+        elif strategy == "error-model":
+            _hs, h_prior, _parts = opt._posterior_blocks(x)
+            target_cov = c_total - cov @ h_prior @ cov
+            label = "data and model error alone (reported covariance less its prior part)"
+        else:
+            sig = np.concatenate([np.asarray(iso["sigma_constants"], dtype=float).ravel()
+                                  for iso in opt.spectral.isotopologues])
+            n_rot = sig.size
+            A = cov @ np.asarray(J, dtype=float)[:n_rot].T
+            target_cov = (A * (np.asarray(scale, dtype=float) * sig) ** 2) @ A.T
+            label = "independent quoted-sigma draws (legacy)"
+        cs = InternalCoordinateSet(x, opt.elems, opt._ic_use_dihedrals)
+        Bq = np.asarray(cs.active_B_matrix(x), dtype=float)
+        kinds = [ic.kind for ic in cs.active_coords()]
+        conv = np.array([1.0 if k == "bond" else np.degrees(1.0) for k in kinds])
+
+        def sd(C):
+            return (np.sqrt(np.clip(np.diag(Bq @ C @ Bq.T), 0.0, None)) * conv).tolist()
+
+        out = {"target": label, "names": list(cs.active_names()), "kinds": kinds,
+               "units": ["angstrom" if k == "bond" else "degree" for k in kinds],
+               "target_std": sd(target_cov), "posterior_std": sd(c_total),
+               "bootstrap_std": None}
+        use = [r for r in (results or []) if r.success and r.usable and r.coords is not None]
+        if len(use) > 2:
+            q = np.array([np.asarray(cs.active_values(np.asarray(r.coords, dtype=float)), dtype=float)
+                          for r in use])
+            out["bootstrap_std"] = (q.std(axis=0, ddof=1) * conv).tolist()
+        return out
 
     @staticmethod
     def _persist_summary(summary: BootstrapRunSummary, run_dir: str) -> None:
         out_path = os.path.join(run_dir, "bootstrap_summary.json")
         with open(out_path, "w", encoding="utf-8") as fh:
             json.dump(summary.to_dict(), fh, indent=2)
-

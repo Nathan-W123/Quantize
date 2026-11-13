@@ -16,6 +16,14 @@ interval it reports -- the error points the wrong way, and in the limit where
 one sample moves the reported width goes to zero while the truth is unchanged.
 That cannot be left to a warning, so the summary refuses to be quoted once too
 few samples survive.
+
+The second gate this file used to pin -- final residual RMS within 2x the base
+fit's -- is gone. Perturbed constants fit worse by construction, so it measured
+the draw rather than the fit: it refused 25 of 48 draws on the water config and
+39 of 48 on formyl fluoride, nearly all of them at their own optimum, and kept
+the draws that happened to fit well, which narrowed the cloud. A sample is now
+judged on whether its refit fitted the constants it was given and reached its
+own optimum (test_bootstrap_targets.py has the measurements).
 """
 
 from __future__ import annotations
@@ -42,11 +50,13 @@ BASE_RMS = 100.0
 COORDS = np.array([[0.0, 0.0, 0.0], [0.0, 0.76, 0.59], [0.0, -0.76, 0.59]])
 
 
-def _sample(idx, *, rms, moved, success=True, coords=COORDS):
+def _sample(idx, *, rms, moved, success=True, coords=COORDS,
+            termination="plateau", distance=1e-6, kept=True):
     return BootstrapSampleResult(
         idx=idx, seed=idx, success=success,
         coords=None if coords is None else np.asarray(coords, dtype=float),
-        rms_mhz=rms, moved_ang=moved,
+        rms_mhz=rms, moved_ang=moved, termination=termination,
+        mode_distance=distance, draw_kept=kept,
     )
 
 
@@ -93,34 +103,53 @@ def test_the_smallest_real_movement_is_still_a_draw():
 
 # ── the spectral-gate refusal ────────────────────────────────────────────────
 
-def test_a_fit_outside_the_spectral_gate_is_refused():
-    """Beyond 2x the base fit's RMS the sample never found its own minimum."""
-    (r,) = _gate([_sample(1, rms=BASE_RMS * 2.5, moved=1e-3)])
-    assert r.usable is False
-    assert "spectral gate" in r.unusable_reason
-    assert "2.5x" in r.unusable_reason
-
-
-def test_a_fit_inside_the_spectral_gate_is_kept():
-    (r,) = _gate([_sample(1, rms=BASE_RMS * 1.9, moved=1e-3)])
+def test_a_draw_that_fits_worse_than_the_base_is_still_a_draw():
+    """The RMS-ratio gate's false refusal: perturbed data fit worse, and a
+    refit sitting at its own optimum is a draw however large its residual."""
+    (r,) = _gate([_sample(1, rms=BASE_RMS * 7.8, moved=1e-3, distance=1e-6)])
     assert r.usable is True
 
 
-def test_the_gate_matches_select_best_results_own_constants():
-    """Reused, not reinvented: run_generic passes these to select_best_result.
-
-    If multistart's gate is retuned and this one is not, a geometry good enough
-    to be chosen as the answer could be too bad to be a bootstrap draw.
-    """
-    assert BootstrapEngine.SPECTRAL_GATE_REL == 2.0
-    assert BootstrapEngine.SPECTRAL_GATE_ABS == 0.05
+def test_the_gate_does_not_read_the_residual_rms():
+    a, b = _gate([_sample(1, rms=BASE_RMS * 1e6, moved=1e-3),
+                  _sample(2, rms=BASE_RMS * 1e-6, moved=1e-3)])
+    assert a.usable is True and b.usable is True
 
 
-def test_without_a_base_fit_only_the_no_step_check_applies():
-    """The optimizer may not have been run, leaving nothing to gate RMS against."""
-    far, still = _gate([_sample(1, rms=1e9, moved=1e-3),
-                        _sample(2, rms=1.0, moved=0.0)], rms=None)
-    assert far.usable is True, "no base RMS means no spectral gate to apply"
+def test_a_refit_that_stopped_short_of_its_own_optimum_is_refused():
+    limit = BootstrapConfig().max_mode_distance
+    near, far = _gate([_sample(1, rms=BASE_RMS, moved=1e-3, distance=0.5 * limit),
+                       _sample(2, rms=BASE_RMS, moved=1e-3, distance=2.0 * limit)])
+    assert near.usable is True
+    assert far.usable is False and "from its own optimum" in far.unusable_reason
+
+
+def test_a_refit_that_ran_out_of_iterations_is_refused():
+    (r,) = _gate([_sample(1, rms=BASE_RMS, moved=1e-3, termination="max_iter")])
+    assert r.usable is False and "ran out of iterations" in r.unusable_reason
+
+
+def test_a_refit_whose_constants_were_replaced_is_refused():
+    """A correction rebuild used to overwrite the drawn constants with the
+    unperturbed ones; such a refit fitted the base data."""
+    (r,) = _gate([_sample(1, rms=BASE_RMS, moved=1e-3, kept=False)])
+    assert r.usable is False and "replaced" in r.unusable_reason
+
+
+def test_an_unmeasured_distance_is_accepted_only_on_a_converged_fit():
+    conv, plat = _gate([_sample(1, rms=BASE_RMS, moved=1e-3, distance=None,
+                                termination="converged"),
+                        _sample(2, rms=BASE_RMS, moved=1e-3, distance=None,
+                                termination="plateau")])
+    assert conv.usable is True
+    assert plat.usable is False and "could not be measured" in plat.unusable_reason
+
+
+def test_without_a_base_fit_the_gate_is_unchanged():
+    """The certificate is the sample's own; nothing is read from the base."""
+    moved, still = _gate([_sample(1, rms=1e9, moved=1e-3),
+                          _sample(2, rms=1.0, moved=0.0)], rms=None)
+    assert moved.usable is True
     assert still.usable is False and "accepted no step" in still.unusable_reason
 
 
@@ -155,7 +184,7 @@ def _summary(results, n_samples=None):
 def test_usable_results_excludes_every_refusal():
     results = _gate([_sample(1, rms=BASE_RMS, moved=1e-3),
                      _sample(2, rms=BASE_RMS, moved=0.0),
-                     _sample(3, rms=BASE_RMS * 9, moved=1e-3),
+                     _sample(3, rms=BASE_RMS, moved=1e-3, termination="max_iter"),
                      _sample(4, rms=BASE_RMS, moved=2e-3)])
     s = _summary(results)
     assert s.successful_samples == 4, "all four ran without raising"
@@ -170,7 +199,7 @@ def test_an_interval_is_refused_once_fewer_than_half_the_samples_are_draws():
     s = _summary(results)
     assert s.usable is False
     reason = s.unusable_reason()
-    assert "1 of 4" in reason and "narrower" in reason
+    assert "1 of 4" in reason and "would not describe the draws" in reason
 
 
 def test_half_the_samples_surviving_is_enough_to_quote():

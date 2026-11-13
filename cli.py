@@ -432,7 +432,8 @@ def _cmd_uncertainty(args) -> int:
                   f"produced no draw; they are excluded from the cloud.")
             summary_bundle["warnings"].append(
                 f"{n_refused}/{args.samples} bootstrap samples ran but produced no draw "
-                f"(no accepted step, or a fit outside the spectral gate); excluded."
+                f"(no accepted step, replaced constants, or a refit that did not reach "
+                f"its own optimum); excluded."
             )
         if len(successes) < args.samples:
             print(f"[warning] Only {len(successes)}/{args.samples} bootstrap samples "
@@ -685,9 +686,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     unc_p.add_argument(
         "--bootstrap-strategy",
-        choices=["isotopologue-gaussian"],
-        default="isotopologue-gaussian",
-        help="Bootstrap resampling strategy for v2 engine.",
+        choices=["error-model", "rto", "isotopologue-gaussian"],
+        default="error-model",
+        help=("What each refit draws. error-model: the constants from the "
+              "engine's error model (measurement + correlated model error), "
+              "so the cloud checks the reported covariance less its prior "
+              "part. rto: also the quantum prior's centre, so the cloud checks "
+              "the reported covariance itself. isotopologue-gaussian: the "
+              "legacy independent draw by the quoted sigma."),
     )
     unc_p.add_argument(
         "--seed",

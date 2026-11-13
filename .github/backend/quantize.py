@@ -1327,6 +1327,7 @@ class MolecularOptimizer:
         result = self._backend.run_hessian(self.coords)
         self.quantum = QuantumState(result.energy, result.gradient_bohr, result.hessian_bohr)
         self._orca_ref_coords = self.coords.copy()
+        self._quantum_prior_weight_cache = None     # a new reference, a new weight
 
     def _run_gradient(self):
         """Cheap gradient-only job: refreshes gradient, keeps existing Hessian."""
@@ -1336,6 +1337,7 @@ class MolecularOptimizer:
         self.quantum.energy = result.energy
         self.quantum._gradient_bohr = result.gradient_bohr
         self._orca_ref_coords = self.coords.copy()
+        self._quantum_prior_weight_cache = None
 
 
     def _refresh_iso_delta_total(self, iso, correction: RovibCorrection):
@@ -1734,6 +1736,7 @@ class MolecularOptimizer:
         eng = QuantumEngine(engrad_path, hess_path, self.elems)
         self.quantum = QuantumState(eng.energy, eng._gradient_bohr.copy(), eng._hessian_bohr.copy())
         self._orca_ref_coords = self.coords.copy()
+        self._quantum_prior_weight_cache = None
         print(f"Loaded ORCA files.  Energy = {self.quantum.energy:.10f} Hartree")
 
     # ── Drift check ───────────────────────────────────────────────────────────
@@ -1888,18 +1891,34 @@ class MolecularOptimizer:
         harmless: H acting on an infinitesimal rotation rotates the gradient
         with the molecule, and translations are null in H.
         """
-        ref = self._orca_ref_coords
-        if ref is None or gradient is None or hessian is None:
+        if gradient is None:
             return gradient
+        shift = self._rto_shift(np.asarray(gradient).size)
+        ref = self._orca_ref_coords
+        if ref is None or hessian is None:
+            return np.asarray(gradient, dtype=float) - shift
         x = np.asarray(self.coords, dtype=float)
         ref = np.asarray(ref, dtype=float)
-        if ref.shape != x.shape:
-            return gradient
         g = np.asarray(gradient, dtype=float)
         H = np.asarray(hessian, dtype=float)
-        if H.shape != (g.size, g.size):
-            return gradient
-        return g + H @ (x - ref).ravel()
+        if ref.shape != x.shape or H.shape != (g.size, g.size):
+            return g - shift
+        return g + H @ (x - ref).ravel() - shift
+
+    #: Randomise-then-optimise: a fixed vector subtracted from the quantum
+    #: prior's gradient, which moves the prior's centre by H^-1 xi. With
+    #: xi ~ N(0, H / alpha_q) and the constants drawn from their error model,
+    #: each refit's optimum is a draw from the posterior (exactly, for a
+    #: linear-Gaussian model). Set by the bootstrap's "rto" strategy on its
+    #: own copy of the optimizer; None everywhere else.
+    _rto_quantum_shift = None
+
+    def _rto_shift(self, n):
+        xi = self._rto_quantum_shift
+        if xi is None:
+            return np.zeros(int(n))
+        xi = np.asarray(xi, dtype=float).ravel()
+        return xi if xi.size == int(n) else np.zeros(int(n))
 
     #: Smallest ratio of actual to predicted decrease of the joint objective at
     #: which a step is accepted: the conventional trust-region value, which
@@ -2319,6 +2338,9 @@ class MolecularOptimizer:
         self.optimizer.alpha_quantum = self._base_alpha_quantum
 
         converged = False
+        # Why the loop ended, for callers that must tell a converged fit from
+        # one that ran out of iterations (the bootstrap's sample gate).
+        self.termination = {"reason": "max_iter", "iterations": 0}
         prev_energy = None
         prev_freq_rms = None
         _plateau_window = 10
@@ -2779,6 +2801,7 @@ class MolecularOptimizer:
             if spectral_ok and null_ok:
                 print(f"\nConverged in {it + 1} iterations.")
                 converged = True
+                self.termination = {"reason": "converged", "iterations": it + 1}
                 break
 
             # Hybrid stall guard: if energy is converged and spectral improvement
@@ -2795,6 +2818,7 @@ class MolecularOptimizer:
                         f"(freq RMS = {freq_rms:.4f} MHz, |dE| < {self.conv_energy:.1e} Eh)."
                     )
                     converged = True
+                    self.termination = {"reason": "stall", "iterations": it + 1}
                     break
             prev_freq_rms = freq_rms
 
@@ -2817,10 +2841,12 @@ class MolecularOptimizer:
                         f"experimentally constrained rank."
                     )
                     converged = True
+                    self.termination = {"reason": "plateau", "iterations": it + 1}
                     break
 
         if not converged:
             print(f"\nWarning: did not converge within {self.max_iter} iterations.")
+            self.termination = {"reason": "max_iter", "iterations": len(self.history)}
 
         return self.coords.copy()
 
@@ -3390,6 +3416,35 @@ class MolecularOptimizer:
         """
         J = np.asarray(J, dtype=float)
         cov = np.asarray(cov, dtype=float)
+        rows = self._constant_error_rows(coords=coords, row_scale=row_scale)
+        if rows is None:
+            return np.zeros_like(cov)
+        s_model, m2, n_rot = rows["s_model"], rows["m2"], rows["n_rot"]
+        if J.shape[0] < n_rot or (not np.any(s_model > 0.0) and np.all(m2 == 1.0)):
+            return np.zeros_like(cov)
+        scale = rows["scale"]
+        if scale is None:
+            return np.zeros_like(cov)
+        t = scale * s_model
+        K = (t[:, None] * rows["R"]) * t[None, :]
+        K[np.diag_indices_from(K)] += m2 - 1.0
+        A = cov @ J[:n_rot].T
+        out = A @ K @ A.T
+        out = 0.5 * (out + out.T)
+        if not np.all(np.isfinite(out)):
+            return np.zeros_like(cov)
+        return out
+
+    def _constant_error_rows(self, coords=None, row_scale=None):
+        """Per stacked constant: the pieces of the constants' error model.
+
+        s_model (model-error sigma), m2 = (measurement part / weighting
+        sigma)^2, the row scale J carries, and the correlation R of the model
+        error between rows -- what _systematic_covariance and
+        constant_error_covariance are both built from, so the reported
+        covariance and the bootstrap's draws describe one error model. None
+        when there are no constants.
+        """
         sp = self.spectral
         x = np.asarray(self.coords if coords is None else coords, dtype=float)
         s_rows, m2_rows, iso_rows, comp_rows = [], [], [], []
@@ -3424,32 +3479,55 @@ class MolecularOptimizer:
             iso_rows.append(np.full(n, i_iso))
             comp_rows.append(idx)
         if not s_rows:
-            return np.zeros_like(cov)
+            return None
         s_model = np.concatenate(s_rows)
         m2 = np.concatenate(m2_rows)
         n_rot = s_model.size
-        if J.shape[0] < n_rot or (not np.any(s_model > 0.0) and np.all(m2 == 1.0)):
-            return np.zeros_like(cov)
-        if row_scale is None:
-            _J0, _r0, row_scale = sp.stacked(x, want_jacobian=False, return_row_scale=True)
-        scale = np.asarray(row_scale, dtype=float).ravel()
-        if scale.size != n_rot:
-            return np.zeros_like(cov)
-        t = scale * s_model
         iso_i = np.concatenate(iso_rows)
         comp = np.concatenate(comp_rows)
         Qc = (np.eye(3) if self.systematic_component_correlation is None
               else self.systematic_component_correlation)
         R = Qc[np.ix_(comp, comp)] * np.where(
             iso_i[:, None] == iso_i[None, :], 1.0, self.systematic_isotopologue_correlation)
-        K = (t[:, None] * R) * t[None, :]
-        K[np.diag_indices_from(K)] += m2 - 1.0
-        A = cov @ J[:n_rot].T
-        out = A @ K @ A.T
-        out = 0.5 * (out + out.T)
-        if not np.all(np.isfinite(out)):
-            return np.zeros_like(cov)
-        return out
+        scale = None
+        if not np.all(s_model == 0.0) or not np.all(m2 == 1.0) or row_scale is not None:
+            if row_scale is None:
+                _J0, _r0, row_scale = sp.stacked(x, want_jacobian=False, return_row_scale=True)
+            scale = np.asarray(row_scale, dtype=float).ravel()
+            if scale.size != n_rot:
+                scale = None
+        return {"s_model": s_model, "m2": m2, "n_rot": n_rot, "iso": iso_i,
+                "comp": comp, "R": R, "scale": scale}
+
+    def constant_error_covariance(self, coords=None):
+        """Covariance of the stacked constants' errors, in MHz^2: the error
+        model the reported covariance propagates.
+
+            Sigma = diag((sigma_meas / c)^2) + S R S
+
+        with sigma_meas the measurement part of the weighting sigma (what
+        _systematic_covariance keeps; c the component and robust weights J
+        carries, 1 by default), S the model-error sigmas and R their
+        correlation (rho across isotopologues for one constant type, Q
+        across types). In the linear limit the optimum's covariance under
+        this Sigma is the reported covariance less its prior part -- so a
+        bootstrap drawing the constants from it checks the reported number
+        rather than describing a third one. Rows are in stacked order
+        (isotopologue, then component_indices); centrifugal-distortion rows
+        are not included.
+        """
+        x = np.asarray(self.coords if coords is None else coords, dtype=float)
+        _J0, _r0, row_scale = self.spectral.stacked(x, want_jacobian=False,
+                                                    return_row_scale=True)
+        rows = self._constant_error_rows(coords=x, row_scale=row_scale)
+        if rows is None:
+            return np.zeros((0, 0))
+        scale = rows["scale"]
+        s = rows["s_model"]
+        meas_var = rows["m2"] / np.maximum(scale, 1e-300) ** 2
+        Sigma = (s[:, None] * rows["R"]) * s[None, :]
+        Sigma[np.diag_indices_from(Sigma)] += meas_var
+        return 0.5 * (Sigma + Sigma.T)
 
     def _data_null_fractions(self, J):
         """Projector onto the directions the spectrum does not own.
@@ -3756,7 +3834,7 @@ class MolecularOptimizer:
                     Pn = self._split_energy_projector()
                     gq = Pn @ (g + H @ (Pn @ dx))
                 else:
-                    gq = g + H @ dx
+                    gq = g + H @ dx - self._rto_shift(dx.size)
             grad = grad + self.quantum_prior_weight() * gq
         if self._isotropic_prior_active():
             sig = float(self.optimizer.isotropic_prior_sigma_ang)
@@ -3904,6 +3982,16 @@ class MolecularOptimizer:
         makes the guarantee hold in the legacy path too.
 
         Pass ``refresh=True`` after deliberately changing the weighting inputs.
+
+        KEYED TO THE QUANTUM REFERENCE. The calibrated weight depends on the
+        Hessian at the last quantum point, and that point moves whenever the
+        fit drifts past orca_update_thresh. The cache was never cleared when
+        it did, so a refit that travelled -- every randomise-then-optimise
+        sample, any fit after a quantum update -- was described with the
+        weight of a reference it had left: 2097 against the 1848 its own
+        steps used on the water config, which put converged RTO samples up to
+        0.2 posterior widths from their "optimum". Each quantum update now
+        clears it.
         """
         cached = getattr(self, "_quantum_prior_weight_cache", None)
         if cached is not None and not refresh:
@@ -3958,7 +4046,7 @@ class MolecularOptimizer:
             # The split step lets the quantum surface act only on the null
             # space of its stacked Jacobian; so does its posterior.
             dx = self._split_energy_projector() @ dx
-        return float(self.quantum.energy + np.dot(g, dx)
+        return float(self.quantum.energy + np.dot(g - self._rto_shift(dx.size), dx)
                      + 0.5 * np.dot(dx, H @ dx))
 
     def _split_energy_projector(self):
@@ -4146,6 +4234,34 @@ class MolecularOptimizer:
     #: curvature comparison describes a point other than the one the Laplace
     #: widths are about, and is reported as that rather than as a failure.
     _GN_MODE_DISTANCE = 2.0
+
+    def distance_to_mode(self, coords=None, _blocks=None):
+        """How far a geometry is from the mode of its own objective, in widths.
+
+        The Newton step to the stationary point of the objective the Laplace
+        describes, measured along each eigendirection of its Gauss-Newton
+        precision M in that direction's own width 1/sqrt(w): max |g_i| /
+        sqrt(w_i), with g the posterior gradient (_posterior_gradient). 0 at
+        the mode; above 1, the geometry is further from its optimum than the
+        optimum is uncertain. No quantum chemistry: the quantum part is the
+        quadratic model the step solves.
+        """
+        x = self.coords if coords is None else np.asarray(coords, dtype=float)
+        return self._mode_decomposition(np.asarray(x, dtype=float), _blocks)[0]
+
+    def _mode_decomposition(self, x, _blocks=None):
+        """(distance_to_mode, physical basis, eigenvalues, eigenvectors) of the
+        Gauss-Newton precision at x -- the Gauss-Newton check reuses the
+        decomposition for its relevance filter."""
+        H_spec, H_prior = (_blocks if _blocks is not None
+                           else self._posterior_blocks(x)[:2])
+        basis = self.physical_basis(coords=x, n=H_spec.shape[0])
+        M = basis.T @ (H_spec + H_prior) @ basis
+        w, V = np.linalg.eigh(0.5 * (M + M.T))
+        w = np.maximum(w, 0.0) + 1e-8
+        gp = V.T @ (basis.T @ self._posterior_gradient(x))
+        z = float(np.max(np.abs(gp) / np.sqrt(w))) if gp.size else 0.0
+        return z, basis, w, V
     #: Share of some reported bond's or angle's variance a direction must
     #: carry for a finding on it to be reported at all.
     _GN_RELEVANT_SHARE = 0.10
@@ -4196,16 +4312,9 @@ class MolecularOptimizer:
 
         # Everything below runs only when something was flagged.
         try:
-            H_spec, H_prior = (_blocks if _blocks is not None
-                               else self._posterior_blocks(x)[:2])
-            basis = self.physical_basis(coords=x, n=H_spec.shape[0])
-            M = basis.T @ (H_spec + H_prior) @ basis
-            w, V = np.linalg.eigh(0.5 * (M + M.T))
-            w = np.maximum(w, 0.0) + 1e-8
-            gp = V.T @ (basis.T @ self._posterior_gradient(x))
-            z_mode = float(np.max(np.abs(gp) / np.sqrt(w)))
+            z_mode, basis, w, V = self._mode_decomposition(x, _blocks)
         except Exception:                        # cannot tell: say what was seen
-            z_mode = 0.0
+            z_mode, basis, w, V = 0.0, None, None, None
         if z_mode > self._GN_MODE_DISTANCE:
             msgs.append(
                 f"the curvature check found Gauss-Newton and the exact Hessian "

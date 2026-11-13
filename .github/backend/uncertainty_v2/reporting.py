@@ -18,8 +18,29 @@ def format_bootstrap_summary(summary: BootstrapRunSummary) -> str:
     if summary.mean_rms_mhz is not None:
         lines.append(f"  mean RMS (MHz): {summary.mean_rms_mhz:.4f}")
     if summary.base_rms_mhz is not None:
-        lines.append(f"  base fit RMS  : {summary.base_rms_mhz:.4f} MHz "
-                     f"(gate {summary.base_rms_mhz * 2.0:.4f})")
+        lines.append(f"  base fit RMS  : {summary.base_rms_mhz:.4f} MHz")
+    refusals: dict[str, int] = {}
+    for r in summary.sample_results:
+        if r.success and not r.usable and r.unusable_reason:
+            key = r.unusable_reason.split(" (")[0]
+            if key.startswith("the refit stopped"):
+                key = "stopped short of its own optimum"
+            refusals[key] = refusals.get(key, 0) + 1
+    for why, n in sorted(refusals.items(), key=lambda kv: -kv[1]):
+        lines.append(f"  refused {n}: {why}")
+    a = summary.analytic
+    if a:
+        lines.append(f"  estimates: {a['target']}")
+        lines.append(f"  {'coordinate':<16}{'cloud':>11}{'analytic':>11}{'posterior':>11}")
+        boot = a.get("bootstrap_std") or [None] * len(a["names"])
+        for name, unit, b, t_sd, p_sd in zip(a["names"], a["units"], boot,
+                                             a["target_std"], a["posterior_std"]):
+            f = 1e3 if unit == "angstrom" else 1.0
+            u = "mA" if unit == "angstrom" else "deg"
+            cloud = "-" if b is None else f"{b * f:.4f}"
+            lines.append(f"  {name:<16}{cloud:>11}{t_sd * f:>11.4f}{p_sd * f:>11.4f}  {u}")
+        lines.append("  The reported uncertainty is the posterior column; the cloud is a")
+        lines.append("  refitting check of the analytic column beside it.")
     reason = summary.unusable_reason()
     if reason:
         lines.append(f"  REFUSED: {reason}")
