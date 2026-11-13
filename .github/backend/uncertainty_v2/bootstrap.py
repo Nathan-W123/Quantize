@@ -20,21 +20,37 @@ from .resampling import (
 
 
 def _freeze_corrections(opt: MolecularOptimizer) -> None:
-    """Keep the base fit's vibrational corrections for the whole refit.
+    """Hold the refit to the model the reported covariance was formed with.
 
-    A Hessian refresh during a refit used to run _apply_harmonic_alpha_
-    corrections, which rebuilds the targets from the UNPERTURBED raw
-    isotopologues and writes them over the drawn ones: the sample then
-    refitted the base data. On the water config 51% of draws were wiped this
-    way, almost all on the bond-shortening side, so one tail of the cloud
-    went missing. Frozen, every refit fits the constants it was given, with
-    the base's corrections -- the linearised propagation the reported
-    covariance makes -- and refits are cheaper (no correction rebuilds).
+    The corrections. A Hessian refresh during a refit used to run
+    _apply_harmonic_alpha_corrections, which rebuilds the targets from the
+    UNPERTURBED raw isotopologues and writes them over the drawn ones: the
+    sample then refitted the base data. On the water config 51% of draws
+    were wiped this way, almost all on the bond-shortening side, so one tail
+    of the cloud went missing. Frozen, every refit fits the constants it was
+    given, with the base's corrections, and refits are cheaper.
+
+    The quantum reference. The reported covariance, the target printed
+    beside the cloud and the rto shift xi are all built from the base's
+    quadratic model of the surface: its last gradient, Hessian and weight.
+    A refit that drifted past orca_update_thresh used to refresh the
+    gradient (and on schedule the Hessian and weight), so it fitted a model
+    none of those describe. That Hessian is the one from the base fit's
+    start, and the real slope differs from it (formyl fluoride C-H secant
+    curvature 1.13x the stored one), so live rto came out 7% narrow on
+    C-H against the analytic column, the water bond 2.6% narrow, and the
+    water error-model angle 2.2% wide, with the refits refreshing the
+    quantum point 0.6 times each at 92% of their cost. Held on the base's
+    model the refits reproduce the linear prediction of their own draws to
+    within 2.2% on every coordinate, at the cost of an error-model refit.
+    Whether that quadratic describes the surface near the fit is a property
+    of the base fit, not something a refit can check.
     """
     opt._harmonic_from_hessian = False
     opt._anharmonic_from_hessian = False
     opt._harmonic_cd_from_hessian = False
     opt.use_orca_rovib = False
+    opt.orca_update_thresh = float("inf")
 
 
 #: A refit that stopped further than this from its own optimum, in posterior
@@ -123,6 +139,12 @@ class BootstrapEngine:
     quantum prior's centre, so its cloud is the reported covariance itself.
     Each run carries the analytic value of its own target beside the cloud,
     so a disagreement is visible rather than inferred.
+
+    Every refit is held on the base's model (_freeze_corrections): its
+    corrections and its quadratic model of the quantum surface. What the
+    cloud tests is therefore the linearisation of the data side and the
+    error model, which is what the analytic column assumes; it does not test
+    whether the base's Hessian describes the surface near the fit.
     """
 
     def __init__(self, optimizer: MolecularOptimizer, config: BootstrapConfig):

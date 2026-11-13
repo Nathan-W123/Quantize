@@ -17,12 +17,19 @@ Measured on the engine before this change (water config through the CLI path,
 The cloud came out 1.86x narrower than its own target on water and 1.5-2x on
 formyl fluoride. Now "error-model" draws the constants from
 constant_error_covariance (the matrix the reported covariance propagates),
-corrections are frozen for the refit, and a sample is gated on reaching its
-own optimum. "rto" also draws the quantum prior's centre, so its cloud is the
-reported posterior. Measured after: water, 1000 draws, cloud/analytic 0.99
-(bond) and 1.05 (angle) for error-model, 0.97 and 1.03 for rto; formyl
-fluoride, 400 draws, error-model 0.96-1.04 on all six coordinates; every draw
-usable.
+refits are held on the base's corrections and quantum model, and a sample is
+gated on reaching its own optimum. "rto" also draws the quantum prior's
+centre, so its cloud is the reported posterior.
+
+Measured after (seed 7, 2 workers; paired = cloud sd over the sd of the
+linear prediction of the same draws, which removes the draws' own Monte
+Carlo error): water config, 1000 draws, error-model paired 1.000 / 1.004
+(bond / angle), rto 1.003 / 1.004; formyl fluoride HF/6-31G, 400 draws,
+error-model 0.98-1.02 and rto 0.98-1.00 on all six coordinates, the
+shortfall on the two O=C-X angles being the data side's own nonlinearity.
+Every draw usable. Unpaired cloud/analytic also carries the draws' own Monte
+Carlo error (2.2% at 1000 draws, 3.5% at 400): formyl fluoride rto at seed 7
+read 0.92-1.01, the linear prediction of those same draws 0.94-1.02.
 """
 
 from __future__ import annotations
@@ -47,7 +54,7 @@ from backend.uncertainty_v2.bootstrap import (  # noqa: E402
 from backend.uncertainty_v2.models import BootstrapConfig  # noqa: E402
 from backend.uncertainty_v2.reporting import format_bootstrap_summary  # noqa: E402
 from backend.uncertainty_v2.resampling import (  # noqa: E402
-    draw_quantum_prior_shift, resample_error_model)
+    draw_quantum_prior_shift, resample_error_model, symmetric_sqrt)
 
 CONFIG = _ROOT / "dev" / "configs" / "water_analytic_endtoend.yaml"
 MASSES_H2O = [15.9949146196, 1.00782503207, 1.00782503207]
@@ -138,6 +145,37 @@ def test_the_rto_shift_has_the_prior_s_covariance(config_fit):
     assert np.linalg.norm(emp - expect) / np.linalg.norm(expect) < 0.03
 
 
+def test_a_draw_is_the_symmetric_root_applied_to_the_seed():
+    """An eigenvector factor V sqrt(w) is not unique -- any sign per vector,
+    any rotation inside a degenerate block -- so the same seed could give a
+    different draw on another BLAS. The symmetric root is unique: here the
+    degenerate block is the identity, whatever eigh returns for it."""
+    R = np.linalg.qr(np.random.default_rng(0).standard_normal((3, 3)))[0]
+    Sigma = R @ np.diag([1.0, 1.0, 4.0]) @ R.T
+    np.testing.assert_allclose(symmetric_sqrt(Sigma), R @ np.diag([1.0, 1.0, 2.0]) @ R.T,
+                               atol=1e-12)
+    isos = [{"name": "x", "obs_constants": [0.0, 0.0, 0.0]}]
+    z = np.random.default_rng(4).standard_normal(3)
+    got = resample_error_model(isos, Sigma, np.random.default_rng(4))[0]["obs_constants"]
+    np.testing.assert_allclose(got, R @ np.diag([1.0, 1.0, 2.0]) @ R.T @ z, atol=1e-12)
+    # A perturbation at round-off level moves the draw at round-off level.
+    E = 1e-13 * np.random.default_rng(1).standard_normal((3, 3))
+    moved = resample_error_model(isos, Sigma + E + E.T, np.random.default_rng(4))[0]["obs_constants"]
+    np.testing.assert_allclose(moved, got, atol=1e-10)
+
+
+def test_the_rto_shift_does_not_depend_on_the_basis_of_the_subspace(config_fit, monkeypatch):
+    """physical_basis may return any orthonormal basis of the physical
+    directions; the shift for a seed must be the same for all of them."""
+    opt = deepcopy(config_fit)
+    B = opt.physical_basis()
+    Q = np.linalg.qr(np.random.default_rng(2).standard_normal((B.shape[1], B.shape[1])))[0]
+    a = draw_quantum_prior_shift(opt, np.random.default_rng(8))
+    monkeypatch.setattr(opt, "physical_basis", lambda coords=None, n=None: B @ Q)
+    b = draw_quantum_prior_shift(opt, np.random.default_rng(8))
+    np.testing.assert_allclose(b, a, rtol=1e-9, atol=1e-12 * np.abs(a).max())
+
+
 # ── The refit keeps its draw ─────────────────────────────────────────────────
 
 def _forced_refresh_copy(opt):
@@ -151,13 +189,41 @@ def _forced_refresh_copy(opt):
     return base
 
 
-def test_a_draw_survives_a_hessian_refresh_inside_the_refit(config_fit, tmp_path):
+def test_a_refit_holds_the_base_quantum_model(config_fit, tmp_path):
+    """Even on a schedule that refreshes the quantum point at every step,
+    the worker's refit makes no quantum update: it fits the quadratic model
+    the reported covariance, the analytic target and the rto shift were
+    built from."""
     base = _forced_refresh_copy(config_fit)
+    calls = []
+    base._update_orca = lambda: calls.append(1)
     Sigma = base.constant_error_covariance()
     pert = resample_error_model(base.spectral.isotopologues, Sigma, np.random.default_rng(9))
     with contextlib.redirect_stdout(io.StringIO()):
         res = _run_bootstrap_worker((base, pert, str(tmp_path / "s"), 1, 9, None))
-    assert res.success and res.draw_kept is True
+    assert res.success and res.usable and res.moved_ang > 1e-4
+    assert calls == []
+    assert res.draw_kept is True
+
+
+def test_a_draw_survives_a_hessian_refresh_inside_the_refit(config_fit):
+    """The correction freeze on its own: with quantum updates forced back on
+    after it, Hessian refreshes happen and the drawn constants survive them."""
+    opt = deepcopy(_forced_refresh_copy(config_fit))
+    _freeze_corrections(opt)
+    opt.orca_update_thresh = 0.0
+    refreshes = []
+    _orig = opt._run_hessian
+    opt._run_hessian = lambda: (refreshes.append(1), _orig())[1]
+    Sigma = opt.constant_error_covariance()
+    pert = resample_error_model(opt.spectral.isotopologues, Sigma, np.random.default_rng(9))
+    opt.spectral.isotopologues = pert
+    drawn = [np.asarray(i["obs_constants"], float).copy() for i in pert]
+    with contextlib.redirect_stdout(io.StringIO()):
+        opt.run()
+    assert refreshes, "premise: the refit refreshed the Hessian"
+    assert all(np.allclose(np.asarray(i["obs_constants"], float), d)
+               for i, d in zip(opt.spectral.isotopologues, drawn))
 
 
 def test_without_the_freeze_the_refresh_erases_the_draw(config_fit, tmp_path):
@@ -209,11 +275,47 @@ def _cloud(opt, strategy, n, seed, tmp_path):
         return BootstrapEngine(opt, cfg).run(base_workdir=str(tmp_path))
 
 
+def _paired(opt, summary, strategy):
+    """Each usable sample against the linear prediction of its own draw,
+    rebuilt from the seed it carries: C (J^T D e + alpha xi). Returns the
+    cloud's sd over the prediction's, and their correlation, per internal
+    coordinate. Pairing removes the draws' own Monte Carlo error, which is
+    what lets a 1.5% tolerance mean something at 200 draws."""
+    from backend.internal.internal_fit import InternalCoordinateSet
+    x = np.asarray(opt.coords, float)
+    cov, _ = opt.laplace_approximation(coords=x, check_gauss_newton=False)
+    cov, _b, _n = opt.physical_covariance(cov, coords=x)
+    J, _r, scale = opt.spectral.stacked(x, return_row_scale=True)
+    A = cov @ J[:scale.size].T
+    Sigma = opt.constant_error_covariance()
+    isos = opt.spectral.isotopologues
+    b0 = np.concatenate([np.asarray(i["obs_constants"], float) for i in isos])
+    cs = InternalCoordinateSet(x, opt.elems, opt._ic_use_dihedrals)
+    Bq = np.asarray(cs.active_B_matrix(x), float)
+    q0 = np.asarray(cs.active_values(x), float)
+    lin, got = [], []
+    for r in summary.usable_results:
+        rng = np.random.default_rng(r.seed)
+        e = np.concatenate([np.asarray(i["obs_constants"], float)
+                            for i in resample_error_model(isos, Sigma, rng)]) - b0
+        d = A @ (scale * e)
+        if strategy == "rto":
+            d = d + opt.quantum_prior_weight(refresh=True) * cov @ draw_quantum_prior_shift(opt, rng)
+        lin.append(Bq @ d)
+        got.append(np.asarray(cs.active_values(np.asarray(r.coords, float))) - q0)
+    lin, got = np.array(lin), np.array(got)
+    return (got.std(axis=0, ddof=1) / lin.std(axis=0, ddof=1),
+            np.array([np.corrcoef(lin[:, k], got[:, k])[0, 1] for k in range(lin.shape[1])]))
+
+
 @pytest.mark.parametrize("strategy", ["error-model", "rto"])
 def test_the_cloud_reproduces_its_analytic_target(config_fit, strategy, tmp_path):
     """200 draws: the Monte Carlo error on a width is 5%, so 15% is three of
-    them. Measured with these seeds: error-model 1.01 / 1.07, rto 0.96 / 1.07;
-    with 1000 draws 0.99 / 1.05 and 0.97 / 1.03."""
+    them. Paired with the linear prediction of the same draws the refits
+    agree to 1.5%: measured (seed 11) error-model 1.001 / 1.006 and rto
+    1.003 / 1.008. With the refits refreshing the quantum point, as they did
+    before they were held on the base's model, the same check read 0.997 /
+    1.025 and 0.982 / 1.014."""
     s = _cloud(config_fit, strategy, 200, 11, tmp_path)
     assert s.usable_samples == 200
     a = s.analytic
@@ -223,6 +325,9 @@ def test_the_cloud_reproduces_its_analytic_target(config_fit, strategy, tmp_path
         assert a["target_std"] == pytest.approx(a["posterior_std"])
     else:
         assert all(t < p for t, p in zip(a["target_std"], a["posterior_std"]))
+    ratio, corr = _paired(config_fit, s, strategy)
+    assert np.all(np.abs(ratio - 1.0) < 0.015), ratio
+    assert np.all(corr > 0.999), corr
 
 
 def test_rto_refuses_what_it_cannot_sample(fixture_fit, tmp_path):

@@ -27,6 +27,23 @@ def resample_isotopologues_gaussian(
 
 
 
+def symmetric_sqrt(cov: np.ndarray) -> np.ndarray:
+    """The symmetric square root S of a covariance (S S = cov, S = S^T).
+
+    Draws are made as S z. An eigenvector factor V sqrt(w) has the same
+    covariance but is not unique: LAPACK may return any sign for each
+    eigenvector, and any rotation inside a (near-)degenerate eigenspace, so
+    the same seed gave different draws on different BLAS builds or thread
+    counts -- measured on formyl fluoride, rto shifts differing by 1.1-2.0x
+    their own size between OMP_NUM_THREADS=1 and 4 at base geometries 2e-14
+    Angstrom apart. S is a function of the matrix alone, so it is
+    insensitive to all of that, and a draw is reproducible from its seed.
+    """
+    cov = np.asarray(cov, dtype=float)
+    w, V = np.linalg.eigh(0.5 * (cov + cov.T))
+    return (V * np.sqrt(np.clip(w, 0.0, None))) @ V.T
+
+
 def resample_error_model(
     isotopologues: list[dict[str, Any]],
     sigma: np.ndarray,
@@ -46,8 +63,7 @@ def resample_error_model(
     n = sum(len(np.asarray(iso.get("obs_constants", []), dtype=float)) for iso in isotopologues)
     if sigma.shape != (n, n):
         raise ValueError(f"error covariance is {sigma.shape}, the constants are {n}")
-    w, V = np.linalg.eigh(0.5 * (sigma + sigma.T))
-    delta = V @ (np.sqrt(np.clip(w, 0.0, None)) * rng.standard_normal(n))
+    delta = symmetric_sqrt(sigma) @ rng.standard_normal(n)
     out: list[dict[str, Any]] = []
     k = 0
     for iso in isotopologues:
@@ -78,7 +94,9 @@ def draw_quantum_prior_shift(optimizer, rng: np.random.Generator) -> np.ndarray:
     if not (alpha > 0.0):
         raise ValueError("randomise-then-optimise needs a quantum prior (alpha_q > 0)")
     basis = optimizer.physical_basis(coords=x, n=Hs.shape[0])
-    Hb = basis.T @ Hs @ basis
-    w, V = np.linalg.eigh(0.5 * (Hb + Hb.T))
-    z = rng.standard_normal(w.size)
-    return basis @ (V @ (np.sqrt(np.clip(w, 0.0, None) / alpha) * z))
+    # (B S_b B^T) z over all 3N Cartesian directions, with S_b the symmetric
+    # square root of the physical block: the same covariance B Hb B^T / alpha
+    # whatever basis physical_basis returns for the subspace, so the draw
+    # depends on the seed and the Hessian only.
+    root = basis @ symmetric_sqrt(basis.T @ Hs @ basis / alpha) @ basis.T
+    return root @ rng.standard_normal(Hs.shape[0])
