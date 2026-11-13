@@ -375,6 +375,35 @@ def _interval_cloud(mode, mcmc_cloud, boot_posterior, opt, seed,
                          f"model error, {_ANALYTIC_DRAWS} draws)")
 
 
+#: A ridge that moves no Laplace width by more than this (relative) is not
+#: one the interval's reader needs telling about: 0 and 1e-9 against the
+#: default 1e-8 move water's widths by about 1e-8.
+_RIDGE_NOTE_REL = 1e-3
+
+
+def _ridge_moves_widths(opt, laplace, regularization):
+    """Whether the Laplace ridge in use moves the reported widths at all,
+    against the default ridge. The note it gates used to fire on any value
+    but the default, a ridge of 0 included."""
+    import numpy as np
+    from backend.uncertainty_v2 import laplace_approximation
+
+    ridge = float(regularization)
+    if ridge == 1e-8:
+        return False
+    s1 = np.asarray(laplace.std_err, dtype=float)
+    try:
+        s0 = np.asarray(laplace_approximation(opt, regularization=1e-8).std_err, dtype=float)
+    except Exception:
+        return True                     # cannot tell: say it
+    if s0.shape != s1.shape or not s0.size:
+        return True
+    keep = np.isfinite(s0) & np.isfinite(s1) & (s0 > 1e-12 * float(np.nanmax(s0)))
+    if not np.any(keep):
+        return True
+    return bool(np.max(np.abs(s1[keep] - s0[keep]) / s0[keep]) > _RIDGE_NOTE_REL)
+
+
 def _write_bundle(opt, summary_bundle):
     import os
     out_dir = os.path.join(opt.workdir, "uncertainty_v2")
@@ -498,6 +527,7 @@ def _cmd_uncertainty(args) -> int:
     boot_posterior: list = []
     all_chains: list = []
     mcmc_refused = False
+    mcmc_refusal_reason = None
     boot_refused = False
 
     if boot_cfg is not None:
@@ -596,6 +626,7 @@ def _cmd_uncertainty(args) -> int:
                 "MCMC samples excluded from the reported distribution: "
                 + _mcmc_refusal)
             mcmc_refused = True
+            mcmc_refusal_reason = _mcmc_refusal
         if mcmc_summary.convergence is not None:
             from backend.internal.internal_fit import InternalCoordinateSet
 
@@ -627,7 +658,7 @@ def _cmd_uncertainty(args) -> int:
         print(f"\n[uncertainty] Summary written: {_write_bundle(opt, summary_bundle)}")
         return 1
     if (cloud_source and "reported posterior" not in cloud_source
-            and float(args.laplace_regularization) != 1e-8):
+            and _ridge_moves_widths(opt, laplace, args.laplace_regularization)):
         # The ridge is a device of the Laplace; the chains and the refits
         # sample the objective itself, so their interval does not carry it.
         notes.append(
@@ -640,8 +671,9 @@ def _cmd_uncertainty(args) -> int:
         summary_bundle["warnings"].append(note)
     if not cloud:
         if mcmc_refused:
-            why = ("every MCMC sample was refused as unconverged, so "
-                   "there is nothing to report a distribution from. Raise "
+            why = ("every MCMC sample was refused as unconverged ("
+                   + str(mcmc_refusal_reason).split(". The chains")[0].rstrip(".")
+                   + "), so there is nothing to report a distribution from. Raise "
                    "--mcmc-steps, or use --mode bootstrap, which refits per "
                    "resample and does not depend on the chains mixing.")
         else:

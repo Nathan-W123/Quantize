@@ -230,6 +230,7 @@ def test_refused_mcmc_chains_go_to_stderr_and_keep_the_bundle(tmp_path, monkeypa
                            "--burn-in", "10", "--chains", "2"], tmp_path, monkeypatch)
     assert code == 1
     assert "every MCMC sample was refused" in err and "every MCMC sample was refused" not in out
+    assert "R-hat" in err or "ESS" in err, "the reason, not only the verdict, is on stderr"
     b = _bundle(tmp_path)
     assert b["cloud_refused"].startswith("every MCMC sample was refused")
     assert "mcmc" in b
@@ -267,3 +268,15 @@ def test_mode_both_still_runs_the_chains_when_the_bootstrap_is_refused(tmp_path,
     b = _bundle(tmp_path)
     assert b["bootstrap_refused"] == "refused for this test"
     assert "mcmc" in b and "bootstrap" not in b
+
+
+def test_the_ridge_note_needs_a_ridge_that_moves_the_widths(tmp_path, monkeypatch):
+    """The note fired on any ridge but the default 1e-8, 0 included, which
+    moves no width (about 1e-8 relative on water)."""
+    monkeypatch.setattr(cli, "_MIN_RTO_DRAWS", 6)
+    code, out, err = _run(["--mode", "bootstrap", "--bootstrap-strategy", "rto", "--samples", "6",
+                           "--laplace-regularization", "0"] + _QUIET, tmp_path, monkeypatch)
+    assert code == 0, err[-2000:]
+    b = _bundle(tmp_path)
+    assert "rto refits" in b["cloud"]["source"]
+    assert not any("do not carry it" in w for w in b["warnings"])
