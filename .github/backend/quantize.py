@@ -2387,7 +2387,10 @@ class MolecularOptimizer:
                     self.coords, frac_sigma=self._mass_dependent_frac_sigma)
 
             J, residual_w = self.spectral.stacked(self.coords)
-            _, residual_mhz = self.spectral.stacked_unweighted(self.coords)
+            # Residuals only: the unweighted Jacobian is never read here, and
+            # finite-differencing it cost 6N rotational-constant evaluations
+            # per isotopologue per iteration (and again per trial step below).
+            _, residual_mhz = self.spectral.stacked_unweighted(self.coords, want_jacobian=False)
             _n_spectral_rows = int(J.shape[0])  # row count before any prior rows are appended
             prior_wrms_before = None
             if self.internal_prior is not None and self.coordinate_mode == "cartesian":
@@ -2592,7 +2595,7 @@ class MolecularOptimizer:
                     [residual_w_trial, _wp_acc * _rp_trial])
                 prior_wrms_after = (
                     float(np.sqrt(np.mean(_rp_trial ** 2))) if _rp_trial.size else 0.0)
-            _, residual_mhz_trial = self.spectral.stacked_unweighted(trial_coords)
+            _, residual_mhz_trial = self.spectral.stacked_unweighted(trial_coords, want_jacobian=False)
             wrms_after = float(np.sqrt(np.mean(residual_w_trial ** 2)))
             mhz_rms_after = float(np.sqrt(np.mean(residual_mhz_trial ** 2)))
 

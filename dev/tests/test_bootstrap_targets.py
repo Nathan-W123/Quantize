@@ -510,3 +510,22 @@ def test_the_analytic_column_says_when_the_geometry_is_a_saddle():
     assert "error" in post, "premise: a stationary saddle"
     a = BootstrapEngine(opt, BootstrapConfig(n_samples=2)).analytic_reference()
     assert a["no_posterior"] and "saddle" in a["no_posterior"]
+
+
+def test_the_fit_loop_does_not_finite_difference_a_jacobian_it_discards(config_fit):
+    """The loop read only the residuals of stacked_unweighted, twice per
+    iteration, while it finite-differenced the unweighted Jacobian each
+    time: 27% of a water refit and 35% of a formyl fluoride one."""
+    opt = deepcopy(config_fit)
+    calls = []
+    _orig = type(opt.spectral).stacked_unweighted
+
+    def counting(self, coords, want_jacobian=True):
+        calls.append(want_jacobian)
+        return _orig(self, coords, want_jacobian=want_jacobian)
+
+    opt.spectral.stacked_unweighted = counting.__get__(opt.spectral)
+    opt.coords = opt.coords + np.array([[0.0, 0.0, 0.0], [0.0, 0.005, 0.0], [0.0, 0.005, 0.0]])
+    with contextlib.redirect_stdout(io.StringIO()):
+        opt.run()
+    assert calls and not any(calls)
