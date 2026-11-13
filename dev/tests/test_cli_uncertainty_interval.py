@@ -263,11 +263,13 @@ def test_mode_both_still_runs_the_chains_when_the_bootstrap_is_refused(tmp_path,
     monkeypatch.setattr(BootstrapEngine, "run", lambda *a, **k: pytest.fail("the bootstrap ran"))
     code, out, err = _run(["--mode", "both", "--samples", "2", "--mcmc-steps", "60",
                            "--burn-in", "10", "--chains", "2"] + _QUIET, tmp_path, monkeypatch)
-    assert code == 2
+    assert code == 3, "partial: an interval exists, part of the request was refused"
     assert "refused for this test" in err
     b = _bundle(tmp_path)
     assert b["bootstrap_refused"] == "refused for this test"
     assert "mcmc" in b and "bootstrap" not in b
+    assert b["partial"] is True and b["exit_status"] == 3
+    assert any("refused after the base fit" in w for w in b["warnings"])
 
 
 def test_the_ridge_note_needs_a_ridge_that_moves_the_widths(tmp_path, monkeypatch):
@@ -297,3 +299,29 @@ def test_an_interval_from_a_doubtful_split_posterior_says_so(tmp_path, monkeypat
     assert "need not be the split fit's spread" in b["cloud"]["caveat"]
     assert any("need not be the split fit's spread" in w for w in b["warnings"])
     assert "[note] split objective" in out
+
+
+def test_one_chain_is_refused_for_its_count_not_as_unconverged(tmp_path, monkeypatch):
+    """With --chains 1 there is no R-hat at all; the line said every sample
+    was 'refused as unconverged' and advised raising --mcmc-steps."""
+    code, out, err = _run(["--mode", "mcmc", "--seed", "7", "--mcmc-steps", "200",
+                           "--burn-in", "50", "--chains", "1"], tmp_path, monkeypatch)
+    assert code == 1
+    assert "no MCMC convergence diagnostics could be computed" in err
+    assert "unconverged" not in err and "--chains 2" in err
+    assert _bundle(tmp_path)["exit_status"] == 1
+
+
+def test_the_autocorrelation_plot_is_quiet_on_a_short_stuck_chain(tmp_path):
+    """corrcoef of lagged segments divided by a zero segment variance: the
+    plot printed numpy RuntimeWarnings on stderr for short refused chains."""
+    import warnings
+    pytest.importorskip("matplotlib")
+    from scripts.uncertainty_plots import plot_autocorrelations
+    base = np.array([[0.0, 0.0, 0.0], [0.76, 0.59, 0.0], [-0.76, 0.59, 0.0]])
+    chain = np.repeat(base[None], 12, axis=0)
+    chain[6:, 1, 0] += 1e-3                       # two flat runs: rejected proposals
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        plot_autocorrelations(chain, ["O", "H", "H"], str(tmp_path))
+    assert (tmp_path / "autocorrelations.png").is_file()

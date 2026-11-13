@@ -106,14 +106,16 @@ def plot_autocorrelations(samples_xyz, elems, output_dir, max_lag=100):
     for i, name in enumerate(names):
         data = q_samples[:, i]
         data = data - np.mean(data)
-        
+
+        # The standard estimator, normalised by the series' own variance:
+        # corrcoef of the two lagged segments divided by each segment's
+        # variance, which is zero (a run of rejected proposals) or undefined
+        # (one sample) on short chains, and printed numpy RuntimeWarnings.
+        denom = float(np.dot(data, data))
         acf = [1.0]
         for lag in range(1, min(max_lag, len(data))):
-            if np.var(data) > 1e-12:
-                acf.append(np.corrcoef(data[:-lag], data[lag:])[0, 1])
-            else:
-                acf.append(0.0)
-            
+            acf.append(float(np.dot(data[:-lag], data[lag:]) / denom) if denom > 1e-12 else 0.0)
+
         axes[i].bar(range(len(acf)), acf, color='gray', alpha=0.7)
         axes[i].set_ylabel(name, fontsize=8)
         axes[i].set_ylim(-1, 1)

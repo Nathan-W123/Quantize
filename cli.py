@@ -377,26 +377,38 @@ def _interval_cloud(mode, mcmc_cloud, boot_posterior, opt, seed,
 
 #: A ridge that moves no Laplace width by more than this (relative) is not
 #: one the interval's reader needs telling about: 0 and 1e-9 against the
-#: default 1e-8 move water's widths by about 1e-8.
+#: default 1e-8 move water's widths by about 4e-13, 1e3 by 4%.
 _RIDGE_NOTE_REL = 1e-3
 
 
-def _ridge_moves_widths(opt, laplace, regularization):
+def _laplace_std(opt, regularization):
+    """The Laplace's physical widths at a ridge, without the Gauss-Newton
+    check (which the comparison does not need and which costs a second
+    exact-curvature pass)."""
+    import numpy as np
+
+    cov, _ = opt.laplace_approximation(regularization=float(regularization),
+                                       check_gauss_newton=False)
+    if cov is None:
+        return None
+    cov, _basis, _n = opt.physical_covariance(cov)
+    return np.sqrt(np.clip(np.diag(np.asarray(cov, dtype=float)), 0.0, None))
+
+
+def _ridge_moves_widths(opt, regularization):
     """Whether the Laplace ridge in use moves the reported widths at all,
     against the default ridge. The note it gates used to fire on any value
     but the default, a ridge of 0 included."""
     import numpy as np
-    from backend.uncertainty_v2 import laplace_approximation
 
-    ridge = float(regularization)
-    if ridge == 1e-8:
+    if float(regularization) == 1e-8:
         return False
-    s1 = np.asarray(laplace.std_err, dtype=float)
     try:
-        s0 = np.asarray(laplace_approximation(opt, regularization=1e-8).std_err, dtype=float)
+        s1 = _laplace_std(opt, regularization)
+        s0 = _laplace_std(opt, 1e-8)
     except Exception:
         return True                     # cannot tell: say it
-    if s0.shape != s1.shape or not s0.size:
+    if s0 is None or s1 is None or s0.shape != s1.shape or not s0.size:
         return True
     keep = np.isfinite(s0) & np.isfinite(s1) & (s0 > 1e-12 * float(np.nanmax(s0)))
     if not np.any(keep):
@@ -528,6 +540,7 @@ def _cmd_uncertainty(args) -> int:
     all_chains: list = []
     mcmc_refused = False
     mcmc_refusal_reason = None
+    mcmc_no_diagnostics = False
     boot_refused = False
 
     if boot_cfg is not None:
@@ -539,6 +552,7 @@ def _cmd_uncertainty(args) -> int:
             print(f"Error: --bootstrap-strategy {boot_cfg.strategy}: {exc}", file=sys.stderr)
             summary_bundle["bootstrap_refused"] = str(exc)
             if args.mode == "bootstrap":
+                summary_bundle["exit_status"] = 2
                 print(f"\n[uncertainty] Summary written: {_write_bundle(opt, summary_bundle)}")
                 return 2
             # --mode both: the refusal says no refit can be certified against
@@ -548,6 +562,10 @@ def _cmd_uncertainty(args) -> int:
             print("[bootstrap] refused; running the MCMC half of --mode both.")
             boot_refused = True
             boot_cfg = None
+            summary_bundle["partial"] = True
+            summary_bundle["warnings"].append(
+                f"--bootstrap-strategy {args.bootstrap_strategy} was refused after the base "
+                f"fit, so this run's result has no bootstrap: {exc}")
     if boot_cfg is not None:
         summary = engine.run(base_workdir=opt.workdir)
         print("\n" + format_bootstrap_summary(summary))
@@ -627,6 +645,7 @@ def _cmd_uncertainty(args) -> int:
                 + _mcmc_refusal)
             mcmc_refused = True
             mcmc_refusal_reason = _mcmc_refusal
+            mcmc_no_diagnostics = mcmc_summary.convergence is None
         if mcmc_summary.convergence is not None:
             from backend.internal.internal_fit import InternalCoordinateSet
 
@@ -655,10 +674,11 @@ def _cmd_uncertainty(args) -> int:
         # the bootstrap, MCMC and Laplace blocks above are still results.
         print(f"Error: {exc}", file=sys.stderr)
         summary_bundle["cloud_refused"] = str(exc)
+        summary_bundle["exit_status"] = 1
         print(f"\n[uncertainty] Summary written: {_write_bundle(opt, summary_bundle)}")
         return 1
     if (cloud_source and "reported posterior" not in cloud_source
-            and _ridge_moves_widths(opt, laplace, args.laplace_regularization)):
+            and _ridge_moves_widths(opt, args.laplace_regularization)):
         # The ridge is a device of the Laplace; the chains and the refits
         # sample the objective itself, so their interval does not carry it.
         notes.append(
@@ -684,7 +704,16 @@ def _cmd_uncertainty(args) -> int:
         print(f"\n[note] {note}")
         summary_bundle["warnings"].append(note)
     if not cloud:
-        if mcmc_refused:
+        if mcmc_refused and mcmc_no_diagnostics:
+            # Nothing was tested, so nothing "failed to converge": with one
+            # chain (or too few kept samples) there is no R-hat at all, and
+            # more steps alone do not make one.
+            why = ("no MCMC convergence diagnostics could be computed (fewer than two "
+                   "chains, or too few samples kept after --burn-in), so the chains "
+                   "cannot be shown to have mixed and nothing is reported from them. "
+                   "Run --chains 2 or more with enough steps after the burn-in, or use "
+                   "--mode bootstrap.")
+        elif mcmc_refused:
             why = ("every MCMC sample was refused as unconverged ("
                    + str(mcmc_refusal_reason).split(". The chains")[0].rstrip(".")
                    + "), so there is nothing to report a distribution from. Raise "
@@ -694,6 +723,7 @@ def _cmd_uncertainty(args) -> int:
             why = "No uncertainty samples were generated."
         print(f"Error: {why}", file=sys.stderr)
         summary_bundle["cloud_refused"] = why
+        summary_bundle["exit_status"] = 1
         print(f"\n[uncertainty] Summary written: {_write_bundle(opt, summary_bundle)}")
         return 1
 
@@ -733,8 +763,9 @@ def _cmd_uncertainty(args) -> int:
             plot_autocorrelations(_trace, opt.elems, plot_dir)
     summary_bundle["plot_dir"] = plot_dir
 
+    summary_bundle["exit_status"] = 3 if boot_refused else 0
     print(f"\n[uncertainty] Summary written: {_write_bundle(opt, summary_bundle)}")
-    return 2 if boot_refused else 0
+    return summary_bundle["exit_status"]
 
 
 def _cmd_benchmark(args) -> int:
@@ -839,7 +870,15 @@ def main(argv: list[str] | None = None) -> int:
                         help="Show basis convergence table.")
 
     # --- uncertainty ---
-    unc_p = sub.add_parser("uncertainty", help="Run Bayesian/Bootstrap uncertainty analysis.")
+    unc_p = sub.add_parser(
+        "uncertainty", help="Run Bayesian/Bootstrap uncertainty analysis.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=("exit status:\n"
+                "  0  an interval was reported and every requested part ran\n"
+                "  1  no interval could be reported (the bundle says why)\n"
+                "  2  usage error, or a strategy refused before anything past the base fit ran\n"
+                "  3  an interval was reported, but part of the request was refused\n"
+                "     (--mode both after a bootstrap refusal; the bundle has 'partial': true)"))
     unc_p.add_argument("config", type=Path)
     unc_p.add_argument("--mode", choices=["bootstrap", "mcmc", "both"], default="both")
     unc_p.add_argument("--samples", type=int, default=20, help="Number of Bootstrap samples.")

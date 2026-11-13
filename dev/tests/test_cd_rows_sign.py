@@ -583,3 +583,28 @@ def test_the_csv_html_and_plots_keep_the_two_kinds_apart(tmp_path, monkeypatch):
     assert "<td>DJ</td>" not in main and "<td>DJ</td>" in cd
     assert counts["bar"] == [3, 6], "MHz residuals: rotational; pulls: both kinds"
     assert counts["scatter"] == [3]
+
+
+
+def test_a_moved_run_rebuilds_with_its_own_covariance_and_the_html_warns(tmp_path):
+    """The payload stored the covariance's absolute path, so a copied run's
+    rebuilt report linked the original's; report.html had none of the
+    uncertainty warnings report.md prints."""
+    import shutil
+    from runner.usability import rebuild_report_from_run_dir, write_outputs
+    run = tmp_path / "run"
+    run.mkdir()
+    result = _report_result(run)
+    cov = run / "start_01" / "uncertainty_covariance.npy"
+    cov.parent.mkdir()
+    np.save(cov, np.eye(3))
+    result["uncertainty_covariance_npy"] = str(cov)
+    result["uncertainty_meta"]["warnings"] = ["observed delta_J, delta_K not fitted"]
+    write_outputs(result)
+    html = (run / "report.html").read_text(encoding="utf-8")
+    assert "Uncertainty warnings" in html and "delta_J, delta_K not fitted" in html
+    moved = tmp_path / "moved"
+    shutil.copytree(run, moved)
+    rebuilt = rebuild_report_from_run_dir(moved)["report_md"].read_text(encoding="utf-8")
+    assert str(moved / "start_01" / "uncertainty_covariance.npy") in rebuilt
+    assert str(cov) not in rebuilt

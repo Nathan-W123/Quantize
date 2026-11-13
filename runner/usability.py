@@ -1591,7 +1591,7 @@ def write_markdown_report(path: Path, result: dict[str, Any], artifacts: dict[st
                       "residual MHz | sigma MHz | z |",
                       "|---|---|---|---:|---:|---:|---:|---:|"])
         for r in cd_rows:
-            red = r.get("reduction") or "?"
+            red = r.get("reduction") or "not recorded"
             src = r.get("reduction_source") or ""
             lines.append(
                 f"| {r['isotopologue']} | {r['constant']} | {red}{f' ({src})' if src else ''} | "
@@ -1673,7 +1673,7 @@ def _html_distortion_table(result: dict[str, Any]) -> list[str]:
         return []
     body = []
     for r in cd_rows:
-        red = r.get("reduction") or "?"
+        red = r.get("reduction") or "not recorded"
         src = r.get("reduction_source") or ""
         body.append(
             "<tr>"
@@ -1692,6 +1692,20 @@ def _html_distortion_table(result: dict[str, Any]) -> list[str]:
         *body,
         "</tbody></table>",
     ]
+
+
+def _html_uncertainty_warnings(result: dict[str, Any]) -> list[str]:
+    """The posterior's warnings, which report.md prints and the HTML did not
+    (the split caveat and the distortion rows' among them)."""
+    import html as _html
+    meta = result.get("uncertainty_meta") or {}
+    warns = [str(w) for w in (meta.get("warnings") or [])]
+    if meta.get("error"):
+        warns.insert(0, "no uncertainty reported: " + str(meta["error"]))
+    if not warns:
+        return []
+    return ["<h2>Uncertainty warnings</h2>", "<ul>",
+            *[f"<li>{_html.escape(w)}</li>" for w in warns], "</ul>"]
 
 
 def write_html_report(path: Path, result: dict[str, Any], artifacts: dict[str, Any] | None = None) -> None:
@@ -1757,6 +1771,7 @@ def write_html_report(path: Path, result: dict[str, Any], artifacts: dict[str, A
         *residual_rows_html,
         "</tbody></table>",
         *_html_distortion_table(result),
+        *_html_uncertainty_warnings(result),
         "<h2>Artifacts</h2>",
         "<ul>",
         "<li>exports/final_geometry.csv</li>",
@@ -1873,6 +1888,16 @@ def write_plots(run_dir: Path, result: dict[str, Any]) -> list[Path]:
         plt.close(fig)
         paths.append(path)
     return paths
+
+
+def _relative_to(path: Any, root: Path) -> Any:
+    """``path`` relative to ``root`` when it lies inside it, else unchanged."""
+    if not path:
+        return path
+    try:
+        return str(Path(path).resolve().relative_to(Path(root).resolve()))
+    except (ValueError, OSError):
+        return str(path)
 
 
 def _json_default(v: Any) -> Any:
@@ -2190,7 +2215,9 @@ def write_outputs(result: dict[str, Any]) -> dict[str, Path | list[Path]]:
         # payload did not carry them.
         "uncertainty_rows": result.get("uncertainty_rows"),
         "uncertainty_meta": result.get("uncertainty_meta"),
-        "uncertainty_covariance_npy": result.get("uncertainty_covariance_npy"),
+        # Relative to the run directory when inside it, so a rebuild of a
+        # moved or copied run links its own file, not the original's.
+        "uncertainty_covariance_npy": _relative_to(result.get("uncertainty_covariance_npy"), run_dir),
         "cfg": {"coordinate_mode": (result.get("cfg") or {}).get("coordinate_mode", "internal")},
     }
     report_payload_path = run_dir / "report_payload.json"
@@ -2233,6 +2260,9 @@ def rebuild_report_from_run_dir(run_dir: Path | str) -> dict[str, Any]:
     if missing:
         raise ConfigError(f"Malformed report payload: missing keys {missing}.")
 
+    cov = payload.get("uncertainty_covariance_npy")
+    if cov and not Path(cov).is_absolute():
+        payload["uncertainty_covariance_npy"] = str(run_path / cov)
     report_md = run_path / "report.md"
     report_html = run_path / "report.html"
     write_markdown_report(report_md, payload, artifacts=None)
