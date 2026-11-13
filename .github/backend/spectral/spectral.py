@@ -355,6 +355,14 @@ def sanitize_isotopologues(
             cleaned_iso["delta_total_constants"] = np.asarray(out_delta_total, dtype=float)
         if iso.get("rovib_correction") is not None:
             cleaned_iso["rovib_correction"] = iso["rovib_correction"]
+        # Observed distortion constants are per isotopologue, not per
+        # component, so they pass through whole. Dropping them made
+        # fit_cd_constants a silent no-op on the default path: the warning
+        # for "no isotopologue carries a cd_observed block" reads the raw
+        # isotopologues, which did carry them.
+        for key in ("cd_observed", "centrifugal_distortion", "cd_sigma"):
+            if iso.get(key):
+                cleaned_iso[key] = iso[key]
         cleaned.append(cleaned_iso)
     return cleaned, notes
 
@@ -552,6 +560,47 @@ class SpectralEngine:
             fd_delta=self._cd_fd_delta,
             sigma_fraction=self._cd_sigma_fraction,
         )
+
+    def _cd_rows_active(self) -> bool:
+        return bool(self.cd_weight > 0.0 and self.fit_cd_constants
+                    and self._hess_bohr_for_cd is not None)
+
+    def _cd_rows(self, iso: dict, coords):
+        """One isotopologue's distortion rows as stacked weights them:
+        ``(keys, observed, predicted, sigma)``, or None without any."""
+        obs = iso.get("cd_observed") or {}
+        if not obs:
+            return None
+        pred = self._predict_cd_for_iso(iso, coords)
+        if pred is None:
+            return None
+        keys = [k for k in CD_NAMES if k in obs]
+        if not keys:
+            return None
+        pred_d = pred.as_dict()
+        sig_block = iso.get("cd_sigma") or pred.sigma
+        sigma = np.array(
+            [max(float(sig_block.get(k, abs(obs[k]) * self._cd_sigma_fraction)), 0.01)
+             for k in keys], dtype=float)
+        return (keys, np.array([float(obs[k]) for k in keys], dtype=float),
+                np.array([float(pred_d[k]) for k in keys], dtype=float), sigma)
+
+    def cd_row_sigmas(self, coords) -> list[dict]:
+        """Per isotopologue, the noise each distortion row's weight implies:
+        {name: sigma / sqrt(cd_weight)} for the rows stacked builds at
+        ``coords``, {} for an isotopologue without any (all {} when the rows
+        are off). What a draw of the observed distortion constants needs to
+        match the precision the reported covariance gives them."""
+        out = []
+        active = self._cd_rows_active()
+        for iso in self.isotopologues:
+            rows = self._cd_rows(iso, coords) if active else None
+            if rows is None:
+                out.append({})
+                continue
+            keys, _obs, _pred, sigma = rows
+            out.append({k: float(sg) / np.sqrt(self.cd_weight) for k, sg in zip(keys, sigma)})
+        return out
 
     def cd_residuals_mhz(self, coords) -> tuple[np.ndarray, np.ndarray, list[str]]:
         """
@@ -1045,32 +1094,22 @@ class SpectralEngine:
                 Jw = comp_w[:, None] * (j_mix / sigma[:, None])
                 J_blocks.append(robust_w[:, None] * Jw)
 
-        if self.cd_weight > 0.0 and self.fit_cd_constants and self._hess_bohr_for_cd is not None:
+        if self._cd_rows_active():
             w_cd = np.sqrt(self.cd_weight)
             for iso in self.isotopologues:
-                obs = iso.get("cd_observed") or {}
-                if not obs:
+                rows = self._cd_rows(iso, coords)
+                if rows is None:
                     continue
-                pred = self._predict_cd_for_iso(iso, coords)
-                if pred is None:
-                    continue
-                keys = [k for k in CD_NAMES if k in obs]
-                if not keys:
-                    continue
-                pred_d = pred.as_dict()
-                r_cd = np.array([float(pred_d[k]) - float(obs[k]) for k in keys], dtype=float)
-                sig_block = iso.get("cd_sigma") or pred.sigma
-                sigma_cd = np.array(
-                    [
-                        max(
-                            float(sig_block.get(k, abs(obs[k]) * self._cd_sigma_fraction)),
-                            0.01,
-                        )
-                        for k in keys
-                    ],
-                    dtype=float,
-                )
-                rw_cd = w_cd * r_cd / sigma_cd
+                _keys, obs_v, pred_v, sigma_cd = rows
+                # Observed minus predicted, as the rotational rows are target
+                # minus calculated: J below is d(predicted)/dx, so the step and
+                # the posterior gradient (-J^T r) need this sign. It was
+                # predicted minus observed, which turned -J^T r into the
+                # gradient of -1/2 |r_cd|^2 (cosine -1.0000 against finite
+                # differences): every fit with distortion rows was pushed away
+                # from the observed constants, and its own convergence check
+                # put it 4.7-22.9 widths from its optimum.
+                rw_cd = w_cd * (obs_v - pred_v) / sigma_cd
                 r_blocks.append(rw_cd)
                 if want_jacobian:
                     J_cd = self._cd_jacobian(coords, iso)

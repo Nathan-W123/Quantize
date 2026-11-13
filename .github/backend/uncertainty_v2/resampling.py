@@ -75,6 +75,36 @@ def resample_error_model(
     return out
 
 
+def resample_cd_observed(
+    isotopologues: list[dict[str, Any]],
+    row_sigmas: list[dict],
+    rng: np.random.Generator,
+) -> list[dict[str, Any]]:
+    """Perturb the observed distortion constants by the noise their weights
+    imply (SpectralEngine.cd_row_sigmas, one dict per isotopologue).
+
+    They are data like the rotational constants: the reported covariance
+    gives each distortion row precision cd_weight / sigma^2, so a cloud that
+    left them at their observed values estimated a target without their
+    part. Isotopologues without distortion rows are passed through unchanged.
+    """
+    if len(row_sigmas) != len(isotopologues):
+        raise ValueError(f"{len(row_sigmas)} sigma blocks for {len(isotopologues)} isotopologues")
+    out: list[dict[str, Any]] = []
+    for iso, sig in zip(isotopologues, row_sigmas):
+        if not sig:
+            out.append(iso)
+            continue
+        entry = deepcopy(iso)
+        obs = dict(entry.get("cd_observed") or entry.get("centrifugal_distortion") or {})
+        for k in sorted(sig):
+            obs[k] = float(obs[k]) + float(sig[k]) * float(rng.standard_normal())
+        entry["cd_observed"] = obs
+        entry.pop("centrifugal_distortion", None)
+        out.append(entry)
+    return out
+
+
 def draw_quantum_prior_shift(optimizer, rng: np.random.Generator) -> np.ndarray:
     """One draw of the quantum prior's centre, as the gradient shift it makes.
 

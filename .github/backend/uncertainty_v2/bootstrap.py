@@ -14,6 +14,7 @@ from backend.quantize import MolecularOptimizer
 from .models import BootstrapConfig, BootstrapRunSummary, BootstrapSampleResult
 from .resampling import (
     draw_quantum_prior_shift,
+    resample_cd_observed,
     resample_error_model,
     resample_isotopologues_gaussian,
 )
@@ -253,8 +254,10 @@ class BootstrapEngine:
         seed_seq = np.random.SeedSequence(self.config.seed)
         child_sequences = seed_seq.spawn(self.config.n_samples)
         error_cov = None
+        cd_sigmas: list = []
         if self.config.strategy in ("error-model", "rto"):
             error_cov = self.optimizer.constant_error_covariance()
+            cd_sigmas = self.optimizer.spectral.cd_row_sigmas(self.optimizer.coords)
         jobs: list[tuple] = []
 
         for i, child in enumerate(child_sequences, start=1):
@@ -265,6 +268,8 @@ class BootstrapEngine:
                 perturbed = resample_isotopologues_gaussian(self.optimizer.spectral.isotopologues, rng)
             elif self.config.strategy in ("error-model", "rto"):
                 perturbed = resample_error_model(self.optimizer.spectral.isotopologues, error_cov, rng)
+                if any(cd_sigmas):
+                    perturbed = resample_cd_observed(perturbed, cd_sigmas, rng)
                 if self.config.strategy == "rto":
                     shift = draw_quantum_prior_shift(self.optimizer, rng)
             else:
