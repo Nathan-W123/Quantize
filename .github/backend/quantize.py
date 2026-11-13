@@ -2474,8 +2474,10 @@ class MolecularOptimizer:
 
             J, residual_w = self.spectral.stacked(self.coords)
             # Residuals only: the unweighted Jacobian is never read here, and
-            # finite-differencing it cost 6N rotational-constant evaluations
-            # per isotopologue per iteration (and again per trial step below).
+            # building it (analytically by default -- an inertia-derivative
+            # assembly per isotopologue, finite differences only near
+            # degenerate moments) was a quarter to a third of a refit's time,
+            # per iteration and again per trial step below.
             _, residual_mhz = self.spectral.stacked_unweighted(self.coords, want_jacobian=False)
             _n_spectral_rows = int(J.shape[0])  # row count before any prior rows are appended
             prior_wrms_before = None
@@ -3777,7 +3779,7 @@ class MolecularOptimizer:
         # 1. Spectral Likelihood.
         #
         # Residuals only. Both of these calls discarded the Jacobian they
-        # asked for, and the spectral one finite-differences it: measured at
+        # asked for, and the spectral one builds it per isotopologue: measured at
         # about 400 of this method's 413 microseconds, paid once per MCMC
         # proposal -- 16,000 times for four chains of 4,000 steps -- for a
         # matrix thrown away on the next line.
@@ -4005,7 +4007,7 @@ class MolecularOptimizer:
         # Every block of the objective the fit minimised (_posterior_blocks):
         # the internal prior when the fit carried one, the quantum block where
         # the objective lets it act. Kept apart so the Gauss-Newton check
-        # below can be handed both without rebuilding a finite-differenced
+        # below can be handed both without rebuilding the spectral
         # Jacobian.
         H_spec, H_prior, _parts = self._posterior_blocks(x)
         H_total = H_spec + H_prior
@@ -4173,7 +4175,7 @@ class MolecularOptimizer:
 
     def _split_energy_projector(self):
         """The split objective's null-space projector at the fitted geometry,
-        cached on it (a finite-differenced Jacobian per call otherwise)."""
+        cached on it (a spectral Jacobian per call otherwise)."""
         key = np.asarray(self.coords, dtype=float)
         cached = getattr(self, "_split_proj_cache", None)
         if cached is not None and np.array_equal(cached[0], key):
@@ -4261,8 +4263,8 @@ class MolecularOptimizer:
         x = np.asarray(x, dtype=float)
         if _blocks is not None:
             # Handed down by laplace_approximation, which has just built both.
-            # Rebuilding them here would mean a second finite-differenced
-            # Jacobian for no new information.
+            # Rebuilding them here would mean a second spectral Jacobian for
+            # no new information.
             H_spec, H_quant = _blocks
         else:
             # H_quant here is every non-spectral block of the objective --
@@ -4290,10 +4292,10 @@ class MolecularOptimizer:
         x0 = x.ravel()
 
         def half_chi_sq(vec):
-            # Residuals only: the Jacobian here is finite-differenced at ~6N
-            # rotational-constant evaluations per isotopologue, and this probe
-            # never looks at it. Skipping it makes the whole check cheaper
-            # than the Laplace call it qualifies.
+            # Residuals only: this probe never looks at the Jacobian, and
+            # building it (analytic by default, per isotopologue) costs far
+            # more than the residuals. Skipping it makes the whole check
+            # cheaper than the Laplace call it qualifies.
             _J, r = self.spectral.stacked(vec.reshape(-1, 3), want_jacobian=False)
             return 0.5 * float(np.sum(np.asarray(r) ** 2))
 

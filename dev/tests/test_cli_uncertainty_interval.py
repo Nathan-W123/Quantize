@@ -221,3 +221,27 @@ def test_the_predictive_check_s_residuals_are_the_full_call_s():
     none, r_fast = eng.stacked_unweighted(x, want_jacobian=False)
     assert none is None and J.shape == (3, 9)
     np.testing.assert_array_equal(r_fast, r)
+
+
+def test_refused_mcmc_chains_go_to_stderr_and_keep_the_bundle(tmp_path, monkeypatch):
+    """--mode mcmc with unusable chains printed its refusal on stdout and
+    wrote no bundle, so the MCMC block (R-hat, ESS) was lost."""
+    code, out, err = _run(["--mode", "mcmc", "--seed", "7", "--mcmc-steps", "60",
+                           "--burn-in", "10", "--chains", "2"], tmp_path, monkeypatch)
+    assert code == 1
+    assert "every MCMC sample was refused" in err and "every MCMC sample was refused" not in out
+    b = _bundle(tmp_path)
+    assert b["cloud_refused"].startswith("every MCMC sample was refused")
+    assert "mcmc" in b
+
+
+def test_a_sampler_interval_says_it_does_not_carry_the_ridge(tmp_path, monkeypatch):
+    """With a ridge set, an rto (or MCMC) interval is not the posterior
+    column the summary calls the reported uncertainty; say so."""
+    monkeypatch.setattr(cli, "_MIN_RTO_DRAWS", 6)
+    code, out, err = _run(["--mode", "bootstrap", "--bootstrap-strategy", "rto", "--samples", "6",
+                           "--laplace-regularization", "1e4"] + _QUIET, tmp_path, monkeypatch)
+    assert code == 0, err[-2000:]
+    b = _bundle(tmp_path)
+    assert "rto refits" in b["cloud"]["source"]
+    assert any("do not carry it" in w for w in b["warnings"])

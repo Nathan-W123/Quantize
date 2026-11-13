@@ -506,6 +506,8 @@ def _cmd_uncertainty(args) -> int:
             engine._check_strategy()     # the checks that needed the fit
         except ValueError as exc:
             print(f"Error: --bootstrap-strategy {boot_cfg.strategy}: {exc}", file=sys.stderr)
+            summary_bundle["bootstrap_refused"] = str(exc)
+            print(f"\n[uncertainty] Summary written: {_write_bundle(opt, summary_bundle)}")
             return 2
         summary = engine.run(base_workdir=opt.workdir)
         print("\n" + format_bootstrap_summary(summary))
@@ -614,17 +616,29 @@ def _cmd_uncertainty(args) -> int:
         summary_bundle["cloud_refused"] = str(exc)
         print(f"\n[uncertainty] Summary written: {_write_bundle(opt, summary_bundle)}")
         return 1
+    if (cloud_source and "reported posterior" not in cloud_source
+            and float(args.laplace_regularization) != 1e-8):
+        # The ridge is a device of the Laplace; the chains and the refits
+        # sample the objective itself, so their interval does not carry it.
+        notes.append(
+            f"--laplace-regularization {args.laplace_regularization:g} applies to the "
+            f"Laplace (its summary, the bootstrap's analytic and posterior columns, "
+            f"draws of the reported posterior); {cloud_source} sample the objective "
+            f"itself and do not carry it, so this interval is not that posterior")
     for note in notes:
         print(f"\n[note] {note}")
         summary_bundle["warnings"].append(note)
     if not cloud:
         if mcmc_refused:
-            print("Error: every MCMC sample was refused as unconverged, so "
-                  "there is nothing to report a distribution from. Raise "
-                  "--mcmc-steps, or use --mode bootstrap, which refits per "
-                  "resample and does not depend on the chains mixing.")
+            why = ("every MCMC sample was refused as unconverged, so "
+                   "there is nothing to report a distribution from. Raise "
+                   "--mcmc-steps, or use --mode bootstrap, which refits per "
+                   "resample and does not depend on the chains mixing.")
         else:
-            print("Error: No uncertainty samples were generated.")
+            why = "No uncertainty samples were generated."
+        print(f"Error: {why}", file=sys.stderr)
+        summary_bundle["cloud_refused"] = why
+        print(f"\n[uncertainty] Summary written: {_write_bundle(opt, summary_bundle)}")
         return 1
 
     print(f"\nProcessing sample cloud: {cloud_source}...")
@@ -816,9 +830,10 @@ def main(argv: list[str] | None = None) -> int:
         type=float,
         default=1e-8,
         help=("Ridge added to the Laplace over the physical directions. Applies to "
-              "everything this command reports from the Laplace: its summary, the "
-              "bootstrap's analytic and posterior columns, and the interval drawn "
-              "from the reported posterior."),
+              "what this command takes from the Laplace: its summary, the "
+              "bootstrap's analytic and posterior columns, and an interval drawn "
+              "from the reported posterior. MCMC chains and rto refits sample the "
+              "objective itself and do not carry it (a note says so)."),
     )
     unc_p.add_argument(
         "--no-laplace-persist",

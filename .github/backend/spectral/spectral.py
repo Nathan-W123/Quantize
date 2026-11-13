@@ -1087,10 +1087,11 @@ class SpectralEngine:
         constrained vs. assigned to the quantum null space.
 
         ``want_jacobian=False`` returns ``(None, residuals)`` and skips the
-        Jacobian entirely. The Jacobian is finite-differenced, costing about
-        6N rotational-constant evaluations per isotopologue, while the
-        residuals cost one -- so a caller that only needs residuals pays
-        roughly 6N times too much by taking the default. One such caller is
+        Jacobian entirely. The Jacobian is analytic by default (an
+        inertia-derivative assembly per isotopologue, with finite differences
+        only near degenerate principal moments) and still costs many times
+        the residuals, so a caller that only needs residuals pays for a
+        matrix it discards by taking the default. One such caller is
         :meth:`MolecularOptimizer.gauss_newton_discrepancy`, which probes
         chi-squared curvature at displaced geometries.
 
@@ -1180,10 +1181,9 @@ class SpectralEngine:
         Jacobian units: MHz/Å, residual units: MHz.
 
         ``want_jacobian=False`` returns ``(None, residuals)`` without the
-        finite-differenced Jacobian, which is 6N rotational-constant
-        evaluations per isotopologue against one for the residuals: the
-        posterior predictive check over 2000 formyl fluoride draws spent
-        3.3 s of its 3.4 on Jacobians it discarded.
+        Jacobian (analytic by default; finite differences only near
+        degenerate moments): the posterior predictive check over 2000 formyl
+        fluoride draws spent 3.3 s of its 3.4 on Jacobians it discarded.
         """
         coords = np.asarray(coords, dtype=float)
         J_blocks, r_blocks = [], []
