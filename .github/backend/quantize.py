@@ -3264,6 +3264,14 @@ class MolecularOptimizer:
         if saddle is not None and saddle[0] == x.tobytes():
             return {"error": "no Laplace width exists at this geometry -- " + saddle[1],
                     "warnings": gn}
+        if not self.spectral_only and self.optimizer.objective_mode != "joint":
+            gn = gn + [
+                "split objective: these widths come from the posterior blocks, whose "
+                "quantum term Pn H Pn leaves out the coupling the split step makes "
+                "between the data's range and its null space (the step's quantum "
+                "gradient is Pn (g + H dx)), so they are not the split estimator's "
+                "spread -- on one-constant water the refits gave the angle 0.05x its "
+                "data-only width. The joint objective has no such gap."]
         cov_lap, basis, n_removed = self.physical_covariance(cov_lap, coords=x)
         J, rw, row_scale = self.spectral.stacked(x, return_row_scale=True)
         rw = np.asarray(rw, dtype=float)

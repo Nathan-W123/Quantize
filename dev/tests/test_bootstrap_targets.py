@@ -319,11 +319,7 @@ def test_the_gate_is_stated_in_the_cloud_s_own_widths(config_fit):
     assert rto._gate_limits() == (0.25, 0.02)
 
 
-def test_split_refits_keep_following_their_quantum_reference(tmp_path):
-    """The split step's quantum gradient Pn (g + H dx) and its posterior's
-    Pn (g + H Pn dx) agree only near the reference, so split refits keep
-    refreshing it. Held, 4 of 12 error-model refits on this one-constant
-    water were refused at 0.25-0.35 widths; refreshed, 12 of 12 usable."""
+def _one_constant_split():
     iso = [{"name": "H2-16O", "masses": MASSES_H2O, "obs_constants": [278138.70],
             "sigma_constants": [0.2], "component_indices": [2],
             "sigma_systematic_constants": [0.024 * 278138.70]}]
@@ -335,11 +331,26 @@ def test_split_refits_keep_following_their_quantum_reference(tmp_path):
                                  auto_systematic_sigma=False, objective_mode="split",
                                  symmetry="C2v")
         opt.run()
+    return opt
+
+
+@pytest.mark.parametrize("strategy", ["error-model", "rto", "isotopologue-gaussian"])
+def test_the_bootstrap_refuses_the_split_objective(strategy, tmp_path):
+    """The split posterior leaves out the step's range-null coupling, so a
+    split cloud estimates something its analytic column does not describe:
+    error-model on this one-constant water gave the angle 0.04x its target."""
+    opt = _one_constant_split()
+    with pytest.raises(ValueError, match="split objective"):
+        BootstrapEngine(opt, BootstrapConfig(n_samples=2, strategy=strategy)).run(str(tmp_path))
+    assert BootstrapEngine.strategy_problem(opt, strategy, fitted=False)
+    # The split report says so too.
+    post = opt.internal_coordinate_posterior()
+    assert any("split objective" in w for w in post["warnings"])
+    # A worker called directly still refreshes under split (the hold is
+    # for the joint objective's quadratic only).
     held = deepcopy(opt)
     _freeze_corrections(held)
     assert held.orca_update_thresh == opt.orca_update_thresh
-    s = _cloud(opt, "error-model", 12, 5, tmp_path)
-    assert s.usable_samples == 12
 
 
 def test_rto_refuses_the_split_objective(tmp_path):
@@ -351,7 +362,7 @@ def test_rto_refuses_the_split_objective(tmp_path):
             quantum_backend="analytic_water", use_autoconfig=False, max_iter=2,
             quantum_prior_sigma_ang=0.02, objective_mode="split")
         opt.run()
-    with pytest.raises(ValueError, match="joint objective only"):
+    with pytest.raises(ValueError, match="split objective"):
         BootstrapEngine(opt, BootstrapConfig(n_samples=2, strategy="rto")).run(str(tmp_path))
 
 

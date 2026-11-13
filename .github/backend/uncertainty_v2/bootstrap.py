@@ -42,8 +42,12 @@ def _freeze_corrections(opt: MolecularOptimizer) -> None:
     C-H against the analytic column, the water bond 2.6% narrow, and the
     water error-model angle 2.2% wide, with the refits refreshing the
     quantum point 0.6 times each at 92% of their cost. Held on the base's
-    model the refits reproduce the linear prediction of their own draws to
-    within 2.2% on every coordinate, at the cost of an error-model refit.
+    model the refits reproduce the linear prediction of their own draws --
+    0.976-1.004 over formyl fluoride's six coordinates and two seeds,
+    1.000-1.010 on the water config -- at the cost of an error-model refit.
+    A coordinate the prior dominates can stray further when the model-error
+    draws are large, from the data side's own nonlinearity (one-constant
+    water, joint: angle 1.12).
     Whether that quadratic describes the surface near the fit is a property
     of the base fit, not something a refit can check.
 
@@ -216,15 +220,23 @@ class BootstrapEngine:
         caller can refuse before paying for it -- and leaves out the checks
         that need the fit's state (a quantum point, an internal prior the
         fit weighted)."""
+        if not opt.spectral_only and opt.optimizer.objective_mode != "joint":
+            # Every strategy, not only rto. The split step's quantum gradient
+            # is Pn (g + H dx); the posterior it is reported with has
+            # Pn (g + H Pn dx) and so leaves out the coupling Pn H Pr between
+            # the data's range and its null space. The refits follow the step,
+            # so their cloud is not the analytic column's: error-model on
+            # one-constant water came out 0.04x its target on the angle (the
+            # step's own linear response predicts 0.05x), and rto 39 usable of
+            # 200 at 0.19x.
+            return (f"strategy '{strategy}' checks the reported covariance, and under the "
+                    "split objective that covariance leaves out the coupling the split step "
+                    "makes between the data's range and its null space, so no cloud of split "
+                    "refits estimates the analytic column beside it; use the joint objective")
         if strategy != "rto":
             return None
         if opt.spectral_only or (fitted and opt.quantum is None):
             return "strategy 'rto' needs a quantum prior to randomise"
-        if opt.optimizer.objective_mode != "joint":
-            return ("strategy 'rto' samples the joint objective only: under the split "
-                    "objective the quantum prior acts in the data's null space alone, "
-                    "so its centre would have to be drawn there (measured on water with "
-                    "one constant: 39 of 200 draws usable, the cloud 0.19x the posterior)")
         if getattr(opt, "_prior_target_coords", None) is not None:
             return ("strategy 'rto' does not support prior_target_coords: the prior "
                     "target recomputes the quantum gradient, so the shift would be lost")
@@ -338,6 +350,13 @@ class BootstrapEngine:
         both are scaled by the smallest cloud-to-posterior width ratio over
         the coordinates the cloud resolves, which states them, near enough,
         in the cloud's own widths.
+
+        A heuristic: one marginal ratio scales a test that is a maximum over
+        posterior eigendirections, so it is stricter than needed where the
+        data dominate, and a coordinate under _RESOLVED_FRACTION sets
+        nothing. Converged refits sit about 500x below the smallest limit it
+        can produce (formyl fluoride, one isotopologue: limit 0.013, refits
+        at 1e-5), so it does not refuse them.
         """
         limit = float(self.config.max_mode_distance)
         if self.config.strategy == "rto":
@@ -349,7 +368,9 @@ class BootstrapEngine:
             ratio = t[p > 0.0] / p[p > 0.0]
             ratio = ratio[ratio >= _RESOLVED_FRACTION]
             scale = float(min(1.0, ratio.min())) if ratio.size else 1.0
-        except Exception:  # no analytic reference: the unscaled gate
+        except Exception as exc:  # no analytic reference: the unscaled gate
+            print(f"  [bootstrap-v2] gate left in posterior widths (no analytic "
+                  f"reference: {type(exc).__name__}: {exc})")
             scale = 1.0
         return limit * scale, _POLISH_DISTANCE * scale
 
