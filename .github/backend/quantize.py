@@ -2923,6 +2923,13 @@ class MolecularOptimizer:
             check_gauss_newton=check_gauss_newton)
         if cov is None:
             return None
+        # A stationary saddle (gauss_newton_warnings, filter 3): the posterior
+        # is improper along a direction a reported width depends on, so there
+        # is no Laplace width to give for any coordinate.
+        saddle = getattr(self, "_gn_saddle", None)
+        if (check_gauss_newton and saddle is not None
+                and saddle[0] == np.asarray(self.coords, dtype=float).tobytes()):
+            return None
         n = self.coords.size
         if cov.shape[0] != n:
             return None
@@ -3124,6 +3131,14 @@ class MolecularOptimizer:
         cov_lap, _ = self.laplace_approximation(coords=x, check_gauss_newton=False)
         if cov_lap is None:
             return None
+        try:
+            gn = list(self.gauss_newton_warnings(coords=x))
+        except Exception as exc:  # a diagnostic must not cost the report
+            gn = [f"Gauss-Newton check unavailable: {type(exc).__name__}"]
+        saddle = getattr(self, "_gn_saddle", None)
+        if saddle is not None and saddle[0] == x.tobytes():
+            return {"error": "no Laplace width exists at this geometry -- " + saddle[1],
+                    "warnings": gn}
         cov_lap, basis, n_removed = self.physical_covariance(cov_lap, coords=x)
         J, rw = self.spectral.stacked(x)
         rw = np.asarray(rw, dtype=float)
@@ -3177,10 +3192,6 @@ class MolecularOptimizer:
         ic_sigma = (st["sigma"].tolist()
                     if st is not None and st["weight"] > 0.0
                     and st["sigma"].size == q.size else None)
-        try:
-            gn = list(self.gauss_newton_warnings(coords=x))
-        except Exception as exc:  # a diagnostic must not cost the report
-            gn = [f"Gauss-Newton check unavailable: {type(exc).__name__}"]
         # Where each internal-prior centre and width came from, for the fit
         # that had one: the rule library's provenance, with the centre and
         # width overwritten by the ones the fit actually used.
@@ -3560,6 +3571,52 @@ class MolecularOptimizer:
             H_prior = H_prior + blk
         return H_spec, H_prior, parts
 
+    def _posterior_gradient(self, coords=None):
+        """Gradient of the objective _posterior_blocks gives the curvature of.
+
+        Phi = 1/2 |r_spec|^2 + 1/2 chi2_structural + alpha_q E_q, each term as
+        the fit weighted it, with E_q the same quadratic model of the surface
+        the step solves (about the last quantum point, or about the prior
+        target when there is one; on the split objective only in the data's
+        null space). It is what says how far a geometry is from the mode the
+        Laplace widths describe.
+        """
+        x = self.coords if coords is None else np.asarray(coords, dtype=float)
+        x = np.asarray(x, dtype=float)
+        J, r = self.spectral.stacked(x)
+        grad = -(np.asarray(J, dtype=float).T @ np.asarray(r, dtype=float))
+        R_ic = self._internal_prior_rows(x)
+        if R_ic is not None:
+            st = self._last_ic_prior
+            cs = st["coord_set"]
+            d = np.asarray(st["q0"], dtype=float) - np.asarray(cs.active_values(x), dtype=float)
+            for k, ic in enumerate(cs.active_coords()):
+                if ic.kind == "dihedral":
+                    d[k] = (d[k] + np.pi) % (2.0 * np.pi) - np.pi
+            grad = grad - R_ic.T @ (np.sqrt(st["weight"]) * d / st["sigma"])
+        if self.internal_prior is not None and self.coordinate_mode == "cartesian":
+            Jp, rp = self.internal_prior.stacked(x)
+            grad = grad - float(self.prior_weight) * (np.asarray(Jp, dtype=float).T
+                                                      @ np.asarray(rp, dtype=float))
+        if not self.spectral_only and self.quantum is not None:
+            g, H = self._projected_reference_terms()
+            target = self._prior_target_coords
+            if (target is not None and self.coordinate_mode == "cartesian"
+                    and np.shape(target) == x.shape):
+                gq = H @ (x - _kabsch_align(target, x)).ravel()
+            else:
+                dx = (x - self._orca_ref_coords).ravel()
+                if self.optimizer.objective_mode != "joint":
+                    Pn = self._split_energy_projector()
+                    gq = Pn @ (g + H @ (Pn @ dx))
+                else:
+                    gq = g + H @ dx
+            grad = grad + self.quantum_prior_weight() * gq
+        if self._isotropic_prior_active():
+            sig = float(self.optimizer.isotropic_prior_sigma_ang)
+            grad = grad + (x - _kabsch_align(self._prior_target_coords, x)).ravel() / (sig * sig)
+        return grad
+
     def laplace_approximation(self, coords=None, regularization: float = 1e-8,
                               check_gauss_newton: bool = True):
         """Analytical estimate of the posterior covariance at the optimum.
@@ -3814,14 +3871,17 @@ class MolecularOptimizer:
         sigma_constants quoted in fractions of a MHz, so the residuals are
         large by design: 18 sigma rms on water at the default settings.
 
-        Measured there, the omitted term is 3.0% of ||JtJ|| in norm, which
-        sounds ignorable, and is not: the softest physical curvature is
-        +7,995, which is 0.04% of ||JtJ||. A 3% perturbation is 75 times
-        larger than the quantity it perturbs, and it flips the sign, to
-        -372,388. The optimum is then a saddle of the exact posterior rather
-        than a maximum, so that posterior is improper along that direction and
-        no sampler can converge on it -- which is exactly what the MCMC does,
-        returning R-hat between 2.3 and 18 depending on the seed.
+        Measured at water's starting geometry (r_e against raw B0, 18 sigma
+        rms), the omitted term is 3.0% of ||JtJ|| in norm, which sounds
+        ignorable, and is not: the softest physical curvature is +7,995,
+        0.04% of ||JtJ||, and the 3% perturbation flips its sign, to -372,388.
+        That number was once quoted as the optimum's, because the fit then
+        never left its start; at the fitted point of that one-isotopologue fit
+        the two agree within 10% (7,995 against 8,758). A genuine stationary
+        saddle needs the symmetry left off a symmetric molecule: H2O + D2O
+        with C1 forced gives exact -1,087 at the mode, where the posterior is
+        improper along the antisymmetric stretch and no sampler can converge.
+        gauss_newton_warnings tells these cases apart.
 
         Gauss-Newton hides all of this, reporting an all-positive curvature
         and a finite width, with nothing to say it is resting on an
@@ -3921,6 +3981,7 @@ class MolecularOptimizer:
 
             out.append({
                 "index": k,
+                "direction": v,
                 "curvature_gauss_newton": c_gn,
                 "curvature_exact": c_true,
                 "curvature_spectral_gauss_newton": float(v @ H_spec @ v),
@@ -3935,32 +3996,118 @@ class MolecularOptimizer:
             })
         return out
 
+    #: Newton distance to the mode, in Gauss-Newton widths, beyond which a
+    #: curvature comparison describes a point other than the one the Laplace
+    #: widths are about, and is reported as that rather than as a failure.
+    _GN_MODE_DISTANCE = 2.0
+    #: Share of some reported bond's or angle's variance a direction must
+    #: carry for a finding on it to be reported at all.
+    _GN_RELEVANT_SHARE = 0.10
+
     def gauss_newton_warnings(self, coords=None, n_directions=3,
                               rel_warn=0.5, _blocks=None) -> list[str]:
-        """Plain-language findings from :meth:`gauss_newton_discrepancy`."""
+        """Plain-language findings from :meth:`gauss_newton_discrepancy`.
+
+        Three filters stand between a curvature gap and a warning, because a
+        gap is only a Gauss-Newton failure where the Laplace widths are
+        actually being taken (the item-7 checker found 7 of 9 warnings were
+        false alarms without them):
+
+        1. Is this the mode? The check assumes the geometry is the mode of
+           the objective the widths describe. Measured as the Newton distance
+           to that mode in Gauss-Newton widths; beyond 2 the residuals there
+           are not the mode's, the omitted term with them, and the finding is
+           reported as "not the mode" -- Gauss-Newton transfers to the mode
+           (within 9% of the true posterior in every such case measured) and
+           its widths are kept.
+        2. Does any reported width depend on it? A direction carrying under
+           10% of every bond's and angle's variance -- the out-of-plane motion
+           of a planar molecule fitted without its symmetry, say -- is not
+           reported on.
+        3. A sign flip that survives both is a stationary saddle: the
+           posterior is improper there and no Laplace width exists for any
+           coordinate. That is recorded, and geometry_uncertainty refuses
+           (returns None) rather than quote widths -- measured, they were
+           0.85x and 0.12x the true posterior's on real water with C1 forced.
+        """
         msgs: list[str] = []
+        x = self.coords if coords is None else np.asarray(coords, dtype=float)
+        x = np.asarray(x, dtype=float)
+        self._gn_saddle = None
         try:
             rows = self.gauss_newton_discrepancy(
-                coords=coords, n_directions=n_directions, _blocks=_blocks)
+                coords=x, n_directions=n_directions, _blocks=_blocks)
         except Exception as exc:                 # a diagnostic must not break a fit
             self._warn_once(
                 f"gauss_newton_discrepancy could not run ({exc!r}), so the "
                 f"validity of the Gauss-Newton Hessian is unchecked.",
                 key="gn_check_failed")
             return msgs
-        for row in rows:
-            if not row["fd_stable"]:
+        flagged = [r for r in rows if r["fd_stable"]
+                   and (r["sign_flipped"] or r["relative_discrepancy"] > rel_warn)]
+        if not flagged:
+            return msgs
+
+        # Everything below runs only when something was flagged.
+        try:
+            H_spec, H_prior = (_blocks if _blocks is not None
+                               else self._posterior_blocks(x)[:2])
+            basis = self.physical_basis(coords=x, n=H_spec.shape[0])
+            M = basis.T @ (H_spec + H_prior) @ basis
+            w, V = np.linalg.eigh(0.5 * (M + M.T))
+            w = np.maximum(w, 0.0) + 1e-8
+            gp = V.T @ (basis.T @ self._posterior_gradient(x))
+            z_mode = float(np.max(np.abs(gp) / np.sqrt(w)))
+        except Exception:                        # cannot tell: say what was seen
+            z_mode = 0.0
+        if z_mode > self._GN_MODE_DISTANCE:
+            msgs.append(
+                f"the curvature check found Gauss-Newton and the exact Hessian "
+                f"apart on {len(flagged)} direction(s), but this geometry is "
+                f"{z_mode:.1f} Gauss-Newton widths from the mode of the "
+                f"objective the widths describe (the fit stopped short of it, "
+                f"or the check was asked about another point), so the gap "
+                f"describes residuals the mode does not have. The Gauss-Newton "
+                f"widths are kept: they transfer to the mode, the exact "
+                f"curvature does not.")
+            return msgs
+
+        # Relevance: the share each flagged direction carries of the
+        # variance of the bonds and angles a report quotes.
+        try:
+            cs = InternalCoordinateSet(x, self.elems, False)
+            Bq = np.asarray(cs.active_B_matrix(x), dtype=float)
+            coord_names = list(cs.active_names())
+            C = basis @ (V / w) @ V.T @ basis.T
+            var = np.einsum("ij,jk,ik->i", Bq, C, Bq)
+        except Exception:
+            Bq, var, coord_names = None, None, []
+        saddle = []
+        for row in flagged:
+            share, which = 1.0, ""
+            if Bq is not None and Bq.size:
+                v = np.asarray(row["direction"], dtype=float)
+                load = (Bq @ v) ** 2 / max(float(row["curvature_gauss_newton"]) + 1e-8, 1e-300)
+                with np.errstate(invalid="ignore", divide="ignore"):
+                    shares = np.where(var > 0, load / var, 0.0)
+                k = int(np.argmax(shares))
+                share, which = float(shares[k]), coord_names[k]
+            if share < self._GN_RELEVANT_SHARE:
                 continue
             if row["sign_flipped"]:
+                saddle.append(row)
                 msgs.append(
                     f"Gauss-Newton is invalid along physical direction "
                     f"{row['index']}: it reports curvature "
                     f"{row['curvature_gauss_newton']:.3e} but the exact "
-                    f"Hessian gives {row['curvature_exact']:.3e}. The optimum "
-                    f"is a saddle of the exact posterior there, so the width "
-                    f"reported for that direction is an artefact of the "
-                    f"approximation and no sampler can converge on it.")
-            elif row["relative_discrepancy"] > rel_warn:
+                    f"Hessian gives {row['curvature_exact']:.3e}, at the mode "
+                    f"of the objective ({z_mode:.1f} widths from it). The "
+                    f"fitted point is a saddle of the exact posterior along "
+                    f"that direction -- it carries {100 * share:.0f}% of "
+                    f"{which}'s variance -- so no Laplace width exists for any "
+                    f"coordinate here, and geometry_uncertainty returns None."
+                    + self._symmetry_hint(x))
+            else:
                 msgs.append(
                     f"Gauss-Newton is doubtful along physical direction "
                     f"{row['index']}: curvature "
@@ -3968,9 +4115,27 @@ class MolecularOptimizer:
                     f"{row['curvature_exact']:.3e} "
                     f"({100 * row['relative_discrepancy']:.0f}% discrepancy), "
                     f"because the term Gauss-Newton omits is "
-                    f"{row['omitted_term']:.3e}. Treat that width as "
-                    f"order-of-magnitude.")
+                    f"{row['omitted_term']:.3e}. That direction carries "
+                    f"{100 * share:.0f}% of {which}'s variance; treat that "
+                    f"width as order-of-magnitude.")
+        if saddle:
+            self._gn_saddle = (x.tobytes(), msgs[-1])
         return msgs
+
+    def _symmetry_hint(self, x):
+        """Name the symmetry a saddle's geometry has, if more than is imposed."""
+        try:
+            from backend.symmetry import detect_symmetry
+            found, _R = detect_symmetry(list(self.elems), np.asarray(x, dtype=float))
+        except Exception:
+            return ""
+        imposed = None if self.symmetry is None else self.symmetry.point_group
+        if not found or found == "C1" or found == imposed:
+            return ""
+        return (f" The geometry satisfies {found} while "
+                f"{imposed or 'no symmetry'} is imposed: with symmetry='auto' "
+                f"(the default) that direction is fixed by the constraint and "
+                f"the posterior is proper.")
 
     def physical_covariance(self, cov, coords=None):
         """Strip the rigid-body subspace from a Cartesian posterior covariance.

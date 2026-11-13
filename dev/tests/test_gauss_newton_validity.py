@@ -13,8 +13,16 @@ quantity it perturbs and flips its sign, +7,995 -> -372,388. That point is a
 saddle of the exact objective along that direction, and Gauss-Newton reports
 all-positive curvature and a finite width there, with nothing to say so.
 
-WHERE THAT IS, AND WHERE IT IS NOT. These tests used to call that point the
-optimum, because the fit never left it: the step-acceptance test compared
+WHERE THAT IS, AND WHERE IT IS NOT. A gap between the two curvatures is only a
+Gauss-Newton failure where the Laplace widths are taken -- at the mode of the
+fitted objective -- and only if a reported width depends on that direction.
+gauss_newton_warnings now checks both before it says anything, and a sign
+flip that survives them is a stationary saddle, where geometry_uncertainty
+refuses. With one isotopologue the fixture below has none; H2O + D2O with C1
+forced does (exact -1,087 at the mode), and that is pinned too.
+
+These tests used to call the starting point the optimum, because the fit never
+left it: the step-acceptance test compared
 residual vectors of different lengths on the default internal-coordinate path,
 so this fixture accepted 0 of its 3 steps and the Laplace width was taken at
 the start. With that fixed the fit moves (3 of 3 accepted) to a point at 13.4
@@ -132,12 +140,67 @@ def test_sign_flip_is_detected_at_large_residuals(tight_sigma):
     assert soft["fd_stable"] is True
 
 
-def test_the_flip_is_reported_not_just_computed(tight_sigma):
+def test_away_from_the_mode_the_gap_is_reported_as_that(tight_sigma):
+    """The start is a long way from the mode of the objective the widths
+    describe, so the curvature gap there is about residuals the mode does not
+    have. The check says so, and keeps the Gauss-Newton widths, instead of
+    calling it a failure of Gauss-Newton (which, at the mode, holds)."""
     msgs = tight_sigma.gauss_newton_warnings(coords=_start())
-    assert len(msgs) >= 1
-    joined = " ".join(msgs).lower()
-    assert "gauss-newton" in joined
-    assert "saddle" in joined
+    assert len(msgs) == 1
+    joined = msgs[0].lower()
+    assert "widths from the mode" in joined
+    assert "kept" in joined
+    assert "saddle" not in joined
+
+
+def _two_species_c1(symmetry="C1"):
+    opt = MolecularOptimizer(
+        elems=["O", "H", "H"], coords=_coords(),
+        isotopologues=[
+            {"name": "H2-16O", "masses": MASSES_H2O, "obs_constants": B0_H2O,
+             "sigma_constants": [0.2] * 3},
+            {"name": "D2-16O", "masses": [15.9949146196, 2.0141017778, 2.0141017778],
+             "obs_constants": [462324.0, 218038.0, 145258.0],
+             "sigma_constants": [0.2] * 3}],
+        quantum_backend="analytic_water", use_autoconfig=False, max_iter=40,
+        quantum_prior_sigma_ang=0.02, symmetry=symmetry)
+    with contextlib.redirect_stdout(io.StringIO()):
+        opt.run()
+    return opt
+
+
+def test_a_stationary_saddle_is_refused_and_the_symmetry_named():
+    """H2O + D2O with C1 forced: at the MODE of the fitted objective the
+    symmetric point is a saddle along the antisymmetric stretch (exact
+    -1,087 against Gauss-Newton +7,995). No Laplace width exists for any
+    coordinate there -- on real water the widths it used to quote were
+    0.85x and 0.12x the true posterior's -- so it refuses, and says what
+    would make the posterior proper."""
+    opt = _two_species_c1()
+    rows = opt.gauss_newton_discrepancy()
+    assert rows[0]["sign_flipped"] is True
+    msgs = opt.gauss_newton_warnings()
+    assert any("saddle" in m and "at the mode" in m for m in msgs), msgs
+    assert any("satisfies C2v" in m for m in msgs), msgs
+    with contextlib.redirect_stdout(io.StringIO()):
+        assert opt.geometry_uncertainty() is None
+    post = opt.internal_coordinate_posterior()
+    assert "error" in post and "no Laplace width" in post["error"]
+
+
+def test_the_same_data_with_the_symmetry_imposed_are_answered():
+    opt = _two_species_c1(symmetry="auto")
+    assert opt.gauss_newton_warnings() == []
+    with contextlib.redirect_stdout(io.StringIO()):
+        unc = opt.geometry_uncertainty()
+    assert unc is not None and all(np.isfinite(v) for v in unc.values())
+
+
+def test_switching_the_check_off_switches_the_refusal_off():
+    """It is a diagnostic; a caller who declines it gets the widths."""
+    opt = _two_species_c1()
+    with contextlib.redirect_stdout(io.StringIO()):
+        assert opt.geometry_uncertainty(check_gauss_newton=False) is not None
 
 
 def test_silent_at_the_fitted_point(tight_sigma):
@@ -295,3 +358,49 @@ def test_symmetric_fit_has_no_failure_to_report():
     summary = laplace_approximation(opt)
     assert not any("Gauss-Newton" in w for w in summary.warnings)
 
+
+
+def test_a_direction_no_reported_width_depends_on_is_not_reported(monkeypatch):
+    """The relevance filter, driven directly.
+
+    A planar molecule fitted without its symmetry keeps an out-of-plane
+    direction that changes no bond and no angle to first order. A curvature
+    gap there -- formyl fluoride with C1 forced showed 127% -- describes no
+    width anyone is quoted, so it is not reported; the same gap on an
+    in-plane direction is.
+    """
+    import dev.monofluoro_references as R
+
+    mol = R.FORMYL_FLUORIDE
+    isos = [dict(name=sp.label, masses=np.asarray(sp.masses(mol.masses), dtype=float),
+                 obs_constants=np.asarray(sp.observed(), dtype=float),
+                 sigma_constants=np.asarray(sp.sigmas(), dtype=float),
+                 component_indices=list(sp.component_indices)) for sp in mol.species]
+    with contextlib.redirect_stdout(io.StringIO()):
+        opt = MolecularOptimizer(
+            elems=list(mol.elems), coords=np.asarray(mol.geometry, dtype=float),
+            isotopologues=isos, spectral_only=True, symmetry="C1",
+            use_autoconfig=False, max_iter=3)
+    from backend.internal.internal_fit import InternalCoordinateSet
+
+    x = opt.coords
+    basis = opt.physical_basis()
+    Bq = InternalCoordinateSet(x, opt.elems, False).active_B_matrix(x)
+    # The physical direction with no first-order effect on any bond or angle.
+    _u, s, vt = np.linalg.svd(Bq @ basis)
+    blind = basis @ vt[-1]
+    assert s[-1] < 1e-8 * s[0]
+    inplane = basis @ vt[0]
+
+    def rows(direction):
+        return [{"index": 0, "direction": direction, "fd_stable": True,
+                 "sign_flipped": False, "relative_discrepancy": 1.27,
+                 "curvature_gauss_newton": 1.0, "curvature_exact": 2.27,
+                 "omitted_term": 1.27}]
+
+    monkeypatch.setattr(opt, "_posterior_gradient", lambda *a, **k: np.zeros(x.size))
+    monkeypatch.setattr(opt, "gauss_newton_discrepancy", lambda *a, **k: rows(blind))
+    assert opt.gauss_newton_warnings() == []
+    monkeypatch.setattr(opt, "gauss_newton_discrepancy", lambda *a, **k: rows(inplane))
+    msgs = opt.gauss_newton_warnings()
+    assert len(msgs) == 1 and "doubtful" in msgs[0]
