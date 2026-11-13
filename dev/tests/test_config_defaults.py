@@ -158,3 +158,28 @@ def test_loading_a_config_does_not_state_what_it_did_not_state():
     from runner.config_schema import normalize_config
     again = normalize_config(bare)["internal_coordinates"]
     assert "prior_sigma_bond" not in again and "prior_sigma_angle_deg" not in again
+
+
+def test_the_start_anchor_is_off_while_the_quantum_prior_is_on(base):
+    """BALANCED/STRICT anchor each fit to its own start. With a quantum prior
+    that made restarts and multistart seeds fit different objectives (4/9
+    restart-stationary on 9 molecules, cartesian mode; 8/9 without). It stays
+    for spectral-only runs, where nothing else holds the unseen directions."""
+    assert _kw(base)["use_internal_priors"] is False
+    assert _built(base).internal_prior is None
+    spectral = copy.deepcopy(base)
+    spectral["quantum"]["backend"] = "none"
+    assert build_run_inputs(spectral, verbose=False)["optimizer_kwargs"]["use_internal_priors"] is True
+
+
+def test_no_shipped_config_states_a_library_prior_weight():
+    """A stated weight is honoured, so a template prior_weight: 1.0 kept the
+    rule-library prior on in every example and in every config copied from
+    one -- measured worse on average (mean bond 12.88 vs 9.51 mA, angle 2.34
+    vs 0.97 deg on 9 molecules) and 23% slower."""
+    stated = []
+    for path in sorted((_ROOT / "configs").glob("*.yaml")):
+        ic = load_config(path).get("internal_coordinates") or {}
+        if "prior_weight" in ic:
+            stated.append(path.name)
+    assert not stated, f"shipped configs stating prior_weight: {stated}"

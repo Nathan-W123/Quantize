@@ -87,7 +87,8 @@ internal_coordinates:
   use_dihedrals: true
   damping: 1.0e-6
   microiterations: 20
-  prior_weight: 0.5
+  # prior_weight: unset -- no rule-library prior while the quantum prior
+  # is on. Set a weight to use it, with the widths below.
   prior_sigma_bond: 0.12
   prior_sigma_angle_deg: 5.0
   prior_sigma_dihedral_deg: 20.0

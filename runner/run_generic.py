@@ -2058,7 +2058,13 @@ def build_run_inputs(cfg: dict[str, Any], *, verbose: bool = True) -> dict[str, 
         # A split-objective gate: the joint step is accepted on its own
         # objective's ratio test, so the preset's setting applies to split.
         enforce_quantum_descent=bool(preset["enforce_quantum_descent"]) and _split,
-        use_internal_priors=bool(preset["use_internal_priors"]),
+        # The preset's start-anchored prior (each fit pulled toward its own
+        # starting geometry; it acts in cartesian mode) only where no quantum
+        # prior holds the directions the data cannot see. With one, restarts
+        # and multistart seeds each fit a different objective: on 9 molecules
+        # (HF/6-31G, cartesian) 4/9 fits were restart-stationary with it, 8/9
+        # without, and without it cartesian runs match internal mode (D-11).
+        use_internal_priors=bool(preset["use_internal_priors"]) and spectral_only,
         prior_weight=1.0,
         prior_auto_from_initial=True,
         prior_use_dihedrals=False,

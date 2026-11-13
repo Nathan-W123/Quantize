@@ -92,17 +92,32 @@ CONFIG = _ROOT / "dev" / "configs" / "water_analytic_endtoend.yaml"
 def converged():
     """A converged optimizer on the analytic water surface, internal mode.
 
-    The split objective with the rule-library prior, both stated: that is the
+    The split objective with both structural priors, all stated: that is the
     acceptance test this module is about (the joint step is judged by its own
-    ratio test), and config runs no longer default to either.
+    ratio test), and config runs no longer default to any of them while the
+    quantum prior is on -- the start-anchored engine included, so it is
+    switched on here directly.
     """
+    import runner.run_generic as RG
+
     cfg = load_config(CONFIG)
     cfg["optimizer"] = {"objective_mode": "split"}
     cfg["internal_coordinates"]["prior_weight"] = 1.0
+    orig = RG.build_run_inputs
+
+    def with_anchor(c, **kw):
+        out = orig(c, **kw)
+        out["optimizer_kwargs"]["use_internal_priors"] = True
+        return out
+
     buf = io.StringIO()
-    with contextlib.redirect_stdout(buf):
-        opt = build_optimizer_from_config(cfg, multistart=False, verbose=False)
-        opt.run()
+    RG.build_run_inputs = with_anchor
+    try:
+        with contextlib.redirect_stdout(buf):
+            opt = build_optimizer_from_config(cfg, multistart=False, verbose=False)
+            opt.run()
+    finally:
+        RG.build_run_inputs = orig
     return opt
 
 
