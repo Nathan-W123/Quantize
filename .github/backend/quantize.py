@@ -1758,6 +1758,37 @@ class MolecularOptimizer:
             return np.inf
         return float(np.sqrt(np.mean((self.coords - self._orca_ref_coords) ** 2)))
 
+    #: Below this, split_coupling is round-off (full-rank split fits read
+    #: 1e-16) and the split posterior is exact; one-constant water reads 0.085.
+    SPLIT_COUPLING_TOL = 1e-8
+
+    def split_coupling(self):
+        """How much of the quantum curvature the split posterior leaves out,
+        or None off the split objective.
+
+        The split step's quantum gradient is Pn (g + H dx); the posterior it
+        is reported with keeps only Pn H Pn. The part dropped is the coupling
+        between the data's null space and its range, measured over the
+        physical directions B as |B^T Pn Hs (I - Pn) B| / |B^T Hs B|, with Pn
+        the split null projector at the fit and Hs the curvature the posterior
+        uses. Zero (round-off) when the data reach every physical direction,
+        Pn B = 0: then the split estimator is the data's and its posterior is
+        exact. One-constant water: 0.085, and error-model refits read 0.04x
+        their target on the angle.
+        """
+        if (self.spectral_only or self.quantum is None
+                or self.optimizer.objective_mode == "joint"):
+            return None
+        x = np.asarray(self.coords, dtype=float)
+        Pn = self._split_energy_projector()
+        _g, Hp = self._projected_reference_terms()
+        Hs = np.asarray(self.optimizer._spd_hessian(Hp), dtype=float)
+        B = self.physical_basis(coords=x, n=Hs.shape[0])
+        rest = np.eye(Hs.shape[0]) - Pn
+        num = float(np.linalg.norm(B.T @ Pn @ Hs @ rest @ B))
+        den = float(np.linalg.norm(B.T @ Hs @ B))
+        return num / den if den > 0.0 else 0.0
+
     def hessian_distance(self, coords=None):
         """RMS distance (Angstrom, the _orca_drift metric) from ``coords`` to
         where the quantum Hessian was computed, or None without one.
@@ -3298,14 +3329,16 @@ class MolecularOptimizer:
                 f"refreshes its quantum point: the widths and the quantum prior's "
                 f"weight carry that curvature, not the curvature here (formyl "
                 f"fluoride: a Hessian at the answer moves its widths by up to 3%)"]
-        if not self.spectral_only and self.optimizer.objective_mode != "joint":
+        coupling = self.split_coupling()
+        if coupling is not None and coupling > self.SPLIT_COUPLING_TOL:
             gn = gn + [
-                "split objective: these widths come from the posterior blocks, whose "
-                "quantum term Pn H Pn leaves out the coupling the split step makes "
-                "between the data's range and its null space (the step's quantum "
-                "gradient is Pn (g + H dx)), so they are not the split estimator's "
-                "spread -- on one-constant water the refits gave the angle 0.05x its "
-                "data-only width. The joint objective has no such gap."]
+                f"split objective: these widths come from the posterior blocks, whose "
+                f"quantum term Pn H Pn leaves out the coupling the split step makes "
+                f"between the data's range and its null space ({coupling:.2g} of the "
+                f"quantum curvature here), so they are not the split estimator's "
+                f"spread -- on one-constant water its error-model refits gave the "
+                f"angle 0.04x the error-model target (0.05x by the step's linear "
+                f"response). The joint objective has no such gap."]
         cov_lap, basis, n_removed = self.physical_covariance(cov_lap, coords=x)
         J, rw, row_scale = self.spectral.stacked(x, return_row_scale=True)
         rw = np.asarray(rw, dtype=float)

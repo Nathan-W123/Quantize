@@ -225,18 +225,29 @@ class BootstrapEngine:
         that need the fit's state (a quantum point, an internal prior the
         fit weighted)."""
         if not opt.spectral_only and opt.optimizer.objective_mode != "joint":
-            # Every strategy, not only rto. The split step's quantum gradient
-            # is Pn (g + H dx); the posterior it is reported with has
-            # Pn (g + H Pn dx) and so leaves out the coupling Pn H Pr between
-            # the data's range and its null space. The refits follow the step,
-            # so their cloud is not the analytic column's: error-model on
-            # one-constant water came out 0.04x its target on the angle (the
-            # step's own linear response predicts 0.05x), and rto 39 usable of
-            # 200 at 0.19x.
-            return (f"strategy '{strategy}' checks the reported covariance, and under the "
-                    "split objective that covariance leaves out the coupling the split step "
-                    "makes between the data's range and its null space, so no cloud of split "
-                    "refits estimates the analytic column beside it; use the joint objective")
+            # The split step's quantum gradient is Pn (g + H dx); the posterior
+            # it is reported with has Pn (g + H Pn dx) and so leaves out the
+            # coupling Pn H Pr between the data's range and its null space.
+            # Where that coupling exists the refits follow the step and their
+            # cloud is not the analytic column's: error-model on one-constant
+            # water came out 0.04x its target on the angle (the step's own
+            # linear response predicts 0.05x). Where the data reach every
+            # physical direction it is round-off, the split posterior is exact
+            # and the split cloud matches it (water with A, B, C: 0.99-1.00).
+            # rto is refused either way: under split the prior acts in the
+            # null space only, and the shift and the certificate do not follow.
+            if strategy == "rto":
+                return ("strategy 'rto' samples the joint objective only: under the split "
+                        "objective the quantum prior acts in the data's null space alone, "
+                        "so its centre would have to be drawn there")
+            coupling = opt.split_coupling() if fitted else None
+            if coupling is not None and coupling > opt.SPLIT_COUPLING_TOL:
+                return (f"strategy '{strategy}' checks the reported covariance, and under "
+                        f"the split objective here that covariance leaves out the coupling "
+                        f"the split step makes between the data's range and its null space "
+                        f"({coupling:.2g} of the quantum curvature), so no cloud of split "
+                        f"refits estimates the analytic column beside it")
+            return None
         if strategy != "rto":
             return None
         if opt.spectral_only or (fitted and opt.quantum is None):

@@ -319,10 +319,12 @@ def test_the_gate_is_stated_in_the_cloud_s_own_widths(config_fit):
     assert rto._gate_limits() == (0.25, 0.02)
 
 
-def _one_constant_split():
-    iso = [{"name": "H2-16O", "masses": MASSES_H2O, "obs_constants": [278138.70],
-            "sigma_constants": [0.2], "component_indices": [2],
-            "sigma_systematic_constants": [0.024 * 278138.70]}]
+def _split_water(components=(2,)):
+    b = {0: 835840.29, 1: 435351.72, 2: 278138.70}
+    iso = [{"name": "H2-16O", "masses": MASSES_H2O,
+            "obs_constants": [b[c] for c in components], "sigma_constants": [0.2] * len(components),
+            "component_indices": list(components),
+            "sigma_systematic_constants": [0.024 * b[c] for c in components]}]
     x0 = _coords() + np.array([[0.0, 0.0, 0.0], [0.01, 0.0, 0.0], [-0.01, 0.0, 0.0]])
     with contextlib.redirect_stdout(io.StringIO()):
         opt = MolecularOptimizer(elems=["O", "H", "H"], coords=x0, isotopologues=iso,
@@ -334,16 +336,18 @@ def _one_constant_split():
     return opt
 
 
-@pytest.mark.parametrize("strategy", ["error-model", "rto", "isotopologue-gaussian"])
-def test_the_bootstrap_refuses_the_split_objective(strategy, tmp_path):
-    """The split posterior leaves out the step's range-null coupling, so a
-    split cloud estimates something its analytic column does not describe:
-    error-model on this one-constant water gave the angle 0.04x its target."""
-    opt = _one_constant_split()
+@pytest.mark.parametrize("strategy", ["error-model", "isotopologue-gaussian"])
+def test_a_coupled_split_fit_is_refused_and_says_why(strategy, tmp_path):
+    """One constant: a physical direction is in the data's null space and the
+    quantum curvature couples it to the range (0.085), which the split
+    posterior leaves out: error-model refits read 0.04x their target on the
+    angle."""
+    opt = _split_water((2,))
+    assert opt.split_coupling() > 0.01, "premise: a coupled split fit"
     with pytest.raises(ValueError, match="split objective"):
         BootstrapEngine(opt, BootstrapConfig(n_samples=2, strategy=strategy)).run(str(tmp_path))
-    assert BootstrapEngine.strategy_problem(opt, strategy, fitted=False)
-    # The split report says so too.
+    assert BootstrapEngine.strategy_problem(opt, strategy, fitted=False) is None, \
+        "the coupling needs the fit, so nothing is refused before it"
     post = opt.internal_coordinate_posterior()
     assert any("split objective" in w for w in post["warnings"])
     # A worker called directly still refreshes under split (the hold is
@@ -351,6 +355,21 @@ def test_the_bootstrap_refuses_the_split_objective(strategy, tmp_path):
     held = deepcopy(opt)
     _freeze_corrections(held)
     assert held.orca_update_thresh == opt.orca_update_thresh
+
+
+def test_a_full_rank_split_fit_is_bootstrapped(tmp_path):
+    """A, B and C reach both physical directions: the coupling is round-off,
+    the split posterior is exact, and the split cloud matches it (measured
+    0.999 / 0.988 at 200 draws). Refusing it, as fa9a145 did, refused a
+    correct check; the report no longer warns either."""
+    opt = _split_water((0, 1, 2))
+    assert opt.split_coupling() < opt.SPLIT_COUPLING_TOL
+    assert not any("split objective" in w for w in opt.internal_coordinate_posterior()["warnings"])
+    s = _cloud(opt, "error-model", 40, 5, tmp_path)
+    assert s.usable_samples == 40
+    for b, t in zip(s.analytic["bootstrap_std"], s.analytic["target_std"]):
+        assert b / t == pytest.approx(1.0, abs=0.35)      # 40 draws: 11% Monte Carlo error
+    assert BootstrapEngine.strategy_problem(opt, "rto", fitted=False), "rto stays refused"
 
 
 def test_rto_refuses_the_split_objective(tmp_path):
@@ -362,7 +381,7 @@ def test_rto_refuses_the_split_objective(tmp_path):
             quantum_backend="analytic_water", use_autoconfig=False, max_iter=2,
             quantum_prior_sigma_ang=0.02, objective_mode="split")
         opt.run()
-    with pytest.raises(ValueError, match="split objective"):
+    with pytest.raises(ValueError, match="joint objective only"):
         BootstrapEngine(opt, BootstrapConfig(n_samples=2, strategy="rto")).run(str(tmp_path))
 
 
