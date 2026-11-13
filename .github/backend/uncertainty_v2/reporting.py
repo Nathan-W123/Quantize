@@ -3,6 +3,11 @@ from __future__ import annotations
 from .models import BootstrapRunSummary, LaplaceSummary, MCMCRunSummary, PosteriorState
 
 
+def _wrap(text: str, indent: str = "  ", width: int = 78) -> list[str]:
+    import textwrap
+    return textwrap.wrap(text, width=width, initial_indent=indent, subsequent_indent=indent)
+
+
 def format_bootstrap_summary(summary: BootstrapRunSummary) -> str:
     """Human-readable bootstrap summary text block."""
     lines = [
@@ -41,12 +46,21 @@ def format_bootstrap_summary(summary: BootstrapRunSummary) -> str:
             lines.append(f"  {name:<16}{cloud:>11}{t_sd * f:>11.4f}{p_sd * f:>11.4f}  {u}")
         chk = a.get("check")
         if chk:
-            pairs = ", ".join(f"{nm} {r:.3f}" for nm, r in zip(a["names"], chk["ratio"]))
-            lines.append(f"  cloud/analytic: {pairs}  (Monte Carlo +-{chk['mc_sd']:.3f} at "
-                         f"{chk['n']} refits)")
+            se = chk["mc_sd"] if isinstance(chk["mc_sd"], list) else [chk["mc_sd"]] * len(a["names"])
+            kurt = chk.get("kurtosis") or [3.0] * len(a["names"])
+            pairs = ", ".join(
+                f"{nm} {r:.3f} (+-{e:.3f}" + (f", kurtosis {k:.0f}" if k > 4.5 else "") + ")"
+                for nm, r, e, k in zip(a["names"], chk["ratio"], se, kurt))
+            lines.extend(_wrap(f"cloud/analytic at {chk['n']} refits, with Monte Carlo error: "
+                               f"{pairs}"))
             if chk["departs"]:
-                lines.append(f"  DEPARTS beyond {chk['sigmas']:g}x Monte Carlo error on: "
-                             + ", ".join(chk["departs"]) + ".")
+                imp = dict(zip(a["names"], chk.get("impact") or []))
+                what = ", ".join(
+                    f"{nm} (the reported width {abs(imp[nm]) * 100:.0f}% too "
+                    f"{'narrow' if imp[nm] > 0 else 'wide'} if the cloud is right)"
+                    for nm in chk["departs"] if nm in imp)
+                lines.extend(_wrap(f"DEPARTS beyond {chk['sigmas']:g}x Monte Carlo error on: "
+                                   f"{what}."))
                 if a.get("objective") == "split":
                     lines.append("  Under the split objective the refits are the split estimator, so")
                     lines.append("  the reported (split posterior) widths do not describe its spread there.")
@@ -55,18 +69,27 @@ def format_bootstrap_summary(summary: BootstrapRunSummary) -> str:
                     lines.append("  does not describe the refits' spread there (nonlinearity, or a")
                     lines.append("  curvature the Gauss-Newton blocks leave out).")
         if a.get("objective") == "split":
-            nr = a.get("null_response")
-            lines.append("  objective: split -- the cloud is the split estimator's spread; its")
-            lines.append("  posterior leaves out the step's range-null coupling"
-                         + (f" (null response {nr:.2g})." if nr is not None else "."))
+            lines.append("  objective: split -- the cloud is the split estimator's spread (the split")
+            lines.append("  step as configured: its rank cutoff and its stopping rules define it).")
+            if a.get("split_note"):
+                note = str(a["split_note"])
+                lines.extend(_wrap(note[:1].upper() + note[1:] + "."))
+            shift = a.get("mode_shift")
+            if shift:
+                name, v = max(shift.items(), key=lambda kv: abs(kv[1]) * (1e3 if "bond" in kv[0] else 1.0))
+                unit = "mA" if "bond" in name else "deg"
+                val = v * 1e3 if unit == "mA" else v
+                lines.extend(_wrap(f"One Newton step toward the posterior's mode moves {name} by "
+                                   f"{val:+.3g} {unit}: the posterior is centred there, not at this fit."))
         hd = a.get("hessian_distance_ang")
         if hd is not None and a.get("objective") == "split":
-            lines.append(f"  Split refits refresh the quantum point as the base fit did (only joint "
-                         f"refits hold it); the base's Hessian was computed {1e3 * hd:.2f} mA from "
-                         f"this geometry.")
+            lines.extend(_wrap(f"Split refits refresh the quantum point as the base fit did (only "
+                               f"joint refits hold it); the base's Hessian was computed "
+                               f"{1e3 * hd:.2f} mA from this geometry."))
         elif hd is not None:
-            lines.append(f"  Refits hold the base's quantum quadratic, so the cloud cannot detect "
-                         f"error in it; its Hessian was computed {1e3 * hd:.2f} mA from this geometry.")
+            lines.extend(_wrap(f"Refits hold the base's quantum quadratic, so the cloud cannot "
+                               f"detect error in it; its Hessian was computed {1e3 * hd:.2f} mA "
+                               f"from this geometry."))
         if a.get("no_posterior"):
             lines.append("  NO REPORTED POSTERIOR at this geometry: " + str(a["no_posterior"]))
             lines.append("  The analytic and posterior columns are the Laplace's arithmetic only.")

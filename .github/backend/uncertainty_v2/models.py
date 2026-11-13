@@ -113,10 +113,12 @@ class BootstrapRunSummary:
     #: What the cloud estimates, and the engine's analytic value of it beside
     #: the reported posterior: {"target", "names", "kinds", "units",
     #: "target_std", "posterior_std", "bootstrap_std"} (bonds in Angstrom,
-    #: angles in degrees), "objective", and with a cloud "check" ({"n",
-    #: "ratio", "mc_sd", "departs", "sigmas"}: cloud over analytic width per
-    #: coordinate and where it departs beyond sigmas x Monte Carlo error).
-    #: None when it could not be formed.
+    #: angles in degrees), "objective", under split "null_response",
+    #: "split_note" and (off its mode) "mode_shift", and with a cloud "check"
+    #: ({"n", "ratio", "mc_sd", "kurtosis", "impact", "departs", "sigmas",
+    #: "impact_min"}: cloud over analytic width per coordinate, its Monte
+    #: Carlo error from the cloud's kurtosis, the change it implies for the
+    #: reported width, and where it departs). None when it could not be formed.
     analytic: dict | None = None
 
     #: Fewer usable samples than this fraction of the requested count and the

@@ -175,8 +175,20 @@ def _run_bootstrap_worker(args: tuple) -> BootstrapSampleResult:
             certificate = "restart"
             dist = None
             while passes < _POLISH_PASSES:
+                n0 = len(opt.history)
                 again = np.asarray(opt.run(), dtype=float)
-                dist = _restart_distance(opt, coords, again)
+                taken = sum(1 for h in opt.history[n0:] if h.get("accepted"))
+                end = (getattr(opt, "termination", None) or {}).get("reason")
+                # A restart that accepted no step and then ran out of
+                # iterations says nothing: each run starts from the base
+                # damping and trust radius and re-proposes the same rejected
+                # step, so at max_iter 2 such refits passed at "0.0" while
+                # 0.4-14.7 widths from their fixed point. One that stopped on
+                # its own rule (converged, stall, plateau) after rejecting
+                # every step is at a standstill, which is what a fixed point
+                # looks like to the step -- and is most converged refits.
+                dist = (None if (taken == 0 and end == "max_iter")
+                        else _restart_distance(opt, coords, again))
                 coords = again
                 passes += 1
                 if dist is not None and dist <= polish:
@@ -557,33 +569,75 @@ class BootstrapEngine:
         out["objective"] = "spectral only" if opt.spectral_only else opt.optimizer.objective_mode
         if split:
             out["null_response"] = opt.split_coupling()
+            try:
+                out["split_note"] = opt.split_inconsistency()
+            except Exception as exc:  # a note must not cost the comparison
+                out["split_note"] = f"the split check could not be made ({type(exc).__name__})"
+            if opt.split_off_mode() is not None:
+                out["mode_shift"] = self._mode_shift(opt, x, cs, Bq, conv)
         use = [r for r in (results or []) if r.success and r.usable and r.coords is not None]
         if len(use) > 2:
             q = np.array([np.asarray(cs.active_values(np.asarray(r.coords, dtype=float)), dtype=float)
                           for r in use])
             out["bootstrap_std"] = (q.std(axis=0, ddof=1) * conv).tolist()
             out["check"] = self._cloud_check(out["names"], out["bootstrap_std"],
-                                             out["target_std"], len(use))
+                                             out["target_std"], out["posterior_std"], q)
         return out
 
+    @staticmethod
+    def _mode_shift(opt, x, cs, Bq, conv):
+        """One Newton step on the posterior's own quadratic model, from x
+        toward its mode, per internal coordinate (Angstrom, degrees): where
+        the posterior is centred when the fit is not there (internal-prior
+        C-only water: the angle +4.4 deg)."""
+        try:
+            _z, basis, w, V = opt._mode_decomposition(x)
+            g = V.T @ (basis.T @ opt._posterior_gradient(x))
+            dx = basis @ (V @ (-g / w))
+            return dict(zip(cs.active_names(), (Bq @ dx * conv).tolist()))
+        except Exception:
+            return None
+
     #: A cloud width departs from the analytic one beyond this many Monte
-    #: Carlo standard errors of an sd ratio (1/sqrt(2(n-1))).
+    #: Carlo standard errors of its sd ratio ...
     _CHECK_SIGMAS = 3.0
+    #: ... and only where, if the cloud is right, the reported (posterior)
+    #: width would move by at least this fraction: a 15% departure on a part
+    #: holding 1% of the reported variance (joint C-only water's angle)
+    #: cannot change what is reported.
+    _CHECK_IMPACT = 0.02
 
     @classmethod
-    def _cloud_check(cls, names, cloud_sd, target_sd, n):
-        """Cloud over analytic width per coordinate, its Monte Carlo error,
-        and the coordinates where the two differ beyond _CHECK_SIGMAS of it.
-        The cloud is refits of the estimator; the analytic column is the
-        engine's account of their spread, so a departure says that account
-        does not describe the fit there."""
-        mc = 1.0 / np.sqrt(2.0 * max(int(n) - 1, 1))
-        ratio = [float(b) / float(t) if t and t > 0 else float("nan")
-                 for b, t in zip(cloud_sd, target_sd)]
-        departs = [nm for nm, r in zip(names, ratio)
-                   if np.isfinite(r) and abs(r - 1.0) > cls._CHECK_SIGMAS * mc]
-        return {"n": int(n), "ratio": ratio, "mc_sd": float(mc), "departs": departs,
-                "sigmas": float(cls._CHECK_SIGMAS)}
+    def _cloud_check(cls, names, cloud_sd, target_sd, posterior_sd, q):
+        """Cloud over analytic width per coordinate; its Monte Carlo error
+        from each coordinate's own kurtosis k, sqrt((k - 1) / (4 n)) -- the
+        Gaussian 1/sqrt(2(n-1)) understated it 3x for the heavy-tailed angle
+        clouds of fits off their posterior's mode (k 18-22); the change the
+        cloud implies for the reported width; and the coordinates where the
+        cloud departs beyond _CHECK_SIGMAS errors and moves the reported
+        width by _CHECK_IMPACT or more. The cloud is refits of the estimator
+        and the analytic column the engine's account of their spread, so a
+        departure says that account does not describe the fit there."""
+        q = np.asarray(q, dtype=float)
+        n = int(q.shape[0])
+        d = q - q.mean(axis=0)
+        m2 = (d ** 2).mean(axis=0)
+        kurt = np.where(m2 > 0.0, (d ** 4).mean(axis=0) / np.where(m2 > 0.0, m2, 1.0) ** 2, 3.0)
+        se = np.sqrt(np.maximum(kurt - 1.0, 0.0) / (4.0 * max(n, 1)))
+        ratio, impact = [], []
+        for b, t, p in zip(cloud_sd, target_sd, posterior_sd):
+            r = float(b) / float(t) if t and t > 0 else float("nan")
+            ratio.append(r)
+            share = (float(t) / float(p)) ** 2 if p and p > 0 else float("nan")
+            impact.append(float(np.sqrt(max(1.0 + (r * r - 1.0) * share, 0.0)) - 1.0)
+                          if np.isfinite(r) and np.isfinite(share) else float("nan"))
+        departs = [nm for nm, r, e, imp in zip(names, ratio, se, impact)
+                   if np.isfinite(r) and abs(r - 1.0) > cls._CHECK_SIGMAS * float(e)
+                   and np.isfinite(imp) and abs(imp) >= cls._CHECK_IMPACT]
+        return {"n": n, "ratio": ratio, "mc_sd": [float(e) for e in se],
+                "kurtosis": [float(k) for k in kurt], "impact": impact,
+                "departs": departs, "sigmas": float(cls._CHECK_SIGMAS),
+                "impact_min": float(cls._CHECK_IMPACT)}
 
     @staticmethod
     def _persist_summary(summary: BootstrapRunSummary, run_dir: str) -> None:

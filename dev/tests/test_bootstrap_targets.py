@@ -381,7 +381,12 @@ def test_a_split_fit_off_its_posterior_s_mode_is_warned_and_checked(case, tmp_pa
     s = _cloud(opt, "error-model", 40, 5, tmp_path)
     assert s.usable_samples >= 36
     assert {r.certificate for r in s.sample_results} == {"restart"}
-    assert "angle 2-1-3" in s.analytic["check"]["departs"]
+    assert s.analytic["check"]["ratio"][2] < 0.9, "the step's angle is not the posterior's"
+    # The summary names the cause (not a null response that is zero) and
+    # where the posterior is centred.
+    txt = format_bootstrap_summary(s)
+    assert "posterior widths from the mode" in txt and "null response 0" not in txt
+    assert "One Newton step toward the posterior's mode moves angle 2-1-3" in txt
 
 
 @pytest.mark.parametrize("strategy", ["error-model", "isotopologue-gaussian"])
@@ -663,7 +668,7 @@ def test_the_report_says_how_old_its_hessian_is(config_fit, tmp_path):
     assert post["hessian_distance_ang"] == pytest.approx(d)
     assert any("Hessian behind these widths" in w for w in post["warnings"])
     s = _cloud(opt, "error-model", 4, 3, tmp_path)
-    assert "cannot detect error in it" in format_bootstrap_summary(s)
+    assert "cannot detect error in it" in " ".join(format_bootstrap_summary(s).split())
     with contextlib.redirect_stdout(io.StringIO()):
         opt._run_gradient()                      # a gradient keeps the Hessian
     assert opt.hessian_distance() == pytest.approx(d)
@@ -672,3 +677,56 @@ def test_the_report_says_how_old_its_hessian_is(config_fit, tmp_path):
     assert opt.hessian_distance() == 0.0
     assert not any("Hessian behind these widths" in w
                    for w in opt.internal_coordinate_posterior()["warnings"])
+
+
+
+def test_the_check_s_error_follows_the_cloud_s_tails_and_its_flag_the_reported_width():
+    """The Gaussian 1/sqrt(2(n-1)) understated the error of heavy-tailed
+    angle clouds 3x (kurtosis 18-22), and any departure beyond it was
+    flagged -- the known 7% nonlinearity at 1000 draws, and a 15% departure
+    on a part holding 1% of the reported variance."""
+    rng = np.random.default_rng(0)
+    names = ["a", "b", "c"]
+    gauss = rng.standard_normal((1000, 3))
+    chk = BootstrapEngine._cloud_check(names, [1.07, 1.15, 1.0], [1.0, 1.0, 1.0],
+                                       [1.0, 100.0, 1.0], gauss)
+    assert chk["mc_sd"][0] == pytest.approx(1.0 / np.sqrt(2000), rel=0.1)
+    assert chk["impact"][0] == pytest.approx(0.07, abs=1e-12)
+    assert chk["impact"][1] == pytest.approx(0.0, abs=1e-4)
+    assert chk["departs"] == ["a"], "7% of the reported width: said; 0.01%: not"
+    heavy = rng.standard_normal((200, 3))
+    heavy[:10] *= 10.0                      # 5% of the draws in a tail 10x wider
+    chk = BootstrapEngine._cloud_check(names, [0.65, 1.0, 1.0], [1.0, 1.0, 1.0],
+                                       [1.0, 1.0, 1.0], heavy)
+    assert chk["kurtosis"][0] > 10.0
+    assert chk["mc_sd"][0] > 2.0 / np.sqrt(2 * 199)
+    assert "a" not in chk["departs"], "a 0.65 within three of its own errors"
+
+
+def test_a_split_restart_that_runs_out_of_iterations_certifies_nothing(tmp_path):
+    """Each run starts from the base damping and trust radius, so at
+    max_iter 2 a restart could reject every step, move 0.0 and pass while
+    the refit stood up to 2 widths from its fixed point (C1 B,C water). A
+    standstill ended on max_iter is now unmeasured; one ended on the step's
+    own rule still certifies. No passed refit is far from its fixed point."""
+    from backend.uncertainty_v2.bootstrap import _restart_distance, _run_bootstrap_worker
+    from backend.uncertainty_v2.resampling import resample_error_model
+    base = _split_water((1, 2), symmetry="C1")
+    eng = BootstrapEngine(base, BootstrapConfig(n_samples=2, strategy="error-model"))
+    with contextlib.redirect_stdout(io.StringIO()):
+        limit, polish = eng._gate_limits()
+    cov = base.constant_error_covariance()
+    short = deepcopy(base)
+    short.max_iter = 2
+    for i in range(6):
+        pert = resample_error_model(base.spectral.isotopologues, cov, np.random.default_rng(1000 + i))
+        with contextlib.redirect_stdout(io.StringIO()):
+            res = _run_bootstrap_worker((short, deepcopy(pert), str(tmp_path / "s"), i, 0, None, polish))
+            fp = deepcopy(base)
+            _freeze_corrections(fp)
+            fp.spectral.isotopologues = deepcopy(pert)
+            fp.max_iter = 3000
+            c = np.asarray(fp.run(), dtype=float)
+            c = np.asarray(fp.run(), dtype=float)
+        if res.mode_distance is not None and res.mode_distance <= limit:
+            assert _restart_distance(fp, res.coords, c) <= limit
