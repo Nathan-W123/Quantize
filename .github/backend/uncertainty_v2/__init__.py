@@ -22,6 +22,7 @@ from .mcmc import AdaptiveMetropolisV2, compute_split_rhat_ess
 from .posterior import (
     evaluate_posterior_state,
     laplace_approximation,
+    no_posterior_reason,
     reported_covariance,
     reported_posterior_draws,
 )
@@ -41,6 +42,7 @@ __all__ = [
     "compute_split_rhat_ess",
     "evaluate_posterior_state",
     "laplace_approximation",
+    "no_posterior_reason",
     "reported_covariance",
     "reported_posterior_draws",
 ]

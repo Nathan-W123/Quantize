@@ -324,33 +324,65 @@ _V1_REMOVED = (
 #: a twentieth of a width.
 _ANALYTIC_DRAWS = 2000
 
+#: The fewest rto refits an interval is taken from. Percentiles from fewer
+#: are mostly the extremes: at the default 20 the water config read 0.70 /
+#: 0.79 of the posterior's widths with a bond flagged bimodal; at 200, 0.97
+#: / 0.91. Below this the rto cloud stays a check and the interval comes
+#: from the reported posterior.
+_MIN_RTO_DRAWS = 200
 
-def _interval_cloud(mode, mcmc_cloud, boot_posterior, opt, seed):
+
+def _interval_cloud(mode, mcmc_cloud, boot_posterior, opt, seed,
+                    regularization=1e-8, notes=None):
     """Which cloud the interval table, the predictive check and the plots
     describe, and what it is.
 
     Only a sample of the posterior. The MCMC chains are one when they pass
-    their convergence checks; an "rto" bootstrap is one, refit by refit.
-    The other bootstrap strategies are not -- "error-model" is the reported
-    covariance less its prior part, up to 13x narrower (formyl fluoride) --
-    so they are printed as the check they are, and the interval comes from
-    the reported posterior itself. Two clouds are never pooled: the CLI
-    used to append the bootstrap draws to the MCMC chains, mixing in
-    proportion to two sample counts that have nothing to do with each other.
+    their convergence checks; an "rto" bootstrap is one, refit by refit,
+    when there are enough refits and the base geometry has a Laplace width
+    at all (at a stationary saddle its refits fall into other basins and
+    the cloud comes out bimodal). The other bootstrap strategies are not --
+    "error-model" is the reported covariance less its prior part, up to 13x
+    narrower (formyl fluoride) -- so they are printed as the check they are,
+    and the interval comes from the reported posterior itself. Two clouds
+    are never pooled: the CLI used to append the bootstrap draws to the
+    MCMC chains, mixing in proportion to two sample counts that have nothing
+    to do with each other. ``notes`` collects why a cloud was passed over.
+    Raises ValueError when no cloud can be quoted.
     """
     import numpy as np
-    from backend.uncertainty_v2 import reported_posterior_draws
+    from backend.uncertainty_v2 import no_posterior_reason, reported_posterior_draws
 
+    notes = [] if notes is None else notes
     if mode in ("mcmc", "both") and mcmc_cloud:
         return list(mcmc_cloud), "the MCMC chains (posterior samples)"
     if mode == "mcmc":
         return [], None
     if boot_posterior:
-        return list(boot_posterior), "the rto refits (posterior draws)"
+        why = no_posterior_reason(opt)
+        if why:
+            raise ValueError(f"the rto refits are not quoted as an interval: {why}")
+        if len(boot_posterior) >= _MIN_RTO_DRAWS:
+            return list(boot_posterior), "the rto refits (posterior draws)"
+        notes.append(
+            f"the rto cloud has {len(boot_posterior)} refits, fewer than the "
+            f"{_MIN_RTO_DRAWS} a percentile interval needs (its sd carries a "
+            f"{100.0 / np.sqrt(2.0 * len(boot_posterior)):.0f}% Monte Carlo error); "
+            f"it is the check printed above, and the interval is the reported posterior's")
     rng = np.random.default_rng(seed)
-    draws = reported_posterior_draws(opt, _ANALYTIC_DRAWS, rng)
+    draws = reported_posterior_draws(opt, _ANALYTIC_DRAWS, rng, regularization=regularization)
     return list(draws), (f"the reported posterior (Laplace covariance plus shared "
                          f"model error, {_ANALYTIC_DRAWS} draws)")
+
+
+def _write_bundle(opt, summary_bundle):
+    import os
+    out_dir = os.path.join(opt.workdir, "uncertainty_v2")
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, "uncertainty_run_summary.json")
+    with open(out_path, "w", encoding="utf-8") as fh:
+        json.dump(_json_safe(summary_bundle), fh, indent=2)
+    return out_path
 
 
 def _cmd_uncertainty(args) -> int:
@@ -459,7 +491,8 @@ def _cmd_uncertainty(args) -> int:
     mcmc_refused = False
 
     if boot_cfg is not None:
-        engine = BootstrapEngine(opt, boot_cfg)
+        engine = BootstrapEngine(opt, boot_cfg,
+                                 laplace_regularization=args.laplace_regularization)
         try:
             engine._check_strategy()     # the checks that needed the fit
         except ValueError as exc:
@@ -560,11 +593,21 @@ def _cmd_uncertainty(args) -> int:
         else:
             print("\n[mcmc] v2 convergence diagnostics unavailable (too few chains/samples).")
             summary_bundle["warnings"].append("MCMC convergence diagnostics unavailable (too few chains/samples).")
+    notes: list = []
     try:
-        cloud, cloud_source = _interval_cloud(args.mode, mcmc_cloud, boot_posterior, opt, args.seed)
+        cloud, cloud_source = _interval_cloud(
+            args.mode, mcmc_cloud, boot_posterior, opt, args.seed,
+            regularization=args.laplace_regularization, notes=notes)
     except ValueError as exc:
-        print(f"Error: {exc}")
+        # On stderr, as every other refusal is, and with the bundle written:
+        # the bootstrap, MCMC and Laplace blocks above are still results.
+        print(f"Error: {exc}", file=sys.stderr)
+        summary_bundle["cloud_refused"] = str(exc)
+        print(f"\n[uncertainty] Summary written: {_write_bundle(opt, summary_bundle)}")
         return 1
+    for note in notes:
+        print(f"\n[note] {note}")
+        summary_bundle["warnings"].append(note)
     if not cloud:
         if mcmc_refused:
             print("Error: every MCMC sample was refused as unconverged, so "
@@ -609,12 +652,7 @@ def _cmd_uncertainty(args) -> int:
             plot_autocorrelations(_trace, opt.elems, plot_dir)
     summary_bundle["plot_dir"] = plot_dir
 
-    out_dir = os.path.join(opt.workdir, "uncertainty_v2")
-    os.makedirs(out_dir, exist_ok=True)
-    out_path = os.path.join(out_dir, "uncertainty_run_summary.json")
-    with open(out_path, "w", encoding="utf-8") as fh:
-        json.dump(_json_safe(summary_bundle), fh, indent=2)
-    print(f"\n[uncertainty] Summary written: {out_path}")
+    print(f"\n[uncertainty] Summary written: {_write_bundle(opt, summary_bundle)}")
     return 0
 
 
@@ -768,7 +806,10 @@ def main(argv: list[str] | None = None) -> int:
         "--laplace-regularization",
         type=float,
         default=1e-8,
-        help="Diagonal regularization added to Laplace Hessian/JTJ in v2 engine.",
+        help=("Ridge added to the Laplace over the physical directions. Applies to "
+              "everything this command reports from the Laplace: its summary, the "
+              "bootstrap's analytic and posterior columns, and the interval drawn "
+              "from the reported posterior."),
     )
     unc_p.add_argument(
         "--no-laplace-persist",

@@ -490,3 +490,23 @@ def test_the_summary_says_what_it_estimates(config_fit, tmp_path):
     assert "posterior" in txt and "analytic" in txt
     json.dumps(s.to_dict())                      # crosses to the report as JSON
     assert s.to_dict()["analytic"]["names"]
+
+
+def test_the_analytic_column_says_when_the_geometry_is_a_saddle():
+    """H2O + D2O with C1 forced: the mode is a saddle along the antisymmetric
+    stretch, so internal_coordinate_posterior refuses -- and the bootstrap's
+    analytic and posterior columns, formed from the same Laplace, must say so
+    rather than print a width the engine does not report."""
+    isos = [{"name": "H2-16O", "masses": MASSES_H2O, "obs_constants": list(B0_H2O),
+             "sigma_constants": [0.2] * 3},
+            {"name": "D2-16O", "masses": MASSES_D2O, "obs_constants": list(B0_D2O),
+             "sigma_constants": [0.2] * 3}]
+    with contextlib.redirect_stdout(io.StringIO()):
+        opt = MolecularOptimizer(elems=["O", "H", "H"], coords=_coords(), isotopologues=isos,
+                                 quantum_backend="analytic_water", use_autoconfig=False,
+                                 max_iter=40, quantum_prior_sigma_ang=0.02, symmetry="C1")
+        opt.run()
+        post = opt.internal_coordinate_posterior()
+    assert "error" in post, "premise: a stationary saddle"
+    a = BootstrapEngine(opt, BootstrapConfig(n_samples=2)).analytic_reference()
+    assert a["no_posterior"] and "saddle" in a["no_posterior"]

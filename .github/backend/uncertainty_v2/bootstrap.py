@@ -206,10 +206,14 @@ class BootstrapEngine:
     whether the base's Hessian describes the surface near the fit.
     """
 
-    def __init__(self, optimizer: MolecularOptimizer, config: BootstrapConfig):
+    def __init__(self, optimizer: MolecularOptimizer, config: BootstrapConfig,
+                 laplace_regularization: float = 1e-8):
         self.optimizer = optimizer
         self.config = config
         self.config.validate()
+        #: The ridge the analytic column's Laplace is formed with (the CLI's
+        #: --laplace-regularization), so it is the covariance reported beside it.
+        self.laplace_regularization = float(laplace_regularization)
 
     @staticmethod
     def strategy_problem(opt: MolecularOptimizer, strategy: str,
@@ -451,11 +455,11 @@ class BootstrapEngine:
         """
         from backend.internal.internal_fit import InternalCoordinateSet
 
-        from .posterior import reported_covariance
+        from .posterior import no_posterior_reason, reported_covariance
 
         opt = self.optimizer
         x = np.asarray(opt.coords, dtype=float)
-        c_total, cov = reported_covariance(opt, x)
+        c_total, cov = reported_covariance(opt, x, regularization=self.laplace_regularization)
         J, _r, scale = opt.spectral.stacked(x, return_row_scale=True)
         strategy = self.config.strategy
         if strategy == "rto":
@@ -483,7 +487,11 @@ class BootstrapEngine:
         out = {"target": label, "names": list(cs.active_names()), "kinds": kinds,
                "units": ["angstrom" if k == "bond" else "degree" for k in kinds],
                "target_std": sd(target_cov), "posterior_std": sd(c_total),
-               "bootstrap_std": None}
+               "bootstrap_std": None,
+               # Set where the Gauss-Newton check found a stationary saddle:
+               # the columns are then the Laplace's arithmetic, not a width the
+               # engine reports (internal_coordinate_posterior refuses).
+               "no_posterior": no_posterior_reason(opt, x)}
         use = [r for r in (results or []) if r.success and r.usable and r.coords is not None]
         if len(use) > 2:
             q = np.array([np.asarray(cs.active_values(np.asarray(r.coords, dtype=float)), dtype=float)

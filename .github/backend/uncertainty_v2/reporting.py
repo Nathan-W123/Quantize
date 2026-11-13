@@ -39,8 +39,12 @@ def format_bootstrap_summary(summary: BootstrapRunSummary) -> str:
             u = "mA" if unit == "angstrom" else "deg"
             cloud = "-" if b is None else f"{b * f:.4f}"
             lines.append(f"  {name:<16}{cloud:>11}{t_sd * f:>11.4f}{p_sd * f:>11.4f}  {u}")
-        lines.append("  The reported uncertainty is the posterior column; the cloud is a")
-        lines.append("  refitting check of the analytic column beside it.")
+        if a.get("no_posterior"):
+            lines.append("  NO REPORTED POSTERIOR at this geometry: " + str(a["no_posterior"]))
+            lines.append("  The analytic and posterior columns are the Laplace's arithmetic only.")
+        else:
+            lines.append("  The reported uncertainty is the posterior column; the cloud is a")
+            lines.append("  refitting check of the analytic column beside it.")
     reason = summary.unusable_reason()
     if reason:
         lines.append(f"  REFUSED: {reason}")
