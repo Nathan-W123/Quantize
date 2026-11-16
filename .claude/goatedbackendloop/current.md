@@ -1,5 +1,5 @@
 # Current task
-Status: searching (accuracy and efficiency)
+Status: done (search; efficiency wins implemented)
 Request: N4 -- config runs carry no model-error term (no config key reaches
 sigma_systematic_constants).
 
@@ -27,7 +27,27 @@ honest label, default unchanged (D-26).
   posterior, slow tests), and accuracy levers on the 9-molecule HF/6-31G
   benchmark with reference-independent evidence. Trades flagged (D-03).
 
+- Search results (two agents): efficiency -- engine time dominated by the
+  Python-loop rotational Jacobian; CD operator algebra rebuilt per call;
+  benchmark fits recompute the table's Hessian; trial Jacobian discarded;
+  rto shift root per draw. Accuracy -- only free change a one-line
+  defect-probe fix (A1); GLS weighting (F14a) -3.8 mA on r_s references but
+  worse on r_e bonds; offsets -2.9 mA at 7-37 Hessians per molecule;
+  nothing else above reference resolution.
+- User chose the free efficiency wins only. DONE: 6952211 closed-form
+  Jacobian (2.4e-14 rel; fit engine 1.9-5.5x), ff836fb CD cache
+  (bit-identical; CD run 25.0 -> 15.3 s), fb7ea3e benchmark Hessian reuse
+  (fits 75-79% faster; <= 2.8e-11 A), c7ea83f trial Jacobian skipped
+  without CD rows (bit-identical; kept with CD rows, where skipping moved
+  fits within tolerance), e84d1e7 rto shift sampler (bit-identical; test
+  11.6 -> 0.25 s). Clean-checkout suite at e84d1e7: 1590 passed, 23
+  skipped, 127 s (was 137-151).
+
 ## Observations
+- E4: the agent's "bit-identical for Cartesian fits" held, but the CD-path
+  difference it flagged as small was a trajectory change (multistart spread
+  1e-5 relative), not rounding; checking the whole payload, not just the
+  best geometry, showed it. Guarded instead of accepted.
 - The step-7 restart changed two things at once (a fresh optimizer is also a
   fresh Hessian), and the backlog item read the result as a stopping-rule
   defect. Splitting the restart into same-object / fresh / refresh took one
