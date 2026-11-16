@@ -388,7 +388,8 @@ def test_the_uncertainty_command_recomputes_the_hessian_at_the_answer(tmp_path, 
     assert b1["hessian_refresh"]["age_before_ma"] == pytest.approx(age, rel=1e-6)
     assert b1["hessian_refresh"]["passes"] >= 1
     assert 1e3 * b1["bootstrap"]["analytic"]["hessian_distance_ang"] < 0.1 * age
-    assert "quantum Hessian recomputed at the converged geometry" in out
+    assert "quantum Hessian recomputed at the fit's final geometry" in out
+    assert b1["hessian_refresh"]["settled"] is True
 
 
 
@@ -437,3 +438,20 @@ def test_the_config_workdir_is_the_optimizer_s():
     with contextlib.redirect_stdout(io.StringIO()):
         opt = build_optimizer_from_config(cfg, multistart=False, verbose=False)
     assert config_workdir(cfg) == opt.workdir
+
+
+def test_a_fit_that_stops_at_max_iter_is_warned_about(tmp_path, monkeypatch):
+    import yaml
+    from runner.usability import load_config
+    cfg = load_config(CONFIG)
+    cfg.setdefault("optimizer", {})["max_iter"] = 2
+    path = tmp_path / "short.yaml"
+    path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    out, err = io.StringIO(), io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        code = cli.main(["uncertainty", str(path), "--mode", "bootstrap", "--samples", "2"] + _QUIET)
+    b = _bundle(tmp_path)
+    assert b["hessian_refresh"]["termination"] == "max_iter"
+    assert any("stopped at max_iter" in w for w in b["warnings"])
+    assert "recomputed at the fit's final geometry" in out.getvalue()

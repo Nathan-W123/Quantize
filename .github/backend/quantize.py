@@ -1949,7 +1949,9 @@ class MolecularOptimizer:
     #: With corrections built from the Hessian (the B0 -> Be targets, the
     #: distortion prediction) the targets move with it, so the refresh is
     #: repeated until the answer moves less than this (RMS): on the water
-    #: config 1.466, then 0.090, then 0.006 mA.
+    #: config 0.678, then 0.050, then 0.0036 mA (2.8x inside; 1.75x with B
+    #: and C only), so three passes settle it -- and if they do not, the
+    #: result says so (``settled``).
     REFRESH_SETTLED_ANG = 1e-5
 
     def refresh_hessian_at_answer(self, max_passes=3):
@@ -1976,9 +1978,17 @@ class MolecularOptimizer:
         corrections (use_orca_rovib) keep their own schedule -- they cost far
         more than a Hessian.
 
+        Where the corrections follow the Hessian, each pass also rebuilds
+        their sigmas from the configured isotopologues (water config: B's
+        9470 -> 8039 MHz), so the widths move with them; with a fixed
+        correction table the sigmas are left exactly as they were.
+
         Returns {"passes", "age_before_ang", "age_after_ang", "moved_ang",
-        "last_move_ang", "termination"} (RMS distances), or None without a
-        quantum model.
+        "last_move_ang", "termination", "settled"} (RMS distances), or None
+        without a quantum model. ``settled`` is False when the passes ran out
+        with the answer still moving (past orca_update_thresh from its
+        Hessian, or past REFRESH_SETTLED_ANG where the corrections follow the
+        Hessian) or the last pass stopped at max_iter.
         """
         if self.spectral_only or self.quantum is None or self._backend is None:
             return None
@@ -2000,9 +2010,13 @@ class MolecularOptimizer:
             last = float(np.sqrt(np.mean((np.asarray(self.coords, dtype=float) - before) ** 2)))
             passes += 1
         moved = float(np.sqrt(np.mean((np.asarray(self.coords, dtype=float) - start) ** 2)))
-        return {"passes": passes, "age_before_ang": age, "age_after_ang": self.hessian_distance(),
-                "moved_ang": moved, "last_move_ang": last,
-                "termination": (getattr(self, "termination", None) or {}).get("reason")}
+        after = self.hessian_distance()
+        ended = (getattr(self, "termination", None) or {}).get("reason")
+        settled = bool(ended != "max_iter" and float(after or 0.0) <= float(self.orca_update_thresh)
+                       and (not follows or (last is not None and last <= self.REFRESH_SETTLED_ANG)))
+        return {"passes": passes, "age_before_ang": age, "age_after_ang": after,
+                "moved_ang": moved, "last_move_ang": last, "termination": ended,
+                "settled": settled}
 
     def hessian_distance(self, coords=None):
         """RMS distance (Angstrom, the _orca_drift metric) from ``coords`` to

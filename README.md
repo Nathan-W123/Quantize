@@ -371,8 +371,10 @@ plus the model error, shared across isotopologues). Before any width,
 `quantize uncertainty` recomputes the quantum Hessian at the converged
 geometry and re-converges on it: the fit computes its Hessian on its own
 schedule, usually at the start (4-20 mA from the answer on nine HF/6-31G
-molecules, widths up to 7% off). That costs one Hessian; `--no-hessian-refresh`
-skips it. `quantize run` keeps the fit's own Hessian and its report says how
+molecules, widths up to 7% off). That costs one Hessian (up to three where the
+corrections are built from the Hessian and so move with it; the summary records
+whether the answer settled); `--no-hessian-refresh` skips it. A fit that stops
+at `max_iter` is warned about: its widths describe where it stopped. `quantize run` keeps the fit's own Hessian and its report says how
 far away it was. The interval table, the
 predictive check and the plots describe a sample of it: the MCMC chains when
 they pass their convergence checks, an `rto` bootstrap when one was run,

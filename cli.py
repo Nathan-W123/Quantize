@@ -530,6 +530,7 @@ def _cmd_uncertainty(args) -> int:
 
     print("\nConverging initial geometry to the global minimum...")
     opt.run()
+    _fit_end = (getattr(opt, "termination", None) or {}).get("reason")
     if not args.no_hessian_refresh:
         # Every width below reads the quantum Hessian; the fit computes it on
         # its own schedule, usually at the start (4-20 mA from the answer on
@@ -539,11 +540,17 @@ def _cmd_uncertainty(args) -> int:
         if refreshed is not None:
             age, after = refreshed["age_before_ang"], refreshed["age_after_ang"]
             ma = lambda v: "unknown" if v is None else f"{1e3 * v:.3g} mA"
-            ended = refreshed["termination"]
-            how = ("re-converged" if ended != "max_iter"
-                   else "re-ran the fit, which stopped at max_iter before converging")
-            print(f"[uncertainty] quantum Hessian recomputed at the converged geometry "
-                  f"(the fit's was {ma(age)} RMS away); {how} ({refreshed['passes']} "
+            ended = _fit_end = refreshed["termination"]
+            how = {"converged": "re-converged", "plateau": "re-converged",
+                   "stall": "re-converged",
+                   "max_iter": "re-ran the fit, which stopped at max_iter before converging"
+                   }.get(ended, f"re-ran the fit, which ended on '{ended}'")
+            if not refreshed.get("settled", True) and ended != "max_iter":
+                how += ", but the answer was still moving when the passes ran out"
+            # The Hessian sits where the last pass started, so its distance
+            # from the answer is that pass's move.
+            print(f"[uncertainty] quantum Hessian recomputed at the fit's final geometry "
+                  f"(the fit's own was {ma(age)} RMS away); {how} ({refreshed['passes']} "
                   f"pass(es)): the geometry moved {ma(refreshed['moved_ang'])} RMS, and "
                   f"the Hessian is now {ma(after)} from it.")
             summary_bundle["hessian_refresh"] = {
@@ -552,11 +559,22 @@ def _cmd_uncertainty(args) -> int:
                 "moved_ma": 1e3 * refreshed["moved_ang"], "passes": refreshed["passes"],
                 "last_move_ma": (None if refreshed["last_move_ang"] is None
                                  else 1e3 * refreshed["last_move_ang"]),
-                "termination": ended}
+                "termination": ended, "settled": bool(refreshed.get("settled", True))}
+            if not refreshed.get("settled", True) and ended != "max_iter":
+                summary_bundle["warnings"].append(
+                    f"the Hessian refresh ran out of passes with the answer still moving "
+                    f"({ma(refreshed['last_move_ang'])} in the last): the Hessian behind the "
+                    f"widths is not quite at the answer")
         else:
             summary_bundle["hessian_refresh"] = "not applicable (no quantum model)"
     else:
         summary_bundle["hessian_refresh"] = "skipped (--no-hessian-refresh)"
+    if _fit_end == "max_iter":
+        # The widths below describe the curvature where the fit stopped.
+        _msg = ("the fit stopped at max_iter before converging, so the widths describe "
+                "the geometry it stopped at, not its optimum: raise optimizer.max_iter")
+        print(f"[uncertainty] warning: {_msg}", file=sys.stderr)
+        summary_bundle["warnings"].append(_msg)
 
     posterior_state = evaluate_posterior_state(opt, opt.coords, use_proxy=True)
     laplace = laplace_approximation(opt, regularization=args.laplace_regularization)

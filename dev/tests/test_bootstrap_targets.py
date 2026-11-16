@@ -746,7 +746,7 @@ def test_the_hessian_is_recomputed_at_the_answer_on_request(config_fit):
     its prior weight is then 2097, and the widths are up to 5.6% off.
     refresh_hessian_at_answer puts the Hessian there and re-converges. The
     config builds its B0 -> Be targets from the Hessian, so one pass is not
-    self-consistent (1.466, then 0.090, then 0.006 mA): it repeats until the
+    self-consistent (0.678, then 0.050, then 0.0036 mA): it repeats until the
     answer settles, and a second refresh then barely moves it."""
     opt = deepcopy(config_fit)
     assert 1e3 * opt.hessian_distance() == pytest.approx(10.77, abs=0.05), "premise"
@@ -755,7 +755,7 @@ def test_the_hessian_is_recomputed_at_the_answer_on_request(config_fit):
         info = opt.refresh_hessian_at_answer()
     assert before == pytest.approx(2097, rel=0.01)
     assert 1e3 * info["age_before_ang"] == pytest.approx(10.77, abs=0.05)
-    assert info["passes"] >= 2 and info["last_move_ang"] <= 2e-5
+    assert info["passes"] >= 2 and info["last_move_ang"] <= 2e-5 and info["settled"]
     assert opt.hessian_distance() <= 2e-5
     assert opt.quantum_prior_weight() == pytest.approx(1817, rel=0.005)
     assert opt.distance_to_mode() < 0.01
@@ -848,3 +848,15 @@ def test_the_check_says_what_it_can_see_and_handles_a_collapsed_cloud():
     s.analytic["check"] = clean
     assert "weak evidence that the widths are right" in " ".join(format_bootstrap_summary(s).split())
 
+
+def test_the_hessian_refresh_says_whether_the_answer_settled(config_fit):
+    """Three passes settle the water config (0.678, 0.050, 0.0036 mA); with
+    one pass allowed the answer is still moving and the result says so."""
+    opt = deepcopy(config_fit)
+    with contextlib.redirect_stdout(io.StringIO()):
+        info = opt.refresh_hessian_at_answer(max_passes=1)
+    assert info["passes"] == 1 and info["settled"] is False
+    assert 1e3 * info["last_move_ang"] == pytest.approx(0.678, abs=0.01)
+    with contextlib.redirect_stdout(io.StringIO()):
+        info = opt.refresh_hessian_at_answer()
+    assert info["settled"] is True
