@@ -637,10 +637,14 @@ class BootstrapEngine:
             return None
 
     #: A cloud width departs from the analytic one when its log ratio is
-    #: beyond the normal quantile that keeps the chance of a false flag
+    #: beyond the normal quantile that would put the chance of a false flag
     #: anywhere among the m coordinates at the two-sided 3-sigma rate
     #: (0.27%) -- one 3-sigma test per coordinate flagged 14% of Gaussian
-    #: nine-coordinate clouds at 20 refits ...
+    #: nine-coordinate clouds at 20 refits. The Monte Carlo error is itself
+    #: estimated, so the rate measured on Gaussian clouds is higher: 1.07%
+    #: at 20 refits and 1.00% at 40, nine coordinates (seed 20261116). The
+    #: price is power: at 20 refits and nine coordinates only a ratio
+    #: outside 0.56-1.80 can be flagged, which the report states ...
     _CHECK_FAMILY_RATE = 0.0027
     #: ... and only where, if the cloud is right, the reported (posterior)
     #: width would move by at least this fraction: a 15% departure on a part
@@ -664,19 +668,35 @@ class BootstrapEngine:
         printed error is that of the printed ratio (r times the relative
         error). The cloud is refits of the estimator and the analytic column
         the engine's account of their spread, so a departure says that
-        account does not describe the fit there."""
+        account does not describe the fit there.
+
+        A heavy-tailed cloud is the limit: with few refits in its tails its
+        sd, and its kurtosis with it, read low. Clouds with 3-5% of refits
+        in a tail 5-7x wider were flagged on 7-35% of single coordinates and
+        34-92% of nine-coordinate clouds at 20-200 refits, almost all (99%)
+        as narrower than the analytic width; the report says so beside such
+        a flag. A cloud that collapsed (sd exactly zero against a positive
+        analytic width) departs; a coordinate that does not vary has no
+        kurtosis (NaN).
+
+        Also returned: "detectable", the ratios this check could flag at
+        this many refits for a Gaussian cloud (low, high)."""
         from scipy.stats import norm
 
         q = np.asarray(q, dtype=float)
         n = int(q.shape[0])
         m = max(len(names), 1)
         d = q - q.mean(axis=0)
-        m2 = (d ** 2).mean(axis=0)
+        # Exactly constant columns: the mean's round-off would otherwise
+        # give them a spread of 1e-33 and a kurtosis read off it.
+        m2 = np.where(np.ptp(q, axis=0) > 0.0, (d ** 2).mean(axis=0), 0.0)
         safe = np.where(m2 > 0.0, m2, 1.0)
         g2 = np.where(m2 > 0.0, (d ** 4).mean(axis=0) / safe ** 2 - 3.0, 0.0)
         G2 = (((n + 1) * g2 + 6.0) * (n - 1) / ((n - 2) * (n - 3))) if n > 3 else np.zeros_like(g2)
         rel = 0.5 * np.sqrt(2.0 / max(n - 1, 1) + np.maximum(G2, 0.0) / max(n, 1))
+        G2 = np.where(m2 > 0.0, G2, np.nan)      # no spread, no kurtosis
         z = float(norm.ppf(1.0 - cls._CHECK_FAMILY_RATE / (2.0 * m)))
+        rel0 = 0.5 * np.sqrt(2.0 / max(n - 1, 1))
         ratio, impact = [], []
         for b, t, p in zip(cloud_sd, target_sd, posterior_sd):
             r = float(b) / float(t) if t and t > 0 else float("nan")
@@ -685,12 +705,13 @@ class BootstrapEngine:
             impact.append(float(np.sqrt(max(1.0 + (r * r - 1.0) * share, 0.0)) - 1.0)
                           if np.isfinite(r) and np.isfinite(share) else float("nan"))
         departs = [nm for nm, r, e, imp in zip(names, ratio, rel, impact)
-                   if np.isfinite(r) and r > 0.0 and abs(np.log(r)) > z * float(e)
+                   if np.isfinite(r) and (r == 0.0 or abs(np.log(r)) > z * float(e))
                    and np.isfinite(imp) and abs(imp) >= cls._CHECK_IMPACT]
         return {"n": n, "ratio": ratio,
                 "mc_sd": [float(r * e) if np.isfinite(r) else float("nan") for r, e in zip(ratio, rel)],
                 "kurtosis": [float(k + 3.0) for k in np.atleast_1d(G2)], "impact": impact,
-                "departs": departs, "sigmas": z, "impact_min": float(cls._CHECK_IMPACT)}
+                "departs": departs, "sigmas": z, "impact_min": float(cls._CHECK_IMPACT),
+                "detectable": [float(np.exp(-z * rel0)), float(np.exp(z * rel0))]}
 
     @staticmethod
     def _persist_summary(summary: BootstrapRunSummary, run_dir: str) -> None:

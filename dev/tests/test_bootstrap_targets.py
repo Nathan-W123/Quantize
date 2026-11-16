@@ -815,3 +815,36 @@ def test_a_trust_limited_split_restart_certifies_nothing(tmp_path):
             passed += 1
             assert _restart_distance(fp, res.coords, c) <= limit
     assert passed == 0, "every restart here was trust-limited"
+
+
+def test_the_check_says_what_it_can_see_and_handles_a_collapsed_cloud():
+    """At the CLI's default 20 refits and nine coordinates the family-wise
+    bar can only flag a ratio outside 0.56-1.80, and a clean check said
+    nothing of that. A cloud whose sd is exactly zero was never flagged (the
+    log of 0), and a constant coordinate read kurtosis 3 + 6(n-1)/((n-2)(n-3)).
+    A flag that the cloud is narrower now says a heavy-tailed cloud with its
+    tails unsampled looks the same."""
+    from backend.uncertainty_v2.models import BootstrapConfig as BC, BootstrapRunSummary
+    rng = np.random.default_rng(1)
+    q = rng.standard_normal((20, 9))
+    chk = BootstrapEngine._cloud_check(list("abcdefghi"), q.std(axis=0, ddof=1),
+                                       [1.0] * 9, [1.0] * 9, q)
+    assert chk["detectable"] == pytest.approx([0.556, 1.798], abs=1e-3)
+    q = rng.standard_normal((20, 2))
+    q[:, 0] = 0.3
+    chk = BootstrapEngine._cloud_check(["flat", "b"], [0.0, 1.0], [1.0, 1.0], [1.0, 1.0], q)
+    assert "flat" in chk["departs"] and chk["ratio"][0] == 0.0
+    assert np.isnan(chk["kurtosis"][0]) and np.isfinite(chk["kurtosis"][1])
+    s = BootstrapRunSummary(config=BC(n_samples=20), total_samples=20,
+                            successful_samples=20, failed_samples=0, mean_rms_mhz=None)
+    s.analytic = {"target": "posterior less its prior part", "names": ["flat", "b"],
+                  "kinds": ["bond", "bond"], "units": ["angstrom", "angstrom"],
+                  "target_std": [1.0, 1.0], "posterior_std": [1.0, 1.0],
+                  "bootstrap_std": [0.0, 1.0], "check": chk}
+    txt = " ".join(format_bootstrap_summary(s).split())
+    assert "this check can flag a ratio below" in txt
+    assert "heavy-tailed one looks like when few refits reach its tails" in txt
+    clean = dict(chk, departs=[])
+    s.analytic["check"] = clean
+    assert "weak evidence that the widths are right" in " ".join(format_bootstrap_summary(s).split())
+

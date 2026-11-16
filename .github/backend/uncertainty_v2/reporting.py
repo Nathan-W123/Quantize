@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 from .models import BootstrapRunSummary, LaplaceSummary, MCMCRunSummary, PosteriorState
 
 
@@ -53,7 +55,14 @@ def format_bootstrap_summary(summary: BootstrapRunSummary) -> str:
                 for nm, r, e, k in zip(a["names"], chk["ratio"], se, kurt))
             lines.extend(_wrap(f"cloud/analytic at {chk['n']} refits, with Monte Carlo error: "
                                f"{pairs}"))
-            if max(kurt) > 6.0:
+            seen = chk.get("detectable")
+            if seen:
+                weak = ("; a clean check at this size is weak evidence that the widths are right"
+                        if not chk["departs"] and seen[1] > 1.25 else "")
+                lines.extend(_wrap(
+                    f"At {chk['n']} refits this check can flag a ratio below {seen[0]:.2f} or "
+                    f"above {seen[1]:.2f} (a Gaussian cloud; more refits narrow that){weak}."))
+            if any(k > 6.0 for k in kurt if math.isfinite(k)):
                 lines.extend(_wrap(
                     "Heavy-tailed cloud: the error assumes its tails are sampled; with few "
                     "refits in them an sd ratio can sit outside it by chance."))
@@ -66,6 +75,14 @@ def format_bootstrap_summary(summary: BootstrapRunSummary) -> str:
                 lines.extend(_wrap(f"DEPARTS (log ratio beyond {chk['sigmas']:.2f} Monte Carlo "
                                    f"errors, family-wise over {len(a['names'])} coordinates) "
                                    f"on: {what}."))
+                ratio = dict(zip(a["names"], chk["ratio"]))
+                if any(ratio.get(nm, 1.0) < 1.0 for nm in chk["departs"]):
+                    lines.extend(_wrap(
+                        "A cloud narrower than the analytic width is also what a heavy-tailed "
+                        "one looks like when few refits reach its tails, and its kurtosis then "
+                        "reads low too (clouds with 3-5% of refits in a tail 5-7x wider were "
+                        "flagged so on 7-35% of coordinates at 20-200 refits); more refits "
+                        "tell the two apart."))
                 if a.get("objective") == "split":
                     lines.append("  Under the split objective the refits are the split estimator, so")
                     lines.append("  the reported (split posterior) widths do not describe its spread there.")
