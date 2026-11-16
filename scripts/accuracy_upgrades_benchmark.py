@@ -543,8 +543,40 @@ def residual_rms_sigma(isos, coords_ang) -> float:
         return float("nan")
 
 
+class _CachedHessianBackend:
+    """A fit's quantum backend whose Hessians come from the run's
+    ``hessian_fn`` -- the memory- and disk-cached one the correction table
+    was built with -- while energy and gradient are still computed at the
+    geometry asked for.
+
+    Every hybrid_fit built its own optimizer and backend and so recomputed
+    the Hessian at the prior that table_for had just computed: 70-74% of each
+    fit's wall time at HF/6-31G (acetyl fluoride 9.7 -> 2.6 s), once per
+    configuration and molecule, and again on every pass of a tracked one.
+    The cached and a fresh Hessian differ by SCF noise (2-5e-12 relative),
+    which moves the fitted geometry by at most 2.4e-11 A.
+    """
+
+    def __init__(self, inner, hessian_fn):
+        self._inner = inner
+        self._hessian_fn = hessian_fn
+
+    def run_hessian(self, coords_ang):
+        from backend.base_backend import HessianResult
+        g = self._inner.run_gradient(coords_ang)
+        return HessianResult(energy=g.energy, gradient_bohr=g.gradient_bohr,
+                             hessian_bohr=np.asarray(self._hessian_fn(coords_ang), dtype=float))
+
+    def __getattr__(self, name):
+        # Only for what this class does not define; never for the dunder
+        # lookups copy and pickle make before _inner exists (that recursed).
+        if name.startswith("__") or name in ("_inner", "_hessian_fn"):
+            raise AttributeError(name)
+        return getattr(self._inner, name)
+
+
 def hybrid_fit(mol, isos, prior_coords, ctbl, sigma_x_ang,
-               defect_scale=False, fit_cd=False, cd_weight=1.0):
+               defect_scale=False, fit_cd=False, cd_weight=1.0, hessian_fn=None):
     """The engine's answer, with the prior centred and widened as handed.
 
     ``prior_target_coords`` is what makes the prior's centre follow
@@ -575,6 +607,9 @@ def hybrid_fit(mol, isos, prior_coords, ctbl, sigma_x_ang,
         fit_cd_constants=bool(fit_cd),
         cd_weight=float(cd_weight) if fit_cd else 0.0,
         chi2_rescale=True, chi2_rescale_max_passes=3)
+    if hessian_fn is not None:
+        # The geometry level's Hessians, cached: see _CachedHessianBackend.
+        opt._backend = _CachedHessianBackend(opt._backend, hessian_fn)
     with contextlib.redirect_stdout(io.StringIO()):
         return opt.run()
 
@@ -983,7 +1018,8 @@ def main() -> None:
                 def _fit(table, _p=prior, _s=sigma_x, _c=cfg):
                     return hybrid_fit(mol, isos, _p, table, _s,
                                       defect_scale=_c["defect_scale"],
-                                      fit_cd=_c["fit_cd"], cd_weight=CD_WEIGHT)
+                                      fit_cd=_c["fit_cd"], cd_weight=CD_WEIGHT,
+                                      hessian_fn=hessian_fn)
 
                 with contextlib.redirect_stdout(io.StringIO()):
                     tracked, track_info = self_consistent_correction_table(
@@ -1003,7 +1039,8 @@ def main() -> None:
                 track_info = None
                 hyb = hybrid_fit(mol, isos, prior, ctbl, sigma_x,
                                  defect_scale=cfg["defect_scale"],
-                                 fit_cd=cfg["fit_cd"], cd_weight=CD_WEIGHT)
+                                 fit_cd=cfg["fit_cd"], cd_weight=CD_WEIGHT,
+                                 hessian_fn=hessian_fn)
 
             _re_geom = getattr(mol, "equilibrium_geometry", None)
             entry = {
