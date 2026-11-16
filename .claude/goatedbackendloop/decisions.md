@@ -319,3 +319,15 @@
 - Source: assumption (physics delegated); no accuracy/efficiency trade.
 - Revisit if: a target prior is wanted whose curvature follows the fit
   (that would be a different prior, and needs its own fixed point).
+
+### D-26 · Config runs state their model error; unstated runs are labelled (2026-11-16)
+- Decision: configs can state the B0-versus-Be model error
+  (sigma_systematic_mhz per isotopologue, sigma_includes_systematic,
+  model_error: {auto, isotopologue_correlation}); a run whose rows carry
+  none keeps measurement-only widths and says so in the report and bundle.
+- Why: raw-B0 config widths were 25x narrow on water (0.28 vs 6.9 mA) with
+  no way to state the term; the auto estimate is 3-10x large (F13), so it
+  stays opt-in.
+- Alternatives considered: auto estimate by default; keys only.
+- Source: stated by user ("Keys + honest label").
+- Revisit if: F13's estimator is calibrated (then auto could be default).
