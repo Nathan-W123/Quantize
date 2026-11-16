@@ -1,5 +1,5 @@
 # Current task
-Status: verifying (round 8 fixes)
+Status: done (round 8)
 Request: Verify the user's 7-item list (5 confirmed + 2 possible); fix where true and needed.
 
 ## Brief
@@ -291,6 +291,9 @@ quantum prior is on, honours configured widths when used.
   0.1). Remaining: step-size-dependent stopping points at whole 1e-3-3e-3
   (two-iso B,C refits 0.49-0.56 widths from a default terminus; 0.72-0.81
   before) -- backlog N12.
+- Round 8 committed eb7e51b, bbc718c, 563b1a1, 715b171 (records 1c7e2d1),
+  pushed. Clean-checkout suite at 715b171: 1563 passed, 23 skipped; touched
+  test files pass at eb7e51b (63) and bbc718c (65).
 
 ## Observations
 - Workflow sizing: 4-CPU container caps concurrent agents at 2; 7 broad
