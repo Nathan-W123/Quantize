@@ -421,6 +421,21 @@ def _ridge_moves_widths(opt, regularization):
     return bool(np.max(np.abs(s1[keep] - s0[keep]) / s0[keep]) > _RIDGE_NOTE_REL)
 
 
+def _raw_config_mapping(path):
+    """The config file's top-level mapping as parsed, before normalization,
+    or None when it cannot be read or parsed as one."""
+    try:
+        text = Path(path).read_text(encoding="utf-8")
+        if str(path).lower().endswith(".json"):
+            data = json.loads(text)
+        else:
+            import yaml
+            data = yaml.safe_load(text)
+    except Exception:
+        return None
+    return data if isinstance(data, dict) else None
+
+
 def _write_bundle(opt, summary_bundle):
     """Write the run bundle under an optimizer's workdir (or a workdir path)."""
     import os
@@ -461,8 +476,23 @@ def _cmd_uncertainty(args) -> int:
     from runner.usability import ConfigError, validate_config
     try:
         cfg = load_config(args.config)
-    except ConfigError as exc:          # no config, so no workdir: no bundle
+    except ConfigError as exc:
         print(f"Config error: {exc}", file=sys.stderr)
+        # A file that parses but fails normalization ("internal_coordinates:
+        # abc") still names its workdir, so the last run's bundle is
+        # replaced; an unreadable file has none to replace.
+        raw = _raw_config_mapping(args.config)
+        if raw is not None:
+            try:
+                where = config_workdir(raw)
+            except Exception:
+                where = None
+            if where is not None:
+                print(f"\n[uncertainty] Summary written: " + _write_bundle(where, {
+                    "generated_at": datetime.now(UTC).isoformat(),
+                    "config_path": str(args.config), "mode": args.mode,
+                    "engine": args.uncertainty_engine, "seed": args.seed, "warnings": [],
+                    "config_error": f"config: {exc}", "exit_status": 2}))
         return 2
     workdir = config_workdir(cfg)
     _stale = os.path.join(workdir, "uncertainty_v2", "uncertainty_run_summary.json")
@@ -565,10 +595,11 @@ def _cmd_uncertainty(args) -> int:
                                  else 1e3 * refreshed["last_move_ang"]),
                 "termination": ended, "settled": bool(refreshed.get("settled", True))}
             if not refreshed.get("settled", True) and ended != "max_iter":
-                summary_bundle["warnings"].append(
-                    f"the Hessian refresh ran out of passes with the answer still moving "
-                    f"({ma(refreshed['last_move_ang'])} in the last): the Hessian behind the "
-                    f"widths is not quite at the answer")
+                _msg = (f"the Hessian refresh ran out of passes with the answer still moving "
+                        f"({ma(refreshed['last_move_ang'])} in the last): the Hessian behind "
+                        f"the widths is not quite at the answer")
+                print(f"[uncertainty] warning: {_msg}", file=sys.stderr)
+                summary_bundle["warnings"].append(_msg)
         else:
             summary_bundle["hessian_refresh"] = "not applicable (no quantum model)"
     else:

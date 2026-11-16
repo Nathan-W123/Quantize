@@ -612,3 +612,29 @@ def test_quantize_run_reports_a_translation_error_as_a_config_error(tmp_path, mo
         code = cli.main(["run", str(CONFIG), "--no-run-dir"])
     assert code == 2 and "Config error" in err.getvalue() and "Traceback" not in err.getvalue()
 
+
+def test_a_config_that_fails_normalization_replaces_the_last_bundle(tmp_path, monkeypatch):
+    """It parses, so its name -- and its workdir -- are known; the last run's
+    exit-0 bundle stayed in place."""
+    code, out, err = _run(["--mode", "bootstrap", "--samples", "2"] + _QUIET, tmp_path, monkeypatch)
+    assert code == 0 and _bundle(tmp_path)["exit_status"] == 0
+    bad = tmp_path / "shape.yaml"
+    bad.write_text(CONFIG.read_text(encoding="utf-8") + "\ninternal_coordinates: abc\n",
+                   encoding="utf-8")
+    out, err = io.StringIO(), io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        code = cli.main(["uncertainty", str(bad), "--mode", "bootstrap", "--samples", "2"])
+    b = _bundle(tmp_path)
+    assert code == 2 and b["exit_status"] == 2 and b["config_error"].startswith("config:")
+
+
+def test_an_unsettled_refresh_is_warned_about_on_stderr(tmp_path, monkeypatch):
+    from backend.quantize import MolecularOptimizer
+    real = MolecularOptimizer.refresh_hessian_at_answer
+    monkeypatch.setattr(MolecularOptimizer, "refresh_hessian_at_answer",
+                        lambda self, max_passes=3: real(self, max_passes=1))
+    code, out, err = _run(["--mode", "bootstrap", "--samples", "2"] + _QUIET, tmp_path, monkeypatch)
+    b = _bundle(tmp_path)
+    assert b["hessian_refresh"]["settled"] is False, "premise: one pass leaves it moving"
+    assert "still moving" in err, "it went to the bundle and stdout only"
+    assert any("still moving" in w for w in b["warnings"])
