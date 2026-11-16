@@ -1,5 +1,5 @@
 # Current task
-Status: done (N1)
+Status: verifying (round 8 fixes)
 Request: Verify the user's 7-item list (5 confirmed + 2 possible); fix where true and needed.
 
 ## Brief
@@ -249,6 +249,48 @@ quantum prior is on, honours configured widths when used.
   commit (bundle before any failure, config errors exit 2 in both commands,
   partial reasons once, B,C-only auto from observed constants, validator
   keys/auto, drive-letter case, SVD empty guard). Suite 1551 passed.
+- VERIFIED round 8 (two background agents, 10 and 16 min): physics high --
+  split restart certificate bypassed near the tested settings (zero-step
+  plateau restarts after capped passes; zigzag capped marches); medium --
+  family-wise check nearly blind at 20 refits (r 1.3 on 9 coords caught
+  0.4%); low -- heavy-tail note not tied to flags, refresh doc numbers wrong
+  and no "settled", collapsed cloud never flagged. CLI medium -- `except
+  ValueError` around the build caught multistart runtime failures (incl.
+  LinAlgError) as config errors; legacy engine left the stale bundle;
+  low -- loader/validator gaps, refresh wording, path case.
+- Round 8 F1 diagnosis: the agent's comparator (default-settings terminus
+  from the BASE answer) conflated "unconverged" with "at another terminus":
+  the split procedure stops where the spectral acceptance test rejects the
+  null step, so it has several stopping points (twoBC null 1e-5: two termini
+  17-25 widths apart, both stationary under the default procedure).
+  Re-measured with "does a default run from the REFIT's answer move it":
+  throttled whole+null radii (1e-5, 2e-5, 1e-4) pass 0 unconverged; whole
+  radius alone small (null 0.05) passes only unconverged ones (4.5-8.6
+  widths). Root cause in the split step: null step cut to 0.05 then the
+  whole step to the radius starved the range step 500x. Tried and dropped:
+  a Newton-probe certificate (the base fit itself is 0.35 widths from that
+  point on internal-prior water: wrong estimator), restart trust floors
+  1e-4 / 1e-3 (1e-3 jumped refits to other termini: 8-10/12 "far").
+- DONE eb7e51b departure check: detectable ratios stated (0.56-1.80 at 20
+  refits, 9 coords), weak-evidence note, heavy-tail caveat on narrower
+  flags (reproduced 7-35% / 34-92%), collapsed cloud departs, constant
+  coordinate kurtosis NaN, measured false-flag rate in the docstring.
+- DONE bbc718c refresh "settled" flag (water: 0.678/0.050/0.0036 mA, doc
+  corrected), CLI wording "at the fit's final geometry", max_iter warning
+  in the bundle, README up to three Hessians.
+- DONE 563b1a1 CLI: only the translation's errors are config errors
+  (LinAlgError in multistart now propagates), legacy refusal replaces the
+  bundle, loader wraps read/normalize errors, validator names elements /
+  rng_seed / coordinate_mode / symmetry / internal_coordinates / numeric
+  rovib fields / cd_observed values, quantum null reads as absent, Windows
+  path case folded.
+- DONE (next commit) split null step cut to min(null radius, whole radius):
+  water C1 B,C Cartesian at whole 1e-3: 0.28 -> 0.006 widths from the
+  default answer, 107 -> 0.03 MHz, 342 -> 34 iterations; refits at whole
+  1e-5/1e-4 pass 0 unconverged (were all). Default radii unchanged (0.05 <
+  0.1). Remaining: step-size-dependent stopping points at whole 1e-3-3e-3
+  (two-iso B,C refits 0.49-0.56 widths from a default terminus; 0.72-0.81
+  before) -- backlog N12.
 
 ## Observations
 - Workflow sizing: 4-CPU container caps concurrent agents at 2; 7 broad
@@ -305,5 +347,13 @@ quantum prior is on, honours configured widths when used.
 - Round 5: my own after-measurement used the API on analytic water where
   the split gate passed 200/200; the CLI config (internal mode) showed
   14/40. Measure through the user's entry point too.
+
+- Round 8: an adversarial agent's "far from the fixed point" verdict was
+  against the wrong reference (a terminus reached from another start); the
+  first two fixes I tried (Newton probe, restart trust floor) chased that
+  reference and one made the numbers worse. Asking "what would the
+  reference procedure do from THIS point" separated unconverged refits from
+  a second valid stopping point and pointed at the real defect (the split
+  step's trust cut). Check the comparator before fixing to it.
 
 ## Handoff

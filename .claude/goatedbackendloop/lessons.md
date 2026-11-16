@@ -170,3 +170,17 @@ only here.
 - Scope: project
 - Status: provisional
 
+### L-12 · Check what a "far from the truth" verdict is measured against
+- Observation: a verifier measured split refits against the default
+  procedure's terminus reached from the base answer; the procedure has
+  several stopping points, so "far" mixed unconverged refits with refits at
+  another valid stopping point. Two fixes tuned to that reference failed
+  (one doubled the "far" count).
+- Evidence: 2026-11-16 · scratchpad r8/fromhere.py (two termini 17-25
+  widths apart, both stationary) and conv.py (from-refit metric: 0 vs all
+  unconverged by variant).
+- Adjustment: before fixing to a reference, ask what the reference
+  procedure does from the point being judged; if it does not move, the
+  point is valid and the reference is the wrong comparator.
+- Scope: project
+- Status: provisional

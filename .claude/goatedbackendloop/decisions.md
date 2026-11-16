@@ -279,3 +279,24 @@
   at the end"); opt-out flag is an assumption.
 - Revisit if: a method where one Hessian dominates the run makes the
   default too slow.
+
+### D-24 · Split null step cut to the smaller of the two trust radii; split certificate kept (2026-11-16)
+- Decision: the split step cuts its quantum-weighted null step to
+  min(null_trust_radius, trust_radius) before the whole-step cut. The
+  split bootstrap keeps the restart certificate (no trust floor, no Newton
+  probe).
+- Why: with the whole radius below the null one (a config lowering
+  trust_radius alone keeps the preset's 0.05 A null radius) the null step
+  filled the step and the whole-step cut starved the range step 500x:
+  fits zigzagged at the cap (water C1 B,C at 1e-3: 0.28 widths off, 107
+  MHz, 342 iterations; after 0.006, 0.03 MHz, 34) and their refits passed
+  4.5-8.6 widths unconverged. A Newton-probe certificate measures a point
+  the split procedure never reaches (its spectral acceptance test stops it
+  first; internal-prior water's base fit is 0.35 widths from it), and
+  restart trust floors moved refits to other stopping points.
+- Alternatives considered: Newton-probe certificate; restart trust floor
+  1e-4 / 1e-3; validator rule null <= trust (does not cover autoconfig).
+- Source: assumption (physics/numerics delegated); no accuracy/efficiency
+  trade (both improve; default radii unchanged).
+- Revisit if: split becomes a supported path -- its stopping points depend
+  on step size (backlog N12).
