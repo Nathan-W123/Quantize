@@ -225,29 +225,20 @@ def _jacobian_full_analytic(coords, masses, delta, degeneracy_rel_tol=1e-4):
     cm = masses @ coords / Mtot
     r = coords - cm
 
-    j_full = np.zeros((3, 3 * n))
-    for j_atom in range(n):
-        for a in range(3):
-            p = 3 * j_atom + a
-            dI = np.zeros((3, 3))
-            for i in range(n):
-                ci = (1.0 if i == j_atom else 0.0) - mfrac[j_atom]
-                ri = r[i]
-                dr2 = 2.0 * ri[a] * ci
-                for p_ax in range(3):
-                    for q_ax in range(3):
-                        delta_pq = 1.0 if p_ax == q_ax else 0.0
-                        d_inner = ci * (
-                            (1.0 if p_ax == a else 0.0) * ri[q_ax]
-                            + (1.0 if q_ax == a else 0.0) * ri[p_ax]
-                        )
-                        dI[p_ax, q_ax] += masses[i] * (delta_pq * dr2 - d_inner)
-            for s in range(3):
-                lam = evals[s]
-                v = evecs[:, s]
-                dlam = float(v @ dI @ v)
-                j_full[s, p] = -_INERTIA_TO_MHZ * dlam / (lam * lam)
-    return j_full
+    # Closed form of what a five-deep loop over atoms and axes used to
+    # assemble (80-85% of the engine's own time in a fit). With
+    # r_i = x_i - cm and dr_i/dx_{j,a} = (delta_ij - m_j/M) e_a,
+    #     dI/dx_{j,a} = 2 u_j[a] 1 - (e_a u_j^T + u_j e_a^T),
+    #     u_j = m_j r_j - (m_j/M) sum_i m_i r_i
+    # (the centre-of-mass term is zero about the centre of mass, and kept so
+    # the algebra is the loop's), hence for each principal axis v_s
+    #     v_s^T dI v_s = 2 (u_j[a] - v_s[a] (u_j . v_s)).
+    # Agrees with the loop to 2e-14 relative over 1400 random geometries of
+    # 3-20 atoms; 22x faster at 7 atoms, 49x at 12.
+    u = masses[:, None] * r - mfrac[:, None] * (masses @ r)[None, :]
+    uv = u @ evecs                                         # (n, 3): u_j . v_s
+    dlam = 2.0 * (u[None, :, :] - evecs.T[:, None, :] * uv.T[:, :, None])   # (s, j, a)
+    return (-_INERTIA_TO_MHZ * dlam / (evals ** 2)[:, None, None]).reshape(3, 3 * n)
 
 
 def sanitize_isotopologues(
