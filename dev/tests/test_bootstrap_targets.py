@@ -864,8 +864,8 @@ def test_the_hessian_refresh_says_whether_the_answer_settled(config_fit):
 
 def test_the_split_null_step_cannot_crowd_out_the_range_step():
     """The null step was cut to its own radius (0.05 A) and only then the
-    whole step to the trust radius: with the whole radius below the null
-    one -- a config lowering trust_radius alone -- the scaled null step
+    whole step to the trust radius: with the whole radius below an
+    explicitly given null one, the scaled null step
     filled the step and the cut took the range step with it, 500x at
     1e-4 A. Split water (C1, B and C, Cartesian) with the whole radius at
     1e-3 A stopped on its plateau 0.28 posterior widths from where the

@@ -1369,7 +1369,10 @@ class MolecularOptimizer:
         prior move with the fit: on isocyanic acid (HF/6-31G, the benchmark
         recipe) a fresh Hessian at the answer moved it 97 mA, the next 38 mA,
         and three refreshes did not settle. Every shipped script starts at its
-        target, so their first Hessian, and their answers, are unchanged.
+        target and is joint with one Hessian, so their answers are unchanged
+        (to 1e-8 mA on the benchmark's nine molecules). A fit that recomputes
+        its Hessian on schedule does change: the split objective with a target
+        (no shipped script) moved isocyanic acid 0.91 mA.
         """
         if self._backend is None:
             raise RuntimeError("No quantum backend initialized.")

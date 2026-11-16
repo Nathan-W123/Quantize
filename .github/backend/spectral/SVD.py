@@ -441,12 +441,16 @@ class SubspaceOptimizer:
             dp_null = alpha_q_eff * dp_null
             # The null step is part of the whole step, so its cap is never
             # above the whole step's. With the whole radius set below the
-            # null one (a config that lowers trust_radius alone leaves the
-            # null radius at 0.05 A), the scaled null step filled the whole
-            # step and cutting that to the radius cut the range step with it,
-            # 500x at 1e-4 A: split fits zigzagged at the cap without fitting
-            # the data, and their refits passed a restart 4.5-8.6 posterior
-            # widths short of where the fit converges.
+            # null one (only when null_trust_radius is given explicitly: left
+            # unset it is half the whole radius, and autoconfig, the
+            # guardrails and adapt_lambda scale both alike), the scaled null
+            # step filled the whole step and cutting that to the radius cut
+            # the range step with it, 500x at 1e-4 A: split water zigzagged at
+            # the cap without fitting the data, and its refits passed a
+            # restart 4.5-8.6 posterior widths short of where the fit
+            # converges. It does not make a small radius safe: isocyanic acid
+            # (HF/6-31G, split, whole 1e-3 A) still stops on the plateau rule
+            # 100 MHz from its data, against 2.4 MHz at the default radii.
             null_cap = min(float(self.null_trust_radius), float(self.trust_radius))
             null_norm = np.linalg.norm(dp_null)
             if null_norm > null_cap:
