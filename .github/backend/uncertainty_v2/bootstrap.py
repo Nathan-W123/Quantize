@@ -131,6 +131,31 @@ def _distance(opt, coords):
         return None
 
 
+#: A restart step at this fraction of the trust radius it was taken under
+#: (in the step's own space: internal coordinates in internal mode, where
+#: the Cartesian norm read 0.49 of a capped step) counts as trust-limited.
+_TRUST_CAPPED = 0.99
+#: ... and a restart whose net move is at least this share of its summed
+#: accepted steps is marching in one direction rather than oscillating.
+#: Measured: capped restarts of converged split refits at default settings
+#: read 0-0.5 (true distance <= 0.07 widths); the 1e-5 A attack read 1.0
+#: (3-30 widths).
+_MARCHING = 0.9
+#: A march takes several steps: one accepted step has net = path trivially
+#: (21 of 100 converged C1 refits restarted with one capped step).
+_MARCH_STEPS = 3
+
+
+def _trust_limited(h) -> bool:
+    """Whether a history step was cut to the trust radius (the whole step)
+    or to the null-space trust radius (its null part)."""
+    r = float(h.get("dx_range_norm") or 0.0)
+    n = float(h.get("dx_null_norm") or 0.0)
+    trust = float(h.get("trust_radius") or np.inf)
+    null_trust = float(h.get("null_trust_radius") or np.inf)
+    return bool(np.hypot(r, n) >= _TRUST_CAPPED * trust or n >= _TRUST_CAPPED * null_trust)
+
+
 def _split_objective(opt) -> bool:
     return (not opt.spectral_only) and opt.optimizer.objective_mode != "joint"
 
@@ -177,8 +202,21 @@ def _run_bootstrap_worker(args: tuple) -> BootstrapSampleResult:
             while passes < _POLISH_PASSES:
                 n0 = len(opt.history)
                 again = np.asarray(opt.run(), dtype=float)
-                taken = sum(1 for h in opt.history[n0:] if h.get("accepted"))
+                steps = [h for h in opt.history[n0:] if h.get("accepted")]
+                taken = len(steps)
                 end = (getattr(opt, "termination", None) or {}).get("reason")
+                # A restart still marching at the trust radius -- its last step
+                # cut to the cap, and its steps adding up rather than going
+                # back and forth -- moved as far as it was allowed, not as far
+                # as its fixed point: with the radius at 1e-5 A and a loose
+                # plateau rule such refits passed up to 55 widths from it.
+                # A step capped while oscillating about the fixed point (the
+                # null step of converged split refits often is) still
+                # certifies: its net move is a small part of its path.
+                path = sum(float(h.get("step_norm") or 0.0) for h in steps)
+                net = float(np.linalg.norm(again - coords))
+                capped = (len(steps) >= _MARCH_STEPS and _trust_limited(steps[-1])
+                          and net >= _MARCHING * path)
                 # A restart that accepted no step and then ran out of
                 # iterations says nothing: each run starts from the base
                 # damping and trust radius and re-proposes the same rejected
@@ -187,7 +225,7 @@ def _run_bootstrap_worker(args: tuple) -> BootstrapSampleResult:
                 # its own rule (converged, stall, plateau) after rejecting
                 # every step is at a standstill, which is what a fixed point
                 # looks like to the step -- and is most converged refits.
-                dist = (None if (taken == 0 and end == "max_iter")
+                dist = (None if (taken == 0 and end == "max_iter") or capped
                         else _restart_distance(opt, coords, again))
                 coords = again
                 passes += 1

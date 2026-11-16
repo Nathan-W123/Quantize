@@ -2761,6 +2761,11 @@ class MolecularOptimizer:
             mhz_rms_before = float(np.sqrt(np.mean(residual_mhz ** 2)))
             _svd_B = None if self.coordinate_mode == "internal" else B
             _ic_g = self._prior_gradient(_ic_g, _ic_H)
+            # The cap this step is computed under (it adapts between steps):
+            # a step at it says how far the step was allowed to go, not how
+            # far the optimum is, which a restart certificate must know.
+            _trust_used = float(self.optimizer.trust_radius)
+            _null_trust_used = float(self.optimizer.null_trust_radius)
             dp, rank, sv, alpha_q_eff, Vt = self.optimizer.step(
                 J, residual_w, _ic_g, _ic_H, B=_svd_B,
                 prior_displacement=self._prior_displacement(),
@@ -2969,6 +2974,8 @@ class MolecularOptimizer:
                 dict(
                     iteration=it + 1,
                     step_norm=step_norm,
+                    trust_radius=_trust_used,
+                    null_trust_radius=_null_trust_used,
                     wrms=wrms,
                     freq_rms=freq_rms,
                     rank=rank,

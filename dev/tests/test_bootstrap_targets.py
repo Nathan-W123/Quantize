@@ -774,3 +774,35 @@ def test_the_hessian_refresh_does_not_rescale_the_sigmas_again():
         opt.refresh_hessian_at_answer()
     for a, i in zip(sig, opt.spectral.isotopologues):
         np.testing.assert_array_equal(np.asarray(i["sigma_constants"], dtype=float), a)
+
+
+def test_a_trust_limited_split_restart_certifies_nothing(tmp_path):
+    """With the refits' trust radius at 1e-5 A and a loose plateau rule
+    (conv_freq 20 MHz) every restart step sat at the cap, the plateau rule
+    fired, and refits passed up to 55 widths from their fixed point. A
+    restart whose last step was at the trust radius is now unmeasured."""
+    from backend.uncertainty_v2.bootstrap import _restart_distance, _run_bootstrap_worker
+    from backend.uncertainty_v2.resampling import resample_error_model
+    base = _split_water((1, 2), symmetry="C1")
+    eng = BootstrapEngine(base, BootstrapConfig(n_samples=2, strategy="error-model"))
+    with contextlib.redirect_stdout(io.StringIO()):
+        limit, polish = eng._gate_limits()
+    cov = base.constant_error_covariance()
+    tight = deepcopy(base)
+    tight._base_trust_radius = tight._base_null_trust_radius = 1e-5
+    tight.conv_freq = 20.0
+    passed = 0
+    for i in range(6):
+        pert = resample_error_model(base.spectral.isotopologues, cov, np.random.default_rng(1000 + i))
+        with contextlib.redirect_stdout(io.StringIO()):
+            res = _run_bootstrap_worker((tight, deepcopy(pert), str(tmp_path / "s"), i, 0, None, polish))
+            fp = deepcopy(base)
+            _freeze_corrections(fp)
+            fp.spectral.isotopologues = deepcopy(pert)
+            fp.max_iter = 3000
+            c = np.asarray(fp.run(), dtype=float)
+            c = np.asarray(fp.run(), dtype=float)
+        if res.mode_distance is not None and res.mode_distance <= limit:
+            passed += 1
+            assert _restart_distance(fp, res.coords, c) <= limit
+    assert passed == 0, "every restart here was trust-limited"
