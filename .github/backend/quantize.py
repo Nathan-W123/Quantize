@@ -243,12 +243,28 @@ def _kabsch_align(mobile, reference):
     """
     a = np.asarray(mobile, dtype=float)
     b = np.asarray(reference, dtype=float)
-    ca, cb = a.mean(axis=0), b.mean(axis=0)
-    p, q = a - ca, b - cb
+    rot = _kabsch_rotation(a, b)
+    return (rot @ (a - a.mean(axis=0)).T).T + b.mean(axis=0)
+
+
+def _kabsch_rotation(mobile, reference):
+    """The proper rotation (3x3, acting on column vectors) that _kabsch_align
+    applies to ``mobile`` about its centroid."""
+    a = np.asarray(mobile, dtype=float)
+    b = np.asarray(reference, dtype=float)
+    p, q = a - a.mean(axis=0), b - b.mean(axis=0)
     u, _, vt = np.linalg.svd(p.T @ q)
     d = np.sign(np.linalg.det(vt.T @ u.T))
-    rot = vt.T @ np.diag([1.0, 1.0, d]) @ u.T
-    return (rot @ p.T).T + cb
+    return vt.T @ np.diag([1.0, 1.0, d]) @ u.T
+
+
+def _rotate_cartesian_hessian(hessian, rot):
+    """A Cartesian Hessian (3N x 3N, atom-major) of a geometry rotated by
+    ``rot``: each 3x3 block becomes rot H_ij rot^T. Exact -- the energy does
+    not change under a rigid rotation."""
+    h = np.asarray(hessian, dtype=float)
+    k = np.kron(np.eye(h.shape[0] // 3), np.asarray(rot, dtype=float))
+    return k @ h @ k.T
 
 
 
@@ -1331,14 +1347,59 @@ class MolecularOptimizer:
             raise ValueError(f"Unknown method_preset '{name}'.")
         return presets[key]
 
+    def _target_prior_active(self):
+        """Whether the quantum prior is the Gaussian centred on
+        prior_target_coords (Cartesian mode; see _prior_gradient)."""
+        t = self._prior_target_coords
+        return (t is not None and self.coordinate_mode == "cartesian"
+                and np.shape(t) == np.shape(self.coords))
+
+    def _target_hessian_frame(self):
+        """The prior target placed in the current frame: where a target
+        prior's curvature belongs."""
+        return _kabsch_align(self._prior_target_coords, self.coords)
+
     def _run_hessian(self):
-        """Full Freq job: refreshes both gradient and Hessian via the active backend."""
+        """Full Freq job: refreshes both gradient and Hessian via the active backend.
+
+        With a target-centred prior the Hessian is the prior's precision, so
+        it is the one at the target, computed once and only rotated into the
+        current frame afterwards; the energy and gradient are still the
+        current geometry's. A Hessian at wherever the fit had got to made the
+        prior move with the fit: on isocyanic acid (HF/6-31G, the benchmark
+        recipe) a fresh Hessian at the answer moved it 97 mA, the next 38 mA,
+        and three refreshes did not settle. Every shipped script starts at its
+        target, so their first Hessian, and their answers, are unchanged.
+        """
         if self._backend is None:
             raise RuntimeError("No quantum backend initialized.")
+        if self._target_prior_active():
+            at = self._target_hessian_frame()
+            key = np.asarray(self._prior_target_coords, dtype=float).tobytes()
+            held = getattr(self, "_target_hessian", None)
+            if held is not None and held[0] == key:
+                hessian = _rotate_cartesian_hessian(held[2], _kabsch_rotation(held[1], at))
+            elif not np.allclose(at, self.coords, rtol=0.0, atol=1e-9):
+                hessian = np.asarray(self._backend.run_hessian(at).hessian_bohr, dtype=float)
+                self._target_hessian = (key, at.copy(), hessian.copy())
+            else:
+                hessian = None                # at the target: one job below
+            if hessian is not None:
+                result = self._backend.run_gradient(self.coords)
+                self.quantum = QuantumState(result.energy, result.gradient_bohr, hessian)
+                self._orca_ref_coords = self.coords.copy()
+                self._hessian_ref_coords = at.copy()
+                self._quantum_prior_weight_cache = None
+                self._proj_ref_terms_cache = None
+                return
         result = self._backend.run_hessian(self.coords)
         self.quantum = QuantumState(result.energy, result.gradient_bohr, result.hessian_bohr)
         self._orca_ref_coords = self.coords.copy()
         self._hessian_ref_coords = self.coords.copy()
+        if self._target_prior_active():
+            self._target_hessian = (np.asarray(self._prior_target_coords, dtype=float).tobytes(),
+                                    self.coords.copy(),
+                                    np.asarray(result.hessian_bohr, dtype=float).copy())
         # A new reference: a new weight, and new projected reference terms
         # (that cache is keyed on the coordinates alone, so an update at the
         # same coordinates paired the new reference point with the old
@@ -2028,10 +2089,18 @@ class MolecularOptimizer:
         formyl fluoride's benchmark fit ends 5.1 mA from its only Hessian
         (computed at the start), the water config 10.8 mA, and a fresh
         Hessian at the answer moves their widths by up to 3%.
+
+        With a target-centred prior the curvature belongs at the target, not
+        at the answer (_run_hessian), so this is the distance, after
+        alignment, from the target to where the Hessian was computed --
+        whatever ``coords`` is.
         """
         ref = getattr(self, "_hessian_ref_coords", None)
         if ref is None or self.spectral_only or self.quantum is None:
             return None
+        if self._target_prior_active():
+            t = np.asarray(self._prior_target_coords, dtype=float)
+            return float(np.sqrt(np.mean((_kabsch_align(ref, t) - t) ** 2)))
         x = self.coords if coords is None else np.asarray(coords, dtype=float)
         return float(np.sqrt(np.mean((np.asarray(x, dtype=float) - ref) ** 2)))
 

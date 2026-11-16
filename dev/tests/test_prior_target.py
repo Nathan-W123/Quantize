@@ -276,3 +276,62 @@ def test_no_displacement_means_no_isotropic_contribution():
     a, *_ = bare.step(J, residual, np.zeros(2), hess)
     b, *_ = opt.step(J, residual, np.zeros(2), hess, prior_displacement=None)
     assert a == pytest.approx(b, rel=1e-12)
+
+
+def test_a_rotated_hessian_is_the_hessian_of_the_rotated_geometry():
+    """A target prior's curvature is computed once, at the target, and only
+    rotated into the current frame afterwards; the rotation must be exact."""
+    import dev.analytic_water_backend  # noqa: F401  (registers analytic_water)
+    from backend.quantize import _kabsch_rotation, _rotate_cartesian_hessian
+    from backend.registry import get_backend
+    from test_bootstrap_targets import _coords
+    be = get_backend("analytic_water")(elems=["O", "H", "H"])
+    x = _coords() + np.array([[0.0, 0.0, 0.0], [0.01, 0.02, 0.0], [-0.03, 0.0, 0.0]])
+    t = 0.7
+    rot = np.array([[np.cos(t), 0.0, np.sin(t)], [0.0, 1.0, 0.0], [-np.sin(t), 0.0, np.cos(t)]])
+    y = (rot @ (x - x.mean(axis=0)).T).T + np.array([0.3, -0.2, 0.1])
+    np.testing.assert_allclose(_kabsch_rotation(x, y), rot, atol=1e-12)
+    h_x = np.asarray(be.run_hessian(x).hessian_bohr, dtype=float)
+    h_y = np.asarray(be.run_hessian(y).hessian_bohr, dtype=float)
+    # The analytic backend's Hessian is finite-differenced: the two agree to
+    # 7e-8 of the largest entry (measured), the noise of that differencing.
+    np.testing.assert_allclose(_rotate_cartesian_hessian(h_x, rot), h_y,
+                               rtol=0.0, atol=1e-6 * np.abs(h_y).max())
+
+
+def test_a_target_prior_keeps_the_target_s_curvature():
+    """The prior is a Gaussian at the target with the quantum curvature as its
+    precision; a Hessian computed wherever the fit had got to made it move
+    with the fit. On isocyanic acid (HF/6-31G, the benchmark recipe) a fresh
+    Hessian at the answer moved it 97 mA, then 38, and three refreshes did not
+    settle. On analytic water, nearly harmonic, a restart from the answer
+    moved it 4.6e-5 mA; it now moves it under 1e-6 mA (8e-10 measured), and
+    the Hessian refresh leaves it exactly where it was."""
+    import contextlib
+    import copy
+    import io
+    import dev.analytic_water_backend  # noqa: F401
+    from backend.quantize import MolecularOptimizer
+    from test_bootstrap_targets import B0_D2O, B0_H2O, MASSES_D2O, MASSES_H2O, _coords
+    isos = [{"name": n, "masses": m, "obs_constants": list(b), "sigma_constants": [0.2] * 3}
+            for n, m, b in (("H2-16O", MASSES_H2O, B0_H2O), ("D2-16O", MASSES_D2O, B0_D2O))]
+    target = _coords() + np.array([[0.0, 0.0, 0.0], [0.02, 0.01, 0.0], [-0.02, 0.01, 0.0]])
+
+    def make(start):
+        with contextlib.redirect_stdout(io.StringIO()):
+            return MolecularOptimizer(
+                elems=["O", "H", "H"], coords=np.asarray(start, dtype=float), isotopologues=isos,
+                quantum_backend="analytic_water", use_autoconfig=False,
+                coordinate_mode="cartesian", max_iter=100, prior_target_coords=target,
+                quantum_prior_sigma_ang=0.02)
+
+    opt = make(target)
+    with contextlib.redirect_stdout(io.StringIO()):
+        x1 = np.asarray(opt.run(), dtype=float)
+        x2 = np.asarray(make(x1).run(), dtype=float)
+    assert 1e3 * np.sqrt(np.mean((x2 - x1) ** 2)) < 1e-6
+    assert opt.hessian_distance() < 1e-12, "the Hessian is the target's"
+    again = copy.deepcopy(opt)
+    with contextlib.redirect_stdout(io.StringIO()):
+        info = again.refresh_hessian_at_answer()
+    assert info["moved_ang"] == 0.0 and info["settled"]
