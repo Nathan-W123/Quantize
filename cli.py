@@ -62,12 +62,15 @@ def _print_config_summary(cfg: dict) -> None:
 
 
 def _json_safe(v):
+    """Strict JSON: numpy as plain numbers, NaN and infinity as null (json
+    wrote a bare NaN, which strict parsers reject), anything else as text."""
+    import math
     try:
         import numpy as _np
         if isinstance(v, _np.ndarray):
-            return v.tolist()
-        if isinstance(v, (_np.floating, _np.integer)):
-            return v.item()
+            return _json_safe(v.tolist())
+        if isinstance(v, (_np.floating, _np.integer, _np.bool_)):
+            return _json_safe(v.item())
     except Exception:
         pass
     if isinstance(v, dict):
@@ -76,7 +79,9 @@ def _json_safe(v):
         return [_json_safe(x) for x in v]
     if isinstance(v, Path):
         return str(v)
-    if isinstance(v, (str, int, float, bool)) or v is None:
+    if isinstance(v, float):
+        return v if math.isfinite(v) else None
+    if isinstance(v, (str, int, bool)) or v is None:
         return v
     return str(v)
 
@@ -424,7 +429,7 @@ def _write_bundle(opt, summary_bundle):
     os.makedirs(out_dir, exist_ok=True)
     out_path = os.path.join(out_dir, "uncertainty_run_summary.json")
     with open(out_path, "w", encoding="utf-8") as fh:
-        json.dump(_json_safe(summary_bundle), fh, indent=2)
+        json.dump(_json_safe(summary_bundle), fh, indent=2, allow_nan=False)
     return out_path
 
 
@@ -595,12 +600,13 @@ def _cmd_uncertainty(args) -> int:
         os.makedirs(out_dir, exist_ok=True)
         with open(os.path.join(out_dir, "posterior_laplace_summary.json"), "w", encoding="utf-8") as fh:
             json.dump(
-                {
+                _json_safe({
                     "posterior_state": posterior_state.to_dict(),
                     "laplace": laplace.to_dict(),
-                },
+                }),
                 fh,
                 indent=2,
+                allow_nan=False,
             )
     
     # Hoisted above the mode branches on purpose: all are read after them,

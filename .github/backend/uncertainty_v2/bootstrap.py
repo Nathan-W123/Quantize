@@ -11,7 +11,7 @@ import numpy as np
 
 from backend.quantize import MolecularOptimizer
 
-from .models import BootstrapConfig, BootstrapRunSummary, BootstrapSampleResult
+from .models import BootstrapConfig, BootstrapRunSummary, BootstrapSampleResult, json_ready
 from .resampling import (
     draw_quantum_prior_shift,
     resample_cd_observed,
@@ -717,4 +717,4 @@ class BootstrapEngine:
     def _persist_summary(summary: BootstrapRunSummary, run_dir: str) -> None:
         out_path = os.path.join(run_dir, "bootstrap_summary.json")
         with open(out_path, "w", encoding="utf-8") as fh:
-            json.dump(summary.to_dict(), fh, indent=2)
+            json.dump(json_ready(summary.to_dict()), fh, indent=2, allow_nan=False)

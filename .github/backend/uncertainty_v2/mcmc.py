@@ -9,7 +9,7 @@ import numpy as np
 from backend.internal.internal_fit import InternalCoordinateSet
 from backend.quantize import MolecularOptimizer
 
-from .models import ChainRunResult, ConvergenceSummary, MCMCConfig, MCMCRunSummary
+from .models import ChainRunResult, ConvergenceSummary, MCMCConfig, MCMCRunSummary, json_ready
 
 
 def _autocorr_1d(x: np.ndarray, max_lag: int) -> np.ndarray:
@@ -269,7 +269,7 @@ class AdaptiveMetropolisV2:
     @staticmethod
     def _persist_summary(summary: MCMCRunSummary, out_dir: str) -> None:
         with open(os.path.join(out_dir, "mcmc_summary.json"), "w", encoding="utf-8") as fh:
-            json.dump(summary.to_dict(), fh, indent=2)
+            json.dump(json_ready(summary.to_dict()), fh, indent=2, allow_nan=False)
         with open(os.path.join(out_dir, "mcmc_config.json"), "w", encoding="utf-8") as fh:
-            json.dump(asdict(summary.config), fh, indent=2)
+            json.dump(json_ready(asdict(summary.config)), fh, indent=2, allow_nan=False)
 

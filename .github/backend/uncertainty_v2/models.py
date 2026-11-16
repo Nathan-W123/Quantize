@@ -384,3 +384,26 @@ class MCMCRunSummary:
             "usable": self.usable,
             "unusable_reason": self.unusable_reason(),
         }
+
+
+def json_ready(value):
+    """``value`` as strict JSON: numpy scalars and arrays as plain numbers and
+    lists, and NaN or infinity as null. json.dump writes NaN as a bare
+    ``NaN``, which no strict parser accepts (a constant coordinate's
+    kurtosis, a ratio against a zero analytic width)."""
+    import math
+    try:
+        import numpy as _np
+        if isinstance(value, _np.ndarray):
+            return json_ready(value.tolist())
+        if isinstance(value, (_np.floating, _np.integer, _np.bool_)):
+            return json_ready(value.item())
+    except ImportError:  # pragma: no cover
+        pass
+    if isinstance(value, dict):
+        return {str(k): json_ready(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [json_ready(v) for v in value]
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    return value

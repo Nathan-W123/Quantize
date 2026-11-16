@@ -526,3 +526,28 @@ def test_a_fit_that_stops_at_max_iter_is_warned_about(tmp_path, monkeypatch):
     assert b["hessian_refresh"]["termination"] == "max_iter"
     assert any("stopped at max_iter" in w for w in b["warnings"])
     assert "recomputed at the fit's final geometry" in out.getvalue()
+
+
+def test_the_summaries_are_strict_json(tmp_path):
+    """A constant coordinate's kurtosis (and a ratio against a zero analytic
+    width) is NaN, and json.dump wrote it as a bare NaN, which a strict JSON
+    parser rejects. Every uncertainty file now writes null for it."""
+    from backend.uncertainty_v2.bootstrap import BootstrapEngine
+    from backend.uncertainty_v2.models import BootstrapConfig, BootstrapRunSummary, json_ready
+
+    def strict(path):
+        def no_constant(name):
+            raise ValueError(f"non-JSON constant {name}")
+        return json.loads(Path(path).read_text(encoding="utf-8"), parse_constant=no_constant)
+
+    assert json_ready({"k": [1.0, float("nan"), np.float64("inf")], "a": np.array([np.nan])}) == \
+        {"k": [1.0, None, None], "a": [None]}
+    s = BootstrapRunSummary(config=BootstrapConfig(n_samples=4), total_samples=4,
+                            successful_samples=4, failed_samples=0, mean_rms_mhz=None)
+    s.analytic = {"check": {"kurtosis": [float("nan"), 3.1], "ratio": [np.float64("nan"), 1.0]}}
+    BootstrapEngine._persist_summary(s, str(tmp_path))
+    got = strict(tmp_path / "bootstrap_summary.json")
+    assert got["analytic"]["check"]["kurtosis"] == [None, 3.1]
+    out = cli._write_bundle(str(tmp_path), {"bootstrap": {"analytic": s.analytic}, "x": float("nan")})
+    got = strict(out)
+    assert got["x"] is None and got["bootstrap"]["analytic"]["check"]["ratio"] == [None, 1.0]
