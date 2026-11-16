@@ -116,6 +116,15 @@ def draw_quantum_prior_shift(optimizer, rng: np.random.Generator) -> np.ndarray:
     Refitting with xi (MolecularOptimizer._rto_quantum_shift) and the
     constants drawn from their error model gives a posterior draw.
     """
+    return quantum_prior_shift_sampler(optimizer)(rng)
+
+
+def quantum_prior_shift_sampler(optimizer):
+    """draw_quantum_prior_shift with its square root formed once: a callable
+    taking the rng. The weight, projection, SPD Hessian, physical basis and
+    square root are all fixed at the fitted geometry, and were rebuilt for
+    every draw (20,000 draws 9.8 s, against 0.03 s with the root formed
+    once); the draws are bit-identical."""
     x = np.asarray(optimizer.coords, dtype=float)
     _g, Hp = optimizer._project_quantum_terms(optimizer.quantum.gradient,
                                               optimizer.quantum.hessian)
@@ -129,4 +138,5 @@ def draw_quantum_prior_shift(optimizer, rng: np.random.Generator) -> np.ndarray:
     # whatever basis physical_basis returns for the subspace, so the draw
     # depends on the seed and the Hessian only.
     root = basis @ symmetric_sqrt(basis.T @ Hs @ basis / alpha) @ basis.T
-    return root @ rng.standard_normal(Hs.shape[0])
+    n = Hs.shape[0]
+    return lambda rng: root @ rng.standard_normal(n)

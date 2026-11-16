@@ -54,7 +54,7 @@ from backend.uncertainty_v2.bootstrap import (  # noqa: E402
 from backend.uncertainty_v2.models import BootstrapConfig  # noqa: E402
 from backend.uncertainty_v2.reporting import format_bootstrap_summary  # noqa: E402
 from backend.uncertainty_v2.resampling import (  # noqa: E402
-    draw_quantum_prior_shift, resample_error_model, symmetric_sqrt)
+    draw_quantum_prior_shift, quantum_prior_shift_sampler, resample_error_model, symmetric_sqrt)
 
 CONFIG = _ROOT / "dev" / "configs" / "water_analytic_endtoend.yaml"
 MASSES_H2O = [15.9949146196, 1.00782503207, 1.00782503207]
@@ -135,7 +135,11 @@ def test_the_rto_shift_has_the_prior_s_covariance(config_fit):
     physical directions."""
     opt = config_fit
     rng = np.random.default_rng(5)
-    xi = np.array([draw_quantum_prior_shift(opt, rng) for _ in range(20000)])
+    draw = quantum_prior_shift_sampler(opt)
+    xi = np.array([draw(rng) for _ in range(20000)])
+    # The sampler is the one-draw function with its root formed once.
+    np.testing.assert_array_equal(draw(np.random.default_rng(9)),
+                                  draw_quantum_prior_shift(opt, np.random.default_rng(9)))
     _g, Hp = opt._project_quantum_terms(opt.quantum.gradient, opt.quantum.hessian)
     Hs = opt.optimizer._spd_hessian(Hp)
     alpha = opt.quantum_prior_weight(refresh=True)

@@ -14,6 +14,7 @@ from backend.quantize import MolecularOptimizer
 from .models import BootstrapConfig, BootstrapRunSummary, BootstrapSampleResult, json_ready
 from .resampling import (
     draw_quantum_prior_shift,
+    quantum_prior_shift_sampler,
     resample_cd_observed,
     resample_error_model,
     resample_isotopologues_gaussian,
@@ -376,6 +377,10 @@ class BootstrapEngine:
             cd_sigmas = self.optimizer.spectral.cd_row_sigmas(self.optimizer.coords)
         jobs: list[tuple] = []
 
+        # The prior-centre draw's square root is fixed at the fitted
+        # geometry: formed once, not once per sample.
+        draw_shift = (quantum_prior_shift_sampler(self.optimizer)
+                      if self.config.strategy == "rto" else None)
         for i, child in enumerate(child_sequences, start=1):
             seed = int(child.generate_state(1)[0])
             rng = np.random.default_rng(seed)
@@ -387,7 +392,7 @@ class BootstrapEngine:
                 if any(cd_sigmas):
                     perturbed = resample_cd_observed(perturbed, cd_sigmas, rng)
                 if self.config.strategy == "rto":
-                    shift = draw_quantum_prior_shift(self.optimizer, rng)
+                    shift = draw_shift(rng)
             else:
                 raise ValueError(f"Unsupported bootstrap strategy: {self.config.strategy}")
 
