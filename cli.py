@@ -511,6 +511,22 @@ def _cmd_uncertainty(args) -> int:
 
     print("\nConverging initial geometry to the global minimum...")
     opt.run()
+    if not args.no_hessian_refresh:
+        # Every width below reads the quantum Hessian; the fit computes it on
+        # its own schedule, usually at the start (4-20 mA from the answer on
+        # nine HF/6-31G molecules, widths up to 7% off). One more Hessian at
+        # the answer, then re-converge on it.
+        refreshed = opt.refresh_hessian_at_answer()
+        if refreshed is not None:
+            age = refreshed["age_before_ang"]
+            print(f"[uncertainty] quantum Hessian recomputed at the converged geometry "
+                  f"(the fit's was {1e3 * age:.2f} mA RMS away); re-converged, the "
+                  f"geometry moved {1e3 * refreshed['moved_ang']:.3f} mA RMS.")
+            summary_bundle["hessian_refresh"] = {
+                "age_before_ma": None if age is None else 1e3 * age,
+                "moved_ma": 1e3 * refreshed["moved_ang"], "passes": refreshed["passes"]}
+    else:
+        summary_bundle["hessian_refresh"] = "skipped (--no-hessian-refresh)"
 
     posterior_state = evaluate_posterior_state(opt, opt.coords, use_proxy=True)
     laplace = laplace_approximation(opt, regularization=args.laplace_regularization)
@@ -960,6 +976,15 @@ def main(argv: list[str] | None = None) -> int:
               "bootstrap's analytic and posterior columns, and an interval drawn "
               "from the reported posterior. MCMC chains and rto refits sample the "
               "objective itself and do not carry it (a note says so)."),
+    )
+    unc_p.add_argument(
+        "--no-hessian-refresh",
+        action="store_true",
+        help=("Skip recomputing the quantum Hessian at the converged geometry before "
+              "the widths. By default it is recomputed once (one extra Hessian) and "
+              "the fit re-converged on it; skipped, the widths use the fit's own "
+              "Hessian, usually from the start of the fit, and the report says how "
+              "far away it was."),
     )
     unc_p.add_argument(
         "--no-laplace-persist",

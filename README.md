@@ -367,7 +367,13 @@ python -m cli uncertainty configs/example_water_semi_experimental.yaml \
 ```
 
 The reported uncertainty is the analytic posterior (the Laplace covariance
-plus the model error, shared across isotopologues). The interval table, the
+plus the model error, shared across isotopologues). Before any width,
+`quantize uncertainty` recomputes the quantum Hessian at the converged
+geometry and re-converges on it: the fit computes its Hessian on its own
+schedule, usually at the start (4-20 mA from the answer on nine HF/6-31G
+molecules, widths up to 7% off). That costs one Hessian; `--no-hessian-refresh`
+skips it. `quantize run` keeps the fit's own Hessian and its report says how
+far away it was. The interval table, the
 predictive check and the plots describe a sample of it: the MCMC chains when
 they pass their convergence checks, an `rto` bootstrap when one was run,
 otherwise draws from the reported posterior itself; clouds are never pooled.

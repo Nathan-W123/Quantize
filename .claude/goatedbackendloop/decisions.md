@@ -261,3 +261,21 @@
   refusal where nothing ran.
 - Source: assumption, unconfirmed (CLI contract).
 - Revisit if: automation depends on the old 0 for partial runs.
+
+### D-23 · `quantize uncertainty` recomputes the quantum Hessian at the answer (2026-11-16)
+- Decision: the uncertainty command always recomputes the Hessian once at
+  the converged geometry and re-converges (repeating only past the 5 mA
+  drift rule) before any width is computed; `quantize run` and the library
+  default keep the fit's own schedule and the Hessian-age warning.
+  `--no-hessian-refresh` skips it (assumption: an escape hatch for
+  expensive methods).
+- Why: measured on 9 HF/6-31G molecules + water cfg: Hessians 4-20 mA old;
+  refreshing moves widths up to 7%, alpha -14..+24%, the geometry under
+  0.8 mA (below reference resolution) at +20-83% wall; restarts become
+  stationary (<= 0.001 mA).
+- Alternatives considered: every fit by default; opt-in only; keep as is;
+  refresh only past 5 mA.
+- Source: stated by user (policy "uncertainty only", threshold "always once
+  at the end"); opt-out flag is an assumption.
+- Revisit if: a method where one Hessian dominates the run makes the
+  default too slow.

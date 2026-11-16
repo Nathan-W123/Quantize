@@ -363,3 +363,28 @@ def test_the_autocorrelation_plot_is_quiet_on_a_short_stuck_chain(tmp_path):
         warnings.simplefilter("error")
         plot_autocorrelations(chain, ["O", "H", "H"], str(tmp_path))
     assert (tmp_path / "autocorrelations.png").is_file()
+
+
+
+def test_the_uncertainty_command_recomputes_the_hessian_at_the_answer(tmp_path, monkeypatch):
+    """Every width the command reports reads the quantum Hessian, which the
+    fit computes on its own schedule. The command recomputes it at the
+    answer first; --no-hessian-refresh skips that and the bootstrap summary
+    says how far away the fit's Hessian was."""
+    skip_dir, run_dir = tmp_path / "skip", tmp_path / "refresh"
+    skip_dir.mkdir()
+    run_dir.mkdir()
+    code, out, err = _run(["--mode", "bootstrap", "--samples", "2", "--no-hessian-refresh"] + _QUIET,
+                          skip_dir, monkeypatch)
+    assert code == 0, err[-2000:]
+    b0 = _bundle(skip_dir)
+    assert b0["hessian_refresh"] == "skipped (--no-hessian-refresh)"
+    age = 1e3 * b0["bootstrap"]["analytic"]["hessian_distance_ang"]
+    assert age > 0.1, "premise: the fit's Hessian is not at its answer"
+    code, out, err = _run(["--mode", "bootstrap", "--samples", "2"] + _QUIET, run_dir, monkeypatch)
+    assert code == 0, err[-2000:]
+    b1 = _bundle(run_dir)
+    assert b1["hessian_refresh"]["age_before_ma"] == pytest.approx(age, rel=1e-6)
+    assert b1["hessian_refresh"]["passes"] >= 1
+    assert 1e3 * b1["bootstrap"]["analytic"]["hessian_distance_ang"] < 0.1 * age
+    assert "quantum Hessian recomputed at the converged geometry" in out

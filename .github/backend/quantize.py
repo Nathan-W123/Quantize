@@ -1946,6 +1946,40 @@ class MolecularOptimizer:
                     f"an asymmetric start, 0.058: within 1%)")
         return None
 
+    def refresh_hessian_at_answer(self, max_passes=3):
+        """Recompute the quantum Hessian at the converged geometry, and
+        re-converge on it.
+
+        The fit refreshes its quantum gradient whenever it drifts
+        orca_update_thresh, but the Hessian only on its own schedule, so the
+        curvature behind the quantum prior's weight and the reported widths
+        is usually the one from the start of the fit. Measured at HF/6-31G
+        on nine molecules: 4-20 mA from the answer; recomputing it here moved
+        alpha_q by -14..+24% and the widths by up to 7%, the geometry by
+        under 0.8 mA, and made a restart from the answer stationary (0.001 mA
+        against 0.13-0.26 without). It costs one Hessian, so the plain fit
+        does not do it; `quantize uncertainty` does, before any width.
+
+        The first pass always runs; another only if re-converging carried
+        the geometry past orca_update_thresh from the new Hessian. Returns
+        {"passes", "age_before_ang", "moved_ang"} (RMS), or None without a
+        quantum model.
+        """
+        if self.spectral_only or self.quantum is None or self._backend is None:
+            return None
+        age = self.hessian_distance()
+        start = np.asarray(self.coords, dtype=float).copy()
+        passes = 0
+        while passes < int(max_passes):
+            if passes and float(self.hessian_distance() or 0.0) <= float(self.orca_update_thresh):
+                break
+            self._force_hessian_refresh()
+            self._update_orca()          # a full update: Hessian, and what follows it
+            self.run()
+            passes += 1
+        moved = float(np.sqrt(np.mean((np.asarray(self.coords, dtype=float) - start) ** 2)))
+        return {"passes": passes, "age_before_ang": age, "moved_ang": moved}
+
     def hessian_distance(self, coords=None):
         """RMS distance (Angstrom, the _orca_drift metric) from ``coords`` to
         where the quantum Hessian was computed, or None without one.

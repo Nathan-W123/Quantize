@@ -2,7 +2,6 @@
 
 | # | Pri | Item | Evidence | Confirmed / possible | Effort | Benefit | Status |
 |---|-----|------|----------|----------------------|--------|---------|--------|
-| N1 | P2 | Which Hessian the quantum prior's curvature uses. (a) The reported posterior and alpha_q use the Hessian from the start of the fit (adaptive schedule): water config 10.8 mA from the answer, alpha 2097 -> 1803 (-14%) and widths -0.4/+1.6% if recomputed at the fit; FF 5.1 mA, widths up to +-2.8%. Fixing it costs one Hessian per fit and moves alpha, hence the geometry (accuracy/efficiency trade, D-03: flag, do not implement unasked). (b) Prior-target mode refreshes H at the current geometry, so a fresh restart fits a different objective. | wf_3a613cec-119 S-F6 (hess_origin.py, refresh_widths.py); 2026-11-12 CFM 3.20 mA | Confirmed | M | Uncertainty and possibly geometry accuracy | Open |
 | N2 | P2 | README's sparse-data sigma rows (fluorobenzene, monofluoro parent-only: 0.005 A) predate the Cartesian-alpha fix and were not re-scanned; water re-scanned to 0.003. | 1987406; README note added | Confirmed | M (fluorobenzene HF is slow) | Correct guidance | Open |
 | N3 | P2 | Accuracy yardstick: 7 of 9 benchmark references are r_s/effective (+/-5 mA); fixes moving answers 1-3 mA cannot be ranked against them. Needs r_e^SE references. | critic, wf_e5e2e0fe-c99 | Confirmed | Low per molecule | High | Blocked on literature (was F8; F7 interval recalibration, 90% coverage at 68% nominal, waits on it too) |
 | F13 | P2 | `auto_systematic_sigma` is opt-in; its magnitudes are 3-10x off on A and B (water A x4.7, B x9.9; item 1 verifier) and under the correlated model an overestimate adds up across isotopologues instead of averaging down. (Its double count is fixed in step 6.) | 2026-11-10, 2026-11-12 | Confirmed | M | High | Open |
@@ -16,5 +15,5 @@
 | N10 | P2 | Round-6 fixes 090737a (restart guard, kurtosis-aware flag, impact floor, off-mode note) and dd362b4 (observed ABC for auto, bundles, exit 3, config checks) were not re-verified: round 6 found 2 high in round 5's fixes. | wf_706bb93b-253; user chose N1 next (2026-11-16) | Possible | S (one ~20 min check) | Medium | Open |
 | N11 | P3 | The test suite writes run directories into the repository's cwd (output/runs, gitignored) instead of tmp_path. | wf_4fb65e30 F8 | Confirmed | Low | Low | Open |
 
-Closed 2026-11-16: step 8 (bootstrap) wrapped after six checks.
+Closed 2026-11-16: N1 (D-23, quantize uncertainty recomputes the Hessian at the answer); step 8 (bootstrap) wrapped after six checks.
 Closed 2026-11-12: F5 (`quantize uncertainty`, f0e9590); F10 (log_probability weight, consolidated earlier); F11 (MCMC traces, fixed); 18 (the "100% accepted" fits ran a path the first acceptance fix never reached; fixed in 1987406); 17, 20 (withdrawn). F4 (137-parameter `__init__`) dropped: noted, not recommended.

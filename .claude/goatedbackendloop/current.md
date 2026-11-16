@@ -1,5 +1,5 @@
 # Current task
-Status: done (step 8); next N1
+Status: done (N1)
 Request: Verify the user's 7-item list (5 confirmed + 2 possible); fix where true and needed.
 
 ## Brief
@@ -222,6 +222,21 @@ quantum prior is on, honours configured widths when used.
 - DONE step 8, wrapped 2026-11-16 at the user's choice (round-6 fixes not
   re-verified: backlog N10). Next task chosen by the user: N1 (which
   quantum Hessian the prior's curvature uses).
+- N1 MEASURED 2026-11-16 (prototype, no repo change; scratchpad n1/
+  measure_n1.py, n1.jsonl; config path HF/6-31G from the HF optimum + water
+  analytic cfg): Hessian older than 5 mA at convergence on 7/10 (5-20 mA).
+  Refresh at the answer + re-converge: geometry 0.001-0.18 mA except CFM
+  0.80 and water cfg 1.47; accuracy vs refs unchanged within 0.4 mA (refs
+  +-5 mA); alpha -14..+24%; widths up to 7.2% (CFM), 5.6% (water cfg),
+  others <= 3.1%; restart move after refresh <= 0.001 mA (unrefreshed FF,
+  HCCF, AcF 0.13-0.26 mA); cost +1 Hessian (fits use 1), +0.2-5.8 s on
+  0.5-9.9 s fits (+20-83% wall).
+- DECIDED (user, D-23): refresh in `quantize uncertainty` only, always once
+  at the end. DONE: MolecularOptimizer.refresh_hessian_at_answer(), CLI call
+  + --no-hessian-refresh, bundle record, README. Matches the prototype
+  exactly (ozone alpha 2425 -> 3012, CFM 3543 -> 3277, widths 0.3% / 7.2%).
+  CLI water cfg: Hessian 0.68 -> 0.05 mA away, widths +0.35%, 2.88 -> 3.23 s.
+  Suite 1541 passed, 21 skipped.
 
 ## Observations
 - Workflow sizing: 4-CPU container caps concurrent agents at 2; 7 broad

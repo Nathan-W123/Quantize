@@ -730,3 +730,28 @@ def test_a_split_restart_that_runs_out_of_iterations_certifies_nothing(tmp_path)
             c = np.asarray(fp.run(), dtype=float)
         if res.mode_distance is not None and res.mode_distance <= limit:
             assert _restart_distance(fp, res.coords, c) <= limit
+
+
+def test_the_hessian_is_recomputed_at_the_answer_on_request(config_fit):
+    """The water config's fit ends with the Hessian it computed 10.8 mA away;
+    its prior weight is then 2097, against 1803 with the curvature at the
+    answer, and the widths are up to 5.6% off. refresh_hessian_at_answer
+    puts the Hessian there and re-converges on it (the geometry moved 1.5
+    mA); a restart from the result is then stationary."""
+    opt = deepcopy(config_fit)
+    assert 1e3 * opt.hessian_distance() == pytest.approx(10.77, abs=0.05), "premise"
+    before = opt.quantum_prior_weight()
+    with contextlib.redirect_stdout(io.StringIO()):
+        info = opt.refresh_hessian_at_answer()
+    assert info["passes"] >= 1 and 1e3 * info["age_before_ang"] == pytest.approx(10.77, abs=0.05)
+    assert opt.hessian_distance() <= opt.orca_update_thresh
+    assert before == pytest.approx(2097, rel=0.01)
+    assert opt.quantum_prior_weight() == pytest.approx(1803, rel=0.01)
+    assert opt.distance_to_mode() < 0.01
+    x = np.asarray(opt.coords, dtype=float).copy()
+    with contextlib.redirect_stdout(io.StringIO()):
+        opt.run()
+    assert 1e3 * float(np.sqrt(np.mean((np.asarray(opt.coords) - x) ** 2))) < 0.2, "restart-stationary"
+    spectral = deepcopy(config_fit)
+    spectral.spectral_only = True
+    assert spectral.refresh_hessian_at_answer() is None
