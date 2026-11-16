@@ -616,6 +616,9 @@ class SpectralEngine:
                     else "default")
                 for k in default})
             red = entry.get("cd_reduction")
+            if red is not None and str(red).strip().upper() == "AUTO":
+                entry.pop("cd_reduction", None)          # the default, stated
+                red = None
             if red is not None:
                 red = str(red).strip().upper()
                 if red not in ("A", "S"):

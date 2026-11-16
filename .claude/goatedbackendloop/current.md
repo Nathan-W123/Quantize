@@ -237,6 +237,18 @@ quantum prior is on, honours configured widths when used.
   exactly (ozone alpha 2425 -> 3012, CFM 3543 -> 3277, widths 0.3% / 7.2%).
   CLI water cfg: Hessian 0.68 -> 0.05 mA away, widths +0.35%, 2.88 -> 3.23 s.
   Suite 1541 passed, 21 skipped.
+- VERIFIED round 7 (two background agents, ~12 min each): headline claims
+  reproduced; medium: refresh re-applied the chi2 rescale (x4/call),
+  trust-limited split restarts passed (up to 55 widths), kurtosis MC error
+  still miscalibrated at small n; stale bundle on usage/config errors;
+  `quantize run` dropped config-error text.
+- DONE 3603778 (refresh: _optimise_once, settles Hessian-built corrections,
+  honest CLI), 98677c8 (capped-and-marching restarts unmeasured; default
+  sweep unchanged), 18436c4 (G2 kurtosis, log test, family-wise bar, ratio's
+  own error; heavy-tailed small-n false flags remain, stated), and the CLI
+  commit (bundle before any failure, config errors exit 2 in both commands,
+  partial reasons once, B,C-only auto from observed constants, validator
+  keys/auto, drive-letter case, SVD empty guard). Suite 1551 passed.
 
 ## Observations
 - Workflow sizing: 4-CPU container caps concurrent agents at 2; 7 broad

@@ -122,7 +122,9 @@ class SubspaceOptimizer:
         rank : int         number of experimentally constrained directions
         """
         U, s, Vt = np.linalg.svd(J, full_matrices=True)
-        if s[0] > 0:
+        # No rows (every spectral row dropped, as a diverged fit can leave
+        # it) has no singular values: rank 0, not an IndexError.
+        if s.size and s[0] > 0:
             cutoff = max(self.sv_threshold * s[0], self.sv_min_abs)
             rank = int(np.sum(s > cutoff))
         else:

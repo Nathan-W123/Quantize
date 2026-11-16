@@ -8,6 +8,7 @@ Can also be run directly:
 
 from __future__ import annotations
 
+import os
 import sys
 import csv
 import json
@@ -271,6 +272,13 @@ def _build_isotopologue(iso: dict, spectral_model: str = "rigid") -> dict:
 
     obs = [float(v) for v in iso["obs_b0_mhz"]]
     sig = [float(v) for v in iso["sigma_mhz"]]
+    # The observed A, B, C before any component filter below drops one: the
+    # distortion rows' 'auto' reduction is decided from them (with B and C
+    # alone it fell back to each start's geometry).
+    _have = dict(zip(indices, obs))
+    _abc = [_have.get(0), _have.get(1), _have.get(2)]
+    cd_abc_observed = (_abc if all(v is not None for v in _abc)
+                       and _abc[0] >= _abc[1] >= _abc[2] > 0.0 else None)
     alp = [float(v) for v in iso["alpha_mhz"]] if "alpha_mhz" in iso else [0.0] * len(indices)
     if not (len(obs) == len(sig) == len(alp) == len(indices)):
         raise ValueError(
@@ -328,6 +336,8 @@ def _build_isotopologue(iso: dict, spectral_model: str = "rigid") -> dict:
         out["cd_model_sigma"] = {str(k): float(v) for k, v in dict(iso["cd_model_sigma"]).items()}
     if iso.get("cd_reduction"):
         out["cd_reduction"] = str(iso["cd_reduction"])
+    if cd_abc_observed is not None:
+        out["cd_abc_observed"] = cd_abc_observed
     return out
 
 
@@ -1847,6 +1857,16 @@ def _write_torsion_phase2_plots(
         except Exception:
             pass
     return paths
+
+
+def config_workdir(cfg: dict) -> str:
+    """The directory a config's single-start fit works in, as
+    :func:`runner.run_from_config.build_optimizer_from_config` makes it --
+    known from the config alone, before anything is built or fitted."""
+    name = str(cfg.get("name", "molecule")).strip()
+    base = (str(Path(str(cfg.get("_run_dir") or ".")).resolve()) if "_run_dir" in cfg
+            else str(OUTPUT_TRIALS_DIR))
+    return os.path.abspath(os.path.join(base, "single", name))
 
 
 def build_run_inputs(cfg: dict[str, Any], *, verbose: bool = True) -> dict[str, Any]:

@@ -142,7 +142,11 @@ def cd_model_sigma_problem(block: Any, where: str) -> str | None:
     multistart worker) instead of stopping the config."""
     if not isinstance(block, dict):
         return f"'{where}.cd_model_sigma' must be a mapping of constant name to MHz."
+    from backend.spectral.centrifugal_distortion import CD_NAMES
     for k, v in block.items():
+        if str(k) not in CD_NAMES:
+            return (f"'{where}.cd_model_sigma.{k}' names no distortion constant; use "
+                    f"{', '.join(CD_NAMES)} (case matters).")
         try:
             fv = float(v) if not isinstance(v, bool) and v is not None else float("nan")
         except (TypeError, ValueError):
@@ -267,10 +271,10 @@ def validate_config(cfg: dict[str, Any]) -> None:
             if why:
                 raise ConfigError(why)
         red = iso.get("cd_reduction")
-        if red is not None and str(red).strip().upper() not in ("A", "S"):
-            raise ConfigError(f"'{prefix}.cd_reduction' is {red!r}; it names the Watson "
-                              f"reduction the observed distortion constants are quoted in, "
-                              f"'A' or 'S'.")
+        if red is not None and str(red).strip().upper() not in ("A", "S", "AUTO"):
+            raise ConfigError(f"'{prefix} ({iso_name}).cd_reduction' is {red!r}; it names the "
+                              f"Watson reduction the observed distortion constants are quoted "
+                              f"in, 'A' or 'S' (or 'auto': chosen from the observed A, B, C).")
 
     if "spectral_model" in cfg and cfg.get("spectral_model") is not None:
         try:
@@ -1944,12 +1948,16 @@ def _rebuilt_path(stored: Any, old_run_dir: Any, run_path: Path) -> tuple[Any, b
     if not stored:
         return stored, True
     text = str(stored).replace("\\", "/")
-    is_abs = text.startswith("/") or (len(text) > 2 and text[1] == ":" and text[2] == "/")
+    drive = len(text) > 2 and text[1] == ":" and text[2] == "/"
+    is_abs = text.startswith("/") or drive
     if not is_abs:
         target = run_path / text
     else:
         old = str(old_run_dir or "").replace("\\", "/").rstrip("/")
-        target = (run_path / text[len(old) + 1:]) if old and text.startswith(old + "/") else Path(text)
+        # Windows drive letters compare without case (c: is C:).
+        fold = (lambda t: t[:1].lower() + t[1:]) if drive else (lambda t: t)
+        inside = bool(old) and fold(text).startswith(fold(old) + "/")
+        target = (run_path / text[len(old) + 1:]) if inside else Path(text)
     return str(target), target.is_file()
 
 

@@ -759,3 +759,50 @@ def test_an_old_payload_s_absolute_paths_follow_the_run(tmp_path):
         "uncertainty_meta": {"blocks": ["spectral data"]},
         "uncertainty_covariance_npy": "x.npy", "uncertainty_covariance_missing": True})
     assert "(not found when this report was rebuilt)" in txt
+
+
+
+def test_a_b_c_only_config_still_takes_auto_from_the_observed_constants():
+    """internal_rotor_bc drops A before the engine is built, so 'auto' fell
+    back to each start's geometry (kappa -0.422 / -0.448 / -0.456)."""
+    from runner.run_generic import _build_isotopologue
+    iso = {"name": "H2-16O", "masses": [M_O, M_H, M_H], "components": ["A", "B", "C"],
+           "obs_b0_mhz": [835840.29, 435351.72, 278138.70], "sigma_mhz": [0.2] * 3,
+           "alpha_mhz": [0.0] * 3, "cd_observed": {"DJ": 37.59}}
+    out = _build_isotopologue(iso, spectral_model="internal_rotor_bc")
+    assert out["component_indices"] == [1, 2]
+    assert out["cd_abc_observed"] == [835840.29, 435351.72, 278138.70]
+
+
+def test_the_validator_names_the_constant_and_accepts_auto():
+    from runner.usability import ConfigError, load_config, validate_config
+    cfg = load_config(_ROOT / "dev" / "configs" / "water_analytic_endtoend.yaml")
+    cfg["isotopologues"][0]["cd_observed"] = dict(EXP_H2O)
+    cfg["isotopologues"][0]["cd_model_sigma"] = {"dj": 5.0}
+    with pytest.raises(ConfigError, match="names no distortion constant"):
+        validate_config(cfg)
+    cfg["isotopologues"][0]["cd_model_sigma"] = {"DJ": 5.0}
+    cfg["isotopologues"][0]["cd_reduction"] = "auto"
+    validate_config(cfg)
+    cfg["isotopologues"][0]["cd_reduction"] = "X"
+    with pytest.raises(ConfigError, match=r"\(H2-16O\)\.cd_reduction"):
+        validate_config(cfg)
+    from backend.spectral.spectral import SpectralEngine
+    isos = _isos(None)
+    isos[0]["cd_observed"] = dict(EXP_H2O)
+    isos[0]["cd_reduction"] = "auto"
+    eng = SpectralEngine(isos, cd_weight=1.0, fit_cd_constants=True)
+    assert "cd_reduction" not in eng.isotopologues[0]
+
+
+def test_a_windows_path_maps_whatever_the_drive_letter_s_case(tmp_path):
+    from runner.usability import _rebuilt_path
+    (tmp_path / "s").mkdir()
+    np.save(tmp_path / "s" / "cov.npy", np.eye(2))
+    assert _rebuilt_path("c:\\runs\\R\\s\\cov.npy", "C:\\runs\\R", tmp_path) == (str(tmp_path / "s" / "cov.npy"), True)
+
+
+def test_an_empty_jacobian_has_rank_zero():
+    from backend.spectral.SVD import SubspaceOptimizer
+    U, s, Vt, rank = SubspaceOptimizer().decompose(np.zeros((0, 9)))
+    assert rank == 0 and s.size == 0

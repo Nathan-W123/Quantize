@@ -227,7 +227,8 @@ def test_refused_chains_in_mode_both_are_a_partial_result(tmp_path, monkeypatch)
     assert code == 3
     b = _bundle(tmp_path)
     assert b["partial"] is True and b["exit_status"] == 3
-    assert any(w.startswith("partial result: the MCMC chains were refused") for w in b["warnings"])
+    assert [r for r in b["partial_reasons"] if r.startswith("the MCMC chains were refused")]
+    assert not any(w.startswith("partial result") for w in b["warnings"]), "recorded once"
     assert "reported posterior" in b["cloud"]["source"]
 
 
@@ -306,7 +307,7 @@ def test_mode_both_still_runs_the_chains_when_the_bootstrap_is_refused(tmp_path,
     assert b["bootstrap_refused"] == "refused for this test"
     assert "mcmc" in b and "bootstrap" not in b
     assert b["partial"] is True and b["exit_status"] == 3
-    assert any("refused after the base fit" in w for w in b["warnings"])
+    assert any("refused after the base fit" in w for w in b["partial_reasons"])
 
 
 def test_the_ridge_note_needs_a_ridge_that_moves_the_widths(tmp_path, monkeypatch):
@@ -388,3 +389,51 @@ def test_the_uncertainty_command_recomputes_the_hessian_at_the_answer(tmp_path, 
     assert b1["hessian_refresh"]["passes"] >= 1
     assert 1e3 * b1["bootstrap"]["analytic"]["hessian_distance_ang"] < 0.1 * age
     assert "quantum Hessian recomputed at the converged geometry" in out
+
+
+
+@pytest.mark.parametrize("args,key", [(["--samples", "0"], "usage_error"),
+                                      (["--mode", "mcmc", "--burn-in", "5", "--mcmc-steps", "5"],
+                                       "usage_error")])
+def test_a_usage_error_replaces_the_last_run_s_bundle(args, key, tmp_path, monkeypatch):
+    """The stale bundle was removed only after the optimizer was built, so a
+    usage error left the previous run's (exit_status 0) in place."""
+    code, out, err = _run(["--mode", "bootstrap", "--samples", "2"] + _QUIET, tmp_path, monkeypatch)
+    assert code == 0 and _bundle(tmp_path)["exit_status"] == 0
+    code, out, err = _run(args, tmp_path, monkeypatch)
+    assert code == 2
+    b = _bundle(tmp_path)
+    assert b["exit_status"] == 2 and key in b
+
+
+def test_a_config_error_is_a_config_error(tmp_path, monkeypatch):
+    """quantize uncertainty printed a raw traceback for a bad cd_model_sigma
+    (and left the last bundle); quantize run printed only 'Run failed'."""
+    import yaml
+    from runner.usability import load_config
+    cfg = load_config(CONFIG)
+    cfg["isotopologues"][0]["cd_observed"] = {"DJ": 37.59}
+    cfg["isotopologues"][0]["cd_model_sigma"] = {"DJ": "abc"}
+    path = tmp_path / "bad.yaml"
+    path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    out, err = io.StringIO(), io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        code = cli.main(["uncertainty", str(path), "--mode", "bootstrap", "--samples", "2"])
+    assert code == 2 and "Traceback" not in err.getvalue()
+    assert "cd_model_sigma.DJ" in err.getvalue()
+    assert _bundle(tmp_path)["config_error"].startswith("config:")
+    out, err = io.StringIO(), io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        code = cli.main(["run", str(path)])
+    assert code == 2 and "cd_model_sigma.DJ" in err.getvalue()
+
+
+def test_the_config_workdir_is_the_optimizer_s():
+    from runner.run_from_config import build_optimizer_from_config
+    from runner.run_generic import config_workdir
+    from runner.usability import load_config
+    cfg = load_config(CONFIG)
+    with contextlib.redirect_stdout(io.StringIO()):
+        opt = build_optimizer_from_config(cfg, multistart=False, verbose=False)
+    assert config_workdir(cfg) == opt.workdir

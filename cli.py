@@ -417,8 +417,10 @@ def _ridge_moves_widths(opt, regularization):
 
 
 def _write_bundle(opt, summary_bundle):
+    """Write the run bundle under an optimizer's workdir (or a workdir path)."""
     import os
-    out_dir = os.path.join(opt.workdir, "uncertainty_v2")
+    workdir = opt if isinstance(opt, (str, os.PathLike)) else opt.workdir
+    out_dir = os.path.join(workdir, "uncertainty_v2")
     os.makedirs(out_dir, exist_ok=True)
     out_path = os.path.join(out_dir, "uncertainty_run_summary.json")
     with open(out_path, "w", encoding="utf-8") as fh:
@@ -452,25 +454,53 @@ def _cmd_uncertainty(args) -> int:
         # first and then exit, and the default was this engine.
         print(f"Error: {_V1_REMOVED}", file=sys.stderr)
         return 2
+    # The workdir is known from the config alone, so this run's bundle can
+    # replace the last one before anything else can fail: a usage or config
+    # error used to leave the previous run's bundle (exit_status 0) in place.
+    from runner.run_generic import config_workdir
+    from runner.usability import ConfigError, validate_config
+    try:
+        cfg = load_config(args.config)
+    except ConfigError as exc:          # no config, so no workdir: no bundle
+        print(f"Config error: {exc}", file=sys.stderr)
+        return 2
+    workdir = config_workdir(cfg)
+    _stale = os.path.join(workdir, "uncertainty_v2", "uncertainty_run_summary.json")
+    if os.path.isfile(_stale):
+        os.remove(_stale)
+    summary_bundle = {
+        "generated_at": datetime.now(UTC).isoformat(),
+        "config_path": str(args.config),
+        "mode": args.mode,
+        "engine": args.uncertainty_engine,
+        "seed": args.seed,
+        "warnings": [],
+    }
+
+    def _refuse(message, key="usage_error"):
+        print(f"Error: {message}", file=sys.stderr)
+        summary_bundle[key] = message
+        summary_bundle["exit_status"] = 2
+        print(f"\n[uncertainty] Summary written: {_write_bundle(workdir, summary_bundle)}")
+        return 2
+
     if args.samples < 1:
-        print("Error: --samples must be >= 1.", file=sys.stderr)
-        return 2
+        return _refuse("--samples must be >= 1.")
     if args.workers < 1:
-        print("Error: --workers must be >= 1.", file=sys.stderr)
-        return 2
+        return _refuse("--workers must be >= 1.")
     if args.mode in ["mcmc", "both"]:
         if args.chains < 1:
-            print("Error: --chains must be >= 1.", file=sys.stderr)
-            return 2
+            return _refuse("--chains must be >= 1.")
         if args.mcmc_steps < 2:
-            print("Error: --mcmc-steps must be >= 2.", file=sys.stderr)
-            return 2
+            return _refuse("--mcmc-steps must be >= 2.")
         if args.burn_in < 0:
-            print("Error: --burn-in must be >= 0.", file=sys.stderr)
-            return 2
+            return _refuse("--burn-in must be >= 0.")
         if args.burn_in >= args.mcmc_steps:
-            print("Error: --burn-in must be smaller than --mcmc-steps.", file=sys.stderr)
-            return 2
+            return _refuse("--burn-in must be smaller than --mcmc-steps.")
+    try:
+        validate_config(cfg)
+    except ConfigError as exc:
+        return _refuse(f"config: {exc}", "config_error")
 
     boot_cfg = None
     if args.mode in ["bootstrap", "both"]:
@@ -483,21 +513,10 @@ def _cmd_uncertainty(args) -> int:
             persist_samples=not args.no_bootstrap_persist,
         )
 
-    cfg = load_config(args.config)
-    opt = build_optimizer_from_config(cfg)
-    # This run's bundle replaces the last one at the end; a run that stops
-    # early must not leave the previous run's (exit_status 0) in its place.
-    _stale = os.path.join(opt.workdir, "uncertainty_v2", "uncertainty_run_summary.json")
-    if os.path.isfile(_stale):
-        os.remove(_stale)
-    summary_bundle = {
-        "generated_at": datetime.now(UTC).isoformat(),
-        "config_path": str(args.config),
-        "mode": args.mode,
-        "engine": args.uncertainty_engine,
-        "seed": args.seed,
-        "warnings": [],
-    }
+    try:
+        opt = build_optimizer_from_config(cfg)
+    except (ConfigError, ValueError) as exc:
+        return _refuse(f"config: {exc}", "config_error")
     if boot_cfg is not None:
         # What can be known before the fit is checked before the fit: rto on
         # a spectral-only config used to fail with a traceback after it.
@@ -814,10 +833,11 @@ def _cmd_uncertainty(args) -> int:
     summary_bundle["plot_dir"] = plot_dir
 
     if partial:
+        # Their own list: the refusals themselves are already in warnings.
         summary_bundle["partial"] = True
+        summary_bundle["partial_reasons"] = list(partial)
         for why in partial:
             print(f"\n[partial] {why}", file=sys.stderr)
-            summary_bundle["warnings"].append("partial result: " + why)
     summary_bundle["exit_status"] = 3 if partial else 0
     print(f"\n[uncertainty] Summary written: {_write_bundle(opt, summary_bundle)}")
     return summary_bundle["exit_status"]
@@ -931,10 +951,13 @@ def main(argv: list[str] | None = None) -> int:
         epilog=("exit status:\n"
                 "  0  an interval was reported and every requested part ran\n"
                 "  1  no interval could be reported (the bundle says why)\n"
-                "  2  usage error, or a strategy refused before anything past the base fit ran\n"
+                "  2  usage or config error, or a strategy refused before anything past the\n"
+                "     base fit ran (the bundle says which; only an unreadable config or an\n"
+                "     argument the parser rejects writes none)\n"
                 "  3  an interval was reported, but a requested part produced nothing usable\n"
                 "     (a bootstrap refused after the fit or with too few usable refits, or\n"
-                "     refused MCMC chains; the bundle has 'partial': true and says which)"))
+                "     refused MCMC chains; the bundle has 'partial': true and its reasons).\n"
+                "     An rto cloud too small to be the interval is a note, not a refusal."))
     unc_p.add_argument("config", type=Path)
     unc_p.add_argument("--mode", choices=["bootstrap", "mcmc", "both"], default="both")
     unc_p.add_argument("--samples", type=int, default=20, help="Number of Bootstrap samples.")
@@ -1070,6 +1093,11 @@ def main(argv: list[str] | None = None) -> int:
             run_from_config_main()
             return 0
         except SystemExit as exc:
+            if isinstance(exc.code, str):
+                # "Config error: ..." -- the message was dropped and the code
+                # mapped to 1, so the reason a config was refused never showed.
+                print(exc.code, file=sys.stderr)
+                return 2
             code = int(exc.code) if isinstance(exc.code, int) else 1
             if code != 0:
                 print("\nRun failed. Tip: use `quantize validate <config>` for detailed config checks.", file=sys.stderr)
