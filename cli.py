@@ -518,13 +518,24 @@ def _cmd_uncertainty(args) -> int:
         # the answer, then re-converge on it.
         refreshed = opt.refresh_hessian_at_answer()
         if refreshed is not None:
-            age = refreshed["age_before_ang"]
+            age, after = refreshed["age_before_ang"], refreshed["age_after_ang"]
+            ma = lambda v: "unknown" if v is None else f"{1e3 * v:.3g} mA"
+            ended = refreshed["termination"]
+            how = ("re-converged" if ended != "max_iter"
+                   else "re-ran the fit, which stopped at max_iter before converging")
             print(f"[uncertainty] quantum Hessian recomputed at the converged geometry "
-                  f"(the fit's was {1e3 * age:.2f} mA RMS away); re-converged, the "
-                  f"geometry moved {1e3 * refreshed['moved_ang']:.3f} mA RMS.")
+                  f"(the fit's was {ma(age)} RMS away); {how} ({refreshed['passes']} "
+                  f"pass(es)): the geometry moved {ma(refreshed['moved_ang'])} RMS, and "
+                  f"the Hessian is now {ma(after)} from it.")
             summary_bundle["hessian_refresh"] = {
                 "age_before_ma": None if age is None else 1e3 * age,
-                "moved_ma": 1e3 * refreshed["moved_ang"], "passes": refreshed["passes"]}
+                "age_after_ma": None if after is None else 1e3 * after,
+                "moved_ma": 1e3 * refreshed["moved_ang"], "passes": refreshed["passes"],
+                "last_move_ma": (None if refreshed["last_move_ang"] is None
+                                 else 1e3 * refreshed["last_move_ang"]),
+                "termination": ended}
+        else:
+            summary_bundle["hessian_refresh"] = "not applicable (no quantum model)"
     else:
         summary_bundle["hessian_refresh"] = "skipped (--no-hessian-refresh)"
 

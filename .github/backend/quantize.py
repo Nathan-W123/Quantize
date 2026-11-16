@@ -1946,6 +1946,12 @@ class MolecularOptimizer:
                     f"an asymmetric start, 0.058: within 1%)")
         return None
 
+    #: With corrections built from the Hessian (the B0 -> Be targets, the
+    #: distortion prediction) the targets move with it, so the refresh is
+    #: repeated until the answer moves less than this (RMS): on the water
+    #: config 1.466, then 0.090, then 0.006 mA.
+    REFRESH_SETTLED_ANG = 1e-5
+
     def refresh_hessian_at_answer(self, max_passes=3):
         """Recompute the quantum Hessian at the converged geometry, and
         re-converge on it.
@@ -1956,29 +1962,47 @@ class MolecularOptimizer:
         is usually the one from the start of the fit. Measured at HF/6-31G
         on nine molecules: 4-20 mA from the answer; recomputing it here moved
         alpha_q by -14..+24% and the widths by up to 7%, the geometry by
-        under 0.8 mA, and made a restart from the answer stationary (0.001 mA
-        against 0.13-0.26 without). It costs one Hessian, so the plain fit
-        does not do it; `quantize uncertainty` does, before any width.
+        under 0.8 mA, and made a restart from the answer stationary (about
+        0.001 mA against 0.13-0.26 without). It costs one Hessian, so the
+        plain fit does not do it; `quantize uncertainty` does, before any
+        width.
 
-        The first pass always runs; another only if re-converging carried
-        the geometry past orca_update_thresh from the new Hessian. Returns
-        {"passes", "age_before_ang", "moved_ang"} (RMS), or None without a
+        The first pass always runs. Another runs if re-converging carried the
+        geometry past orca_update_thresh from the new Hessian, or -- where
+        corrections are built from the Hessian and so move with it -- more
+        than REFRESH_SETTLED_ANG; at most max_passes. It re-converges with the
+        optimisation loop alone: run() would apply the chi-square rescale
+        again (x4 per call on water with chi2_rescale on). ORCA's VPT2
+        corrections (use_orca_rovib) keep their own schedule -- they cost far
+        more than a Hessian.
+
+        Returns {"passes", "age_before_ang", "age_after_ang", "moved_ang",
+        "last_move_ang", "termination"} (RMS distances), or None without a
         quantum model.
         """
         if self.spectral_only or self.quantum is None or self._backend is None:
             return None
         age = self.hessian_distance()
         start = np.asarray(self.coords, dtype=float).copy()
-        passes = 0
+        follows = bool(self._harmonic_from_hessian or self._harmonic_cd_from_hessian
+                       or (self._fit_cd_constants and self._cd_weight > 0.0))
+        passes, last = 0, None
         while passes < int(max_passes):
-            if passes and float(self.hessian_distance() or 0.0) <= float(self.orca_update_thresh):
-                break
+            if passes:
+                drift = float(self.hessian_distance() or 0.0)
+                if drift <= float(self.orca_update_thresh) and (
+                        not follows or (last is not None and last <= self.REFRESH_SETTLED_ANG)):
+                    break
+            before = np.asarray(self.coords, dtype=float).copy()
             self._force_hessian_refresh()
             self._update_orca()          # a full update: Hessian, and what follows it
-            self.run()
+            self._optimise_once()
+            last = float(np.sqrt(np.mean((np.asarray(self.coords, dtype=float) - before) ** 2)))
             passes += 1
         moved = float(np.sqrt(np.mean((np.asarray(self.coords, dtype=float) - start) ** 2)))
-        return {"passes": passes, "age_before_ang": age, "moved_ang": moved}
+        return {"passes": passes, "age_before_ang": age, "age_after_ang": self.hessian_distance(),
+                "moved_ang": moved, "last_move_ang": last,
+                "termination": (getattr(self, "termination", None) or {}).get("reason")}
 
     def hessian_distance(self, coords=None):
         """RMS distance (Angstrom, the _orca_drift metric) from ``coords`` to

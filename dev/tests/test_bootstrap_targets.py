@@ -734,24 +734,43 @@ def test_a_split_restart_that_runs_out_of_iterations_certifies_nothing(tmp_path)
 
 def test_the_hessian_is_recomputed_at_the_answer_on_request(config_fit):
     """The water config's fit ends with the Hessian it computed 10.8 mA away;
-    its prior weight is then 2097, against 1803 with the curvature at the
-    answer, and the widths are up to 5.6% off. refresh_hessian_at_answer
-    puts the Hessian there and re-converges on it (the geometry moved 1.5
-    mA); a restart from the result is then stationary."""
+    its prior weight is then 2097, and the widths are up to 5.6% off.
+    refresh_hessian_at_answer puts the Hessian there and re-converges. The
+    config builds its B0 -> Be targets from the Hessian, so one pass is not
+    self-consistent (1.466, then 0.090, then 0.006 mA): it repeats until the
+    answer settles, and a second refresh then barely moves it."""
     opt = deepcopy(config_fit)
     assert 1e3 * opt.hessian_distance() == pytest.approx(10.77, abs=0.05), "premise"
     before = opt.quantum_prior_weight()
     with contextlib.redirect_stdout(io.StringIO()):
         info = opt.refresh_hessian_at_answer()
-    assert info["passes"] >= 1 and 1e3 * info["age_before_ang"] == pytest.approx(10.77, abs=0.05)
-    assert opt.hessian_distance() <= opt.orca_update_thresh
     assert before == pytest.approx(2097, rel=0.01)
-    assert opt.quantum_prior_weight() == pytest.approx(1803, rel=0.01)
+    assert 1e3 * info["age_before_ang"] == pytest.approx(10.77, abs=0.05)
+    assert info["passes"] >= 2 and info["last_move_ang"] <= 2e-5
+    assert opt.hessian_distance() <= 2e-5
+    assert opt.quantum_prior_weight() == pytest.approx(1817, rel=0.005)
     assert opt.distance_to_mode() < 0.01
-    x = np.asarray(opt.coords, dtype=float).copy()
     with contextlib.redirect_stdout(io.StringIO()):
-        opt.run()
-    assert 1e3 * float(np.sqrt(np.mean((np.asarray(opt.coords) - x) ** 2))) < 0.2, "restart-stationary"
+        again = opt.refresh_hessian_at_answer()
+    assert again["moved_ang"] < 2e-5, "self-consistent"
     spectral = deepcopy(config_fit)
     spectral.spectral_only = True
     assert spectral.refresh_hessian_at_answer() is None
+
+
+def test_the_hessian_refresh_does_not_rescale_the_sigmas_again():
+    """It re-ran run(), which applies the chi-square rescale again: x4 per
+    call on water with chi2_rescale on, x64 after three."""
+    isos = [{"name": n, "masses": m, "obs_constants": list(b), "sigma_constants": [0.2] * 3}
+            for n, m, b in (("H2-16O", MASSES_H2O, B0_H2O), ("D2-16O", MASSES_D2O, B0_D2O))]
+    with contextlib.redirect_stdout(io.StringIO()):
+        opt = MolecularOptimizer(elems=["O", "H", "H"], coords=_coords(), isotopologues=isos,
+                                 quantum_backend="analytic_water", use_autoconfig=False,
+                                 max_iter=60, chi2_rescale=True)
+        opt.run()
+    sig = [np.asarray(i["sigma_constants"], dtype=float).copy() for i in opt.spectral.isotopologues]
+    assert not np.allclose(sig[0], 0.2), "premise: the fit rescaled its sigmas"
+    with contextlib.redirect_stdout(io.StringIO()):
+        opt.refresh_hessian_at_answer()
+    for a, i in zip(sig, opt.spectral.isotopologues):
+        np.testing.assert_array_equal(np.asarray(i["sigma_constants"], dtype=float), a)
