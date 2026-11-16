@@ -485,13 +485,11 @@ def _cmd_uncertainty(args) -> int:
 
     cfg = load_config(args.config)
     opt = build_optimizer_from_config(cfg)
-    if boot_cfg is not None:
-        # What can be known before the fit is checked before the fit: rto on
-        # a spectral-only config used to fail with a traceback after it.
-        problem = BootstrapEngine.strategy_problem(opt, boot_cfg.strategy, fitted=False)
-        if problem:
-            print(f"Error: --bootstrap-strategy {boot_cfg.strategy}: {problem}", file=sys.stderr)
-            return 2
+    # This run's bundle replaces the last one at the end; a run that stops
+    # early must not leave the previous run's (exit_status 0) in its place.
+    _stale = os.path.join(opt.workdir, "uncertainty_v2", "uncertainty_run_summary.json")
+    if os.path.isfile(_stale):
+        os.remove(_stale)
     summary_bundle = {
         "generated_at": datetime.now(UTC).isoformat(),
         "config_path": str(args.config),
@@ -500,6 +498,16 @@ def _cmd_uncertainty(args) -> int:
         "seed": args.seed,
         "warnings": [],
     }
+    if boot_cfg is not None:
+        # What can be known before the fit is checked before the fit: rto on
+        # a spectral-only config used to fail with a traceback after it.
+        problem = BootstrapEngine.strategy_problem(opt, boot_cfg.strategy, fitted=False)
+        if problem:
+            print(f"Error: --bootstrap-strategy {boot_cfg.strategy}: {problem}", file=sys.stderr)
+            summary_bundle["bootstrap_refused"] = problem
+            summary_bundle["exit_status"] = 2
+            print(f"\n[uncertainty] Summary written: {_write_bundle(opt, summary_bundle)}")
+            return 2
 
     print("\nConverging initial geometry to the global minimum...")
     opt.run()
@@ -542,6 +550,10 @@ def _cmd_uncertainty(args) -> int:
     mcmc_refusal_reason = None
     mcmc_no_diagnostics = False
     boot_refused = False
+    boot_summary = None
+    #: Requested parts that produced nothing usable, when an interval is
+    #: still reported: exit status 3 and "partial" in the bundle.
+    partial: list = []
 
     if boot_cfg is not None:
         engine = BootstrapEngine(opt, boot_cfg,
@@ -562,12 +574,11 @@ def _cmd_uncertainty(args) -> int:
             print("[bootstrap] refused; running the MCMC half of --mode both.")
             boot_refused = True
             boot_cfg = None
-            summary_bundle["partial"] = True
-            summary_bundle["warnings"].append(
-                f"--bootstrap-strategy {args.bootstrap_strategy} was refused after the base "
-                f"fit, so this run's result has no bootstrap: {exc}")
+            partial.append(f"--bootstrap-strategy {args.bootstrap_strategy} was refused after "
+                           f"the base fit, so this run's result has no bootstrap: {exc}")
     if boot_cfg is not None:
         summary = engine.run(base_workdir=opt.workdir)
+        boot_summary = summary
         print("\n" + format_bootstrap_summary(summary))
         summary_bundle["bootstrap"] = summary.to_dict()
         # Usable, not merely non-raising. A sample whose fit accepted no
@@ -599,6 +610,7 @@ def _cmd_uncertainty(args) -> int:
             print("          These refits are not used for the interval.")
             summary_bundle["warnings"].append(reason)
             summary_bundle["bootstrap_interval_refused"] = True
+            partial.append(f"the bootstrap produced no usable cloud ({reason})")
             successes = []
         elif len(successes) < args.samples / 2:
             print("          High failure rate suggests the geometry is unstable or poorly constrained.")
@@ -645,6 +657,7 @@ def _cmd_uncertainty(args) -> int:
                 + _mcmc_refusal)
             mcmc_refused = True
             mcmc_refusal_reason = _mcmc_refusal
+            partial.append(f"the MCMC chains were refused ({_mcmc_refusal})")
             mcmc_no_diagnostics = mcmc_summary.convergence is None
         if mcmc_summary.convergence is not None:
             from backend.internal.internal_fit import InternalCoordinateSet
@@ -696,9 +709,19 @@ def _cmd_uncertainty(args) -> int:
             # Under split the interval can only be the chains' or the reported
             # posterior's draws (rto is refused), and both sample the split
             # posterior -- which this check says need not describe the fit.
+            chk = ((getattr(boot_summary, "analytic", None) or {}).get("check")
+                   if boot_summary is not None else None)
+            if chk is not None and chk.get("departs"):
+                ratios = dict(zip(boot_summary.analytic["names"], chk["ratio"]))
+                measured = ("this run's bootstrap of the fit departs from it on "
+                            + ", ".join(f"{nm} ({ratios[nm]:.3g}x)" for nm in chk["departs"]))
+            elif chk is not None:
+                measured = ("this run's bootstrap of the fit found no departure beyond its "
+                            "Monte Carlo error")
+            else:
+                measured = "an error-model bootstrap of this fit measures that spread"
             caveat = (f"split objective: {split_gap}. This interval ({cloud_source}) is the "
-                      f"split posterior's and need not be the split fit's spread; an "
-                      f"error-model bootstrap of this fit measures that spread")
+                      f"split posterior's and need not be the split fit's spread; {measured}")
             notes.append(caveat)
     for note in notes:
         print(f"\n[note] {note}")
@@ -763,7 +786,12 @@ def _cmd_uncertainty(args) -> int:
             plot_autocorrelations(_trace, opt.elems, plot_dir)
     summary_bundle["plot_dir"] = plot_dir
 
-    summary_bundle["exit_status"] = 3 if boot_refused else 0
+    if partial:
+        summary_bundle["partial"] = True
+        for why in partial:
+            print(f"\n[partial] {why}", file=sys.stderr)
+            summary_bundle["warnings"].append("partial result: " + why)
+    summary_bundle["exit_status"] = 3 if partial else 0
     print(f"\n[uncertainty] Summary written: {_write_bundle(opt, summary_bundle)}")
     return summary_bundle["exit_status"]
 
@@ -877,8 +905,9 @@ def main(argv: list[str] | None = None) -> int:
                 "  0  an interval was reported and every requested part ran\n"
                 "  1  no interval could be reported (the bundle says why)\n"
                 "  2  usage error, or a strategy refused before anything past the base fit ran\n"
-                "  3  an interval was reported, but part of the request was refused\n"
-                "     (--mode both after a bootstrap refusal; the bundle has 'partial': true)"))
+                "  3  an interval was reported, but a requested part produced nothing usable\n"
+                "     (a bootstrap refused after the fit or with too few usable refits, or\n"
+                "     refused MCMC chains; the bundle has 'partial': true and says which)"))
     unc_p.add_argument("config", type=Path)
     unc_p.add_argument("--mode", choices=["bootstrap", "mcmc", "both"], default="both")
     unc_p.add_argument("--samples", type=int, default=20, help="Number of Bootstrap samples.")

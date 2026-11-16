@@ -1,0 +1,58 @@
+# Water with distortion rows, started at a 150-degree angle with the B0 -> Be
+# corrections from the Hessian: the corrected targets at that start have A
+# negative, and the "auto" Watson reduction must still come from the observed
+# constants (A, kappa -0.436). Analytic backend: dev/analytic_water_backend.py.
+
+name: water_cd_start150
+coordinate_mode: internal
+
+elements: [O, H, H]
+
+geometry:
+  method: coords
+  coords_angstrom:
+    - [0.000000, 0.000000, 0.000000]
+    - [0.000000, 0.927296, 0.248466]
+    - [0.000000, -0.927296, 0.248466]
+
+symmetry: C2v
+
+isotopologues:
+  - name: H2-16O
+    masses: [15.99491461956, 1.00782503207, 1.00782503207]
+    components: [A, B, C]
+    obs_b0_mhz: [835840.29, 435351.72, 278138.70]
+    alpha_mhz: [0.0, 0.0, 0.0]
+    sigma_mhz: [0.20, 0.20, 0.20]
+    cd_observed: {DJ: 37.59, DJK: -172.9, DK: 973.3}
+    cd_sigma: {DJ: 0.75, DJK: 3.5, DK: 19.5}
+
+quantum:
+  backend: analytic_water
+
+rovibrational_corrections:
+  mode: user_only
+  harmonic_from_hessian: true
+  harmonic_sigma_fraction: 0.02
+  anharmonic_from_hessian: true
+  anharmonic_fd_delta_ang: 0.01
+  nonconvergent_policy: warn
+  fit_cd_constants: true
+  cd_weight: 1.0
+
+internal_coordinates:
+  use_dihedrals: false
+  damping: 1.0e-6
+  prior_sigma_bond: 0.12
+  prior_sigma_angle_deg: 5.0
+
+internal_priors:
+  mode: soft
+  freeze_sigma_floor: 1.0e-6
+
+preset: BALANCED
+rng_seed: 17
+
+output:
+  root: output/runs
+  artifacts: true

@@ -316,10 +316,16 @@ def _build_isotopologue(iso: dict, spectral_model: str = "rigid") -> dict:
     # the constants it names; cd_reduction ("A" or "S") is the Watson
     # reduction the observed constants are quoted in -- without it the fit
     # picks one from the asymmetry at its start and keeps it.
-    for key in ("cd_observed", "centrifugal_distortion", "cd_sigma", "cd_model_sigma"):
+    for key in ("cd_observed", "centrifugal_distortion", "cd_sigma"):
         block = iso.get(key)
         if block:
             out[key] = {str(k): float(v) for k, v in dict(block).items() if v is not None}
+    if iso.get("cd_model_sigma"):
+        from runner.usability import cd_model_sigma_problem
+        why = cd_model_sigma_problem(iso.get("cd_model_sigma"), str(iso.get("name", "iso")))
+        if why:
+            raise ValueError(why)
+        out["cd_model_sigma"] = {str(k): float(v) for k, v in dict(iso["cd_model_sigma"]).items()}
     if iso.get("cd_reduction"):
         out["cd_reduction"] = str(iso["cd_reduction"])
     return out

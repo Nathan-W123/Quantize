@@ -135,6 +135,24 @@ def _check_numeric_list(value: Any, path: str, n: int | None = None, positive: b
             raise ConfigError(f"'{path}[{i}]' must be positive; got {item!r}.")
 
 
+def cd_model_sigma_problem(block: Any, where: str) -> str | None:
+    """Why a cd_model_sigma block is not usable, or None. Each value must be
+    a finite, positive number of MHz: null used to be dropped silently, and
+    zero, negative or infinite values reached the engine (or crashed a
+    multistart worker) instead of stopping the config."""
+    if not isinstance(block, dict):
+        return f"'{where}.cd_model_sigma' must be a mapping of constant name to MHz."
+    for k, v in block.items():
+        try:
+            fv = float(v) if not isinstance(v, bool) and v is not None else float("nan")
+        except (TypeError, ValueError):
+            fv = float("nan")
+        if not np.isfinite(fv) or fv <= 0.0:
+            return (f"'{where}.cd_model_sigma.{k}' is {v!r}; it must be a finite, positive "
+                    f"number of MHz (the model's error on that constant), or be left out.")
+    return None
+
+
 def validate_config(cfg: dict[str, Any]) -> None:
     """Validate supported legacy and generalized config shapes with clear errors."""
     if not isinstance(cfg, dict):
@@ -244,6 +262,15 @@ def validate_config(cfg: dict[str, Any]) -> None:
         _check_numeric_list(iso.get("obs_b0_mhz"), f"{prefix}.obs_b0_mhz", n_comp)
         _check_numeric_list(iso.get("alpha_mhz"), f"{prefix}.alpha_mhz", n_comp)
         _check_numeric_list(iso.get("sigma_mhz"), f"{prefix}.sigma_mhz", n_comp, positive=True)
+        if iso.get("cd_model_sigma") is not None:
+            why = cd_model_sigma_problem(iso.get("cd_model_sigma"), f"{prefix} ({iso_name})")
+            if why:
+                raise ConfigError(why)
+        red = iso.get("cd_reduction")
+        if red is not None and str(red).strip().upper() not in ("A", "S"):
+            raise ConfigError(f"'{prefix}.cd_reduction' is {red!r}; it names the Watson "
+                              f"reduction the observed distortion constants are quoted in, "
+                              f"'A' or 'S'.")
 
     if "spectral_model" in cfg and cfg.get("spectral_model") is not None:
         try:
@@ -1524,7 +1551,9 @@ def generate_uncertainty_report_section(result: dict[str, Any]) -> str:
     for w in (meta.get("warnings") or []):
         lines.append(f"- Warning: {w}")
     if result.get("uncertainty_covariance_npy"):
-        lines.append(f"- Full covariance: `{result['uncertainty_covariance_npy']}`")
+        lines.append(f"- Full covariance: `{result['uncertainty_covariance_npy']}`"
+                     + (" (not found when this report was rebuilt)"
+                        if result.get("uncertainty_covariance_missing") else ""))
     return "\n".join(lines)
 
 
@@ -1891,13 +1920,37 @@ def write_plots(run_dir: Path, result: dict[str, Any]) -> list[Path]:
 
 
 def _relative_to(path: Any, root: Path) -> Any:
-    """``path`` relative to ``root`` when it lies inside it, else unchanged."""
+    """``path`` relative to ``root`` (as a posix path) when it lies inside
+    it, else its absolute posix form: a bare relative path from elsewhere
+    would be read against the run directory on rebuild."""
     if not path:
         return path
     try:
-        return str(Path(path).resolve().relative_to(Path(root).resolve()))
-    except (ValueError, OSError):
+        p = Path(path).resolve()
+    except OSError:
         return str(path)
+    try:
+        return p.relative_to(Path(root).resolve()).as_posix()
+    except ValueError:
+        return p.as_posix()
+
+
+def _rebuilt_path(stored: Any, old_run_dir: Any, run_path: Path) -> tuple[Any, bool]:
+    """Where a payload's stored artifact path points in the run directory
+    being rebuilt, and whether the file is there. A relative (posix) path is
+    read against it; an absolute one under the run directory the payload was
+    written in (payloads before relative paths, or another OS's separators)
+    is mapped onto it; anything else is kept."""
+    if not stored:
+        return stored, True
+    text = str(stored).replace("\\", "/")
+    is_abs = text.startswith("/") or (len(text) > 2 and text[1] == ":" and text[2] == "/")
+    if not is_abs:
+        target = run_path / text
+    else:
+        old = str(old_run_dir or "").replace("\\", "/").rstrip("/")
+        target = (run_path / text[len(old) + 1:]) if old and text.startswith(old + "/") else Path(text)
+    return str(target), target.is_file()
 
 
 def _json_default(v: Any) -> Any:
@@ -2260,9 +2313,10 @@ def rebuild_report_from_run_dir(run_dir: Path | str) -> dict[str, Any]:
     if missing:
         raise ConfigError(f"Malformed report payload: missing keys {missing}.")
 
-    cov = payload.get("uncertainty_covariance_npy")
-    if cov and not Path(cov).is_absolute():
-        payload["uncertainty_covariance_npy"] = str(run_path / cov)
+    cov, found = _rebuilt_path(payload.get("uncertainty_covariance_npy"),
+                               payload.get("run_dir"), run_path)
+    payload["uncertainty_covariance_npy"] = cov
+    payload["uncertainty_covariance_missing"] = bool(cov) and not found
     report_md = run_path / "report.md"
     report_html = run_path / "report.html"
     write_markdown_report(report_md, payload, artifacts=None)

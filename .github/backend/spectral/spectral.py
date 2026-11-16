@@ -129,6 +129,21 @@ CD_FIT_KEYS = ("DJ", "DJK", "DK")
 _CD_PRINTED: set = set()
 
 
+def _abc_from(component_indices, obs_constants):
+    """[A, B, C] when all three are observed and form an asymmetric top's
+    A >= B >= C > 0, else None."""
+    try:
+        have = {int(i): float(v) for i, v in zip(component_indices, obs_constants)}
+    except (TypeError, ValueError):
+        return None
+    if not all(i in have for i in (0, 1, 2)):
+        return None
+    a, b, c = have[0], have[1], have[2]
+    if not (np.isfinite([a, b, c]).all() and a >= b >= c > 0.0):
+        return None
+    return [a, b, c]
+
+
 def _cd_print_once(message: str) -> None:
     if message not in _CD_PRINTED:
         _CD_PRINTED.add(message)
@@ -383,7 +398,8 @@ def sanitize_isotopologues(
         # for "no isotopologue carries a cd_observed block" reads the raw
         # isotopologues, which did carry them.
         for key in ("cd_observed", "centrifugal_distortion", "cd_sigma",
-                    "cd_model_sigma", "cd_reduction", "cd_reduction_source"):
+                    "cd_model_sigma", "cd_reduction", "cd_reduction_source",
+                    "cd_abc_observed", "cd_model_sigma_source"):
             if iso.get(key):
                 cleaned_iso[key] = iso[key]
         cleaned.append(cleaned_iso)
@@ -501,9 +517,17 @@ class SpectralEngine:
                 entry["cd_observed"] = cd_obs
             if cd_sig:
                 entry["cd_sigma"] = cd_sig
-            for key in ("cd_model_sigma", "cd_reduction", "cd_reduction_source"):
+            for key in ("cd_model_sigma", "cd_reduction", "cd_reduction_source",
+                        "cd_model_sigma_source"):
                 if iso.get(key):
                     entry[key] = iso[key]
+            # The observed A, B, C as they arrive, before any correction step
+            # replaces obs_constants with corrected targets (from a Hessian at
+            # a poor start those had A negative: kappa -1.61 for water); the
+            # 'auto' reduction is taken from these. Carried, never recomputed.
+            entry["cd_abc_observed"] = (
+                list(iso["cd_abc_observed"]) if iso.get("cd_abc_observed") is not None
+                else _abc_from(entry["component_indices"], entry["obs_constants"]))
             self.isotopologues.append(entry)
         for iso in self.isotopologues:
             n = len(iso["obs_constants"])
@@ -580,9 +604,17 @@ class SpectralEngine:
             if not cd_obs:
                 continue
             default = self._default_cd_sigma(cd_obs)
+            stated = self._stated_cd_model_sigma(entry, cd_obs)
             entry["cd_model_sigma"] = {
-                k: v for k, v in {**default, **self._stated_cd_model_sigma(entry, cd_obs)}.items()
-                if k in default}
+                k: v for k, v in {**default, **stated}.items() if k in default}
+            # Where each key's model sigma comes from, for the report.
+            frac = max(float(self._cd_sigma_fraction), _CD_REDUCTION_ACCURACY)
+            entry.setdefault("cd_model_sigma_source", {
+                k: ("stated" if k in stated
+                    else "the 0.01 MHz floor" if abs(float(cd_obs[k])) * frac < 0.01
+                    else "cd_sigma_fraction" if frac > _CD_REDUCTION_ACCURACY
+                    else "default")
+                for k in default})
             red = entry.get("cd_reduction")
             if red is not None:
                 red = str(red).strip().upper()
@@ -700,10 +732,8 @@ class SpectralEngine:
         (water started at 150 degrees pinned S, kappa -0.99, against the
         observed constants' -0.44)."""
         def full(entry):
-            idx = [int(i) for i in entry.get("component_indices", [])]
-            obs = [float(v) for v in entry.get("obs_constants", [])]
-            have = dict(zip(idx, obs))
-            return [have[i] for i in (0, 1, 2)] if all(i in have for i in (0, 1, 2)) else None
+            abc = entry.get("cd_abc_observed")
+            return list(abc) if abc is not None else None
         own = full(iso)
         if own is not None:
             return own, "of the observed constants"

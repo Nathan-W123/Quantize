@@ -1815,15 +1815,19 @@ class MolecularOptimizer:
         for iso in sp.isotopologues:
             obs = iso.get("cd_observed") or {}
             model = iso.get("cd_model_sigma") or {}
+            src = iso.get("cd_model_sigma_source") or {}
             for k in CD_FIT_KEYS:
                 if k in obs and k in model and abs(float(obs[k])) > 0.0:
                     parts.append((iso.get("name", "iso"), k,
-                                  100.0 * float(model[k]) / abs(float(obs[k]))))
-        default_only = all(abs(f - 40.0) < 1e-6 for _n, _k, f in parts)
+                                  100.0 * float(model[k]) / abs(float(obs[k])),
+                                  src.get(k, "default")))
+        default_only = all(s_ == "default" for *_r, s_ in parts)
         if parts and (abs(w - 1.0) > 1e-12 or not default_only):
-            names = {n for n, _k, _f in parts}
-            shown = ", ".join((f"{n} " if len(names) > 1 else "") + f"{k} {f / np.sqrt(w):.3g}%"
-                              for n, k, f in parts)
+            names = {n for n, *_r in parts}
+            shown = ", ".join(
+                (f"{n} " if len(names) > 1 else "") + f"{k} {f / np.sqrt(w):.3g}%"
+                + ("" if s_ == "default" else f" ({s_})")
+                for n, k, f, s_ in parts)
             if abs(w - 1.0) > 1e-12:
                 out.append(
                     f"distortion rows carry cd_weight {w:g}: each row's noise is its sigma / "
@@ -1832,8 +1836,7 @@ class MolecularOptimizer:
             else:
                 out.append(
                     f"distortion rows' model error is {shown} of the observed values (the "
-                    f"mapping is validated at 40% on water; set by cd_sigma_fraction or "
-                    f"cd_model_sigma)")
+                    f"mapping is validated at 40% on water)")
         if sp.cd_unfitted_keys:
             out.append(
                 f"observed {', '.join(sp.cd_unfitted_keys)} not fitted: the harmonic "

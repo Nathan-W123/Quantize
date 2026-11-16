@@ -192,6 +192,43 @@ def test_rto_on_a_spectral_only_config_stops_before_the_fit(tmp_path, monkeypatc
                            "--samples", "2"], tmp_path, monkeypatch)
     assert code == 2
     assert "needs a quantum prior" in err and "Traceback" not in err
+    b = _bundle(tmp_path)
+    assert b["exit_status"] == 2 and "needs a quantum prior" in b["bootstrap_refused"]
+
+
+def test_a_refusal_before_the_fit_replaces_the_last_run_s_bundle(tmp_path, monkeypatch):
+    """A pre-fit refusal wrote no bundle, so the previous run's stayed in
+    place, exit_status 0 and all."""
+    code, out, err = _run(["--mode", "bootstrap", "--samples", "2"] + _QUIET, tmp_path, monkeypatch)
+    assert code == 0 and _bundle(tmp_path)["exit_status"] == 0
+    import runner.run_from_config as R
+    real = R.build_optimizer_from_config
+
+    def build(cfg, *a, **k):
+        opt = real(cfg, *a, **k)
+        opt.run = lambda: pytest.fail("the base fit ran")
+        return opt
+
+    monkeypatch.setattr(R, "build_optimizer_from_config", build)
+    import backend.uncertainty_v2.bootstrap as BS
+    monkeypatch.setattr(BS.BootstrapEngine, "strategy_problem",
+                        staticmethod(lambda opt, strategy, fitted=True: "refused before the fit"))
+    code, out, err = _run(["--mode", "bootstrap", "--samples", "2"] + _QUIET, tmp_path, monkeypatch)
+    assert code == 2
+    b = _bundle(tmp_path)
+    assert b["exit_status"] == 2 and b["bootstrap_refused"] == "refused before the fit"
+
+
+def test_refused_chains_in_mode_both_are_a_partial_result(tmp_path, monkeypatch):
+    """--mode both with the chains refused fell back to the reported
+    posterior and exited 0, as if both halves had run."""
+    code, out, err = _run(["--mode", "both", "--samples", "4", "--mcmc-steps", "60",
+                           "--burn-in", "10", "--chains", "2"] + _QUIET, tmp_path, monkeypatch)
+    assert code == 3
+    b = _bundle(tmp_path)
+    assert b["partial"] is True and b["exit_status"] == 3
+    assert any(w.startswith("partial result: the MCMC chains were refused") for w in b["warnings"])
+    assert "reported posterior" in b["cloud"]["source"]
 
 
 def test_the_interval_table_uses_the_same_sd_as_the_bootstrap_summary():
@@ -297,6 +334,7 @@ def test_an_interval_from_a_doubtful_split_posterior_says_so(tmp_path, monkeypat
     b = _bundle(tmp_path)
     assert "reported posterior" in b["cloud"]["source"]
     assert "need not be the split fit's spread" in b["cloud"]["caveat"]
+    assert "this run's bootstrap of the fit found no departure" in b["cloud"]["caveat"]
     assert any("need not be the split fit's spread" in w for w in b["warnings"])
     assert "[note] split objective" in out
 

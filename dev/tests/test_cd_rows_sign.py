@@ -490,9 +490,10 @@ def test_cd_weight_is_said_to_scale_the_model_error():
     w4 = _water_cd(cd_weight=4.0).internal_coordinate_posterior()["warnings"]
     assert any("cd_weight 4" in w and "enters as DJ 20%, DJK 20%, DK 20%" in w for w in w4)
     f6 = _water_cd(cd_weight=4.0, cd_sigma_fraction=0.6).internal_coordinate_posterior()["warnings"]
-    assert any("enters as DJ 30%, DJK 30%, DK 30%" in w for w in f6)
+    assert any("enters as DJ 30% (cd_sigma_fraction), DJK 30% (cd_sigma_fraction), "
+               "DK 30% (cd_sigma_fraction)" in w for w in f6)
     f6w1 = _water_cd(cd_sigma_fraction=0.6).internal_coordinate_posterior()["warnings"]
-    assert any("model error is DJ 60%, DJK 60%, DK 60%" in w for w in f6w1)
+    assert any("model error is DJ 60% (cd_sigma_fraction)" in w for w in f6w1)
 
 
 def test_a_config_can_state_the_reduction_and_the_model_sigma():
@@ -670,3 +671,91 @@ def test_auto_takes_the_reduction_from_the_observed_constants():
     d2o = eng.isotopologues[1]
     eng._cd_reduction(d2o, _x0())
     assert d2o["cd_reduction_source"].endswith("of H2-16O's observed constants)")
+
+
+
+def test_the_cli_takes_auto_from_the_observed_constants_not_the_corrected_targets(tmp_path, monkeypatch):
+    """Through `quantize run` (multistart, B0 -> Be corrections from the
+    Hessian) a 150-degree start still pinned S: the corrections at that
+    start replace obs_constants with targets whose A is negative (kappa
+    -1.61), and the label called them observed. The engine now keeps the
+    observed A, B, C it was built with."""
+    import json
+    import cli
+    monkeypatch.chdir(tmp_path)
+    cfg = _ROOT / "dev" / "configs" / "water_cd_start150.yaml"
+    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+        assert cli.main(["run", str(cfg)]) == 0
+    payload = json.loads(next(tmp_path.rglob("report_payload.json")).read_text(encoding="utf-8"))
+    rows = [r for r in payload["residual_rows"] if r.get("kind") == "distortion"]
+    assert rows and {r["reduction"] for r in rows} == {"A"}
+    assert all(r["reduction_source"] == "auto (kappa -0.436 of the observed constants)" for r in rows)
+
+
+def test_auto_ignores_constants_that_are_not_an_asymmetric_top_s():
+    from backend.spectral.spectral import SpectralEngine
+    isos = _isos(None)
+    isos[0]["cd_observed"] = dict(EXP_H2O)
+    eng = SpectralEngine(deepcopy(isos), cd_weight=1.0, fit_cd_constants=True)
+    iso = eng.isotopologues[0]
+    iso["obs_constants"] = np.array([-222116.6, 438343.7, 284001.8])     # corrected later, A < 0
+    assert eng._cd_reduction(iso, _x0()) == "A"
+    assert iso["cd_reduction_source"] == "auto (kappa -0.436 of the observed constants)"
+    bad = deepcopy(isos)
+    bad[0]["obs_constants"] = [278138.70, 435351.72, 835840.29]           # A < B < C as given
+    bad[1]["cd_observed"] = None
+    eng = SpectralEngine(bad, cd_weight=1.0, fit_cd_constants=True)
+    assert eng.isotopologues[0]["cd_abc_observed"] is None
+    eng._cd_reduction(eng.isotopologues[0], _x0())
+    assert eng.isotopologues[0]["cd_reduction_source"].endswith("of D2-16O's observed constants)")
+
+
+@pytest.mark.parametrize("bad", [None, "abc", 0, -1.0, ".inf"])
+def test_a_config_s_model_sigma_is_checked_before_the_run(bad):
+    from runner.usability import ConfigError, load_config, validate_config
+    cfg = load_config(_ROOT / "dev" / "configs" / "water_analytic_endtoend.yaml")
+    cfg["isotopologues"][0]["cd_observed"] = dict(EXP_H2O)
+    cfg["isotopologues"][0]["cd_model_sigma"] = {"DJ": float("inf") if bad == ".inf" else bad}
+    with pytest.raises(ConfigError, match=r"cd_model_sigma\.DJ"):
+        validate_config(cfg)
+    cfg["isotopologues"][0]["cd_model_sigma"] = {"DJ": 2.0}
+    cfg["isotopologues"][0]["cd_reduction"] = "Ir"
+    with pytest.raises(ConfigError, match="cd_reduction"):
+        validate_config(cfg)
+
+
+def test_the_model_share_note_names_the_floor_it_comes_from():
+    """Kilohertz-size constants get the 0.01 MHz floor, not 40%; the note
+    blamed cd_sigma_fraction or cd_model_sigma, which nobody had set."""
+    small = {"DJ": 0.0013, "DJK": -0.0204, "DK": 0.524}
+    isos = _isos(None)
+    isos[0]["cd_observed"] = dict(small)
+    with contextlib.redirect_stdout(io.StringIO()):
+        opt = MolecularOptimizer(elems=["O", "H", "H"], coords=_x0(), isotopologues=isos,
+                                 quantum_backend="analytic_water", use_autoconfig=False,
+                                 max_iter=2, fit_cd_constants=True, cd_weight=1.0)
+        opt.run()
+    note = [w for w in opt.distortion_warnings() if "model error" in w]
+    assert note and "DJ 769% (the 0.01 MHz floor)" in note[0] and "DJK 49% (the 0.01 MHz floor)" in note[0]
+    assert "DK 40%," not in note[0] and "cd_sigma_fraction" not in note[0]
+
+
+def test_an_old_payload_s_absolute_paths_follow_the_run(tmp_path):
+    """An old payload's absolute covariance path pointed at the original
+    run after a copy; a Windows path was read relative on POSIX; a missing
+    file was linked without a word."""
+    from runner.usability import _rebuilt_path
+    new = tmp_path / "new"
+    (new / "s").mkdir(parents=True)
+    np.save(new / "s" / "cov.npy", np.eye(2))
+    assert _rebuilt_path("/old/run/s/cov.npy", "/old/run", new) == (str(new / "s" / "cov.npy"), True)
+    assert _rebuilt_path("C:\\runs\\R\\s\\cov.npy", "C:\\runs\\R", new) == (str(new / "s" / "cov.npy"), True)
+    assert _rebuilt_path("s/cov.npy", "/old/run", new) == (str(new / "s" / "cov.npy"), True)
+    assert _rebuilt_path("s/gone.npy", "/old/run", new)[1] is False
+    from runner.usability import generate_uncertainty_report_section
+    txt = generate_uncertainty_report_section({
+        "uncertainty_rows": [{"name": "bond 1-2", "value": 0.96, "std_err": 0.006,
+                              "ci_lo": 0.948, "ci_hi": 0.972}],
+        "uncertainty_meta": {"blocks": ["spectral data"]},
+        "uncertainty_covariance_npy": "x.npy", "uncertainty_covariance_missing": True})
+    assert "(not found when this report was rebuilt)" in txt

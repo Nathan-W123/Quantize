@@ -378,8 +378,9 @@ posterior; `isotopologue-gaussian` the legacy independent draw. Each run
 prints its cloud beside the analytic value it should match, and flags a
 coordinate where the two differ beyond three Monte Carlo standard errors.
 Exit status: 0 interval reported; 1 no interval; 2 usage error or a strategy
-refused before anything past the base fit ran; 3 interval reported but part
-of the request refused (`--mode both` after a bootstrap refusal).
+refused before anything past the base fit ran; 3 interval reported but a
+requested part produced nothing usable (a bootstrap refused after the fit or
+left with too few usable refits, or refused MCMC chains; the bundle says which).
 
 Outputs are written under the run workdir, including:
 
