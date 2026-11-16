@@ -449,11 +449,6 @@ def _cmd_uncertainty(args) -> int:
     from scripts.uncertainty_plots import plot_coordinate_distributions, plot_mcmc_traces, plot_parameter_corner, plot_autocorrelations
     import numpy as np
 
-    if args.uncertainty_engine != "v2":
-        # Before the config is loaded: this used to run the whole base fit
-        # first and then exit, and the default was this engine.
-        print(f"Error: {_V1_REMOVED}", file=sys.stderr)
-        return 2
     # The workdir is known from the config alone, so this run's bundle can
     # replace the last one before anything else can fail: a usage or config
     # error used to leave the previous run's bundle (exit_status 0) in place.
@@ -484,6 +479,10 @@ def _cmd_uncertainty(args) -> int:
         print(f"\n[uncertainty] Summary written: {_write_bundle(workdir, summary_bundle)}")
         return 2
 
+    if args.uncertainty_engine != "v2":
+        # Before the fit: this used to run the whole base fit first and then
+        # exit, and the default was this engine.
+        return _refuse(_V1_REMOVED)
     if args.samples < 1:
         return _refuse("--samples must be >= 1.")
     if args.workers < 1:
@@ -515,7 +514,7 @@ def _cmd_uncertainty(args) -> int:
 
     try:
         opt = build_optimizer_from_config(cfg)
-    except (ConfigError, ValueError) as exc:
+    except ConfigError as exc:   # the translation's; the starts' fits raise their own
         return _refuse(f"config: {exc}", "config_error")
     if boot_cfg is not None:
         # What can be known before the fit is checked before the fit: rto on

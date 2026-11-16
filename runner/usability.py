@@ -86,7 +86,10 @@ def load_config(path: Path | str) -> dict[str, Any]:
     if not cfg_path.is_file():
         raise ConfigError(f"Config file not found: {cfg_path}")
     suffix = cfg_path.suffix.lower()
-    text = cfg_path.read_text(encoding="utf-8")
+    try:
+        text = cfg_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise ConfigError(f"Could not read {cfg_path}: {exc}") from exc
     try:
         if suffix == ".json":
             data = json.loads(text)
@@ -102,7 +105,14 @@ def load_config(path: Path | str) -> dict[str, Any]:
         raise ConfigError(f"Could not parse {cfg_path}: {exc}") from exc
     if not isinstance(data, dict):
         raise ConfigError(f"Config {cfg_path} must contain a mapping/object at top level.")
-    return normalize_config(data)
+    try:
+        return normalize_config(data)
+    except ConfigError:
+        raise
+    except (ValueError, TypeError, KeyError, AttributeError) as exc:
+        # A block of the wrong shape ("internal_coordinates: abc") failed
+        # inside the normalizer with Python's own message.
+        raise ConfigError(f"Could not normalize {cfg_path}: {type(exc).__name__}: {exc}") from exc
 
 
 def _expect_mapping(cfg: dict[str, Any], key: str) -> dict[str, Any]:
@@ -291,10 +301,95 @@ def validate_config(cfg: dict[str, Any]) -> None:
         )
 
     _check_inertial_defects(cfg)
+    _validate_run_controls(cfg, elements)
     _validate_rovibrational_corrections_block(cfg)
     _validate_conformer_mixture_block(cfg, n_atoms=n_atoms)
     _validate_torsion_block(cfg)
     _validate_internal_priors_block(cfg, n_atoms=n_atoms)
+
+
+def _number_problem(value: Any, path: str, *, integer: bool = False) -> str | None:
+    """Why a config value is not a number (an integer, when asked), or None."""
+    if isinstance(value, bool):
+        return f"'{path}' must be {'an integer' if integer else 'numeric'}, not true/false."
+    if integer:
+        if isinstance(value, int) or (isinstance(value, float) and value.is_integer()):
+            return None
+        return f"'{path}' must be an integer (got {value!r})."
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return f"'{path}' must be numeric (got {value!r})."
+    if not np.isfinite(v):
+        return f"'{path}' must be finite (got {value!r})."
+    return None
+
+
+def _validate_run_controls(cfg: dict[str, Any], elements: list[Any]) -> None:
+    """The fields the fit reads with int()/float() or looks up in a table,
+    so that a bad value is named here instead of surfacing from the builder
+    as Python's own message ("could not convert string to float: 'x'",
+    "'Xx' is not in list")."""
+    from backend.quantum import _ELEMENTS  # covalent radii: H to Rn
+
+    known = set(_ELEMENTS[1:])
+    for i, elem in enumerate(elements):
+        if str(elem).strip() not in known:
+            raise ConfigError(
+                f"'elements[{i}]' is '{elem}', which is not an element this engine has "
+                f"data for (H to Rn)."
+            )
+    if "rng_seed" in cfg:
+        why = _number_problem(cfg.get("rng_seed"), "rng_seed", integer=True)
+        if why:
+            raise ConfigError(why)
+    mode = cfg.get("coordinate_mode")
+    if mode is not None and str(mode).strip().lower() not in {"internal", "cartesian"}:
+        raise ConfigError(f"'coordinate_mode' must be internal or cartesian (got {mode!r}).")
+    if cfg.get("symmetry") not in (None, ""):
+        from backend.symmetry import _GROUP_OPS, _normalize_pg
+
+        sym = str(cfg.get("symmetry")).strip()
+        if sym.lower() != "auto" and _normalize_pg(sym) not in _GROUP_OPS:
+            raise ConfigError(
+                f"'symmetry' must be auto, null (none imposed) or a point group "
+                f"({', '.join(_GROUP_OPS)}); got {sym!r}."
+            )
+    ic = cfg.get("internal_coordinates")
+    if ic is not None:
+        if not isinstance(ic, dict):
+            raise ConfigError("'internal_coordinates' must be a mapping/object.")
+        for key, integer in (("damping", False), ("microiterations", True)):
+            if ic.get(key) is not None:
+                why = _number_problem(ic.get(key), f"internal_coordinates.{key}", integer=integer)
+                if why:
+                    raise ConfigError(why)
+    rc = cfg.get("rovibrational_corrections")
+    if isinstance(rc, dict):
+        for key, integer in (("harmonic_sigma_fraction", False), ("cd_sigma_fraction", False),
+                             ("cd_weight", False), ("lam_freq_cm", False),
+                             ("rovib_recalc_every", True)):
+            if rc.get(key) is not None:
+                why = _number_problem(rc.get(key), f"rovibrational_corrections.{key}",
+                                      integer=integer)
+                if why:
+                    raise ConfigError(why)
+    for i, iso in enumerate(cfg.get("isotopologues") or []):
+        if not isinstance(iso, dict):
+            continue
+        label = str(iso.get("name") or f"isotopologues[{i}]")
+        for key in ("cd_observed", "centrifugal_distortion", "cd_sigma"):
+            block = iso.get(key)
+            if block in (None, {}):
+                continue
+            if not isinstance(block, dict):
+                raise ConfigError(f"'{key}' of {label} must be a mapping of constant -> MHz.")
+            for k, v in block.items():
+                if v is None:
+                    continue
+                why = _number_problem(v, f"{key}.{k}")
+                if why:
+                    raise ConfigError(f"{why[:-1]} in {label}.")
 
 
 _VALID_ROVIB_MODES = {
@@ -1954,8 +2049,8 @@ def _rebuilt_path(stored: Any, old_run_dir: Any, run_path: Path) -> tuple[Any, b
         target = run_path / text
     else:
         old = str(old_run_dir or "").replace("\\", "/").rstrip("/")
-        # Windows drive letters compare without case (c: is C:).
-        fold = (lambda t: t[:1].lower() + t[1:]) if drive else (lambda t: t)
+        # Windows paths compare without case (c:/Runs is C:/runs).
+        fold = str.lower if drive else (lambda t: t)
         inside = bool(old) and fold(text).startswith(fold(old) + "/")
         target = (run_path / text[len(old) + 1:]) if inside else Path(text)
     return str(target), target.is_file()

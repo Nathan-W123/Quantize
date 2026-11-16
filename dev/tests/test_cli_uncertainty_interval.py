@@ -440,6 +440,77 @@ def test_the_config_workdir_is_the_optimizer_s():
     assert config_workdir(cfg) == opt.workdir
 
 
+def test_a_failure_inside_a_fit_is_not_a_config_error(tmp_path, monkeypatch):
+    """The build runs the config's multistart, so the `except ValueError`
+    around it reported numpy's LinAlgError (a ValueError) from a start's fit
+    as a config error with exit 2. Only the translation's errors are."""
+    import backend.multistart as M
+
+    def broken(*a, **k):
+        raise np.linalg.LinAlgError("Singular matrix")
+
+    monkeypatch.setattr(M, "run_multistart", broken)
+    monkeypatch.chdir(tmp_path)
+    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+        with pytest.raises(np.linalg.LinAlgError):
+            cli.main(["uncertainty", str(CONFIG), "--mode", "bootstrap", "--samples", "2"])
+    assert not list(tmp_path.rglob("uncertainty_run_summary.json")), "no config_error bundle"
+
+
+def test_the_removed_engine_replaces_the_last_run_s_bundle(tmp_path, monkeypatch):
+    code, out, err = _run(["--mode", "bootstrap", "--samples", "2"] + _QUIET, tmp_path, monkeypatch)
+    assert code == 0 and _bundle(tmp_path)["exit_status"] == 0
+    code, out, err = _run(["--uncertainty-engine", "legacy"], tmp_path, monkeypatch)
+    b = _bundle(tmp_path)
+    assert code == 2 and b["exit_status"] == 2 and "has been removed" in b["usage_error"]
+
+
+@pytest.mark.parametrize("edit,said", [
+    (lambda c: c.__setitem__("elements", ["O", "H", "Xx"]), "elements[2]"),
+    (lambda c: c.__setitem__("rng_seed", "x"), "rng_seed"),
+    (lambda c: c.__setitem__("symmetry", "Q9"), "symmetry"),
+    (lambda c: c.__setitem__("coordinate_mode", "polar"), "coordinate_mode"),
+    (lambda c: c.__setitem__("internal_coordinates", {"damping": "x"}), "internal_coordinates.damping"),
+    (lambda c: c.setdefault("rovibrational_corrections", {}).__setitem__(
+        "harmonic_sigma_fraction", [1]), "harmonic_sigma_fraction"),
+    (lambda c: c["isotopologues"][0].__setitem__("cd_observed", {"DJ": [1]}), "cd_observed.DJ"),
+])
+def test_a_bad_field_is_named_by_validation(edit, said, tmp_path):
+    """These passed `quantize validate` and then failed in the builder with
+    Python's own text ("'Xx' is not in list", "could not convert string to
+    float: 'x'") or a traceback (TypeError)."""
+    import yaml
+    from runner.usability import ConfigError, load_config, validate_config
+    cfg = load_config(CONFIG)
+    edit(cfg)
+    with pytest.raises(ConfigError, match=said.replace(".", r"\.").replace("[", r"\[")):
+        validate_config(cfg)
+
+
+def test_a_config_that_cannot_be_read_or_normalized_is_a_config_error(tmp_path):
+    """A non-UTF-8 file raised UnicodeDecodeError, and a block of the wrong
+    shape AttributeError inside the normalizer: tracebacks, and the last
+    run's bundle left in place. `quantum: null` reads as absent, as the
+    validator already read it, instead of failing the build."""
+    from runner.usability import ConfigError, load_config, validate_config
+    bad = tmp_path / "latin.yaml"
+    bad.write_bytes(b"name: \xe9au\n")
+    with pytest.raises(ConfigError, match="Could not read"):
+        load_config(bad)
+    shape = tmp_path / "shape.yaml"
+    shape.write_text(CONFIG.read_text(encoding="utf-8") + "\ninternal_coordinates: abc\n",
+                     encoding="utf-8")
+    with pytest.raises(ConfigError):
+        validate_config(load_config(shape))
+    from runner.run_generic import build_run_inputs
+    cfg = load_config(CONFIG)
+    cfg["quantum"] = None
+    validate_config(cfg)
+    with contextlib.redirect_stdout(io.StringIO()):
+        inputs = build_run_inputs(cfg, verbose=False)
+    assert inputs["optimizer_kwargs"]["quantum_backend"] == "orca", "the default, as when absent"
+
+
 def test_a_fit_that_stops_at_max_iter_is_warned_about(tmp_path, monkeypatch):
     import yaml
     from runner.usability import load_config

@@ -1900,7 +1900,7 @@ def build_run_inputs(cfg: dict[str, Any], *, verbose: bool = True) -> dict[str, 
     isotopologues = [_build_isotopologue(iso, spectral_model=spectral_model) for iso in raw_isos]
 
     # ── Quantum chemistry ─────────────────────────────────────────────────────
-    qsec = cfg.get("quantum", {})
+    qsec = cfg.get("quantum") or {}     # null reads as absent, as validate_config does
     backend = str(qsec.get("backend", "orca")).strip().lower()
     spectral_only = backend == "none"
     orca_method = str(qsec.get("method", "wB97X-D4")).strip()

@@ -65,7 +65,17 @@ def build_optimizer_from_config(
     from backend.quantize import MolecularOptimizer
     from runner.run_generic import build_run_inputs
 
-    inputs = build_run_inputs(cfg, verbose=verbose)
+    from runner.usability import ConfigError
+
+    # Translating the config runs no fit, so anything it raises is the
+    # config's fault and says so; the multistart below runs real fits, and
+    # what they raise (numpy's LinAlgError is a ValueError) is not.
+    try:
+        inputs = build_run_inputs(cfg, verbose=verbose)
+    except ConfigError:
+        raise
+    except (ValueError, TypeError, KeyError, AttributeError, IndexError) as exc:
+        raise ConfigError(str(exc) or type(exc).__name__) from exc
     kwargs = dict(inputs["optimizer_kwargs"])
     starts = inputs["starts"]
     elems = inputs["elems"]

@@ -750,6 +750,8 @@ def test_an_old_payload_s_absolute_paths_follow_the_run(tmp_path):
     np.save(new / "s" / "cov.npy", np.eye(2))
     assert _rebuilt_path("/old/run/s/cov.npy", "/old/run", new) == (str(new / "s" / "cov.npy"), True)
     assert _rebuilt_path("C:\\runs\\R\\s\\cov.npy", "C:\\runs\\R", new) == (str(new / "s" / "cov.npy"), True)
+    # Windows paths compare without case, not only the drive letter.
+    assert _rebuilt_path("c:/RUNS/r/s/cov.npy", "C:\\runs\\R", new) == (str(new / "s" / "cov.npy"), True)
     assert _rebuilt_path("s/cov.npy", "/old/run", new) == (str(new / "s" / "cov.npy"), True)
     assert _rebuilt_path("s/gone.npy", "/old/run", new)[1] is False
     from runner.usability import generate_uncertainty_report_section
