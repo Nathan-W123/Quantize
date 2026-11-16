@@ -61,6 +61,8 @@ by rule of thumb: fit both, keep whichever reproduces the exact tau levels.
 
 from __future__ import annotations
 
+import functools
+
 import numpy as np
 
 #: A, B, C are also free in the fit. The reduction moves them -- that is where
@@ -145,6 +147,38 @@ def _axis_squares(p2, pz2, pd):
     return pz2, 0.5 * (perp + pd), 0.5 * (perp - pd)
 
 
+# The operator algebra below depends on J (and the reduction and order) alone,
+# and was rebuilt for J = 0..jmax on every call: a distortion fit row calls
+# reduction_from_tau thousands of times (16,949 compute_cd_constants calls,
+# 355,929 operator builds, in one `quantize run` of the water CD config).
+# Cached read-only; the arithmetic that uses them is unchanged, so every
+# result is bit-identical.
+def _frozen(a):
+    a = np.array(a, dtype=float)
+    a.setflags(write=False)
+    return a
+
+
+@functools.lru_cache(maxsize=None)
+def _squares(j: int):
+    """``_axis_squares(*angular_momentum_operators(j))``, cached read-only."""
+    return tuple(_frozen(x) for x in _axis_squares(*angular_momentum_operators(j)))
+
+
+@functools.lru_cache(maxsize=None)
+def _square_products(j: int):
+    """``sq[al] @ sq[be] + (sq[al] @ sq[be]).T`` for each axis pair, cached."""
+    sq = _squares(j)
+    out = []
+    for al in range(3):
+        row = []
+        for be in range(3):
+            prod = sq[al] @ sq[be]
+            row.append(_frozen(prod + prod.T))
+        out.append(tuple(row))
+    return tuple(out)
+
+
 def ladder_power_sum(j: int, n: int):
     """``P+^n + P-^n`` in the ``|J, K>`` basis: the operator linking K and K+-n.
 
@@ -187,13 +221,12 @@ def levels_from_tau(abc_mhz, tau_mhz, jmax: int = 6):
     tau = 0.5 * (tau + tau.T)
     out = []
     for j in range(jmax + 1):
-        p2, pz2, pd = angular_momentum_operators(j)
-        sq = _axis_squares(p2, pz2, pd)
+        sq = _squares(j)
+        sym = _square_products(j)
         h = a * sq[0] + b * sq[1] + c * sq[2]
         for al in range(3):
             for be in range(3):
-                prod = sq[al] @ sq[be]
-                h += 0.25 * tau[al, be] * 0.5 * (prod + prod.T)
+                h += 0.25 * tau[al, be] * 0.5 * sym[al][be]
         out.append(np.sort(np.linalg.eigvalsh(0.5 * (h + h.T))))
     return np.concatenate(out)
 
@@ -220,6 +253,11 @@ def _reduced_operators(reduction: str, j: int, order: int = 4):
         raise ValueError(
             f"Unknown order {order!r}. Valid: {list(REDUCTION_ORDERS)}"
         )
+    return list(_reduced_operators_cached(red, int(j), int(order)))
+
+
+@functools.lru_cache(maxsize=None)
+def _reduced_operators_cached(red: str, j: int, order: int):
     p2, pz2, pd = angular_momentum_operators(j)
     sq = _axis_squares(p2, pz2, pd)
     p4 = p2 @ p2
@@ -262,7 +300,7 @@ def _reduced_operators(reduction: str, j: int, order: int = 4):
                 p2 @ lad4,
                 ladder_power_sum(j, 6),
             ]
-    return [0.5 * (op + op.T) for op in ops]
+    return tuple(_frozen(0.5 * (op + op.T)) for op in ops)
 
 
 def _reduced_basis_levels(jmax: int, reduction: str = "A", order: int = 4):
@@ -281,8 +319,7 @@ def _reduced_basis_levels(jmax: int, reduction: str = "A", order: int = 4):
     def design(a, b, c):
         rows = []
         for j in range(jmax + 1):
-            p2, pz2, pd = angular_momentum_operators(j)
-            sq = _axis_squares(p2, pz2, pd)
+            sq = _squares(j)
             h0 = a * sq[0] + b * sq[1] + c * sq[2]
             _, vecs = np.linalg.eigh(0.5 * (h0 + h0.T))
             ops = _reduced_operators(reduction, j, order)
