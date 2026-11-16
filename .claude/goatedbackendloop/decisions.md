@@ -300,3 +300,19 @@
   trade (both improve; default radii unchanged).
 - Revisit if: split becomes a supported path -- its stopping points depend
   on step size (backlog N12).
+
+### D-25 · A target-centred prior keeps the target's Hessian (2026-11-16)
+- Decision: with prior_target_coords (Cartesian), the Hessian that sets the
+  prior's precision is computed at the target (in the current frame) once
+  and rotated into the frame afterwards; energy and gradient stay the
+  current geometry's; hessian_distance measures against the target.
+- Why: a prior must be fixed before the data; H from wherever the fit had
+  got to made it move with the fit (isocyanic acid HF/6-31G: 97 mA per
+  restart, no fixed point under refreshes). Every shipped script starts at
+  its target, so the benchmark answers are unchanged (<= 1e-8 mA).
+- Alternatives considered: tighten the plateau rule (the fits were already
+  converged for their model); refresh the Hessian at the answer like D-23
+  (wrong model for a target prior, and worse scores: 23.98 -> 40.13 mA).
+- Source: assumption (physics delegated); no accuracy/efficiency trade.
+- Revisit if: a target prior is wanted whose curvature follows the fit
+  (that would be a different prior, and needs its own fixed point).

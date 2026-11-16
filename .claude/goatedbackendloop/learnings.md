@@ -50,6 +50,21 @@ Sessions: 0 · Last consolidated: never
 - Scope: workflow
 - Status: provisional
 - Outcomes:
+### L-05 · Before fixing to a reference, check what the reference changes
+- Observation: twice in one day a "the fit is not converged" verdict came
+  from a comparison that changed more than one thing: round 8's reference
+  was a terminus reached from another start (the procedure has several),
+  and N6's restart was a fresh optimizer, i.e. also a fresh Hessian, which
+  changed the model being fitted.
+- Evidence: 2026-11-16 · Quantize round 8 (two fixes tuned to the wrong
+  reference, one doubled the "far" count) and N6 (same-object restart
+  <= 0.0003 mA vs fresh restart 97 mA on one molecule).
+- Adjustment: when a check says "not at the optimum", rerun it changing one
+  thing at a time (same object / same start / same model) and ask what the
+  reference procedure does from the point being judged before changing code.
+- Scope: workflow
+- Status: provisional
+- Outcomes: +2026-11-16 (N6: one 4-minute run named the cause)
 ## Retired
 ## Changelog
 - 2026-11-12 created; L-01 added.
