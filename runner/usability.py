@@ -315,6 +315,12 @@ def _number_problem(value: Any, path: str, *, integer: bool = False) -> str | No
     if integer:
         if isinstance(value, int) or (isinstance(value, float) and value.is_integer()):
             return None
+        if isinstance(value, str):          # the builder's int() reads "17"
+            try:
+                int(value.strip())
+                return None
+            except ValueError:
+                pass
         return f"'{path}' must be an integer (got {value!r})."
     try:
         v = float(value)
@@ -339,10 +345,12 @@ def _validate_run_controls(cfg: dict[str, Any], elements: list[Any]) -> None:
                 f"'elements[{i}]' is '{elem}', which is not an element this engine has "
                 f"data for (H to Rn)."
             )
-    if "rng_seed" in cfg:
+    if cfg.get("rng_seed") is not None:
         why = _number_problem(cfg.get("rng_seed"), "rng_seed", integer=True)
         if why:
             raise ConfigError(why)
+        if int(str(cfg.get("rng_seed")).strip().split(".")[0]) < 0:
+            raise ConfigError(f"'rng_seed' must be >= 0 (got {cfg.get('rng_seed')!r}).")
     mode = cfg.get("coordinate_mode")
     if mode is not None and str(mode).strip().lower() not in {"internal", "cartesian"}:
         raise ConfigError(f"'coordinate_mode' must be internal or cartesian (got {mode!r}).")
@@ -366,21 +374,34 @@ def _validate_run_controls(cfg: dict[str, Any], elements: list[Any]) -> None:
                     raise ConfigError(why)
     rc = cfg.get("rovibrational_corrections")
     if isinstance(rc, dict):
-        for key, integer in (("harmonic_sigma_fraction", False), ("cd_sigma_fraction", False),
-                             ("cd_weight", False), ("lam_freq_cm", False),
-                             ("rovib_recalc_every", True)):
-            if rc.get(key) is not None:
-                why = _number_problem(rc.get(key), f"rovibrational_corrections.{key}",
-                                      integer=integer)
-                if why:
-                    raise ConfigError(why)
+        # The first four are read as float(block.get(key, default)), so a
+        # stated null is float(None); rovib_recalc_every falls back to its
+        # default on null.
+        for key, integer, nullable in (("harmonic_sigma_fraction", False, False),
+                                       ("cd_sigma_fraction", False, False),
+                                       ("cd_weight", False, False), ("lam_freq_cm", False, False),
+                                       ("rovib_recalc_every", True, True)):
+            if key not in rc or (rc.get(key) is None and nullable):
+                continue
+            why = _number_problem(rc.get(key), f"rovibrational_corrections.{key}",
+                                  integer=integer)
+            if why:
+                raise ConfigError(why)
+    # The flat legacy spellings the builder still falls back to.
+    for key, integer in (("rovib_recalc_every", True), ("correction_sigma_vib_fraction", False),
+                         ("correction_sigma_elec_fraction", False)):
+        if cfg.get(key) is not None:
+            why = _number_problem(cfg.get(key), key, integer=integer)
+            if why:
+                raise ConfigError(why)
+    _validate_optimizer_block(cfg)
     for i, iso in enumerate(cfg.get("isotopologues") or []):
         if not isinstance(iso, dict):
             continue
         label = str(iso.get("name") or f"isotopologues[{i}]")
         for key in ("cd_observed", "centrifugal_distortion", "cd_sigma"):
             block = iso.get(key)
-            if block in (None, {}):
+            if not block:                   # absent, null, {} or []: the builder skips it
                 continue
             if not isinstance(block, dict):
                 raise ConfigError(f"'{key}' of {label} must be a mapping of constant -> MHz.")
@@ -390,6 +411,53 @@ def _validate_run_controls(cfg: dict[str, Any], elements: list[Any]) -> None:
                 why = _number_problem(v, f"{key}.{k}")
                 if why:
                     raise ConfigError(f"{why[:-1]} in {label}.")
+
+
+#: optimizer: overrides the builder passes to MolecularOptimizer as given,
+#: by the type the constructor reads them as (a null keeps the default for
+#: the two that take one).
+_OPTIMIZER_FLOATS = ("trust_radius", "lambda_damp", "sv_threshold", "sv_min_abs",
+                     "alpha_quantum", "spectral_delta", "orca_update_thresh", "conv_freq",
+                     "conv_step_range", "conv_step_null", "conv_grad_null",
+                     "quantum_weight_beta", "quantum_weight_min", "quantum_weight_max")
+_OPTIMIZER_NULLABLE_FLOATS = ("null_trust_radius", "quantum_prior_sigma_ang")
+_OPTIMIZER_INTS = ("max_iter", "hess_recalc_every", "hess_recalc_min", "hess_recalc_max")
+_OPTIMIZER_BOOLS = ("adaptive_hess_schedule", "dynamic_quantum_weight")
+
+
+def _validate_optimizer_block(cfg: dict[str, Any]) -> None:
+    """The optimizer: block reaches MolecularOptimizer unconverted, so a bad
+    value failed in its constructor -- inside the multistart, as a
+    traceback ("could not convert string to float: 'x'"), and an unknown
+    objective_mode ran silently as joint."""
+    opt = cfg.get("optimizer")
+    if opt is None:
+        return
+    if not isinstance(opt, dict):
+        raise ConfigError("'optimizer' must be a mapping/object.")
+    for key in _OPTIMIZER_FLOATS + _OPTIMIZER_NULLABLE_FLOATS:
+        if key not in opt or (opt[key] is None and key in _OPTIMIZER_NULLABLE_FLOATS):
+            continue
+        why = _number_problem(opt[key], f"optimizer.{key}")
+        if why:
+            raise ConfigError(why)
+        if key in ("trust_radius", "null_trust_radius") and float(opt[key]) <= 0.0:
+            raise ConfigError(f"'optimizer.{key}' must be > 0 (got {opt[key]!r}).")
+    for key in _OPTIMIZER_INTS:
+        if key in opt:
+            why = _number_problem(opt[key], f"optimizer.{key}", integer=True)
+            if why:
+                raise ConfigError(why)
+            if int(float(str(opt[key]).strip())) < 1:
+                raise ConfigError(f"'optimizer.{key}' must be >= 1 (got {opt[key]!r}).")
+    for key in _OPTIMIZER_BOOLS:
+        if key in opt and not isinstance(opt[key], bool):
+            raise ConfigError(f"'optimizer.{key}' must be true or false (got {opt[key]!r}).")
+    if "objective_mode" in opt:
+        mode = str(opt["objective_mode"]).strip().lower()
+        if mode not in ("joint", "split"):
+            raise ConfigError(
+                f"'optimizer.objective_mode' must be joint or split (got {opt['objective_mode']!r}).")
 
 
 _VALID_ROVIB_MODES = {

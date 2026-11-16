@@ -1869,6 +1869,24 @@ def config_workdir(cfg: dict) -> str:
     return os.path.abspath(os.path.join(base, "single", name))
 
 
+def _optimizer_value(key: str, value: Any) -> Any:
+    """An optimizer: override as the constructor reads it: numbers as float
+    or int (a quoted "0.05" or "40" too), objective_mode lower-case; null
+    stays null. They used to pass unconverted, so a string reached the
+    constructor's arithmetic."""
+    from runner.usability import _OPTIMIZER_FLOATS, _OPTIMIZER_INTS, _OPTIMIZER_NULLABLE_FLOATS
+
+    if value is None or isinstance(value, bool):
+        return value
+    if key in _OPTIMIZER_FLOATS or key in _OPTIMIZER_NULLABLE_FLOATS:
+        return float(value)
+    if key in _OPTIMIZER_INTS:
+        return int(float(str(value).strip())) if isinstance(value, str) else int(value)
+    if key == "objective_mode":
+        return str(value).strip().lower()
+    return value
+
+
 def build_run_inputs(cfg: dict[str, Any], *, verbose: bool = True) -> dict[str, Any]:
     """Translate a config dict into everything a run needs, without running one.
 
@@ -1995,7 +2013,8 @@ def build_run_inputs(cfg: dict[str, Any], *, verbose: bool = True) -> dict[str, 
     # the API and the benchmark imposed the detected group -- and without it
     # formyl fluoride leaves the plane and fluoroacetylene bends.
     symmetry_spec = (cfg["symmetry"] if "symmetry" in cfg else "auto") or None
-    coordinate_mode = str(cfg.get("coordinate_mode", "internal")).strip().lower()
+    # null reads as absent (it became 'none', which the constructor refused).
+    coordinate_mode = str(cfg.get("coordinate_mode") or "internal").strip().lower()
     internal_cfg = cfg.get("internal_coordinates", {}) or {}
     ic_use_dihedrals = bool(internal_cfg.get("use_dihedrals", False))
     ic_damping = float(internal_cfg.get("damping", 1e-6))
@@ -2210,7 +2229,7 @@ def build_run_inputs(cfg: dict[str, Any], *, verbose: bool = True) -> dict[str, 
         optimizer_kwargs.pop("conv_freq")
     for key, value in opt_cfg.items():
         if key in _optimizer_overrides:
-            optimizer_kwargs[key] = value
+            optimizer_kwargs[key] = _optimizer_value(key, value)
     cm_enabled, cm_defs, cm_mode, cm_temp_k = _build_conformer_mixture_from_config(cfg, np.asarray(coords, dtype=float))
     if cm_enabled:
         optimizer_kwargs["use_conformer_mixture"] = True
@@ -2262,8 +2281,30 @@ def build_run_inputs(cfg: dict[str, Any], *, verbose: bool = True) -> dict[str, 
     }
 
 
+def translate_config(cfg: dict[str, Any], *, verbose: bool = True) -> dict[str, Any]:
+    """build_run_inputs, with anything it raises reported as the config's
+    fault (ConfigError): it runs no fit, so its ValueError, TypeError,
+    KeyError, AttributeError and IndexError come from the config. The fits
+    that follow raise their own (numpy's LinAlgError is a ValueError)."""
+    from runner.usability import ConfigError
+
+    try:
+        return build_run_inputs(cfg, verbose=verbose)
+    except ConfigError:
+        raise
+    except (ValueError, TypeError, KeyError, AttributeError, IndexError) as exc:
+        raise ConfigError(str(exc) or type(exc).__name__) from exc
+
+
 def main(cfg: dict[str, Any]) -> dict[str, Any]:
-    _inputs = build_run_inputs(cfg)
+    from runner.usability import ConfigError
+
+    try:
+        _inputs = translate_config(cfg)
+    except ConfigError as exc:
+        # quantize run printed a traceback for these, where quantize
+        # uncertainty reported a config error.
+        raise SystemExit(f"Config error: {exc}") from None
     name = _inputs["name"]
     managed_run = _inputs["managed_run"]
     run_dir = _inputs["run_dir"]

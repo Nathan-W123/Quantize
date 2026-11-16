@@ -551,3 +551,64 @@ def test_the_summaries_are_strict_json(tmp_path):
     out = cli._write_bundle(str(tmp_path), {"bootstrap": {"analytic": s.analytic}, "x": float("nan")})
     got = strict(out)
     assert got["x"] is None and got["bootstrap"]["analytic"]["check"]["ratio"] == [None, 1.0]
+
+
+@pytest.mark.parametrize("edit,said", [
+    (lambda c: c.setdefault("optimizer", {}).__setitem__("trust_radius", "x"), "optimizer.trust_radius"),
+    (lambda c: c.setdefault("optimizer", {}).__setitem__("max_iter", "abc"), "optimizer.max_iter"),
+    (lambda c: c.setdefault("optimizer", {}).__setitem__("max_iter", None), "optimizer.max_iter"),
+    (lambda c: c.setdefault("optimizer", {}).__setitem__("objective_mode", "bogus"), "objective_mode"),
+    (lambda c: c.__setitem__("rng_seed", -1), "rng_seed"),
+    (lambda c: c.setdefault("rovibrational_corrections", {}).__setitem__("cd_weight", None), "cd_weight"),
+    (lambda c: c.__setitem__("rovib_recalc_every", "x"), "rovib_recalc_every"),
+])
+def test_values_the_constructor_would_refuse_are_named_by_validation(edit, said):
+    """Round 9: with the build catching only the translation's errors, a bad
+    optimizer: value (passed to the constructor unconverted) or
+    coordinate_mode: null failed inside the multistart as a traceback; an
+    unknown objective_mode ran as joint; a stated null for cd_weight was
+    float(None); rng_seed -1 failed in numpy."""
+    from runner.usability import ConfigError, load_config, validate_config
+    cfg = load_config(CONFIG)
+    edit(cfg)
+    with pytest.raises(ConfigError, match=said):
+        validate_config(cfg)
+
+
+def test_what_the_builder_reads_validates_and_is_read_as_meant():
+    """Quoted integers ran before the integer checks (rng_seed "17") and must
+    still; an empty cd_observed list is absent; coordinate_mode null is the
+    default; optimizer overrides arrive as numbers; point-group names in any
+    case."""
+    from backend.symmetry import _normalize_pg
+    from runner.run_generic import build_run_inputs
+    from runner.usability import load_config, validate_config
+    cfg = load_config(CONFIG)
+    cfg["rng_seed"] = "17"
+    cfg["internal_coordinates"] = {"microiterations": "20"}
+    cfg.setdefault("rovibrational_corrections", {})["rovib_recalc_every"] = "2"
+    cfg["isotopologues"][0]["cd_observed"] = []
+    cfg["coordinate_mode"] = None
+    cfg["optimizer"] = {"trust_radius": "0.05", "max_iter": "40", "objective_mode": "Joint"}
+    validate_config(cfg)
+    with contextlib.redirect_stdout(io.StringIO()):
+        inputs = build_run_inputs(cfg, verbose=False)
+    kw = inputs["optimizer_kwargs"]
+    assert kw["coordinate_mode"] == "internal"
+    assert kw["trust_radius"] == 0.05 and kw["max_iter"] == 40 and kw["objective_mode"] == "joint"
+    assert [_normalize_pg(p) for p in ("cs", "c2v", "D2H", "c1")] == ["Cs", "C2v", "D2h", "C1"]
+
+
+def test_quantize_run_reports_a_translation_error_as_a_config_error(tmp_path, monkeypatch):
+    import runner.run_generic as RG
+
+    def bad(*a, **k):
+        raise TypeError("float() argument must be a string or a real number, not 'NoneType'")
+
+    monkeypatch.setattr(RG, "build_run_inputs", bad)
+    monkeypatch.chdir(tmp_path)
+    out, err = io.StringIO(), io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        code = cli.main(["run", str(CONFIG), "--no-run-dir"])
+    assert code == 2 and "Config error" in err.getvalue() and "Traceback" not in err.getvalue()
+

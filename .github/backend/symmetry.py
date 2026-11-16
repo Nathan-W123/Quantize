@@ -133,7 +133,16 @@ _ALIASES = {
 
 
 def _normalize_pg(pg: str) -> str:
-    return _ALIASES.get(pg.strip().upper(), pg.strip())
+    """The table's own spelling of a point-group name, in any case ("cs",
+    "c2v", "D2H"); a name it does not know comes back as given."""
+    key = pg.strip()
+    hit = _ALIASES.get(key.upper())
+    if hit:
+        return hit
+    for name in _GROUP_OPS:
+        if name.upper() == key.upper():
+            return name
+    return key
 
 
 # ── orientation ──────────────────────────────────────────────────────────────
