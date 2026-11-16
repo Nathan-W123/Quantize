@@ -636,9 +636,12 @@ class BootstrapEngine:
         except Exception:
             return None
 
-    #: A cloud width departs from the analytic one beyond this many Monte
-    #: Carlo standard errors of its sd ratio ...
-    _CHECK_SIGMAS = 3.0
+    #: A cloud width departs from the analytic one when its log ratio is
+    #: beyond the normal quantile that keeps the chance of a false flag
+    #: anywhere among the m coordinates at the two-sided 3-sigma rate
+    #: (0.27%) -- one 3-sigma test per coordinate flagged 14% of Gaussian
+    #: nine-coordinate clouds at 20 refits ...
+    _CHECK_FAMILY_RATE = 0.0027
     #: ... and only where, if the cloud is right, the reported (posterior)
     #: width would move by at least this fraction: a 15% departure on a part
     #: holding 1% of the reported variance (joint C-only water's angle)
@@ -647,21 +650,33 @@ class BootstrapEngine:
 
     @classmethod
     def _cloud_check(cls, names, cloud_sd, target_sd, posterior_sd, q):
-        """Cloud over analytic width per coordinate; its Monte Carlo error
-        from each coordinate's own kurtosis k, sqrt((k - 1) / (4 n)) -- the
-        Gaussian 1/sqrt(2(n-1)) understated it 3x for the heavy-tailed angle
-        clouds of fits off their posterior's mode (k 18-22); the change the
-        cloud implies for the reported width; and the coordinates where the
-        cloud departs beyond _CHECK_SIGMAS errors and moves the reported
-        width by _CHECK_IMPACT or more. The cloud is refits of the estimator
-        and the analytic column the engine's account of their spread, so a
-        departure says that account does not describe the fit there."""
+        """Cloud over analytic width per coordinate, its Monte Carlo error,
+        the change it implies for the reported width, and where it departs.
+
+        The error of an sd ratio comes from the exact variance of a sample
+        variance, 2/(n-1) + excess kurtosis/n, with the sample excess
+        kurtosis corrected for its small-n bias (G2) and never let below the
+        Gaussian value: sqrt((k-1)/(4n)) from the raw sample kurtosis
+        flagged 1.65% of Gaussian coordinates at 20 refits (nominal 0.27%)
+        and 6-17% of kurtosis-20 ones at 40-200. The test is on the log
+        ratio, whose sampling distribution is near-symmetric where the ratio
+        itself is skewed, at the family-wise quantile _CHECK_FAMILY_RATE. The
+        printed error is that of the printed ratio (r times the relative
+        error). The cloud is refits of the estimator and the analytic column
+        the engine's account of their spread, so a departure says that
+        account does not describe the fit there."""
+        from scipy.stats import norm
+
         q = np.asarray(q, dtype=float)
         n = int(q.shape[0])
+        m = max(len(names), 1)
         d = q - q.mean(axis=0)
         m2 = (d ** 2).mean(axis=0)
-        kurt = np.where(m2 > 0.0, (d ** 4).mean(axis=0) / np.where(m2 > 0.0, m2, 1.0) ** 2, 3.0)
-        se = np.sqrt(np.maximum(kurt - 1.0, 0.0) / (4.0 * max(n, 1)))
+        safe = np.where(m2 > 0.0, m2, 1.0)
+        g2 = np.where(m2 > 0.0, (d ** 4).mean(axis=0) / safe ** 2 - 3.0, 0.0)
+        G2 = (((n + 1) * g2 + 6.0) * (n - 1) / ((n - 2) * (n - 3))) if n > 3 else np.zeros_like(g2)
+        rel = 0.5 * np.sqrt(2.0 / max(n - 1, 1) + np.maximum(G2, 0.0) / max(n, 1))
+        z = float(norm.ppf(1.0 - cls._CHECK_FAMILY_RATE / (2.0 * m)))
         ratio, impact = [], []
         for b, t, p in zip(cloud_sd, target_sd, posterior_sd):
             r = float(b) / float(t) if t and t > 0 else float("nan")
@@ -669,13 +684,13 @@ class BootstrapEngine:
             share = (float(t) / float(p)) ** 2 if p and p > 0 else float("nan")
             impact.append(float(np.sqrt(max(1.0 + (r * r - 1.0) * share, 0.0)) - 1.0)
                           if np.isfinite(r) and np.isfinite(share) else float("nan"))
-        departs = [nm for nm, r, e, imp in zip(names, ratio, se, impact)
-                   if np.isfinite(r) and abs(r - 1.0) > cls._CHECK_SIGMAS * float(e)
+        departs = [nm for nm, r, e, imp in zip(names, ratio, rel, impact)
+                   if np.isfinite(r) and r > 0.0 and abs(np.log(r)) > z * float(e)
                    and np.isfinite(imp) and abs(imp) >= cls._CHECK_IMPACT]
-        return {"n": n, "ratio": ratio, "mc_sd": [float(e) for e in se],
-                "kurtosis": [float(k) for k in kurt], "impact": impact,
-                "departs": departs, "sigmas": float(cls._CHECK_SIGMAS),
-                "impact_min": float(cls._CHECK_IMPACT)}
+        return {"n": n, "ratio": ratio,
+                "mc_sd": [float(r * e) if np.isfinite(r) else float("nan") for r, e in zip(ratio, rel)],
+                "kurtosis": [float(k + 3.0) for k in np.atleast_1d(G2)], "impact": impact,
+                "departs": departs, "sigmas": z, "impact_min": float(cls._CHECK_IMPACT)}
 
     @staticmethod
     def _persist_summary(summary: BootstrapRunSummary, run_dir: str) -> None:

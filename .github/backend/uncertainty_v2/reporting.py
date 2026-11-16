@@ -53,14 +53,19 @@ def format_bootstrap_summary(summary: BootstrapRunSummary) -> str:
                 for nm, r, e, k in zip(a["names"], chk["ratio"], se, kurt))
             lines.extend(_wrap(f"cloud/analytic at {chk['n']} refits, with Monte Carlo error: "
                                f"{pairs}"))
+            if max(kurt) > 6.0:
+                lines.extend(_wrap(
+                    "Heavy-tailed cloud: the error assumes its tails are sampled; with few "
+                    "refits in them an sd ratio can sit outside it by chance."))
             if chk["departs"]:
                 imp = dict(zip(a["names"], chk.get("impact") or []))
                 what = ", ".join(
                     f"{nm} (the reported width {abs(imp[nm]) * 100:.0f}% too "
                     f"{'narrow' if imp[nm] > 0 else 'wide'} if the cloud is right)"
                     for nm in chk["departs"] if nm in imp)
-                lines.extend(_wrap(f"DEPARTS beyond {chk['sigmas']:g}x Monte Carlo error on: "
-                                   f"{what}."))
+                lines.extend(_wrap(f"DEPARTS (log ratio beyond {chk['sigmas']:.2f} Monte Carlo "
+                                   f"errors, family-wise over {len(a['names'])} coordinates) "
+                                   f"on: {what}."))
                 if a.get("objective") == "split":
                     lines.append("  Under the split objective the refits are the split estimator, so")
                     lines.append("  the reported (split posterior) widths do not describe its spread there.")

@@ -682,25 +682,34 @@ def test_the_report_says_how_old_its_hessian_is(config_fit, tmp_path):
 
 def test_the_check_s_error_follows_the_cloud_s_tails_and_its_flag_the_reported_width():
     """The Gaussian 1/sqrt(2(n-1)) understated the error of heavy-tailed
-    angle clouds 3x (kurtosis 18-22), and any departure beyond it was
-    flagged -- the known 7% nonlinearity at 1000 draws, and a 15% departure
-    on a part holding 1% of the reported variance."""
+    angle clouds 3x (kurtosis 18-22); sqrt((k-1)/(4n)) from the raw sample
+    kurtosis then flagged 1.65% of Gaussian coordinates at 20 refits and 14%
+    of nine-coordinate clouds (nominal 0.27%). The error now comes from the
+    bias-corrected kurtosis, never below the Gaussian value; the test is on
+    the log ratio at a family-wise quantile; a departure must also move the
+    reported width by 2% or more; the printed error is the ratio's own."""
     rng = np.random.default_rng(0)
     names = ["a", "b", "c"]
     gauss = rng.standard_normal((1000, 3))
-    chk = BootstrapEngine._cloud_check(names, [1.07, 1.15, 1.0], [1.0, 1.0, 1.0],
+    chk = BootstrapEngine._cloud_check(names, [1.10, 1.15, 1.0], [1.0, 1.0, 1.0],
                                        [1.0, 100.0, 1.0], gauss)
-    assert chk["mc_sd"][0] == pytest.approx(1.0 / np.sqrt(2000), rel=0.1)
-    assert chk["impact"][0] == pytest.approx(0.07, abs=1e-12)
+    assert chk["mc_sd"][0] == pytest.approx(1.10 / np.sqrt(2000), rel=0.1)
+    assert chk["impact"][0] == pytest.approx(0.10, abs=1e-12)
     assert chk["impact"][1] == pytest.approx(0.0, abs=1e-4)
-    assert chk["departs"] == ["a"], "7% of the reported width: said; 0.01%: not"
+    assert chk["departs"] == ["a"], "10% of the reported width: said; 0.01%: not"
+    assert chk["sigmas"] == pytest.approx(3.32, abs=0.01), "three coordinates' family-wise bar"
     heavy = rng.standard_normal((200, 3))
     heavy[:10] *= 10.0                      # 5% of the draws in a tail 10x wider
     chk = BootstrapEngine._cloud_check(names, [0.65, 1.0, 1.0], [1.0, 1.0, 1.0],
                                        [1.0, 1.0, 1.0], heavy)
     assert chk["kurtosis"][0] > 10.0
-    assert chk["mc_sd"][0] > 2.0 / np.sqrt(2 * 199)
-    assert "a" not in chk["departs"], "a 0.65 within three of its own errors"
+    assert chk["mc_sd"][0] / 0.65 > 2.0 / np.sqrt(2 * 199)
+    assert "a" not in chk["departs"], "a 0.65 within its own error"
+    # False flags at r = 1 on Gaussian clouds of 20 refits, nine coordinates.
+    flags = sum(bool(BootstrapEngine._cloud_check(
+        list("abcdefghi"), q.std(axis=0, ddof=1), [1.0] * 9, [1.0] * 9, q)["departs"])
+        for q in (rng.standard_normal((20, 9)) for _ in range(600)))
+    assert flags / 600 < 0.03
 
 
 def test_a_split_restart_that_runs_out_of_iterations_certifies_nothing(tmp_path):

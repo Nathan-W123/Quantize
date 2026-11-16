@@ -116,9 +116,10 @@ class BootstrapRunSummary:
     #: angles in degrees), "objective", under split "null_response",
     #: "split_note" and (off its mode) "mode_shift", and with a cloud "check"
     #: ({"n", "ratio", "mc_sd", "kurtosis", "impact", "departs", "sigmas",
-    #: "impact_min"}: cloud over analytic width per coordinate, its Monte
-    #: Carlo error from the cloud's kurtosis, the change it implies for the
-    #: reported width, and where it departs). None when it could not be formed.
+    #: "impact_min"}: cloud over analytic width per coordinate, the ratio's
+    #: Monte Carlo error (from the bias-corrected kurtosis), the change it
+    #: implies for the reported width, where it departs, and the family-wise
+    #: quantile used). None when it could not be formed.
     analytic: dict | None = None
 
     #: Fewer usable samples than this fraction of the requested count and the

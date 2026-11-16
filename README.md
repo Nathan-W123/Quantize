@@ -382,7 +382,9 @@ the constants from the engine's error model, a check of the posterior less
 its prior part; `rto` the quantum prior's centre as well, a sample of the
 posterior; `isotopologue-gaussian` the legacy independent draw. Each run
 prints its cloud beside the analytic value it should match, and flags a
-coordinate where the two differ beyond three Monte Carlo standard errors.
+coordinate where the two differ beyond their Monte Carlo error (taken from
+the cloud's own kurtosis, at a family-wise 3-sigma rate over the
+coordinates) by enough to move the reported width 2% or more.
 Exit status: 0 interval reported; 1 no interval; 2 usage error or a strategy
 refused before anything past the base fit ran; 3 interval reported but a
 requested part produced nothing usable (a bootstrap refused after the fit or
