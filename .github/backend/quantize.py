@@ -2974,7 +2974,15 @@ class MolecularOptimizer:
             dx_null_norm = float(np.linalg.norm(P_null @ dp))
             g_null_norm = None if self.spectral_only else float(np.linalg.norm(P_null @ _ic_g))
             geometry_valid, guardrail_stats = self._geometry_validity(trial_coords)
-            _, residual_w_trial = self.spectral.stacked(trial_coords)
+            # Residuals only: the trial's Jacobian was built and discarded
+            # (30-90 ms per benchmark fit); a step taken computes its own.
+            # Not with distortion rows: their FD Jacobian is memoised on the
+            # coordinates rounded to 1e-8, so the trial's entry is what the
+            # next iteration reads at an accepted (symmetrised) geometry, and
+            # skipping it moved CD fits within their stopping tolerance
+            # (1.8e-10 A; a multistart spread by 1e-5 relative).
+            _, residual_w_trial = self.spectral.stacked(
+                trial_coords, want_jacobian=self.spectral._cd_rows_active())
             prior_wrms_after = None
             if self.internal_prior is not None and self.coordinate_mode == "cartesian":
                 Jp_trial, rp_trial = self.internal_prior.stacked(trial_coords)
