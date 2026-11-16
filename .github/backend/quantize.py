@@ -705,17 +705,22 @@ class MolecularOptimizer:
                     # Both from one model estimate: sigma_constants IS the
                     # model error, and none of it is measurement.
                     _both_from_model.add(id(_iso))
-        _no_sys = [str(_i.get("name", "iso")) for _i in isotopologues
-                   if _i.get("sigma_systematic_constants") is None]
-        if _no_sys:
-            print(
-                "  [sigma] WARNING: no sigma_systematic_constants for "
-                f"{', '.join(_no_sys)}. Reported geometry uncertainties will "
-                "cover measurement precision ONLY -- the B0-versus-Be model "
-                "error, which dominates here, is not included and the "
-                "intervals are therefore optimistic. Supply "
-                "sigma_systematic_constants per species to include it."
-            )
+        # Which species' model error the engine estimated, for
+        # model_error_sources. Whether a species carries any model error is
+        # known only once its corrections are applied (a correction with a
+        # stated sigma carries it), so it is reported with the widths
+        # (model_error_warnings), not here: this said "no
+        # sigma_systematic_constants ... measurement precision ONLY" on every
+        # config run, including those whose corrections carried it.
+        _estimated = {str(n.split(" [")[0]) for n in _sys_filled}
+        # Kept as given: a vibrational correction later writes its own sigma
+        # into sigma_systematic_constants (resolve_corrections), so the field
+        # alone cannot say which rows the caller stated.
+        self._model_error_given = {
+            str(_i.get("name", "iso")): (
+                "estimated" if str(_i.get("name", "iso")) in _estimated else "stated",
+                np.abs(np.asarray(_i["sigma_systematic_constants"], dtype=float).ravel()))
+            for _i in isotopologues if _i.get("sigma_systematic_constants") is not None}
         if _filled:
             print(f"  [sigma] derived for {len(_filled)} species: "
                   f"{', '.join(_filled[:3])}{' ...' if len(_filled) > 3 else ''}")
@@ -1859,6 +1864,70 @@ class MolecularOptimizer:
                             "reduction": str(iso.get("cd_reduction", "")),
                             "reduction_source": str(iso.get("cd_reduction_source", ""))})
         return out
+
+    def model_error_sources(self):
+        """Per isotopologue, where its rows' model error -- the B0-versus-Be
+        gap, propagated as shared across isotopologues -- comes from:
+        "stated" (sigma_systematic_constants given), "estimated"
+        (auto_systematic_sigma), "corrections" (a B0 -> Be correction with a
+        stated sigma on its rows), a "+" join where rows differ, or None
+        where no row carries any: its widths cover measurement precision
+        only. Distortion rows carry none by design and are not counted."""
+        out = {}
+        given = getattr(self, "_model_error_given", {})
+        for iso in self.spectral.isotopologues:
+            name = str(iso.get("name", "iso"))
+            n = len(np.asarray(iso["component_indices"]).ravel())
+            sys_sig = iso.get("sigma_systematic_constants")
+            sys_sig = (np.zeros(n) if sys_sig is None
+                       else np.abs(np.asarray(sys_sig, dtype=float).ravel()))
+            if sys_sig.size != n:
+                sys_sig = np.zeros(n)
+            corr = np.asarray(self.spectral._correction_sigma(iso, n), dtype=float)
+            kind_given, vals_given = given.get(name, (None, None))
+            kinds = set()
+            for k, (c, s) in enumerate(zip(corr, sys_sig)):
+                if c > 0.0:
+                    kinds.add("corrections")
+                elif s > 0.0:
+                    # Still the value it was given with: stated or estimated;
+                    # otherwise a vibrational correction replaced it.
+                    same = (vals_given is not None and vals_given.size == n
+                            and np.isclose(s, vals_given[k], rtol=1e-12, atol=0.0))
+                    kinds.add(kind_given if same else "corrections")
+                else:
+                    kinds.add(None)
+            if kinds == {None}:
+                out[name] = None
+            else:
+                out[name] = "+".join(sorted(k for k in kinds if k)) + (
+                    " (some rows none)" if None in kinds else "")
+        return out
+
+    def model_error_warnings(self):
+        """The report's statement of what the widths leave out, from the rows
+        actually fitted (model_error_sources)."""
+        if self.spectral_only and not self.spectral.isotopologues:
+            return []
+        src = self.model_error_sources()
+        bare = [n for n, k in src.items() if k is None]
+        part = [n for n, k in src.items() if k is not None and "some rows none" in k]
+        msgs = []
+        if bare and len(bare) == len(src):
+            msgs.append(
+                "no model-error term: no row carries the B0-versus-Be gap, so these "
+                "widths cover the stated measurement precision only, and the gap "
+                "usually dominates (analytic water: 0.28 mA without it, 6.9 with its "
+                "corrections' sigma). State sigma_systematic_mhz per isotopologue, apply "
+                "B0 -> Be corrections with a stated sigma, or set model_error: {auto: "
+                "true} for the engine's estimate (from the inertial defect; it runs "
+                "3-10x large on A and B)")
+        elif bare or part:
+            msgs.append(
+                "the model-error term covers only part of the data: "
+                + ", ".join(bare + part) + " carry it on none or only some of their rows, "
+                "and their widths there cover measurement precision only")
+        return msgs
 
     def distortion_warnings(self):
         """What the distortion rows' weights and coverage mean, for the
@@ -3639,7 +3708,7 @@ class MolecularOptimizer:
                 f"refreshes its quantum point: the widths and the quantum prior's "
                 f"weight carry that curvature, not the curvature here (formyl "
                 f"fluoride: a Hessian at the answer moves its widths by up to 3%)"]
-        gn = gn + self.distortion_warnings()
+        gn = gn + self.distortion_warnings() + self.model_error_warnings()
         try:
             split_gap = self.split_inconsistency()
         except Exception as exc:  # a diagnostic must not cost the report

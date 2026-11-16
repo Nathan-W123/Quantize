@@ -113,6 +113,20 @@ constraints, and published CO/H₂O constants — no Psi4 or ORCA needed).
 > fit picks one from the asymmetry of the observed A, B, C (S when $|\kappa| \ge 0.9$;
 > the start geometry only when no isotopologue observes all three) and keeps it. $\delta_J$ and $\delta_K$ are not fitted. `fit_cd_constants` defaults to off.
 
+> **Model error.** The reported widths include the $B_0$-versus-$B_e$ model
+> error, propagated as shared across isotopologues, only where a row carries it:
+> a $B_0 \to B_e$ correction with a stated sigma (the Hessian-built corrections
+> and `alpha_mhz` both have one), or `sigma_systematic_mhz` on the isotopologue
+> (MHz per component; add `sigma_includes_systematic: true` when `sigma_mhz`
+> already holds it, so it is counted once). `model_error: {auto: true}` fills it
+> in from the inertial defect where neither is given (that estimate runs 3-10x
+> large on A and B), and `model_error.isotopologue_correlation` (default 0.99)
+> sets how much of it isotopologues share. A run whose rows carry none -- raw
+> $B_0$ fitted as $B_e$ -- reports widths of measurement precision only and
+> says so in its report and uncertainty bundle (`model_error`: null per
+> isotopologue); on analytic water those are 0.28 mÅ against 6.9 with the
+> corrections' sigma.
+
 ## How data and theory share authority
 
 `MolecularOptimizer` uses the **joint** objective by default

@@ -395,6 +395,7 @@ def _validate_run_controls(cfg: dict[str, Any], elements: list[Any]) -> None:
             if why:
                 raise ConfigError(why)
     _validate_optimizer_block(cfg)
+    _validate_model_error(cfg)
     for i, iso in enumerate(cfg.get("isotopologues") or []):
         if not isinstance(iso, dict):
             continue
@@ -423,6 +424,51 @@ _OPTIMIZER_FLOATS = ("trust_radius", "lambda_damp", "sv_threshold", "sv_min_abs"
 _OPTIMIZER_NULLABLE_FLOATS = ("null_trust_radius", "quantum_prior_sigma_ang")
 _OPTIMIZER_INTS = ("max_iter", "hess_recalc_every", "hess_recalc_min", "hess_recalc_max")
 _OPTIMIZER_BOOLS = ("adaptive_hess_schedule", "dynamic_quantum_weight")
+
+
+def _validate_model_error(cfg: dict[str, Any]) -> None:
+    """model_error: {auto, isotopologue_correlation} and the per-isotopologue
+    sigma_systematic_mhz / sigma_includes_systematic."""
+    me = cfg.get("model_error")
+    if me is not None:
+        if not isinstance(me, dict):
+            raise ConfigError("'model_error' must be a mapping/object.")
+        unknown = sorted(set(me) - {"auto", "isotopologue_correlation"})
+        if unknown:
+            raise ConfigError(f"'model_error' has unknown key(s) {unknown}; it takes auto "
+                              f"and isotopologue_correlation.")
+        if me.get("auto") is not None and not isinstance(me["auto"], bool):
+            raise ConfigError(f"'model_error.auto' must be true or false (got {me['auto']!r}).")
+        rho = me.get("isotopologue_correlation")
+        if rho is not None:
+            why = _number_problem(rho, "model_error.isotopologue_correlation")
+            if why:
+                raise ConfigError(why)
+            if not 0.0 <= float(rho) <= 1.0:
+                raise ConfigError(f"'model_error.isotopologue_correlation' must lie in "
+                                  f"[0, 1] (got {rho!r}).")
+    for i, iso in enumerate(cfg.get("isotopologues") or []):
+        if not isinstance(iso, dict):
+            continue
+        label = str(iso.get("name") or f"isotopologues[{i}]")
+        sys_sig = iso.get("sigma_systematic_mhz")
+        if sys_sig is not None:
+            if not isinstance(sys_sig, list):
+                raise ConfigError(f"'sigma_systematic_mhz' of {label} must be a list, one "
+                                  f"per component.")
+            n_obs = len(iso.get("obs_b0_mhz") or [])
+            if len(sys_sig) != n_obs:
+                raise ConfigError(f"'sigma_systematic_mhz' of {label} has {len(sys_sig)} "
+                                  f"values for {n_obs} components.")
+            for k, v in enumerate(sys_sig):
+                why = _number_problem(v, f"sigma_systematic_mhz[{k}]")
+                if why:
+                    raise ConfigError(f"{why[:-1]} in {label}.")
+                if float(v) < 0.0:
+                    raise ConfigError(f"'sigma_systematic_mhz[{k}]' of {label} must be >= 0.")
+        inc = iso.get("sigma_includes_systematic")
+        if inc is not None and not isinstance(inc, bool):
+            raise ConfigError(f"'sigma_includes_systematic' of {label} must be true or false.")
 
 
 def _validate_optimizer_block(cfg: dict[str, Any]) -> None:

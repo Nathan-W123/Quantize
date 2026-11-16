@@ -286,6 +286,8 @@ def _build_isotopologue(iso: dict, spectral_model: str = "rigid") -> dict:
         )
 
     # Proxy model for internal-rotor systems (e.g. methanol): objective uses B,C only.
+    n_given = len(indices)
+    keep = None
     if model == "internal_rotor_bc":
         keep = [i for i, comp_idx in enumerate(indices) if comp_idx in (1, 2)]
         if not keep:
@@ -305,15 +307,28 @@ def _build_isotopologue(iso: dict, spectral_model: str = "rigid") -> dict:
         "sigma_constants": sig,
         "alpha_constants": alp,
     }
-    # Optional decomposed-delta channels (component-aligned to ``indices``).
+    # Optional per-component channels, aligned to the components as given and
+    # filtered with them (they were not: under internal_rotor_bc a three-
+    # component list no longer matched the two rows kept, and the engine
+    # dropped it without a word).
     for src_key, dst_key in (
         ("delta_vib_mhz", "delta_vib_constants"),
         ("delta_elec_mhz", "delta_elec_constants"),
         ("delta_bob_mhz", "delta_bob_constants"),
         ("sigma_correction_mhz", "sigma_correction_constants"),
+        # The B0-versus-Be model error of each constant (MHz), propagated as
+        # shared across isotopologues (MolecularOptimizer.model_error_sources).
+        ("sigma_systematic_mhz", "sigma_systematic_constants"),
     ):
         if src_key in iso and iso[src_key] is not None:
-            out[dst_key] = [float(v) for v in iso[src_key]]
+            vals = [float(v) for v in iso[src_key]]
+            if keep is not None and len(vals) == n_given:
+                vals = [vals[i] for i in keep]
+            out[dst_key] = vals
+    # sigma_mhz already holds the model error (hypot of it and the quoted
+    # precision): the engine then counts it once, not twice.
+    if iso.get("sigma_includes_systematic"):
+        out["sigma_constants_include_systematic"] = True
     if "rovib_source" in iso:
         out["rovib_source"] = str(iso["rovib_source"])
     # Observed centrifugal-distortion constants (and their sigmas), per
@@ -2230,6 +2245,16 @@ def build_run_inputs(cfg: dict[str, Any], *, verbose: bool = True) -> dict[str, 
     for key, value in opt_cfg.items():
         if key in _optimizer_overrides:
             optimizer_kwargs[key] = _optimizer_value(key, value)
+    # model_error: how the B0-versus-Be gap enters the reported widths when a
+    # species does not state it (sigma_systematic_mhz): auto -> the engine's
+    # estimate from the inertial defect; isotopologue_correlation -> how much
+    # of it isotopologues share (the engine's 0.99 when unset).
+    me_cfg = cfg.get("model_error") or {}
+    if me_cfg.get("auto") is not None:
+        optimizer_kwargs["auto_systematic_sigma"] = bool(me_cfg["auto"])
+    if me_cfg.get("isotopologue_correlation") is not None:
+        optimizer_kwargs["systematic_isotopologue_correlation"] = float(
+            me_cfg["isotopologue_correlation"])
     cm_enabled, cm_defs, cm_mode, cm_temp_k = _build_conformer_mixture_from_config(cfg, np.asarray(coords, dtype=float))
     if cm_enabled:
         optimizer_kwargs["use_conformer_mixture"] = True

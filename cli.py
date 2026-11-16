@@ -626,6 +626,9 @@ def _cmd_uncertainty(args) -> int:
         summary_bundle["distortion_rows"] = cd_rows
     summary_bundle["posterior_state"] = posterior_state.to_dict()
     summary_bundle["laplace"] = laplace.to_dict()
+    # Per isotopologue: where the widths' model error comes from ("stated",
+    # "estimated", "corrections"), or null -- measurement precision only.
+    summary_bundle["model_error"] = opt.model_error_sources()
     if not args.no_laplace_persist:
         out_dir = os.path.join(opt.workdir, "uncertainty_v2")
         os.makedirs(out_dir, exist_ok=True)

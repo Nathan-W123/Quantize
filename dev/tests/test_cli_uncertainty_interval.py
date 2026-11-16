@@ -638,3 +638,9 @@ def test_an_unsettled_refresh_is_warned_about_on_stderr(tmp_path, monkeypatch):
     assert b["hessian_refresh"]["settled"] is False, "premise: one pass leaves it moving"
     assert "still moving" in err, "it went to the bundle and stdout only"
     assert any("still moving" in w for w in b["warnings"])
+
+
+def test_the_bundle_says_where_the_model_error_comes_from(tmp_path, monkeypatch):
+    code, out, err = _run(["--mode", "bootstrap", "--samples", "2"] + _QUIET, tmp_path, monkeypatch)
+    assert code == 0
+    assert _bundle(tmp_path)["model_error"] == {"H2-16O": "corrections"}

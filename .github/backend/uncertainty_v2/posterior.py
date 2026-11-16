@@ -202,6 +202,7 @@ def laplace_approximation(
     # The CLI prints this summary, not internal_coordinate_posterior's, and
     # its bundle keeps these warnings.
     warnings.extend(optimizer.distortion_warnings())
+    warnings.extend(optimizer.model_error_warnings())
     try:
         split_gap = optimizer.split_inconsistency()
     except Exception as exc:  # a diagnostic must not cost the summary

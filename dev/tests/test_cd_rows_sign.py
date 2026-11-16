@@ -808,3 +808,87 @@ def test_an_empty_jacobian_has_rank_zero():
     from backend.spectral.SVD import SubspaceOptimizer
     U, s, Vt, rank = SubspaceOptimizer().decompose(np.zeros((0, 9)))
     assert rank == 0 and s.size == 0
+
+
+def _water_cfg():
+    from runner.usability import load_config
+    return load_config(_ROOT / "dev" / "configs" / "water_analytic_endtoend.yaml")
+
+
+def _fit_cfg(cfg):
+    import contextlib
+    import io
+    from runner.run_from_config import build_optimizer_from_config
+    with contextlib.redirect_stdout(io.StringIO()) as buf:
+        opt = build_optimizer_from_config(cfg, multistart=False, verbose=False)
+        opt.run()
+    return opt, buf.getvalue()
+
+
+def test_a_config_can_state_its_model_error_and_one_without_says_so():
+    """No config key reached sigma_systematic_constants, so a config fitting
+    raw B0 (no corrections) reported measurement precision only -- 0.28 mA
+    on analytic water against 6.9 with the corrections' sigma -- while every
+    config run, corrected or not, printed that its intervals covered
+    measurement precision ONLY."""
+    from runner.usability import validate_config
+    shipped, log = _fit_cfg(_water_cfg())
+    assert "measurement precision ONLY" not in log
+    assert set(shipped.model_error_sources().values()) == {"corrections"}
+    assert not shipped.model_error_warnings()
+    raw = _water_cfg()
+    raw["rovibrational_corrections"] = {"mode": "none"}
+    bare, _ = _fit_cfg(raw)
+    assert set(bare.model_error_sources().values()) == {None}
+    msg = " ".join(bare.internal_coordinate_posterior()["warnings"])
+    assert "no model-error term" in msg
+    w_bare = bare.internal_coordinate_posterior()["std_err"][0]
+    stated = _water_cfg()
+    stated["rovibrational_corrections"] = {"mode": "none"}
+    obs = stated["isotopologues"][0]["obs_b0_mhz"]
+    stated["isotopologues"][0]["sigma_systematic_mhz"] = [0.01 * float(b) for b in obs]
+    validate_config(stated)
+    with_sys, _ = _fit_cfg(stated)
+    assert set(with_sys.model_error_sources().values()) == {"stated"}
+    assert not with_sys.model_error_warnings()
+    assert with_sys.internal_coordinate_posterior()["std_err"][0] > 5.0 * w_bare
+    auto = _water_cfg()
+    auto["rovibrational_corrections"] = {"mode": "none"}
+    auto["model_error"] = {"auto": True, "isotopologue_correlation": 0.5}
+    validate_config(auto)
+    est, _ = _fit_cfg(auto)
+    assert set(est.model_error_sources().values()) == {"estimated"}
+    assert est.systematic_isotopologue_correlation == 0.5
+
+
+@pytest.mark.parametrize("edit,said", [
+    (lambda c: c["isotopologues"][0].__setitem__("sigma_systematic_mhz", [1.0]), "values for"),
+    (lambda c: c["isotopologues"][0].__setitem__("sigma_systematic_mhz", [1.0, -1.0, 1.0]), ">= 0"),
+    (lambda c: c["isotopologues"][0].__setitem__("sigma_systematic_mhz", 5.0), "must be a list"),
+    (lambda c: c["isotopologues"][0].__setitem__("sigma_includes_systematic", "yes"), "true or false"),
+    (lambda c: c.__setitem__("model_error", {"auto": "yes"}), "model_error.auto"),
+    (lambda c: c.__setitem__("model_error", {"isotopologue_correlation": 1.5}), r"\[0, 1\]"),
+    (lambda c: c.__setitem__("model_error", {"isotopologue_corelation": 0.5}), "unknown key"),
+])
+def test_model_error_keys_are_validated(edit, said):
+    from runner.usability import ConfigError, validate_config
+    cfg = _water_cfg()
+    edit(cfg)
+    with pytest.raises(ConfigError, match=said):
+        validate_config(cfg)
+
+
+def test_per_component_lists_follow_the_internal_rotor_filter():
+    """Under internal_rotor_bc the observations kept B and C, but the
+    per-component lists (delta_*, sigma_correction_mhz) kept all three and
+    the engine dropped them for not matching."""
+    from runner.run_generic import _build_isotopologue
+    iso = {"name": "x", "masses": [16.0, 1.0, 1.0], "components": ["A", "B", "C"],
+           "obs_b0_mhz": [800000.0, 430000.0, 270000.0], "sigma_mhz": [0.1, 0.1, 0.1],
+           "sigma_systematic_mhz": [9.0, 4.0, 3.0], "delta_vib_mhz": [1.0, 2.0, 3.0],
+           "sigma_includes_systematic": True}
+    out = _build_isotopologue(iso, spectral_model="internal_rotor_bc")
+    assert out["component_indices"] == [1, 2]
+    assert out["sigma_systematic_constants"] == [4.0, 3.0]
+    assert out["delta_vib_constants"] == [2.0, 3.0]
+    assert out["sigma_constants_include_systematic"] is True
