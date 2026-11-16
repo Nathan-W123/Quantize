@@ -1,5 +1,5 @@
 # Current task
-Status: done (N4)
+Status: searching (accuracy and efficiency)
 Request: N4 -- config runs carry no model-error term (no config key reaches
 sigma_systematic_constants).
 
@@ -20,6 +20,12 @@ honest label, default unchanged (D-26).
   (replacing the constructor warning); bundle model_error; per-component
   lists follow the internal_rotor_bc filter; validation. Shipped water
   configs bit-identical. Suite with the change: 1586 passed, 23 skipped.
+
+- Next request (user, free text): "search for anything that will improve
+  accuracy or code efficiency". Two background agents: efficiency profiling
+  of the user paths (benchmark fit, quantize uncertainty bootstrap,
+  posterior, slow tests), and accuracy levers on the 9-molecule HF/6-31G
+  benchmark with reference-independent evidence. Trades flagged (D-03).
 
 ## Observations
 - The step-7 restart changed two things at once (a fresh optimizer is also a
