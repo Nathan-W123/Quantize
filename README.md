@@ -387,10 +387,10 @@ prints its cloud beside the analytic value it should match, and flags a
 coordinate where the two differ beyond their Monte Carlo error (taken from
 the cloud's own kurtosis, at a family-wise 3-sigma rate over the
 coordinates) by enough to move the reported width 2% or more. It also says
-which ratios it could have flagged at that many refits -- at the default 20
-and nine coordinates only those outside 0.56-1.80, so a clean check there is
-weak evidence -- and that a cloud flagged as narrower may instead be heavy-
-tailed with its tails unsampled.
+where its bar sits at that many refits -- at the default 20 and nine
+coordinates a ratio of 0.56 or 1.80 is flagged only about half the time, so a
+clean check there is weak evidence -- and that a cloud flagged as narrower may
+instead be heavy-tailed with its tails unsampled.
 Exit status: 0 interval reported; 1 no interval; 2 usage error or a strategy
 refused before anything past the base fit ran; 3 interval reported but a
 requested part produced nothing usable (a bootstrap refused after the fit or

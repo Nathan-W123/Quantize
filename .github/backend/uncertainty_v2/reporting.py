@@ -60,8 +60,9 @@ def format_bootstrap_summary(summary: BootstrapRunSummary) -> str:
                 weak = ("; a clean check at this size is weak evidence that the widths are right"
                         if not chk["departs"] and seen[1] > 1.25 else "")
                 lines.extend(_wrap(
-                    f"At {chk['n']} refits this check can flag a ratio below {seen[0]:.2f} or "
-                    f"above {seen[1]:.2f} (a Gaussian cloud; more refits narrow that){weak}."))
+                    f"At {chk['n']} refits a ratio of {seen[0]:.2f} or {seen[1]:.2f} is flagged "
+                    f"about half the time, one nearer 1 seldom (a Gaussian cloud; more refits "
+                    f"narrow that){weak}."))
             if any(k > 6.0 for k in kurt if math.isfinite(k)):
                 lines.extend(_wrap(
                     "Heavy-tailed cloud: the error assumes its tails are sampled; with few "
@@ -76,7 +77,8 @@ def format_bootstrap_summary(summary: BootstrapRunSummary) -> str:
                                    f"errors, family-wise over {len(a['names'])} coordinates) "
                                    f"on: {what}."))
                 ratio = dict(zip(a["names"], chk["ratio"]))
-                if any(ratio.get(nm, 1.0) < 1.0 for nm in chk["departs"]):
+                # Not for a cloud with no spread at all: no tail explains that.
+                if any(0.0 < ratio.get(nm, 1.0) < 1.0 for nm in chk["departs"]):
                     lines.extend(_wrap(
                         "A cloud narrower than the analytic width is also what a heavy-tailed "
                         "one looks like when few refits reach its tails, and its kurtosis then "

@@ -643,8 +643,9 @@ class BootstrapEngine:
     #: nine-coordinate clouds at 20 refits. The Monte Carlo error is itself
     #: estimated, so the rate measured on Gaussian clouds is higher: 1.07%
     #: at 20 refits and 1.00% at 40, nine coordinates (seed 20261116). The
-    #: price is power: at 20 refits and nine coordinates only a ratio
-    #: outside 0.56-1.80 can be flagged, which the report states ...
+    #: price is power: at 20 refits and nine coordinates a ratio of 0.56
+    #: or 1.80 is flagged about half the time (48% and 39% measured), one
+    #: nearer 1 seldom, which the report states ...
     _CHECK_FAMILY_RATE = 0.0027
     #: ... and only where, if the cloud is right, the reported (posterior)
     #: width would move by at least this fraction: a 15% departure on a part
@@ -679,8 +680,13 @@ class BootstrapEngine:
         analytic width) departs; a coordinate that does not vary has no
         kurtosis (NaN).
 
-        Also returned: "detectable", the ratios this check could flag at
-        this many refits for a Gaussian cloud (low, high)."""
+        Also returned: "detectable" (low, high), the ratios at which the
+        test's bar sits for a Gaussian cloud at this many refits -- its
+        50%-power points, not a guarantee: a true ratio there is flagged
+        about half the time (at 20 refits, nine coordinates, 2000 Gaussian
+        clouds, seed 20261117: 48% at 0.556, 39% at 1.798 -- the high side
+        lower because the test's error uses the cloud's own kurtosis; 5%
+        further out, 57% and 49%; at ratio 1, 0.1%)."""
         from scipy.stats import norm
 
         q = np.asarray(q, dtype=float)

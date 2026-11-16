@@ -823,7 +823,7 @@ def test_the_check_says_what_it_can_see_and_handles_a_collapsed_cloud():
     nothing of that. A cloud whose sd is exactly zero was never flagged (the
     log of 0), and a constant coordinate read kurtosis 3 + 6(n-1)/((n-2)(n-3)).
     A flag that the cloud is narrower now says a heavy-tailed cloud with its
-    tails unsampled looks the same."""
+    tails unsampled looks the same -- unless it has no spread at all."""
     from backend.uncertainty_v2.models import BootstrapConfig as BC, BootstrapRunSummary
     rng = np.random.default_rng(1)
     q = rng.standard_normal((20, 9))
@@ -842,7 +842,10 @@ def test_the_check_says_what_it_can_see_and_handles_a_collapsed_cloud():
                   "target_std": [1.0, 1.0], "posterior_std": [1.0, 1.0],
                   "bootstrap_std": [0.0, 1.0], "check": chk}
     txt = " ".join(format_bootstrap_summary(s).split())
-    assert "this check can flag a ratio below" in txt
+    assert "is flagged about half the time" in txt
+    assert "heavy-tailed one looks like" not in txt, "no tail explains a cloud with no spread"
+    s.analytic["check"] = dict(chk, ratio=[0.5, 1.0], departs=["flat"])
+    txt = " ".join(format_bootstrap_summary(s).split())
     assert "heavy-tailed one looks like when few refits reach its tails" in txt
     clean = dict(chk, departs=[])
     s.analytic["check"] = clean
