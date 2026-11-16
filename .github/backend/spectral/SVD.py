@@ -439,9 +439,18 @@ class SubspaceOptimizer:
             # Numerical safeguard: keep quantum correction strictly in J-null space.
             dp_null = self.null_projector(Vt, rank) @ dp_null
             dp_null = alpha_q_eff * dp_null
+            # The null step is part of the whole step, so its cap is never
+            # above the whole step's. With the whole radius set below the
+            # null one (a config that lowers trust_radius alone leaves the
+            # null radius at 0.05 A), the scaled null step filled the whole
+            # step and cutting that to the radius cut the range step with it,
+            # 500x at 1e-4 A: split fits zigzagged at the cap without fitting
+            # the data, and their refits passed a restart 4.5-8.6 posterior
+            # widths short of where the fit converges.
+            null_cap = min(float(self.null_trust_radius), float(self.trust_radius))
             null_norm = np.linalg.norm(dp_null)
-            if null_norm > self.null_trust_radius:
-                dp_null *= self.null_trust_radius / null_norm
+            if null_norm > null_cap:
+                dp_null *= null_cap / null_norm
             dp = dp_range + dp_null
 
         if self.use_internal_preconditioner:

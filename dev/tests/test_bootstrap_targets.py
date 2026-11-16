@@ -860,3 +860,31 @@ def test_the_hessian_refresh_says_whether_the_answer_settled(config_fit):
     with contextlib.redirect_stdout(io.StringIO()):
         info = opt.refresh_hessian_at_answer()
     assert info["settled"] is True
+
+
+def test_the_split_null_step_cannot_crowd_out_the_range_step():
+    """The null step was cut to its own radius (0.05 A) and only then the
+    whole step to the trust radius: with the whole radius below the null
+    one -- a config lowering trust_radius alone -- the scaled null step
+    filled the step and the cut took the range step with it, 500x at
+    1e-4 A. Split water (C1, B and C, Cartesian) with the whole radius at
+    1e-3 A stopped on its plateau 0.28 posterior widths from where the
+    default fit converges, at 107 MHz RMS after 342 iterations; its refits
+    passed a restart 4.5-8.6 widths short. The null step is now cut to the
+    smaller radius: 0.006 widths, 0.03 MHz, 34 iterations."""
+    from backend.spectral.SVD import SubspaceOptimizer
+    rng = np.random.default_rng(4)
+    J = rng.standard_normal((2, 3))
+    opt = SubspaceOptimizer(trust_radius=1e-4, null_trust_radius=0.05, objective_mode="split",
+                            alpha_quantum=1.0, dynamic_quantum_weight=False)
+    U, s, Vt, rank = opt.decompose(J)
+    r = J @ (Vt[:rank].T @ np.array([1e-4, 0.0]))     # a range step of 1e-4 A
+    dp, rank, _sv, _a, Vt = opt.step(J, r, 10.0 * Vt[2], np.eye(3))
+    range_part = np.linalg.norm(Vt[:rank] @ dp)
+    assert range_part > 0.3e-4, f"range part {range_part:.2e}: the null step took the radius"
+    ref = _split_water((1, 2), symmetry="C1", coordinate_mode="cartesian", max_iter=400)
+    low = _split_water((1, 2), symmetry="C1", coordinate_mode="cartesian", max_iter=400,
+                       trust_radius=1e-3, null_trust_radius=0.05)
+    from backend.uncertainty_v2.bootstrap import _restart_distance
+    assert _restart_distance(ref, low.coords, ref.coords) < 0.05
+    assert low.history[-1]["freq_rms"] < 1.0
