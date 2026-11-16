@@ -285,8 +285,9 @@
   min(null_trust_radius, trust_radius) before the whole-step cut. The
   split bootstrap keeps the restart certificate (no trust floor, no Newton
   probe).
-- Why: with the whole radius below the null one (a config lowering
-  trust_radius alone keeps the preset's 0.05 A null radius) the null step
+- Why: with the whole radius below an explicitly given null one (unset,
+  the null radius is half the whole one everywhere; corrected 2026-11-16 by
+  round 9) the null step
   filled the step and the whole-step cut starved the range step 500x:
   fits zigzagged at the cap (water C1 B,C at 1e-3: 0.28 widths off, 107
   MHz, 342 iterations; after 0.006, 0.03 MHz, 34) and their refits passed
@@ -309,7 +310,9 @@
 - Why: a prior must be fixed before the data; H from wherever the fit had
   got to made it move with the fit (isocyanic acid HF/6-31G: 97 mA per
   restart, no fixed point under refreshes). Every shipped script starts at
-  its target, so the benchmark answers are unchanged (<= 1e-8 mA).
+  its target, so the benchmark answers are unchanged (<= 1e-8 mA); a fit
+  that recomputes its Hessian on schedule changes (split + target, no
+  shipped script: isocyanic acid 0.91 mA).
 - Alternatives considered: tighten the plateau rule (the fits were already
   converged for their model); refresh the Hessian at the answer like D-23
   (wrong model for a target prior, and worse scores: 23.98 -> 40.13 mA).

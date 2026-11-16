@@ -1,5 +1,5 @@
 # Current task
-Status: done (N6)
+Status: verifying (round 9: physics fixed, CLI check running)
 Request: N6 -- is the benchmark recipe (scripts/accuracy_upgrades_benchmark.py
 hybrid_fit: Cartesian, max_iter 40, hess_recalc_every 10, chi2 rescale x3)
 restart-stationary, and does the published table depend on where it stopped?
@@ -30,6 +30,14 @@ Success: restarts and the refresh stationary; benchmark answers unchanged.
   (analytic water, FD-limited 7e-8), target-prior restart < 1e-6 mA
   (8e-10; was 4.6e-5), refresh moves 0 -- both fail on the old code.
 - Clean-checkout suite at 078633f: 1565 passed, 23 skipped.
+- Round 9 check (user: "Check recent fixes"), physics agent: nothing
+  refuted; rotated target Hessian exact under PySCF (1e-7 rel, linear
+  included); benchmark restarts 97 -> 0 mA reproduced. Fixed: 84b609c
+  wording (null cut binds only with an explicit null radius; small radius
+  still unsafe on isocyanic acid split, 100.3 MHz; split + target changes,
+  14.60 -> 15.52 mA), 5e40ada strict JSON (NaN -> null in all five files),
+  9a0c9ce detectable bounds = 50%-power points (48% / 39% reproduced, seed
+  20261117), no tail caveat for a zero-spread cloud. CLI agent pending.
 
 ## Observations
 - The step-7 restart changed two things at once (a fresh optimizer is also a
