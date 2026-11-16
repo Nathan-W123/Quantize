@@ -1,5 +1,5 @@
 # Current task
-Status: verifying (round 9: physics fixed, CLI check running)
+Status: done (round 9)
 Request: N6 -- is the benchmark recipe (scripts/accuracy_upgrades_benchmark.py
 hybrid_fit: Cartesian, max_iter 40, hess_recalc_every 10, chi2 rescale x3)
 restart-stationary, and does the published table depend on where it stopped?
@@ -37,7 +37,17 @@ Success: restarts and the refresh stationary; benchmark answers unchanged.
   still unsafe on isocyanic acid split, 100.3 MHz; split + target changes,
   14.60 -> 15.52 mA), 5e40ada strict JSON (NaN -> null in all five files),
   9a0c9ce detectable bounds = 50%-power points (48% / 39% reproduced, seed
-  20261117), no tail caveat for a zero-spread cloud. CLI agent pending.
+  20261117), no tail caveat for a zero-spread cloud.
+- Round 9 CLI agent: refresh reporting and most of 563b1a1 reproduce; one
+  regression (narrowed catch let constructor-only config errors --
+  coordinate_mode null, optimizer: values -- become tracebacks) and quoted
+  integers refused. Fixed: 97d7497 (optimizer: block validated and
+  converted, null coordinate_mode = internal, quoted ints accepted, rng_seed
+  >= 0, null rovib numerics rejected, flat legacy keys, empty cd_observed,
+  quantize run translates config errors too, point groups any case);
+  c701a8a (parseable-but-unnormalizable config replaces the bundle;
+  unsettled refresh warning on stderr). 11 new checks fail before, pass
+  after. Clean-checkout suite at c701a8a: 1577 passed, 23 skipped.
 
 ## Observations
 - The step-7 restart changed two things at once (a fresh optimizer is also a
@@ -45,5 +55,10 @@ Success: restarts and the refresh stationary; benchmark answers unchanged.
   defect. Splitting the restart into same-object / fresh / refresh took one
   9-molecule run (~4 min) and named the real cause. Separate the variables a
   "restart" changes before diagnosing it.
+
+- Round 9: my 563b1a1 narrowed a catch correctly for runtime errors and
+  in doing so re-exposed config errors that only the constructor caught.
+  When narrowing an exception handler, list what it used to catch that is
+  still the caller's fault, and move those checks earlier.
 
 ## Handoff
