@@ -40,6 +40,12 @@ current code (RHF/6-31G and B3LYP/6-31G(d), all configurations).
   it (torsion scans use SLSQP). 17:28Z both levels restarted without them;
   vinyl fluoride's 9 RHF rows (same vintage) kept.
 
+- Side request (user, mid-N13): water at CCSD/cc-pVDZ -- theory alone, the
+  joint hybrid on H2O + D2O ("full") and on H2O alone ("partial", user's
+  choice), sigma_x 0.020 (default for an uncalibrated level), 0.010, 0.005.
+  Script and log: scratchpad wccsd/water_ccsd.{py,log,json}. Theory alone
+  r 0.96435 A (+6.58 mA vs r_e 0.95777), angle 102.21 (-2.27 deg).
+
 ## Observations
 - 2026-11-17: code_vintage() reads `git status --porcelain`, so editing the
   loop records (tracked) while a benchmark starts stamps it dirty. Caught
