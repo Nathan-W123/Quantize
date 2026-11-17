@@ -16,7 +16,6 @@ from __future__ import annotations
 import contextlib
 import io
 import sys
-import time
 from pathlib import Path
 
 import numpy as np
@@ -85,23 +84,32 @@ def test_default_still_returns_a_jacobian(fit):
     assert J.shape[1] == fit.coords.size
 
 
-def test_residual_only_is_actually_cheaper(fit):
-    """The flag exists for speed; if it is not faster it has no purpose."""
-    def timeit(kw, n=60):
-        best = float("inf")
-        for _ in range(n):
-            t0 = time.perf_counter()
-            fit.spectral.stacked(fit.coords, **kw)
-            best = min(best, time.perf_counter() - t0)
-        return best
-    with_j = timeit({})
-    without = timeit({"want_jacobian": False})
-    # Measured ~6x on water. Assert a weak 2x so this does not become a
-    # flaky timing test on a loaded machine, while still failing if the flag
-    # silently stops skipping the Jacobian.
-    assert without < with_j / 2.0, (
-        f"residual-only {without:.6f}s vs full {with_j:.6f}s: not skipping "
-        f"the Jacobian")
+def test_residual_only_is_actually_cheaper(fit, monkeypatch):
+    """The flag exists for speed: it must not build any Jacobian block.
+
+    This used to time the two paths and ask for a 2x speed-up (6x on water
+    once). The closed-form rotational Jacobian (6952211) made the full path
+    cheap enough that the ratio now wanders 1.3-3.4x between runs, so a timing
+    bound is a flaky test. Count the per-isotopologue Jacobian builds instead:
+    that is the cost the flag skips, and the count is exact.
+    """
+    calls = []
+    real = fit.spectral.jacobian
+
+    def counting(*args, **kwargs):
+        calls.append(1)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(fit.spectral, "jacobian", counting)
+    J, _ = fit.spectral.stacked(fit.coords)
+    built = len(calls)
+    assert J is not None and built > 0
+    del calls[:]
+    J, _ = fit.spectral.stacked(fit.coords, want_jacobian=False)
+    assert J is None
+    assert not calls, (
+        f"residual-only built {len(calls)} Jacobian block(s), the full path "
+        f"{built}: the flag no longer skips the Jacobian")
 
 
 def test_the_curvature_probe_gets_the_same_answer_either_way(fit):
