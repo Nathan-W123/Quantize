@@ -644,3 +644,26 @@ def test_the_bundle_says_where_the_model_error_comes_from(tmp_path, monkeypatch)
     code, out, err = _run(["--mode", "bootstrap", "--samples", "2"] + _QUIET, tmp_path, monkeypatch)
     assert code == 0
     assert _bundle(tmp_path)["model_error"] == {"H2-16O": "corrections"}
+
+
+def test_without_seed_the_config_s_rng_seed_makes_the_cloud_reproducible(tmp_path, monkeypatch):
+    """Without --seed the bootstrap drew fresh entropy every run, though the
+    config's rng_seed fixes everything else: the same config gave a
+    different cloud each time."""
+    import yaml
+    from runner.usability import load_config
+    cfg = load_config(CONFIG)
+    cfg["rng_seed"] = 17
+    path = tmp_path / "seeded.yaml"
+    path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    stds = []
+    for _ in range(2):
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            code = cli.main(["uncertainty", str(path), "--mode", "bootstrap", "--samples", "4",
+                             "--workers", "1", "--no-bootstrap-persist", "--no-laplace-persist"])
+        assert code == 0
+        b = _bundle(tmp_path)
+        stds.append(b["bootstrap"]["analytic"]["bootstrap_std"])
+        assert b["seed"] == 17 and b["seed_source"] == "config rng_seed"
+    assert stds[0] == stds[1]

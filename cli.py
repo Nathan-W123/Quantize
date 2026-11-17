@@ -498,12 +498,25 @@ def _cmd_uncertainty(args) -> int:
     _stale = os.path.join(workdir, "uncertainty_v2", "uncertainty_run_summary.json")
     if os.path.isfile(_stale):
         os.remove(_stale)
+    # The draws' seed: --seed, else the config's rng_seed (which already
+    # fixes the fit's starts), else the builder's default for it. Without
+    # --seed the bootstrap and the chains used fresh entropy every run, so
+    # the same config gave a different cloud each time.
+    if args.seed is not None:
+        seed, seed_source = int(args.seed), "--seed"
+    else:
+        try:
+            seed = int(str(cfg.get("rng_seed", 42)).strip())
+        except (TypeError, ValueError):
+            seed = 42
+        seed_source = "config rng_seed" if cfg.get("rng_seed") is not None else "default (42)"
     summary_bundle = {
         "generated_at": datetime.now(UTC).isoformat(),
         "config_path": str(args.config),
         "mode": args.mode,
         "engine": args.uncertainty_engine,
-        "seed": args.seed,
+        "seed": seed,
+        "seed_source": seed_source,
         "warnings": [],
     }
 
@@ -541,7 +554,7 @@ def _cmd_uncertainty(args) -> int:
         boot_cfg = BootstrapConfig(
             n_samples=args.samples,
             max_workers=args.workers,
-            seed=args.seed,
+            seed=seed,
             strategy=args.bootstrap_strategy,
             output_dir=args.bootstrap_output_dir,
             persist_samples=not args.no_bootstrap_persist,
@@ -731,7 +744,7 @@ def _cmd_uncertainty(args) -> int:
             n_chains=args.chains,
             proposal_scale=args.mcmc_scale,
             adapt_every=args.mcmc_adapt_every,
-            seed=args.seed,
+            seed=seed,
             checkpoint_every=args.mcmc_checkpoint_every,
             persist_chain_samples=not args.no_mcmc_persist,
             output_dir=args.mcmc_output_dir,
@@ -783,7 +796,7 @@ def _cmd_uncertainty(args) -> int:
     notes: list = []
     try:
         cloud, cloud_source = _interval_cloud(
-            args.mode, mcmc_cloud, boot_posterior, opt, args.seed,
+            args.mode, mcmc_cloud, boot_posterior, opt, seed,
             regularization=args.laplace_regularization, notes=notes)
     except ValueError as exc:
         # On stderr, as every other refusal is, and with the bundle written:
@@ -1046,7 +1059,9 @@ def main(argv: list[str] | None = None) -> int:
         "--seed",
         type=int,
         default=None,
-        help="Base random seed for deterministic bootstrap in v2 engine.",
+        help=("Base random seed for the bootstrap, the chains and the interval's draws. "
+              "Default: the config's rng_seed (42 when unset), so a config gives the "
+              "same cloud every run; the bundle records the seed and its source."),
     )
     unc_p.add_argument(
         "--bootstrap-output-dir",
