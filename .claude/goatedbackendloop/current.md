@@ -53,6 +53,10 @@ current code (RHF/6-31G and B3LYP/6-31G(d), all configurations).
   chi2/obs 0.05-0.8: widths are mostly the corrections' sigma. A first
   run labelled the angle sd (radians) as degrees and cached Hessians under
   Python's per-process hash(); both fixed in water_ccsd2.py.
+  Data only (sx 1.0, water_ccsd_dataonly.json): full -0.64 / +0.176,
+  partial -0.86 / +0.230 -- the residual error is the cc-pVDZ corrections'
+  (the prior at the default width adds 0.06 / 0.19 mA); water has 6 (3)
+  constants for 2 parameters, so it cannot show the prior's main value.
 - 17:59Z RHF pass 1 done (30 min; acetyl fluoride 11 min, fluoroethane
   8.6); pass 2 (track, torsion) started. B3LYP theory geometries done ~18:00.
 
