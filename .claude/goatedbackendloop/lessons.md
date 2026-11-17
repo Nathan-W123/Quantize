@@ -1,4 +1,7 @@
 # Project lessons
+Last consolidated: 2026-11-17 (219 -> ~110 lines: L-10 merged into L-14;
+L-P01 and L-13 merged into L-15; validated lessons compressed; L-P05 moved to
+learnings.md as L-06, since it applies to all projects).
 
 Recreated 2026-11-10 after a container swap wiped this directory (it is
 gitignored, so a fresh clone does not carry it). The full reasoning for
@@ -6,196 +9,101 @@ everything before this point is in the commit messages on
 claude/repo-audit-calculations-gtotzw, which is why nothing important lived
 only here.
 
-### L-P01 · A test that passes can be depending on the bug
-- Observation: test_geometry_uncertainty had two tests that did not merely miss
-  a defect, they REQUIRED it. geometry_uncertainty returned sqrt(max(var, 0))
-  and so reported 0.0 when the propagated variance came out at -2.3e13. One
-  test asserted "removing the sigma floor gives a tighter bond" (true only
-  against 0.0); the other used that same 0.0 as the tight end of a
-  looser-is-wider check. Both green, for the one reason that should have
-  failed them.
-- Evidence: 2026-11-10 - CI red on four consecutive heads of PR #6. Probing
-  main and the branch in ONE environment gave identical values, which is what
-  proved it pre-existing rather than mine. cond = 1.2e32, min_eig = -2.0e13.
-- Adjustment: When a test's premise is an inequality between two computed
-  numbers, print both before trusting it. If either is exactly 0.0, 1.0 or
-  nan, suspect the comparison is passing degenerately. When a long-standing
-  test fails only on another platform, the usual cause is that neither value
-  was meaningful, not that one platform is wrong.
-- Scope: project
-- Status: provisional
-
 ### L-P02 · Cross-check on the CI interpreter before pushing a numerics fix
-- Observation: My first fix asserted nan specifically. It passed on 3.11 and
-  FAILED on 3.12, where the covariance is rejected a layer earlier and
-  geometry_uncertainty returns None for everything. I would have shipped a
-  second platform-dependent test into the same spot.
-- Evidence: 2026-11-10 - /usr/bin/python3.12 existed locally; a venv with
-  numpy 2.5.4 reproduced CI's stack and caught it in one run. Final state:
-  1176 passed on both 3.11.18/numpy 2.4.6 and 3.12/numpy 2.5.4.
-- Adjustment: For any change touching linear algebra, conditioning or
+- Adjustment: for any change touching linear algebra, conditioning or
   tolerances, run the affected tests under the CI interpreter version before
-  pushing. A venv costs a minute; a red CI round trip costs ten and teaches
-  less.
-- Scope: project
-- Status: provisional
+  pushing (a venv costs a minute; a red CI round trip ten).
+- Evidence: 2026-11-10 · a nan-asserting fix passed on 3.11 and failed on 3.12.
+- Scope: project · Status: provisional
 
 ### L-P03 · Long background runs get reaped; bank the expensive part to disk
-- Observation: The MP2 benchmark has been killed four times - twice by
-  container swaps, twice by process reaping with no status file written, which
-  means the wrapper itself was killed rather than Python crashing. Each loss
-  was about an hour of MP2/cc-pVTZ gradients, because the only cache was in
-  memory and the results file is written only after a whole molecule finishes.
-- Evidence: 2026-11-10 - exit-code capture added to the wrapper; after the
-  fourth death there was no status file and the log ended mid-Hessian on
-  ordinary pyscf Krylov warnings. 24 Hessians (108 KB) were on disk by then,
-  so the relaunch resumed instead of restarting.
-- Adjustment: Scope a long run to what finishes inside one container lifetime,
-  and make the expensive intermediate durable (hessian_cache) BEFORE launching
-  it rather than after losing it. Capture the exit code in a wrapper so a
-  silent death is distinguishable from a crash.
-- Scope: project
-- Status: validated
+- Adjustment: scope a long run to one container lifetime, make the expensive
+  intermediate durable (hessian_cache) before launching, and capture the exit
+  code in a wrapper so a silent death is distinguishable from a crash.
+- Evidence: 2026-11-10 · the MP2 benchmark died four times; 24 cached Hessians
+  let the last relaunch resume.
+- Scope: project · Status: validated
 
 ### L-P04 · Verify a computed quantity against a value already in the repo
-- Observation: Tried to compute a per-molecule r_s floor by propagating the
-  Costain rule through each reference's bonds. It gave 852 mA for ozone where
-  the benchmark docstring quotes 4.1 mA from the literature - two orders of
-  magnitude, in the direction that would have made every row look meaningless.
-  The rule diverges for an atom on a principal axis and nearly every atom in
-  these small planar molecules is on one.
-- Evidence: 2026-11-10 - every bond in all nine references hit the 1 Ang cap.
-  Checking against the 4.1 mA already in the repo is the only reason it did
-  not ship.
-- Adjustment: Before adding a derived quantity to the data model, compute it
-  for a case whose answer is already written down somewhere in the repo and
-  compare. If there is no such case, that absence is itself a reason to be
-  suspicious of the quantity.
-- Scope: project
-- Status: validated
-
-### L-P05 · Instrument the failure before hypothesising about it
-- Observation: CCSD(T) died inside optimise() with "CCSD did not converge". I
-  guessed three causes in turn -- too few CCSD cycles, too small a DIIS space,
-  a bad starting geometry -- and tested each. All three were wrong: CCSD
-  converges fine at the coarse guess, at the HF geometry, and at a distorted
-  one, with pyscf's defaults. Logging the geometry at every energy evaluation
-  found the real cause in a single run: L-BFGS-B's unbounded first step jumped
-  the bonds from 1.233 to 2.215 Ang.
-- Evidence: 2026-11-10 - three measured dead ends, then one log that showed
-  step 0 ok / step 1 RuntimeError with the geometry printed.
-- Adjustment: When a failure surfaces from inside a library call, log the
-  INPUTS to that call across the failing sequence before forming a theory
-  about the library's settings. The cheapest instrument usually beats the
-  most plausible hypothesis.
-- Scope: workflow
-- Status: provisional
+- Adjustment: before adding a derived quantity, compute it for a case whose
+  answer is written down in the repo and compare; no such case is itself a
+  reason for suspicion.
+- Evidence: 2026-11-10 · a Costain-rule r_s floor gave 852 mA for ozone
+  against the docstring's 4.1.
+- Scope: project · Status: validated
 
 ### L-P06 · A library module with only a script consumer is misplaced
-- Observation: I put force_field_diagnostics in .github/backend/ and wired it
-  only to scripts/accuracy_upgrades_benchmark.py. The user asked why, and the
-  question exposed a real incoherence: if a bad force field corrupts a
-  correction, every library caller should be warned, not just the benchmark.
-- Evidence: 2026-11-10 - grep for importers returned the benchmark and its
-  test, nothing in the engine.
-- Adjustment: Before committing a new module under backend/, list its
-  importers. If none of them are in backend/, either wire it into the library
-  path or put it next to the consumer that exists.
-- Scope: project
-- Status: provisional
+- Adjustment: before committing a module under backend/, list its importers;
+  if none are in backend/, wire it into the library path or move it.
+- Evidence: 2026-11-10 · force_field_diagnostics had only the benchmark.
+- Scope: project · Status: provisional
 
 ### L-07 · A finite uncertainty is not a checked uncertainty
-- Observation: the v2 Laplace report printed sigma = 112 Angstrom on a 0.958
-  Angstrom bond through a fully green test suite. Every existing assertion
-  checked that widths were finite, non-negative, and not nan. None checked
-  that a width was smaller than the thing it was a width on.
-- Evidence: 2026-11-10 · `max std err 1.118297e+02` for water; physical
-  widths 8.3e-3. The regularisation ridge made `matrix_rank` report full rank
-  and put cond at 2.4e11, under the 1e12 warning threshold, so both guard
-  rails read clean.
 - Adjustment: for any reported physical quantity, assert a bound in the units
-  of the thing itself (a bond sigma below the bond length), not just
-  finiteness. Where two code paths compute from one intermediate, assert they
-  agree in scale -- that cross-check is what caught this.
-- Scope: project
-- Status: provisional
-- Outcomes: +2026-11-10 found a four-order-of-magnitude shipped defect
+  of the thing itself (a bond sigma below the bond length), not finiteness;
+  where two paths compute from one intermediate, assert they agree in scale.
+- Evidence: 2026-11-10 · sigma 112 A on a 0.958 A bond through a green suite.
+- Scope: project · Status: provisional · Outcomes: +2026-11-10
 
 ### L-08 · Deduplicate to create a cross-check, not just to tidy
-- Observation: F2 looked like housekeeping (same fifteen lines in two places,
-  agreeing to 5.8e-6). The value turned out not to be the tidying: once both
-  paths ran off one covariance, they could be diffed, and they disagreed by
-  2871x for a different reason entirely.
-- Evidence: 2026-11-10 · the 112 Angstrom defect was invisible until v2
-  delegated to the method.
-- Adjustment: when two paths compute the same physical quantity, make them
-  share the source and then assert they agree. The assertion is the deliverable
-  as much as the shared code is.
-- Scope: project
-- Status: provisional
-- Outcomes: +2026-11-10
+- Adjustment: when two paths compute the same quantity, make them share the
+  source and assert they agree; the assertion is the deliverable.
+- Evidence: 2026-11-10 · the 112 A defect showed only once v2 delegated to the
+  method (2871x disagreement).
+- Scope: project · Status: provisional · Outcomes: +2026-11-10
 
 ### L-09 · Bound tests by a measured scale, never by a round number
-- Observation: recurring. Asserted projector idempotency with atol=1e-18 on a
-  matrix of Frobenius norm 3.1e4 -- fourteen orders below its round-off floor.
-  Failed on noise in structurally-zero entries.
-- Evidence: 2026-11-10 · `test_physical_covariance_is_idempotent`. Same
-  mistake as the Coriolis threshold tests earlier in this session.
-- Adjustment: before writing a numerical tolerance, print the quantity and the
-  scale it should be compared against; set the bound from the measurement with
-  stated headroom, and say the measured value in a comment.
-- Scope: project
-- Status: validated (twice in one session)
-- Outcomes: +2026-11-10 (Coriolis) · +2026-11-10 (idempotency)
-### L-10 · An "unstated means default" rule must survive every config entry path
-- Observation: run_generic's D-09 and step-3 rules read "key absent", but
-  runner/config_schema.normalize_config (load_config, the CLI path) filled in
-  prior_weight 1 and widths 0.04/2.0 for every config, so neither rule ever
-  reached a CLI run; scripts using yaml.safe_load + validate_config did see it.
-- Evidence: 2026-11-13 · test_acceptance_test_row_consistency fixture still had
-  the library prior on after the change; config_schema.py line 37.
-- Adjustment: when a default depends on a key being absent, grep the schema /
-  loader for setdefault on that key and test through load_config.
-- Scope: project
-- Status: provisional
+- Adjustment: print the quantity and the scale it compares against before
+  writing a tolerance; set the bound from the measurement with stated headroom.
+- Evidence: 2026-11-10 · atol=1e-18 on a norm-3.1e4 projector; Coriolis
+  thresholds the same way.
+- Scope: project · Status: validated
+
 ### L-11 · A fix in one objective mode can break another
-- Observation: holding the quantum reference fixed the joint bootstrap and
-  broke the split one (12/12 -> 8/12 usable); nothing in my own measurements
-  covered split.
-- Evidence: 2026-11-13 · verify8/regress/split_rto.py re-run on b71a261 and
-  on the fix-1 worktree.
 - Adjustment: when a fix touches the step, the certificate or the bootstrap,
-  re-run every reproduction script the verifiers left on both versions, for
+  re-run every reproduction script the verifiers left, on both versions, for
   every objective mode they cover.
-- Scope: project
-- Status: provisional
+- Evidence: 2026-11-13 · holding the quantum reference fixed joint and broke
+  split (12/12 -> 8/12 usable).
+- Scope: project · Status: provisional
 
 ### L-12 · Check what a "far from the truth" verdict is measured against
-- Observation: a verifier measured split refits against the default
-  procedure's terminus reached from the base answer; the procedure has
-  several stopping points, so "far" mixed unconverged refits with refits at
-  another valid stopping point. Two fixes tuned to that reference failed
-  (one doubled the "far" count).
-- Evidence: 2026-11-16 · scratchpad r8/fromhere.py (two termini 17-25
-  widths apart, both stationary) and conv.py (from-refit metric: 0 vs all
-  unconverged by variant).
-- Adjustment: before fixing to a reference, ask what the reference
-  procedure does from the point being judged; if it does not move, the
-  point is valid and the reference is the wrong comparator.
-- Scope: project
-- Status: provisional
+- Adjustment: before fixing to a reference, ask what the reference procedure
+  does from the point being judged; if it does not move, the point is valid
+  and the reference is the wrong comparator.
+- Evidence: 2026-11-16 · split termini 17-25 widths apart, both stationary;
+  two fixes tuned to the wrong comparator failed.
+- Scope: project · Status: provisional
 
-### L-13 · A speed-up can push someone else's timing test onto its line
-- Observation: a timing-ratio test (residual-only must be 2x faster than the
-  full stacked call) failed on the clean-checkout suite after E1 (6952211)
-  made the full path cheaper; the ratio now wanders 1.3-3.4x run to run, so
-  the earlier 1590-pass was luck.
-- Evidence: 2026-11-17 · `test_residual_only_is_actually_cheaper[two_species]`
-  0.000118 vs 0.000224 s; rewritten to count Jacobian builds, mutation-checked
-  (always-build makes it fail for both parametrizations).
-- Adjustment: after a speed-up, grep the tests for `perf_counter`/timing
-  ratios on the code you made faster and rerun them several times; assert the
-  skipped work (call counts) rather than a speed ratio.
-- Scope: project
-- Status: provisional
-- Outcomes:
+### L-14 · One value, one reader: validator, builder and CLI share the rule
+- Observation: a config value read by two or three paths with different rules
+  is this project's commonest config defect.
+- Evidence: 2026-11-13 · (was L-10) normalize_config's setdefault hid
+  "key absent" defaults from every CLI run. 2026-11-17 · round 10: rng_seed
+  read three ways (7.0 -> 7 / 7 / 42), the optimizer keys in two lists, the
+  workdir name default twice, the seed label read after normalization filled
+  42, sigma fractions through an `or` chain (6bf3fe2, 0d1db72, 2b1e247).
+- Adjustment: when a fix adds a check for a key, grep every reader of it and
+  route them through one helper or one tuple; read provenance (stated or
+  default) from the raw file, never after normalization; read optional numbers
+  with `is not None`, never `or`; test through load_config.
+- Scope: project · Status: validated (two sessions)
+
+### L-15 · A green test must be shown to fail, for every branch it claims
+- Observation: tests here have passed for the wrong reason four ways: by
+  requiring the bug (a 0.0 width as the tight end of a comparison), by timing
+  a ratio a later speed-up moved onto its line, by a fixture that never
+  exercised one of the blocks the test's docstring claimed (no distortion
+  rows), and by comparing a function with the wrapper that now calls it.
+- Evidence: 2026-11-10 · (was L-P01) two geometry_uncertainty tests needed the
+  -2.3e13 variance's 0.0. 2026-11-17 · (was L-13) the 2x timing test after
+  6952211 (ratio 1.3-3.4x); round 10 A-4 (always building _cd_jacobian left the
+  residual-only file passing) and A-5 (the rto sampler compared with itself);
+  fixed in 4c9a2dd, 899e09f.
+- Adjustment: for each new test, break the property it guards in the code
+  (a mutation) and see it fail -- once per branch or block its docstring
+  names, with a fixture that exercises that branch; assert the work skipped
+  (call counts), not a speed ratio; compare against an inlined copy of the
+  old formula, never the function's own wrapper; print both sides of an
+  inequality before trusting it, suspecting exact 0.0, 1.0 or nan.
+- Scope: project · Status: validated (two sessions)

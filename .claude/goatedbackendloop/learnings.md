@@ -49,7 +49,7 @@ Sessions: 0 · Last consolidated: never
   script covers, not only the one fixed.
 - Scope: workflow
 - Status: provisional
-- Outcomes:
+- Outcomes: +2026-11-17 (round 10: all 19 findings reproduced through validate/build/CLI before fixing; one, the replaced stated value, only showed after the fit's Hessian corrections, not at construction)
 ### L-05 · Before fixing to a reference, check what the reference changes
 - Observation: twice in one day a "the fit is not converged" verdict came
   from a comparison that changed more than one thing: round 8's reference
@@ -65,8 +65,21 @@ Sessions: 0 · Last consolidated: never
 - Scope: workflow
 - Status: provisional
 - Outcomes: +2026-11-16 (N6: one 4-minute run named the cause)
+### L-06 · Instrument the failure before hypothesising about it
+- Observation: a library call failed ("CCSD did not converge"); three guessed
+  causes (cycles, DIIS space, start geometry) were each tested and wrong.
+  Logging the call's inputs found it in one run: the optimiser's unbounded
+  first step had stretched the bonds 1.23 -> 2.22 A.
+- Evidence: 2026-11-10 · Quantize (was project lesson L-P05).
+- Adjustment: when a failure surfaces from inside a library call, log the
+  inputs to that call across the failing sequence before forming a theory
+  about the library's settings.
+- Scope: workflow
+- Status: provisional
+- Outcomes:
 ## Retired
 ## Changelog
 - 2026-11-12 created; L-01 added.
 - 2026-11-13 L-02 added (reproducible numbers).
 - 2026-11-16 L-03 (measure instead of tuning a proxy) and L-04 (CLI entry point) added after step 8; L-02 outcome +2026-11-16 (seeds quoted in every later commit; a verifier still caught one CLI number without its seed).
+- 2026-11-17 L-06 moved here from the project's lessons (workflow scope); lessons.md consolidated 219 -> ~110 lines (L-10 into L-14, L-P01 and L-13 into L-15); L-04 outcome +2026-11-17.

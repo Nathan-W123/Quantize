@@ -331,3 +331,33 @@
 - Alternatives considered: auto estimate by default; keys only.
 - Source: stated by user ("Keys + honest label").
 - Revisit if: F13's estimator is calibrated (then auto could be default).
+
+### D-27 · A correction's sigma replaces a stated model error on its rows, and says so (2026-11-17)
+- Decision: where a B0 -> Be correction with its own sigma is applied, that
+  sigma is the row's model error and a stated sigma_systematic_mhz (or the
+  engine's estimate) for the row is not used -- unchanged numbers -- but the
+  label reads "corrections (stated replaced)" and the Laplace warnings name
+  the rows and the knob that widens them (the correction's sigma).
+  sigma_includes_systematic alone is refused.
+- Why: both code paths (apply_corrections_to_isotopologues,
+  _systematic_covariance) already do this by design: the correction removes
+  the gap the stated value stood for, and its sigma is the error left. The
+  defect was silence (round 10 B-7: a stated 1% / 10% left corrected water's
+  widths unchanged with no message).
+- Alternatives considered: add the two in quadrature (double counts when the
+  user's value was meant as the total); stated wins (discards the
+  correction's own error estimate).
+- Source: assumption, unconfirmed (physics decision delegated; numbers unchanged).
+- Revisit if: users state model error meaning "residual after corrections".
+
+### D-28 · Earlier runs' outputs are named in the bundle, never deleted (2026-11-17)
+- Decision: `quantize uncertainty` lists, under files_from_earlier_runs with
+  one warning, every entry of its output folders whose newest file predates
+  the run's start; it deletes nothing but its own stale bundle (as before).
+- Why: a refused run (a typo such as --samples 0) left the last run's
+  posterior and bootstrap summaries, samples and plots beside a new exit-2
+  bundle (round 10 B-6); deleting them would cost hours of PySCF refits.
+- Alternatives considered: delete them at run start; move them aside.
+- Source: assumption, unconfirmed (the reviewer offered both; the non-destructive one chosen).
+- Revisit if: a coarse-timestamp filesystem (2 s FAT) misfiles this run's own files.
+
