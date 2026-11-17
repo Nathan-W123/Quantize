@@ -94,6 +94,11 @@ current code (RHF/6-31G and B3LYP/6-31G(d), all configurations).
   fluoride rows and the Hessian cache kept); the wrapper was stopped before
   python so no "end pass 1" line fired the queued partial-data test early.
 
+- 19:26Z container restart killed every process (scratchpad kept): B3LYP
+  had 2/9 molecules (vinyl, acetyl fluoride; archived to reports/ as a
+  partial file so a rerun skips them); restarted with THREADS=4, the
+  partial-data chain re-armed.
+
 ## Observations
 - 2026-11-17: code_vintage() reads `git status --porcelain`, so editing the
   loop records (tracked) while a benchmark starts stamps it dirty. Caught
@@ -104,3 +109,11 @@ current code (RHF/6-31G and B3LYP/6-31G(d), all configurations).
   0.29). Check a quantity's units against a known value before reporting.
 
 ## Handoff
+To resume N13 after a restart: `git worktree add --detach <scratch>/n13/wt
+5cfc5d4` if the worktree is gone; copy reports/accuracy_upgrades/*.json into
+its output/ (finished rows are skipped); remove stale *.lock; run
+scratchpad n13/run_level.sh (THREADS=4) for b3lyp with the CHEAP and DEAR
+config lists in this file's brief (minus elec, all); re-arm
+partial/after_b3lyp.sh. Then `--table results=<wt>/output` (and
+configs=base), archive, and update README + docstring.
+

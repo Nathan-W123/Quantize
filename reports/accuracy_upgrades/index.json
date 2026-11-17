@@ -32,5 +32,24 @@
       "5cfc5d4": 135
     },
     "mixed_vintage": false
+  },
+  "b3lyp_6-31gd": {
+    "molecules": [
+      "acetyl_fluoride",
+      "vinyl_fluoride"
+    ],
+    "configs": {
+      "base": 2,
+      "bob": 2,
+      "defect": 2,
+      "lam": 2,
+      "offsets": 2,
+      "offsets+bob": 2,
+      "offsets+defect": 2
+    },
+    "code_vintages": {
+      "5cfc5d4": 14
+    },
+    "mixed_vintage": false
   }
 }
