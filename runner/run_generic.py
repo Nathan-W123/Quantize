@@ -1878,7 +1878,12 @@ def config_workdir(cfg: dict) -> str:
     """The directory a config's single-start fit works in, as
     :func:`runner.run_from_config.build_optimizer_from_config` makes it --
     known from the config alone, before anything is built or fitted."""
-    name = str(cfg.get("name", "molecule")).strip()
+    # The name as normalize_config defaults it (name, else molecule, else
+    # "quantize_run"): a config that fails normalization is placed from its
+    # raw mapping, and with "molecule" as the fallback its failure bundle
+    # went to single/molecule while its successful runs used
+    # single/quantize_run, so the last success's bundle survived the failure.
+    name = str(cfg["name"] if "name" in cfg else cfg.get("molecule", "quantize_run")).strip()
     base = (str(Path(str(cfg.get("_run_dir") or ".")).resolve()) if "_run_dir" in cfg
             else str(OUTPUT_TRIALS_DIR))
     return os.path.abspath(os.path.join(base, "single", name))

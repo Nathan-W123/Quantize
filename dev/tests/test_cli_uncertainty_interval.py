@@ -728,3 +728,35 @@ def test_rng_seed_is_read_one_way(value, ok):
     else:
         with pytest.raises(ConfigError, match="rng_seed"):
             validate_config(cfg)
+
+
+@pytest.mark.parametrize("raw", [{}, {"molecule": "ozone"}, {"name": "w", "molecule": "ozone"}])
+def test_a_raw_config_is_placed_where_its_normalized_run_is(raw):
+    """A config that fails normalization is placed from its raw mapping, which
+    defaulted the name to "molecule" while normalization defaults it to the
+    molecule key or "quantize_run": the failure's bundle went to another
+    folder and the last success's (exit 0) survived it."""
+    from runner.config_schema import normalize_config
+    from runner.run_generic import config_workdir
+    assert config_workdir(dict(raw)) == config_workdir(normalize_config(dict(raw)))
+
+
+def test_a_refused_run_names_the_files_an_earlier_run_left(tmp_path, monkeypatch):
+    """A refused run replaced the bundle but left the last run's posterior
+    and bootstrap summaries, samples and plots beside it, reading as its own.
+    They are kept, and named."""
+    code, _, _ = _run(["--mode", "bootstrap", "--samples", "2", "--workers", "1", "--seed", "3"],
+                      tmp_path, monkeypatch)
+    assert code == 0
+    first = _bundle(tmp_path)
+    assert first["files_from_earlier_runs"] == []
+    assert not any("not written by this run" in w for w in first["warnings"])
+    code, _, _ = _run(["--samples", "0"], tmp_path, monkeypatch)
+    assert code == 2
+    b = _bundle(tmp_path)
+    left = b["files_from_earlier_runs"]
+    assert "uncertainty_v2/posterior_laplace_summary.json" in left
+    assert any(f.startswith("bootstrap_v2/") for f in left)
+    assert not any(f.endswith("uncertainty_run_summary.json") for f in left)
+    assert sum("not written by this run" in w for w in b["warnings"]) == 1
+    assert list(tmp_path.rglob("posterior_laplace_summary.json")), "kept, not deleted"

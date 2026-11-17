@@ -448,8 +448,60 @@ def _write_bundle(opt, summary_bundle):
     return out_path
 
 
+def _newest_mtime(path):
+    """The newest modification time of a file, or of any file under a
+    folder (the folder's own when it holds none)."""
+    if not os.path.isdir(path):
+        return os.path.getmtime(path)
+    times = [os.path.getmtime(os.path.join(d, f)) for d, _, fs in os.walk(path) for f in fs]
+    return max(times) if times else os.path.getmtime(path)
+
+
+_EARLIER_FILES_NOTE = "not written by this run"
+
+
+def _note_earlier_run_files(bundle, where, started, args):
+    """Name, in the bundle, what this command's output folders hold that this
+    run did not write.
+
+    A run that is refused, or that skips a stage, replaces the bundle but
+    leaves the last run's posterior summary, bootstrap summary, sample
+    folders, chains and plots beside it, where they read as this run's. They
+    are not deleted -- a typo must not cost hours of refits -- but every
+    entry whose newest file predates this run's start is listed under
+    files_from_earlier_runs, with one warning.
+    """
+    workdir = where if isinstance(where, (str, os.PathLike)) else where.workdir
+    roots = [os.path.join(workdir, "uncertainty_v2"),
+             os.path.join(workdir, args.bootstrap_output_dir),
+             os.path.join(workdir, args.mcmc_output_dir),
+             os.path.join(workdir, "plots", "uncertainty")]
+    own = os.path.abspath(os.path.join(workdir, "uncertainty_v2", "uncertainty_run_summary.json"))
+    earlier = []
+    for root in dict.fromkeys(os.path.abspath(r) for r in roots):
+        if not os.path.isdir(root):
+            continue
+        for entry in sorted(os.listdir(root)):
+            path = os.path.join(root, entry)
+            if os.path.abspath(path) == own or _newest_mtime(path) >= started:
+                continue
+            earlier.append(os.path.relpath(path, workdir) + (os.sep if os.path.isdir(path) else ""))
+    bundle["files_from_earlier_runs"] = earlier
+    warnings = bundle.setdefault("warnings", [])
+    warnings[:] = [w for w in warnings if _EARLIER_FILES_NOTE not in w]
+    if earlier:
+        shown = ", ".join(earlier[:4]) + (f" and {len(earlier) - 4} more" if len(earlier) > 4 else "")
+        warnings.append(f"{len(earlier)} entr{'y' if len(earlier) == 1 else 'ies'} in this "
+                        f"command's output folders {'was' if len(earlier) == 1 else 'were'} "
+                        f"{_EARLIER_FILES_NOTE} (an earlier run's; see "
+                        f"files_from_earlier_runs): {shown}.")
+    return bundle
+
+
 def _cmd_uncertainty(args) -> int:
     """Run Bayesian/Bootstrap uncertainty analysis from config."""
+    import time
+    _started = time.time()
     from runner.run_from_config import build_optimizer_from_config
     from backend.uncertainty_v2 import (
         AdaptiveMetropolisV2,
@@ -488,11 +540,13 @@ def _cmd_uncertainty(args) -> int:
             except Exception:
                 where = None
             if where is not None:
-                print(f"\n[uncertainty] Summary written: " + _write_bundle(where, {
-                    "generated_at": datetime.now(UTC).isoformat(),
-                    "config_path": str(args.config), "mode": args.mode,
-                    "engine": args.uncertainty_engine, "seed": args.seed, "warnings": [],
-                    "config_error": f"config: {exc}", "exit_status": 2}))
+                print(f"\n[uncertainty] Summary written: " + _write_bundle(
+                    where, _note_earlier_run_files({
+                        "generated_at": datetime.now(UTC).isoformat(),
+                        "config_path": str(args.config), "mode": args.mode,
+                        "engine": args.uncertainty_engine, "seed": args.seed, "warnings": [],
+                        "config_error": f"config: {exc}", "exit_status": 2},
+                        where, _started, args)))
         return 2
     workdir = config_workdir(cfg)
     _stale = os.path.join(workdir, "uncertainty_v2", "uncertainty_run_summary.json")
@@ -526,11 +580,15 @@ def _cmd_uncertainty(args) -> int:
         "warnings": [],
     }
 
+    def _emit(where):
+        _note_earlier_run_files(summary_bundle, where, _started, args)
+        return _write_bundle(where, summary_bundle)
+
     def _refuse(message, key="usage_error"):
         print(f"Error: {message}", file=sys.stderr)
         summary_bundle[key] = message
         summary_bundle["exit_status"] = 2
-        print(f"\n[uncertainty] Summary written: {_write_bundle(workdir, summary_bundle)}")
+        print(f"\n[uncertainty] Summary written: {_emit(workdir)}")
         return 2
 
     if args.uncertainty_engine != "v2":
@@ -582,7 +640,7 @@ def _cmd_uncertainty(args) -> int:
             print(f"Error: --bootstrap-strategy {boot_cfg.strategy}: {problem}", file=sys.stderr)
             summary_bundle["bootstrap_refused"] = problem
             summary_bundle["exit_status"] = 2
-            print(f"\n[uncertainty] Summary written: {_write_bundle(opt, summary_bundle)}")
+            print(f"\n[uncertainty] Summary written: {_emit(opt)}")
             return 2
 
     print("\nConverging initial geometry to the global minimum...")
@@ -691,7 +749,7 @@ def _cmd_uncertainty(args) -> int:
             summary_bundle["bootstrap_refused"] = str(exc)
             if args.mode == "bootstrap":
                 summary_bundle["exit_status"] = 2
-                print(f"\n[uncertainty] Summary written: {_write_bundle(opt, summary_bundle)}")
+                print(f"\n[uncertainty] Summary written: {_emit(opt)}")
                 return 2
             # --mode both: the refusal says no refit can be certified against
             # this posterior; the chains sample that posterior as it is, so
@@ -814,7 +872,7 @@ def _cmd_uncertainty(args) -> int:
         print(f"Error: {exc}", file=sys.stderr)
         summary_bundle["cloud_refused"] = str(exc)
         summary_bundle["exit_status"] = 1
-        print(f"\n[uncertainty] Summary written: {_write_bundle(opt, summary_bundle)}")
+        print(f"\n[uncertainty] Summary written: {_emit(opt)}")
         return 1
     if (cloud_source and "reported posterior" not in cloud_source
             and _ridge_moves_widths(opt, args.laplace_regularization)):
@@ -873,7 +931,7 @@ def _cmd_uncertainty(args) -> int:
         print(f"Error: {why}", file=sys.stderr)
         summary_bundle["cloud_refused"] = why
         summary_bundle["exit_status"] = 1
-        print(f"\n[uncertainty] Summary written: {_write_bundle(opt, summary_bundle)}")
+        print(f"\n[uncertainty] Summary written: {_emit(opt)}")
         return 1
 
     print(f"\nProcessing sample cloud: {cloud_source}...")
@@ -919,7 +977,7 @@ def _cmd_uncertainty(args) -> int:
         for why in partial:
             print(f"\n[partial] {why}", file=sys.stderr)
     summary_bundle["exit_status"] = 3 if partial else 0
-    print(f"\n[uncertainty] Summary written: {_write_bundle(opt, summary_bundle)}")
+    print(f"\n[uncertainty] Summary written: {_emit(opt)}")
     return summary_bundle["exit_status"]
 
 
