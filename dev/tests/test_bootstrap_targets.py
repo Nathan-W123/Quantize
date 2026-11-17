@@ -137,9 +137,22 @@ def test_the_rto_shift_has_the_prior_s_covariance(config_fit):
     rng = np.random.default_rng(5)
     draw = quantum_prior_shift_sampler(opt)
     xi = np.array([draw(rng) for _ in range(20000)])
-    # The sampler is the one-draw function with its root formed once.
-    np.testing.assert_array_equal(draw(np.random.default_rng(9)),
-                                  draw_quantum_prior_shift(opt, np.random.default_rng(9)))
+    # The sampler is the per-draw formula with its root formed once: a run of
+    # draws from one generator equals that formula (inlined as it stood
+    # before the sampler, so a drift in either shows) applied draw by draw.
+    # Comparing the sampler with draw_quantum_prior_shift compared it with
+    # itself, since that now calls it.
+    def per_draw(rng):
+        x = np.asarray(opt.coords, dtype=float)
+        _g, Hp = opt._project_quantum_terms(opt.quantum.gradient, opt.quantum.hessian)
+        Hs = np.asarray(opt.optimizer._spd_hessian(Hp), dtype=float)
+        alpha = float(opt.quantum_prior_weight(refresh=True))
+        basis = opt.physical_basis(coords=x, n=Hs.shape[0])
+        root = basis @ symmetric_sqrt(basis.T @ Hs @ basis / alpha) @ basis.T
+        return root @ rng.standard_normal(Hs.shape[0])
+    r_new, r_old = np.random.default_rng(9), np.random.default_rng(9)
+    for _ in range(5):
+        np.testing.assert_array_equal(draw(r_new), per_draw(r_old))
     _g, Hp = opt._project_quantum_terms(opt.quantum.gradient, opt.quantum.hessian)
     Hs = opt.optimizer._spd_hessian(Hp)
     alpha = opt.quantum_prior_weight(refresh=True)

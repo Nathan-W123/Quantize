@@ -948,3 +948,26 @@ def test_per_component_lists_follow_the_internal_rotor_filter():
     assert out["sigma_systematic_constants"] == [4.0, 3.0]
     assert out["delta_vib_constants"] == [2.0, 3.0]
     assert out["sigma_constants_include_systematic"] is True
+
+
+def test_residual_only_skips_the_distortion_jacobian(cd_fit, monkeypatch):
+    """want_jacobian=False exists to skip the Jacobian, and the distortion
+    rows' finite-difference block is its costliest part; the residual-only
+    test's fixture has no distortion rows, so a build of that block there
+    went unseen (mutation: always building it left that file passing)."""
+    sp = cd_fit.spectral
+    assert sp._cd_rows_active(), "premise: the fit has distortion rows"
+    calls = []
+    real = sp._cd_jacobian
+
+    def counting(*a, **k):
+        calls.append(1)
+        return real(*a, **k)
+
+    monkeypatch.setattr(sp, "_cd_jacobian", counting)
+    J, r_full = sp.stacked(cd_fit.coords)
+    assert J is not None and calls, "premise: the full call builds the block"
+    del calls[:]
+    J, r = sp.stacked(cd_fit.coords, want_jacobian=False)
+    assert J is None and not calls
+    np.testing.assert_array_equal(r, r_full)
