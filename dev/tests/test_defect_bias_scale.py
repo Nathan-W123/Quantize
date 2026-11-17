@@ -141,3 +141,41 @@ def test_resolve_corrections_is_off_by_default_and_needs_coords():
                                     mode="hybrid_auto", defect_bias_scale=True)
     assert [t.sigma_mhz for t in scaled] > [t.sigma_mhz for t in plain]
     assert [t.sigma_mhz for t in no_coords] == [t.sigma_mhz for t in plain]
+
+
+def test_the_optimizer_reads_the_probe_at_its_prior_target_not_its_start(monkeypatch):
+    """The probe subtracts the structure's own defect, so the geometry it is
+    read at sets the weights. MolecularOptimizer read it at the start
+    geometry, so a restart from the answer re-weighted the data: the
+    benchmark recipe with defect_bias_scale on moved chlorofluoromethane
+    5.85 mA and acetyl fluoride 1.74 on a fresh restart (HF/6-31G); read at
+    the prior target, 0.000 and 0.0005, first fits unchanged."""
+    import contextlib
+    import io
+
+    import backend.spectral.rovib_corrections as RC
+    import dev.analytic_water_backend  # noqa: F401
+    from backend.quantize import MolecularOptimizer
+    from test_bootstrap_targets import B0_H2O, MASSES_H2O, _coords
+    seen = []
+    real = RC.resolve_corrections
+
+    def spy(*a, **k):
+        seen.append(np.asarray(k.get("coords_ang"), dtype=float).copy())
+        return real(*a, **k)
+
+    monkeypatch.setattr(RC, "resolve_corrections", spy)
+    import backend.quantize as Q
+    monkeypatch.setattr(Q, "resolve_corrections", spy, raising=False)
+    target = _coords()
+    start = target + np.array([[0.0, 0.0, 0.0], [0.03, 0.01, 0.0], [-0.03, 0.01, 0.0]])
+    isos = [{"name": "w", "masses": MASSES_H2O, "obs_constants": list(B0_H2O),
+             "sigma_constants": [0.2] * 3}]
+    table = {"w": {c: {"alpha_sum_mhz": 1.0, "sigma_mhz": 0.1} for c in "ABC"}}
+    with contextlib.redirect_stdout(io.StringIO()):
+        MolecularOptimizer(elems=["O", "H", "H"], coords=start, isotopologues=isos,
+                           quantum_backend="analytic_water", use_autoconfig=False,
+                           coordinate_mode="cartesian", correction_table=table,
+                           defect_bias_scale=True, prior_target_coords=target)
+    assert seen, "premise: the corrections were resolved"
+    np.testing.assert_array_equal(seen[-1], target)

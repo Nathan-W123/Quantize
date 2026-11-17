@@ -816,7 +816,15 @@ class MolecularOptimizer:
                 correction_bob_params=correction_bob_params or None,
                 g_tensor=correction_g_tensor or None,
                 defect_bias_scale=bool(defect_bias_scale),
-                coords_ang=np.asarray(coords, dtype=float),
+                # The defect probe subtracts the structure's own inertial
+                # defect, so the geometry it is read at sets the weights.
+                # At the start geometry a restart from the answer re-weighted
+                # the data and moved the fit (chlorofluoromethane, HF/6-31G,
+                # benchmark recipe with defect_bias_scale: 5.85 mA); the prior
+                # target is the fixed point, where there is one.
+                coords_ang=np.asarray(
+                    prior_target_coords if prior_target_coords is not None else coords,
+                    dtype=float),
             )
             _qc_warnings = validate_correction_quality(_corrected_targets)
             print("\nRovibrational corrections applied:")
@@ -1670,7 +1678,10 @@ class MolecularOptimizer:
             correction_bob_params=self._correction_bob_params,
             g_tensor=self._correction_g_tensor,
             defect_bias_scale=self._defect_bias_scale,
-            coords_ang=np.asarray(self.coords, dtype=float),
+            # As at construction: the prior target where there is one.
+            coords_ang=np.asarray(
+                self._prior_target_coords if self._prior_target_coords is not None
+                else self.coords, dtype=float),
         )
         _qc_warnings = validate_correction_quality(corrected_targets)
         print("\n  Rovibrational corrections (harmonic from Hessian):")
