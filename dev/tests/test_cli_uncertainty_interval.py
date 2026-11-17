@@ -561,6 +561,11 @@ def test_the_summaries_are_strict_json(tmp_path):
     (lambda c: c.__setitem__("rng_seed", -1), "rng_seed"),
     (lambda c: c.setdefault("rovibrational_corrections", {}).__setitem__("cd_weight", None), "cd_weight"),
     (lambda c: c.__setitem__("rovib_recalc_every", "x"), "rovib_recalc_every"),
+    # Dropped without a word: conv_step ran at 1e-7, a typo and a
+    # constructor argument no config sets passed and did nothing.
+    (lambda c: c.setdefault("optimizer", {}).__setitem__("conv_step", 1e-9), "conv_step"),
+    (lambda c: c.setdefault("optimizer", {}).__setitem__("max_iters", 5), "max_iters"),
+    (lambda c: c.setdefault("optimizer", {}).__setitem__("robust_loss", "huber"), "robust_loss"),
 ])
 def test_values_the_constructor_would_refuse_are_named_by_validation(edit, said):
     """Round 9: with the build catching only the translation's errors, a bad
@@ -760,3 +765,56 @@ def test_a_refused_run_names_the_files_an_earlier_run_left(tmp_path, monkeypatch
     assert not any(f.endswith("uncertainty_run_summary.json") for f in left)
     assert sum("not written by this run" in w for w in b["warnings"]) == 1
     assert list(tmp_path.rglob("posterior_laplace_summary.json")), "kept, not deleted"
+
+
+def test_the_builder_passes_exactly_the_keys_validation_accepts():
+    """The two kept separate lists; a key in one and not the other passed
+    validation and was then dropped."""
+    from runner.run_generic import build_run_inputs
+    from runner.usability import (_OPTIMIZER_BOOLS, _OPTIMIZER_FLOATS, _OPTIMIZER_INTS,
+                                  _OPTIMIZER_KEYS, _OPTIMIZER_NULLABLE_FLOATS, load_config,
+                                  validate_config)
+    cfg = load_config(CONFIG)
+    block = {k: 0.5 for k in _OPTIMIZER_FLOATS + _OPTIMIZER_NULLABLE_FLOATS}
+    block.update({k: 3 for k in _OPTIMIZER_INTS})
+    block.update({k: True for k in _OPTIMIZER_BOOLS})
+    block["objective_mode"] = "split"
+    assert set(block) == set(_OPTIMIZER_KEYS)
+    cfg["optimizer"] = block
+    validate_config(cfg)
+    with contextlib.redirect_stdout(io.StringIO()):
+        kw = build_run_inputs(cfg, verbose=False)["optimizer_kwargs"]
+    for key, value in block.items():
+        assert kw[key] == value, key
+
+
+def test_null_sv_min_abs_is_the_constructor_s_default():
+    """null is the constructor's own default (it derives 1/sigma_x) and was
+    refused as "must be numeric"."""
+    from runner.run_generic import build_run_inputs
+    from runner.usability import load_config, validate_config
+    cfg = load_config(CONFIG)
+    cfg["optimizer"] = {"sv_min_abs": None}
+    validate_config(cfg)
+    with contextlib.redirect_stdout(io.StringIO()):
+        kw = build_run_inputs(cfg, verbose=False)["optimizer_kwargs"]
+    assert kw["sv_min_abs"] is None
+
+
+@pytest.mark.parametrize("key,arg", [("sigma_vib_fraction", "correction_sigma_vib_fraction"),
+                                     ("sigma_elec_fraction", "correction_sigma_elec_fraction")])
+def test_a_stated_zero_fraction_is_zero(key, arg):
+    """Validation accepts >= 0, and the builder's `or` chain ran a stated 0
+    as the default 0.1."""
+    from runner.run_generic import build_run_inputs
+    from runner.usability import load_config, validate_config
+    cfg = load_config(CONFIG)
+    cfg.setdefault("rovibrational_corrections", {})[key] = 0
+    validate_config(cfg)
+    with contextlib.redirect_stdout(io.StringIO()):
+        kw = build_run_inputs(cfg, verbose=False)["optimizer_kwargs"]
+    assert kw[arg] == 0.0
+    del cfg["rovibrational_corrections"][key]
+    with contextlib.redirect_stdout(io.StringIO()):
+        kw = build_run_inputs(cfg, verbose=False)["optimizer_kwargs"]
+    assert kw[arg] == 0.1

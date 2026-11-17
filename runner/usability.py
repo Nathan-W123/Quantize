@@ -432,13 +432,19 @@ def _validate_run_controls(cfg: dict[str, Any], elements: list[Any]) -> None:
 #: optimizer: overrides the builder passes to MolecularOptimizer as given,
 #: by the type the constructor reads them as (a null keeps the default for
 #: the two that take one).
-_OPTIMIZER_FLOATS = ("trust_radius", "lambda_damp", "sv_threshold", "sv_min_abs",
+_OPTIMIZER_FLOATS = ("trust_radius", "lambda_damp", "sv_threshold",
                      "alpha_quantum", "spectral_delta", "orca_update_thresh", "conv_freq",
                      "conv_step_range", "conv_step_null", "conv_grad_null",
                      "quantum_weight_beta", "quantum_weight_min", "quantum_weight_max")
-_OPTIMIZER_NULLABLE_FLOATS = ("null_trust_radius", "quantum_prior_sigma_ang")
+# null is the constructor's own default for these: null_trust_radius half the
+# trust radius, quantum_prior_sigma_ang the legacy weight, sv_min_abs 1/sigma_x.
+_OPTIMIZER_NULLABLE_FLOATS = ("null_trust_radius", "quantum_prior_sigma_ang", "sv_min_abs")
 _OPTIMIZER_INTS = ("max_iter", "hess_recalc_every", "hess_recalc_min", "hess_recalc_max")
 _OPTIMIZER_BOOLS = ("adaptive_hess_schedule", "dynamic_quantum_weight")
+#: Every key an optimizer: block may carry -- the builder passes exactly these
+#: to MolecularOptimizer (run_generic.build_run_inputs).
+_OPTIMIZER_KEYS = (_OPTIMIZER_FLOATS + _OPTIMIZER_NULLABLE_FLOATS + _OPTIMIZER_INTS
+                   + _OPTIMIZER_BOOLS + ("objective_mode",))
 
 
 def _validate_model_error(cfg: dict[str, Any]) -> None:
@@ -507,6 +513,14 @@ def _validate_optimizer_block(cfg: dict[str, Any]) -> None:
         return
     if not isinstance(opt, dict):
         raise ConfigError("'optimizer' must be a mapping/object.")
+    # Any other key was dropped without a word: conv_step: 1e-9 ran at 1e-7,
+    # and a typo (max_iters) or a constructor argument no config sets
+    # (robust_loss) passed and did nothing.
+    unknown = sorted(str(k) for k in opt if k not in _OPTIMIZER_KEYS)
+    if unknown:
+        raise ConfigError(
+            f"'optimizer' has key(s) {unknown} that a config cannot set; it takes "
+            f"{', '.join(sorted(_OPTIMIZER_KEYS))}.")
     for key in _OPTIMIZER_FLOATS + _OPTIMIZER_NULLABLE_FLOATS:
         if key not in opt or (opt[key] is None and key in _OPTIMIZER_NULLABLE_FLOATS):
             continue

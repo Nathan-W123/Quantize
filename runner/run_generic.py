@@ -1961,21 +1961,22 @@ def build_run_inputs(cfg: dict[str, Any], *, verbose: bool = True) -> dict[str, 
     correction_mode = str(
         _rc_block.get("mode") or cfg.get("correction_mode") or "hybrid_auto"
     ).strip()
-    correction_sigma_vib_fraction = float(
-        _rc_block.get("sigma_vib_fraction")
-        or cfg.get("correction_sigma_vib_fraction")
-        or 0.1
-    )
+    # A stated 0 is a value (validation accepts >= 0): an `or` chain read it
+    # as unset and ran 0.1.
+    def _stated(*values, default):
+        return next((v for v in values if v is not None), default)
+
+    correction_sigma_vib_fraction = float(_stated(
+        _rc_block.get("sigma_vib_fraction"), cfg.get("correction_sigma_vib_fraction"),
+        default=0.1))
     correction_elec = bool(
         _rc_block.get("electronic_correction")
         or cfg.get("correction_elec")
         or False
     )
-    correction_sigma_elec_fraction = float(
-        _rc_block.get("sigma_elec_fraction")
-        or cfg.get("correction_sigma_elec_fraction")
-        or 0.1
-    )
+    correction_sigma_elec_fraction = float(_stated(
+        _rc_block.get("sigma_elec_fraction"), cfg.get("correction_sigma_elec_fraction"),
+        default=0.1))
     _user_bob_params = (
         _rc_block.get("bob_params")
         or cfg.get("correction_bob_params")
@@ -2208,31 +2209,10 @@ def build_run_inputs(cfg: dict[str, Any], *, verbose: bool = True) -> dict[str, 
         autoconfig_smoothing=float(ac_cfg.get("smoothing", 0.4)),
         autoconfig_update_every=int(ac_cfg.get("update_every", 1)),
     )
-    _optimizer_overrides = {
-        "trust_radius",
-        "null_trust_radius",
-        "lambda_damp",
-        "sv_threshold",
-        "sv_min_abs",
-        "alpha_quantum",
-        "spectral_delta",
-        "hess_recalc_every",
-        "hess_recalc_min",
-        "hess_recalc_max",
-        "adaptive_hess_schedule",
-        "objective_mode",
-        "orca_update_thresh",
-        "max_iter",
-        "conv_freq",
-        "conv_step_range",
-        "conv_step_null",
-        "conv_grad_null",
-        "dynamic_quantum_weight",
-        "quantum_weight_beta",
-        "quantum_weight_min",
-        "quantum_weight_max",
-        "quantum_prior_sigma_ang",
-    }
+    # The keys validation accepts, so the two cannot drift: a key in one list
+    # and not the other passed validation and was then dropped.
+    from runner.usability import _OPTIMIZER_KEYS
+    _optimizer_overrides = set(_OPTIMIZER_KEYS)
     if not _legacy_weight:
         # Absent, not None: None selects the legacy weight, absence the
         # level-table calibration.
