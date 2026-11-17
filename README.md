@@ -34,7 +34,9 @@ are r_s substitution structures rather than r_e. On water, the one molecule with
 a genuine r_e reference, the hybrid scores 1.36 and 4.13 mÅ against theory's
 8.14 and 10.89.
 
-> **Vintage.** This table was measured at commit 4f0ece6 (2026-10-05), before the
+> **Vintage.** This table's numbers were recorded in the benchmark script at
+> 41a4a02 (2026-09-24; some at ff7dbdf, 2026-09-23) and copied here at 4f0ece6
+> (2026-10-05), after 11 more backend commits, and before the
 > November fixes to the fit (Cartesian prior weight, step acceptance, convergence
 > scale, the target prior's curvature). The engine has moved since: at 14125f3 the
 > base-configuration hybrid gives water 0.56 mÅ at RHF/6-31G and 0.050 mÅ at
