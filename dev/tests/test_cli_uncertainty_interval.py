@@ -667,3 +667,64 @@ def test_without_seed_the_config_s_rng_seed_makes_the_cloud_reproducible(tmp_pat
         stds.append(b["bootstrap"]["analytic"]["bootstrap_std"])
         assert b["seed"] == 17 and b["seed_source"] == "config rng_seed"
     assert stds[0] == stds[1]
+
+
+def _seeded_config(tmp_path, edit):
+    import yaml
+    from runner.usability import load_config
+    cfg = load_config(CONFIG)
+    edit(cfg)
+    path = tmp_path / "seeded.yaml"
+    path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
+    return path
+
+
+@pytest.mark.parametrize("edit,seed,source", [
+    (lambda c: c.__setitem__("rng_seed", 7.0), 7, "config rng_seed"),
+    (lambda c: c.pop("rng_seed"), 42, "default (42)"),
+])
+def test_the_bundle_s_seed_is_the_one_the_builder_reads(edit, seed, source, tmp_path,
+                                                         monkeypatch):
+    """7.0 seeded the fit's starts with 7 and the draws with 42 (labelled as
+    the config's), and a config without rng_seed was labelled as stating one,
+    because normalization fills in 42 before the label was read."""
+    path = _seeded_config(tmp_path, edit)
+    monkeypatch.chdir(tmp_path)
+    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+        code = cli.main(["uncertainty", str(path), "--samples", "0"])
+    assert code == 2
+    b = _bundle(tmp_path)
+    assert (b["seed"], b["seed_source"]) == (seed, source)
+
+
+def test_a_negative_seed_is_refused_before_the_fit(tmp_path, monkeypatch):
+    """numpy refuses it, and did so in a traceback after the whole base fit."""
+    built = []
+    import runner.run_from_config as RFC
+
+    def never(*a, **k):
+        built.append(1)
+        raise AssertionError("the fit was built")
+
+    monkeypatch.setattr(RFC, "build_optimizer_from_config", never)
+    code, out, err = _run(["--seed", "-1", "--mode", "bootstrap", "--samples", "2"] + _QUIET[:2],
+                          tmp_path, monkeypatch)
+    assert code == 2 and not built
+    assert "--seed must be >= 0" in err
+    assert _bundle(tmp_path)["exit_status"] == 2
+
+
+@pytest.mark.parametrize("value,ok", [(1.0e16, True), ("7", True), (7.0, True),
+                                      (None, False), (-3, False), (True, False)])
+def test_rng_seed_is_read_one_way(value, ok):
+    """1e16 passed the number check and then raised a traceback in the sign
+    check; null passed validation and then failed in the builder's int()."""
+    from runner.usability import ConfigError, load_config, seed_value, validate_config
+    cfg = load_config(CONFIG)
+    cfg["rng_seed"] = value
+    if ok:
+        validate_config(cfg)
+        assert seed_value(value) == int(float(value))
+    else:
+        with pytest.raises(ConfigError, match="rng_seed"):
+            validate_config(cfg)

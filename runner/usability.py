@@ -331,6 +331,25 @@ def _number_problem(value: Any, path: str, *, integer: bool = False) -> str | No
     return None
 
 
+def seed_value(value: Any, path: str = "rng_seed") -> int:
+    """The non-negative integer a seed value stands for.
+
+    One reading for the validator, the builder and the CLI, which used to
+    differ: 7.0 seeded the fit's starts with 7 but the CLI's draws with 42
+    (labelled as the config's), 1e16 passed the number check and then raised
+    a traceback in the sign check, and null passed validation and then
+    failed in the builder's int(). Null is refused by name, as it was before
+    the sign check: leave the key out for the default, 42.
+    """
+    why = _number_problem(value, path, integer=True)
+    if why:
+        raise ConfigError(why + (" Leave it out for the default, 42." if value is None else ""))
+    seed = int(value.strip()) if isinstance(value, str) else int(value)
+    if seed < 0:
+        raise ConfigError(f"'{path}' must be >= 0 (got {value!r}).")
+    return seed
+
+
 def _validate_run_controls(cfg: dict[str, Any], elements: list[Any]) -> None:
     """The fields the fit reads with int()/float() or looks up in a table,
     so that a bad value is named here instead of surfacing from the builder
@@ -345,12 +364,8 @@ def _validate_run_controls(cfg: dict[str, Any], elements: list[Any]) -> None:
                 f"'elements[{i}]' is '{elem}', which is not an element this engine has "
                 f"data for (H to Rn)."
             )
-    if cfg.get("rng_seed") is not None:
-        why = _number_problem(cfg.get("rng_seed"), "rng_seed", integer=True)
-        if why:
-            raise ConfigError(why)
-        if int(str(cfg.get("rng_seed")).strip().split(".")[0]) < 0:
-            raise ConfigError(f"'rng_seed' must be >= 0 (got {cfg.get('rng_seed')!r}).")
+    if "rng_seed" in cfg:
+        seed_value(cfg["rng_seed"])
     mode = cfg.get("coordinate_mode")
     if mode is not None and str(mode).strip().lower() not in {"internal", "cartesian"}:
         raise ConfigError(f"'coordinate_mode' must be internal or cartesian (got {mode!r}).")

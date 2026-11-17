@@ -502,14 +502,20 @@ def _cmd_uncertainty(args) -> int:
     # fixes the fit's starts), else the builder's default for it. Without
     # --seed the bootstrap and the chains used fresh entropy every run, so
     # the same config gave a different cloud each time.
+    # The seed is read as the builder reads it (seed_value: 7.0 is 7), and
+    # its source from the file as written: normalization fills in 42, so the
+    # normalized config cannot tell a stated seed from the default. A seed
+    # the builder would refuse is left to validate_config below to name.
+    from runner.usability import seed_value
     if args.seed is not None:
         seed, seed_source = int(args.seed), "--seed"
     else:
+        _stated = "rng_seed" in (_raw_config_mapping(args.config) or {})
+        seed_source = "config rng_seed" if _stated else "default (42)"
         try:
-            seed = int(str(cfg.get("rng_seed", 42)).strip())
-        except (TypeError, ValueError):
-            seed = 42
-        seed_source = "config rng_seed" if cfg.get("rng_seed") is not None else "default (42)"
+            seed = seed_value(cfg.get("rng_seed", 42))
+        except ConfigError:
+            seed = None
     summary_bundle = {
         "generated_at": datetime.now(UTC).isoformat(),
         "config_path": str(args.config),
@@ -531,6 +537,10 @@ def _cmd_uncertainty(args) -> int:
         # Before the fit: this used to run the whole base fit first and then
         # exit, and the default was this engine.
         return _refuse(_V1_REMOVED)
+    if args.seed is not None and args.seed < 0:
+        # numpy refuses a negative seed, and it used to do so in a traceback
+        # after the whole base fit had run.
+        return _refuse("--seed must be >= 0.")
     if args.samples < 1:
         return _refuse("--samples must be >= 1.")
     if args.workers < 1:

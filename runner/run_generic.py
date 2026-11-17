@@ -2020,7 +2020,8 @@ def build_run_inputs(cfg: dict[str, Any], *, verbose: bool = True) -> dict[str, 
 
     # ── Preset and run control ────────────────────────────────────────────────
     preset_name, preset = _resolve_preset(cfg.get("preset"))
-    rng_seed = int(cfg.get("rng_seed", 42))
+    from runner.usability import seed_value
+    rng_seed = seed_value(cfg.get("rng_seed", 42))
     write_xyz = bool(cfg.get("write_xyz", False))
     # No symmetry key means the engine's default, "auto": detect the point
     # group and impose it. An explicit null means unconstrained, as configured.
