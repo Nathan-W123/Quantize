@@ -1,14 +1,35 @@
 {
   "hf_6-31g": {
     "molecules": [
+      "acetyl_fluoride",
+      "chlorofluoromethane",
+      "fluoroacetylene",
+      "fluoroethane",
+      "formyl_fluoride",
+      "isocyanic_acid",
+      "ozone",
+      "vinyl_fluoride",
       "water"
     ],
     "configs": {
-      "base": 1,
-      "corr": 1
+      "base": 9,
+      "bob": 9,
+      "cd": 9,
+      "defect": 9,
+      "lam": 9,
+      "offsets": 9,
+      "offsets+bob": 9,
+      "offsets+cd": 9,
+      "offsets+defect": 9,
+      "offsets+torsion": 9,
+      "offsets+track": 9,
+      "torsion": 9,
+      "track": 9,
+      "track_direct": 9,
+      "track_quadratic": 9
     },
     "code_vintages": {
-      "unstamped": 2
+      "5cfc5d4": 135
     },
     "mixed_vintage": false
   }
