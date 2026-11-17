@@ -65,6 +65,18 @@ current code (RHF/6-31G and B3LYP/6-31G(d), all configurations).
 - 17:59Z RHF pass 1 done (30 min; acetyl fluoride 11 min, fluoroethane
   8.6); pass 2 (track, torsion) started. B3LYP theory geometries done ~18:00.
 
+- Partial-data test (user chose step 2), RHF/6-31G, parent isotopologue
+  only, benchmark base recipe, caches from the frozen worktree
+  (scratchpad partial/partial_data.py, partial.json). Full-data rows equal
+  the benchmark's base rows to 4 decimals (all 9). Mean all-bond RMS (mA):
+  theory 21.47; full hybrid 11.48, full ME 17.59; parent hybrid 13.76,
+  parent ME 16.16, parent data-only (sx 1.0) 13.89. Parent hybrid beats
+  theory 8/9 (not isocyanic acid, 26.84 -> 30.08) and parent ME 7/9 (not
+  ozone, isocyanic acid); vs data-only 3 better, 2 tied, 4 worse: at HF the
+  directions one isotopologue cannot see stay at theory with or without the
+  prior (the start is the prior centre), so the prior's weight adds ~0.1 mA.
+  Angles: water 7.06 -> 0.19, isocyanic 21.6 -> 1.28 deg (ME 19.6).
+
 ## Observations
 - 2026-11-17: code_vintage() reads `git status --porcelain`, so editing the
   loop records (tracked) while a benchmark starts stamps it dirty. Caught
