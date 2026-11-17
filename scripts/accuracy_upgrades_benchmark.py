@@ -78,11 +78,14 @@ inertial-defect probe independently flags as biased (see
 rovib_corrections._apply_defect_bias_floor). The hybrid's wins elsewhere run
 to 8-15 mA.
 
-Water is the one genuine regression with level, 1.36 to 4.13. sigma_x comes
-from a per-level table, 7 mA here, while B3LYP/6-31G(d) is atypically poor for
-O-H at 10.89 mA -- so the fit was instructed to trust a bad prior. A
-per-molecule sigma_x would catch it; prior_sigma_for_molecule already computes
-one from the offset residuals where the classes are calibrated.
+Water looked like the one genuine regression with level, 1.36 to 4.13, and
+was put down to the per-level sigma_x (7 mA) trusting a B3LYP/6-31G(d) O-H
+that is 10.89 mA out. That does not hold at the current code: re-measured at
+14125f3 (base configuration, water's r_e reference, the table above's
+correction settings), the hybrid gives 0.050 mA at sigma_x 0.007 and grows
+with a wider prior -- 0.403 at 0.010, 0.753 at 0.020 -- so the per-level width
+is the right one and a wider per-molecule sigma_x would hurt. The 4.13 is of
+the table's vintage (see the README's note) and the table needs regenerating.
 
 Ozone reaches 1.00 mA, but its reference is an r_s structure with a Costain
 floor of 4.1 mA, so that figure is at the resolution of the yardstick rather
