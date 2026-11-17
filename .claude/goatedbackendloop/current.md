@@ -61,7 +61,12 @@ current code (RHF/6-31G and B3LYP/6-31G(d), all configurations).
   fit still CCSD/cc-pVDZ (water_corr.json): full -0.03 / +0.136, partial
   -0.02 / +0.163, data only -0.10 / +0.149 and -0.21 / +0.200. The bond's
   0.6 mA was the corrections' (now under the reference's 0.1 mA); the
-  angle's +0.14-0.16 deg is not (0.4 sd). CCSD/cc-pVTZ corrections running.
+  angle's +0.14-0.16 deg is not (0.4 sd). Corrections at CCSD/cc-pVTZ
+  (33 min): full -0.08 / +0.102, partial -0.09 / +0.122, data only -0.15 /
+  +0.115 and -0.28 / +0.159: the angle improves a little (MP2 0.136), the
+  bond is indistinguishable (both under the reference's 0.1 mA).
+- 18:51Z B3LYP pass 1: 1 of 9 molecules (~50 min each at 2 threads with
+  the cores shared): several hours yet; RHF pass 2: 3 of 9.
 - 17:59Z RHF pass 1 done (30 min; acetyl fluoride 11 min, fluoroethane
   8.6); pass 2 (track, torsion) started. B3LYP theory geometries done ~18:00.
 
