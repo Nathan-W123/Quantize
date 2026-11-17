@@ -210,6 +210,9 @@ CD_WEIGHT = 1.0
 #: Filled in main() once git has been consulted.
 VINTAGE = "unknown"
 WANT_CONFIGS: list[str] = []
+#: Where --table reads the results JSON from (results=<dir>); the run's own
+#: output folder by default.
+RESULTS_DIR = None
 HESSIAN_CACHE = True
 RUN_DIAGNOSTICS = True
 _args: list[str] = []
@@ -234,6 +237,8 @@ for _tok in sys.argv[1:]:
         HESSIAN_CACHE = False
     elif _tok.startswith("configs="):
         WANT_CONFIGS = _tok.split("=", 1)[1].split(",")
+    elif _tok.startswith("results="):
+        RESULTS_DIR = Path(_tok.split("=", 1)[1])
     else:
         _args.append(_tok)
 
@@ -1177,52 +1182,88 @@ _TABLE_ORDER = [
 _TABLE_LEVELS = [("RHF/6-31G", "hf_6-31g"), ("B3LYP/6-31G(d)", "b3lyp_6-31gd")]
 
 
-def print_summary_table() -> None:
+def summary_rows(tables: dict, configs=None) -> dict:
+    """Per level and molecule, (theory, ME, hybrid) all-bond RMS in mA, each
+    leg at its own best configuration among ``configs`` (every configuration
+    on file when None), with the vintages and configuration count used."""
+    legs = ("theory_rms_ma", "me_rms_ma", "hybrid_rms_ma")
+    out = {}
+    for label, data in tables.items():
+        rows, vintages, n_cfg = {}, set(), set()
+        for key in _TABLE_ORDER:
+            recs = {c: v for c, v in (data.get(key) or {}).items()
+                    if (configs is None or c in configs) and isinstance(v, dict)
+                    and all(leg in v for leg in legs)}
+            if not recs:
+                continue
+            rows[key] = tuple(min(v[leg] for v in recs.values()) for leg in legs)
+            vintages |= {str(v.get("code_vintage", "unstamped")) for v in recs.values()}
+            n_cfg |= set(recs)
+        out[label] = {"rows": rows, "vintages": sorted(vintages), "configs": sorted(n_cfg)}
+    return out
+
+
+def print_summary_table(configs=None, results_dir=None) -> None:
     """Regenerate the results table in this module's docstring from the JSON.
 
     Each leg is reported at its own best configuration, independently. Picking
     one row per molecule -- the row where the hybrid does best -- would let the
     hybrid choose the settings the other two are then scored under, which
     flatters it by 2.9 mA on the mixed-estimation mean at RHF.
+
+    The best of N configurations is still a selection, for all three legs,
+    and it grows with N; ``configs=base`` gives the one-setting table, with no
+    selection at all. The header names the configurations and code vintages
+    the numbers come from, and says so when the vintages are mixed.
     """
-    legs = ("theory_rms_ma", "me_rms_ma", "hybrid_rms_ma")
+    root = Path(results_dir) if results_dir is not None else _ROOT / "output"
     tables = {}
     for label, tag in _TABLE_LEVELS:
-        path = _ROOT / "output" / f"accuracy_upgrades_{tag}.json"
+        path = root / f"accuracy_upgrades_{tag}.json"
         tables[label] = json.loads(path.read_text(encoding="utf-8")) \
             if path.exists() else {}
+    summary = summary_rows(tables, configs)
 
+    for label, _ in _TABLE_LEVELS:
+        info = summary[label]
+        how = ("one configuration, " + info["configs"][0] if len(info["configs"]) == 1
+               else f"best of {len(info['configs'])} configurations per leg")
+        print(f"  {label}: {how}; code vintage {', '.join(info['vintages']) or '-'}"
+              + ("   MIXED VINTAGES: do not compare" if len(info["vintages"]) > 1 else ""))
     head = " " * 23
     for label, _ in _TABLE_LEVELS:
         head += f"{label:^24s}"
     print(head)
     print(" " * 23 + 2 * f"{'theory':>8s}{'ME':>6s}{'hybrid':>8s}  ")
 
-    totals = {lab: [0.0, 0.0, 0.0] for lab, _ in _TABLE_LEVELS}
-    counts = {lab: 0 for lab, _ in _TABLE_LEVELS}
     for key in _TABLE_ORDER:
         line = f"  {key.replace('_', ' '):<21s}"
         for label, _ in _TABLE_LEVELS:
-            recs = tables[label].get(key)
-            if not recs:
+            vals = summary[label]["rows"].get(key)
+            if vals is None:
                 line += f"{'-':>8s}{'-':>6s}{'-':>8s}  "
                 continue
-            vals = [min(v[leg] for v in recs.values()) for leg in legs]
-            for i, v in enumerate(vals):
-                totals[label][i] += v
-            counts[label] += 1
             line += f"{vals[0]:8.2f}{vals[1]:6.2f}{vals[2]:8.2f}  "
         print(line)
     line = f"  {'MEAN':<21s}"
     for label, _ in _TABLE_LEVELS:
-        n = max(counts[label], 1)
-        line += "".join(f"{t / n:8.2f}" if i != 1 else f"{t / n:6.2f}"
-                        for i, t in enumerate(totals[label])) + "  "
+        rows = list(summary[label]["rows"].values())
+        n = max(len(rows), 1)
+        means = [sum(r[i] for r in rows) / n for i in range(3)]
+        line += f"{means[0]:8.2f}{means[1]:6.2f}{means[2]:8.2f}  "
     print(line)
+    for label, _ in _TABLE_LEVELS:
+        rows = list(summary[label]["rows"].values())
+        if rows:
+            best = sum(r[2] < min(r[0], r[1]) for r in rows)
+            over_me = sum(r[2] < r[1] for r in rows)
+            over_th = sum(r[2] < r[0] for r in rows)
+            print(f"  {label}: hybrid best of three on {best}/{len(rows)}, beats mixed "
+                  f"estimation on {over_me}/{len(rows)}, theory on {over_th}/{len(rows)}")
 
 
 if __name__ == "__main__":
     if "--table" in sys.argv:
-        print_summary_table()
+        print_summary_table(WANT_CONFIGS or None, RESULTS_DIR)
     else:
         main()
