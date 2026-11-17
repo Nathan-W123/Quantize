@@ -77,6 +77,11 @@ current code (RHF/6-31G and B3LYP/6-31G(d), all configurations).
   prior (the start is the prior centre), so the prior's weight adds ~0.1 mA.
   Angles: water 7.06 -> 0.19, isocyanic 21.6 -> 1.28 deg (ME 19.6).
 
+- User chose to repeat the partial-data test at B3LYP/6-31G(d):
+  scratchpad partial/after_b3lyp.sh (detached) waits for the benchmark's
+  "end pass 1 b3lyp", then runs partial_data.py with PD_METHOD=b3lyp
+  (sigma_x 0.007) on the cached Hessians -> partial_b3lyp.json.
+
 ## Observations
 - 2026-11-17: code_vintage() reads `git status --porcelain`, so editing the
   loop records (tracked) while a benchmark starts stamps it dirty. Caught
