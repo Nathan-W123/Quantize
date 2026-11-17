@@ -57,6 +57,11 @@ current code (RHF/6-31G and B3LYP/6-31G(d), all configurations).
   partial -0.86 / +0.230 -- the residual error is the cc-pVDZ corrections'
   (the prior at the default width adds 0.06 / 0.19 mA); water has 6 (3)
   constants for 2 parameters, so it cannot show the prior's main value.
+  Corrections at MP2/cc-pVTZ (own minimum, 7 Hessians, 3.7 min), prior and
+  fit still CCSD/cc-pVDZ (water_corr.json): full -0.03 / +0.136, partial
+  -0.02 / +0.163, data only -0.10 / +0.149 and -0.21 / +0.200. The bond's
+  0.6 mA was the corrections' (now under the reference's 0.1 mA); the
+  angle's +0.14-0.16 deg is not (0.4 sd). CCSD/cc-pVTZ corrections running.
 - 17:59Z RHF pass 1 done (30 min; acetyl fluoride 11 min, fluoroethane
   8.6); pass 2 (track, torsion) started. B3LYP theory geometries done ~18:00.
 
