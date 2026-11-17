@@ -179,3 +179,57 @@ def test_the_optimizer_reads_the_probe_at_its_prior_target_not_its_start(monkeyp
                            defect_bias_scale=True, prior_target_coords=target)
     assert seen, "premise: the corrections were resolved"
     np.testing.assert_array_equal(seen[-1], target)
+
+
+def _probe_geometry(monkeypatch, *, mode, target, start):
+    """The coords_ang MolecularOptimizer hands resolve_corrections."""
+    import contextlib
+    import io
+
+    import backend.quantize as Q
+    import dev.analytic_water_backend  # noqa: F401
+    from backend.quantize import MolecularOptimizer
+    from test_bootstrap_targets import B0_H2O, MASSES_H2O
+    seen = []
+    real = Q.resolve_corrections
+
+    def spy(*a, **k):
+        seen.append(np.asarray(k.get("coords_ang"), dtype=float).copy())
+        return real(*a, **k)
+
+    monkeypatch.setattr(Q, "resolve_corrections", spy)
+    isos = [{"name": "w", "masses": MASSES_H2O, "obs_constants": list(B0_H2O),
+             "sigma_constants": [0.2] * 3}]
+    table = {"w": {c: {"alpha_sum_mhz": 1.0, "sigma_mhz": 0.1} for c in "ABC"}}
+    with contextlib.redirect_stdout(io.StringIO()):
+        opt = MolecularOptimizer(
+            elems=["O", "H", "H"], coords=start, isotopologues=isos,
+            quantum_backend="analytic_water", use_autoconfig=False,
+            coordinate_mode=mode, correction_table=table,
+            defect_bias_scale=True, prior_target_coords=target)
+    assert seen, "premise: the corrections were resolved"
+    return opt, seen[-1]
+
+
+def test_internal_mode_reads_the_probe_where_it_was(monkeypatch):
+    """Internal mode ignores the target (the prior is not centred on it), so
+    the probe must not move to it either: it stays at the start geometry, as
+    the commit that moved it said and as it did before."""
+    from test_bootstrap_targets import _coords
+    target = _coords()
+    start = target + np.array([[0.0, 0.0, 0.0], [0.03, 0.01, 0.0], [-0.03, 0.01, 0.0]])
+    opt, probe = _probe_geometry(monkeypatch, mode="internal", target=target, start=start)
+    assert not opt._target_prior_active(), "premise: the target prior is off"
+    np.testing.assert_array_equal(probe, start)
+
+
+def test_a_flat_target_is_read_as_the_attribute_reads_it(monkeypatch):
+    """The target attribute reshapes a flat (3N,) target, so a flat target is
+    a supported form; with defect_bias_scale on it raised in the probe."""
+    from test_bootstrap_targets import _coords
+    target = _coords()
+    start = target + np.array([[0.0, 0.0, 0.0], [0.03, 0.01, 0.0], [-0.03, 0.01, 0.0]])
+    opt, probe = _probe_geometry(monkeypatch, mode="cartesian", target=target.ravel(),
+                                 start=start)
+    assert opt._target_prior_active()
+    np.testing.assert_array_equal(probe, target)

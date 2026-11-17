@@ -821,10 +821,8 @@ class MolecularOptimizer:
                 # At the start geometry a restart from the answer re-weighted
                 # the data and moved the fit (chlorofluoromethane, HF/6-31G,
                 # benchmark recipe with defect_bias_scale: 5.85 mA); the prior
-                # target is the fixed point, where there is one.
-                coords_ang=np.asarray(
-                    prior_target_coords if prior_target_coords is not None else coords,
-                    dtype=float),
+                # target is the fixed point, where the prior is centred on it.
+                coords_ang=self._defect_probe_coords(prior_target_coords),
             )
             _qc_warnings = validate_correction_quality(_corrected_targets)
             print("\nRovibrational corrections applied:")
@@ -1367,6 +1365,24 @@ class MolecularOptimizer:
         return (t is not None and self.coordinate_mode == "cartesian"
                 and np.shape(t) == np.shape(self.coords))
 
+    def _defect_probe_coords(self, target):
+        """Where resolve_corrections reads the defect probe (coords_ang).
+
+        The probe subtracts the structure's own inertial defect, so the
+        geometry it is read at sets the weights. When the quantum prior is the
+        Gaussian centred on ``target`` (the condition _target_prior_active
+        tests: Cartesian mode, the target's shape matching) the target is the
+        fit's fixed point and the probe is read there, so a restart from the
+        answer does not re-weight the data. Otherwise the target is not the
+        prior's centre (internal mode ignores it) and the probe stays at the
+        current geometry. A flat (3N,) target is reshaped as the attribute is.
+        """
+        coords = np.asarray(self.coords, dtype=float)
+        if target is None or self.coordinate_mode != "cartesian":
+            return coords
+        t = np.asarray(target, dtype=float).reshape(-1, 3)
+        return t if t.shape == coords.shape else coords
+
     def _target_hessian_frame(self):
         """The prior target placed in the current frame: where a target
         prior's curvature belongs."""
@@ -1678,10 +1694,8 @@ class MolecularOptimizer:
             correction_bob_params=self._correction_bob_params,
             g_tensor=self._correction_g_tensor,
             defect_bias_scale=self._defect_bias_scale,
-            # As at construction: the prior target where there is one.
-            coords_ang=np.asarray(
-                self._prior_target_coords if self._prior_target_coords is not None
-                else self.coords, dtype=float),
+            # As at construction: the prior target when the prior is centred on it.
+            coords_ang=self._defect_probe_coords(self._prior_target_coords),
         )
         _qc_warnings = validate_correction_quality(corrected_targets)
         print("\n  Rovibrational corrections (harmonic from Hessian):")
