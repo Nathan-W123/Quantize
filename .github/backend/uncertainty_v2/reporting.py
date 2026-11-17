@@ -57,12 +57,32 @@ def format_bootstrap_summary(summary: BootstrapRunSummary) -> str:
                                f"{pairs}"))
             seen = chk.get("detectable")
             if seen:
+                # A flag also needs the reported width to move by impact_min;
+                # where the analytic width is a small part of the reported
+                # one that takes a wider ratio, or none on the narrow side.
+                per = chk.get("detectable_by_coordinate") or [seen] * len(a["names"])
+                wider = [(nm, lo, hi) for nm, (lo, hi) in zip(a["names"], per)
+                         if lo is None or hi is None or lo < 0.99 * seen[0] or hi > 1.01 * seen[1]]
+                top = max([seen[1]] + [hi for _nm, _lo, hi in wider if hi is not None])
                 weak = ("; a clean check at this size is weak evidence that the widths are right"
-                        if not chk["departs"] and seen[1] > 1.25 else "")
+                        if not chk["departs"] and top > 1.25 else "")
                 lines.extend(_wrap(
                     f"At {chk['n']} refits a ratio of {seen[0]:.2f} or {seen[1]:.2f} is flagged "
                     f"about half the time, one nearer 1 seldom (a Gaussian cloud; more refits "
-                    f"narrow that){weak}."))
+                    f"narrow that){'' if wider else weak}."))
+                if wider:
+                    def _bound(nm, lo, hi):
+                        if hi is None:
+                            return f"{nm} never"
+                        if lo is None:
+                            return f"{nm} {hi:.2f} (never as narrower)"
+                        return f"{nm} {lo:.2f} or {hi:.2f}"
+                    what = ", ".join(_bound(nm, lo, hi) for nm, lo, hi in wider)
+                    imp_min = float(chk.get("impact_min", 0.02))
+                    lines.extend(_wrap(
+                        f"A flag also needs the reported width to move by {imp_min * 100:.0f}%, "
+                        f"which takes a wider ratio where the analytic width is a small part "
+                        f"of it; there a ratio is flagged about half the time at: {what}{weak}."))
             if any(k > 6.0 for k in kurt if math.isfinite(k)):
                 lines.extend(_wrap(
                     "Heavy-tailed cloud: the error assumes its tails are sampled; with few "

@@ -691,7 +691,18 @@ class BootstrapEngine:
         about half the time (at 20 refits, nine coordinates, 2000 Gaussian
         clouds, seed 20261117: 48% at 0.556, 39% at 1.798 -- the high side
         lower because the test's error uses the cloud's own kurtosis; 5%
-        further out, 57% and 49%; at ratio 1, 0.1%)."""
+        further out, 57% and 49%; at ratio 1, 0.1%).
+
+        A flag also needs the ratio to move the reported width by
+        _CHECK_IMPACT, which takes a wider ratio where the analytic width is
+        a small share s of the posterior variance: high r >= sqrt(1 + ((1 +
+        g)^2 - 1) / s), low r <= sqrt(1 - (1 - (1 - g)^2) / s), none when s <
+        1 - (1 - g)^2. "detectable_by_coordinate" is (low, high) per
+        coordinate with both bars, None for a side it cannot be flagged on:
+        at 20 refits with the posterior 5x the analytic width (s = 0.04) the
+        ratios 0.556 and 1.798 were flagged 0% and 37% of the time, and with
+        it 13x (s = 0.0059, the error-model strategy on formyl fluoride) 0%
+        and 0%, though "detectable" said about half."""
         from scipy.stats import norm
 
         q = np.asarray(q, dtype=float)
@@ -718,11 +729,22 @@ class BootstrapEngine:
         departs = [nm for nm, r, e, imp in zip(names, ratio, rel, impact)
                    if np.isfinite(r) and (r == 0.0 or abs(np.log(r)) > z * float(e))
                    and np.isfinite(imp) and abs(imp) >= cls._CHECK_IMPACT]
+        g = float(cls._CHECK_IMPACT)
+        lo0, hi0 = float(np.exp(-z * rel0)), float(np.exp(z * rel0))
+        per_coord = []
+        for t, p in zip(target_sd, posterior_sd):
+            share = (float(t) / float(p)) ** 2 if (t and t > 0 and p and p > 0) else float("nan")
+            if not (np.isfinite(share) and share > 0.0):
+                per_coord.append([None, None])     # no impact, never flagged
+                continue
+            hi = max(hi0, float(np.sqrt(1.0 + ((1.0 + g) ** 2 - 1.0) / share)))
+            lo_sq = 1.0 - (1.0 - (1.0 - g) ** 2) / share
+            per_coord.append([min(lo0, float(np.sqrt(lo_sq))) if lo_sq >= 0.0 else None, hi])
         return {"n": n, "ratio": ratio,
                 "mc_sd": [float(r * e) if np.isfinite(r) else float("nan") for r, e in zip(ratio, rel)],
                 "kurtosis": [float(k + 3.0) for k in np.atleast_1d(G2)], "impact": impact,
                 "departs": departs, "sigmas": z, "impact_min": float(cls._CHECK_IMPACT),
-                "detectable": [float(np.exp(-z * rel0)), float(np.exp(z * rel0))]}
+                "detectable": [lo0, hi0], "detectable_by_coordinate": per_coord}
 
     @staticmethod
     def _persist_summary(summary: BootstrapRunSummary, run_dir: str) -> None:

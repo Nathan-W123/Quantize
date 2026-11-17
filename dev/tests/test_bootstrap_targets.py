@@ -869,6 +869,50 @@ def test_the_check_says_what_it_can_see_and_handles_a_collapsed_cloud():
     assert "weak evidence that the widths are right" in " ".join(format_bootstrap_summary(s).split())
 
 
+def test_the_detectable_bounds_include_the_impact_bar():
+    """A flag needs the ratio past its statistical bar AND a 2% move of the
+    reported width; the stated bounds were the first alone, so where the
+    analytic width is a small share of the posterior they were wrong: at 20
+    refits with the posterior 13x the analytic width (the error-model
+    strategy on formyl fluoride) ratios 0.556 and 1.798 were flagged 0% of
+    the time against the "about half" stated. Per coordinate, the bounds are
+    50%-power points again."""
+    from backend.uncertainty_v2.models import BootstrapConfig as BC, BootstrapRunSummary
+    names = [f"c{i}" for i in range(9)]
+
+    def flagged(r0, fac, n_clouds=600, seed=20261117):
+        rng = np.random.default_rng(seed)
+        post = np.ones(9)
+        post[0] = fac
+        hits, chk = 0, None
+        for _ in range(n_clouds):
+            q = rng.standard_normal((20, 9)) * np.r_[r0, np.ones(8)]
+            chk = BootstrapEngine._cloud_check(names, q.std(axis=0, ddof=1), np.ones(9), post, q)
+            hits += "c0" in chk["departs"]
+        return hits / n_clouds, chk
+
+    _, chk = flagged(1.0, 13.0, n_clouds=1)
+    lo, hi = chk["detectable_by_coordinate"][0]
+    assert lo is None and hi == pytest.approx(2.798, abs=1e-3)
+    assert chk["detectable_by_coordinate"][1] == pytest.approx(chk["detectable"])
+    assert flagged(chk["detectable"][1], 13.0)[0] < 0.02      # the old bound: never
+    assert 0.38 < flagged(hi, 13.0)[0] < 0.58                  # the new one: about half
+    lo5, _hi5 = flagged(1.0, 5.0, n_clouds=1)[1]["detectable_by_coordinate"][0]
+    assert lo5 == pytest.approx(0.100, abs=1e-3)
+    assert 0.38 < flagged(lo5, 5.0)[0] < 0.65
+    # The report names the coordinates the bar moves, and how.
+    s = BootstrapRunSummary(config=BC(n_samples=20), total_samples=20,
+                            successful_samples=20, failed_samples=0, mean_rms_mhz=None)
+    s.analytic = {"target": "posterior less its prior part", "names": names,
+                  "kinds": ["bond"] * 9, "units": ["angstrom"] * 9,
+                  "target_std": [1.0] * 9, "posterior_std": [13.0] + [1.0] * 8,
+                  "bootstrap_std": [1.0] * 9, "check": dict(chk, departs=[])}
+    txt = " ".join(format_bootstrap_summary(s).split())
+    assert "move by 2%" in txt and "c0 2.80 (never as narrower)" in txt
+    assert "c1 " not in txt.split("move by 2%")[1]
+    assert "weak evidence" in txt
+
+
 def test_the_hessian_refresh_says_whether_the_answer_settled(config_fit):
     """Three passes settle the water config (0.678, 0.050, 0.0036 mA); with
     one pass allowed the answer is still moving and the result says so."""
