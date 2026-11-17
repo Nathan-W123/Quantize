@@ -99,6 +99,16 @@ current code (RHF/6-31G and B3LYP/6-31G(d), all configurations).
   partial file so a rerun skips them); restarted with THREADS=4, the
   partial-data chain re-armed.
 
+- 20:15Z B3LYP pass 1 done (48 min for 7 molecules at 4 threads); pass
+  2 (track, torsion) running; pass-1 rows archived (3b3278c).
+- Partial-data test at B3LYP/6-31G(d) (sx 0.007, partial_b3lyp.json; full
+  rows equal the benchmark's base rows): mean theory 9.19; all data hybrid
+  4.74, ME 5.59; one isotopologue hybrid 4.90, ME 5.82, data-only 5.10.
+  Hybrid beats theory 8/9, ME 6/9, data-only 6/9 (RHF: 3/9). The prior's
+  weight starts to pay at the better level (0.2 mA mean), and one
+  isotopologue with the hybrid comes within 0.16 mA of all of them; both
+  differences are below the r_s references' resolution (N3).
+
 ## Observations
 - 2026-11-17: code_vintage() reads `git status --porcelain`, so editing the
   loop records (tracked) while a benchmark starts stamps it dirty. Caught
