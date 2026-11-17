@@ -34,6 +34,11 @@ current code (RHF/6-31G and B3LYP/6-31G(d), all configurations).
   because this records file is tracked and was modified, and a commit
   between pass 1 and pass 2 would have split the vintage. Logs and status:
   scratchpad n13/{hf,b3lyp}.pass{1,2}.log, *.status.
+- 17:27Z RHF stopped on `elec`: No module named 'pyscf.prop'; pip install
+  of pyscf-properties blocked by the permission check; user chose to leave
+  elec and all out (D-29). geomeTRIC is missing too but nothing here uses
+  it (torsion scans use SLSQP). 17:28Z both levels restarted without them;
+  vinyl fluoride's 9 RHF rows (same vintage) kept.
 
 ## Observations
 - 2026-11-17: code_vintage() reads `git status --porcelain`, so editing the

@@ -361,3 +361,15 @@
 - Source: assumption, unconfirmed (the reviewer offered both; the non-destructive one chosen).
 - Revisit if: a coarse-timestamp filesystem (2 s FAT) misfiles this run's own files.
 
+### D-29 · The regenerated table leaves out `elec` and `all` (2026-11-17)
+- Decision: N13's runs use every same-level configuration except `elec`
+  and `all` (which includes elec); the README says they were not run.
+- Why: their rotational g-tensor needs pyscf.prop (pyscf-properties), which
+  the container lacks; installing it was blocked by the permission check.
+  The benchmark's own notes say elec costs more than it returns on this set
+  (ozone 2.32 -> 3.23 mA), and the base-only table does not depend on it.
+- Alternatives considered: install pyscf-properties 0.1.0 --no-deps and run
+  them as an extra pass at the same vintage.
+- Source: stated by user ("Leave them out").
+- Revisit if: pyscf.prop becomes available (one g-tensor per molecule).
+
