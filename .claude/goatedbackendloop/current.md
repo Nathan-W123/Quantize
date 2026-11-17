@@ -45,10 +45,24 @@ current code (RHF/6-31G and B3LYP/6-31G(d), all configurations).
   choice), sigma_x 0.020 (default for an uncalibrated level), 0.010, 0.005.
   Script and log: scratchpad wccsd/water_ccsd.{py,log,json}. Theory alone
   r 0.96435 A (+6.58 mA vs r_e 0.95777), angle 102.21 (-2.27 deg).
+  DONE (water_ccsd2.json; correction table 7 CCSD Hessians, 6 min; fits
+  1-2 s, plateau at 11-12 it, restart from the answer moves 0.000 mA):
+  full sx 0.020: -0.58 +- 1.71 mA, +0.164 +- 0.31 deg; partial (H2O):
+  -0.67 +- 2.07, +0.199 +- 0.37. sx 0.010: full -0.38 / +0.13, partial
+  -0.16 / +0.11; sx 0.005: full +0.30 / +0.01, partial +1.32 / -0.20.
+  chi2/obs 0.05-0.8: widths are mostly the corrections' sigma. A first
+  run labelled the angle sd (radians) as degrees and cached Hessians under
+  Python's per-process hash(); both fixed in water_ccsd2.py.
+- 17:59Z RHF pass 1 done (30 min; acetyl fluoride 11 min, fluoroethane
+  8.6); pass 2 (track, torsion) started. B3LYP theory geometries done ~18:00.
 
 ## Observations
 - 2026-11-17: code_vintage() reads `git status --porcelain`, so editing the
   loop records (tracked) while a benchmark starts stamps it dirty. Caught
   from the log header within a minute; runs moved to a frozen worktree.
+
+- 2026-11-17: the internal-coordinate posterior gives angle widths in
+  radians with no unit field; my script printed them as degrees (0.005 for
+  0.29). Check a quantity's units against a known value before reporting.
 
 ## Handoff
