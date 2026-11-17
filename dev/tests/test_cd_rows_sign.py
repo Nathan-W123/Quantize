@@ -869,6 +869,10 @@ def test_a_config_can_state_its_model_error_and_one_without_says_so():
     (lambda c: c.__setitem__("model_error", {"auto": "yes"}), "model_error.auto"),
     (lambda c: c.__setitem__("model_error", {"isotopologue_correlation": 1.5}), r"\[0, 1\]"),
     (lambda c: c.__setitem__("model_error", {"isotopologue_corelation": 0.5}), "unknown key"),
+    # Alone the flag did nothing, and the report then said the widths carry
+    # no model error though sigma_mhz holds it.
+    (lambda c: c["isotopologues"][0].__setitem__("sigma_includes_systematic", True),
+     "nothing says how much"),
 ])
 def test_model_error_keys_are_validated(edit, said):
     from runner.usability import ConfigError, validate_config
@@ -876,6 +880,58 @@ def test_model_error_keys_are_validated(edit, said):
     edit(cfg)
     with pytest.raises(ConfigError, match=said):
         validate_config(cfg)
+
+
+@pytest.mark.parametrize("edit", [
+    lambda c: c["isotopologues"][0].__setitem__("sigma_systematic_mhz", [1.0, 1.0, 1.0]),
+    lambda c: c.__setitem__("model_error", {"auto": True}),
+])
+def test_the_includes_flag_with_something_to_act_on_validates(edit):
+    from runner.usability import validate_config
+    cfg = _water_cfg()
+    cfg["isotopologues"][0]["sigma_includes_systematic"] = True
+    edit(cfg)
+    validate_config(cfg)
+
+
+def test_a_stated_model_error_a_correction_replaces_is_named():
+    """A correction's sigma replaces a stated gap on its rows (the gap is
+    corrected; its sigma is the error left), but it did so without a word:
+    a stated 1% or 10% left corrected water's widths unchanged and the label
+    read "corrections" as if nothing had been stated."""
+    plain, _ = _fit_cfg(_water_cfg())
+    stated = _water_cfg()
+    obs = stated["isotopologues"][0]["obs_b0_mhz"]
+    stated["isotopologues"][0]["sigma_systematic_mhz"] = [0.10 * float(b) for b in obs]
+    opt, _ = _fit_cfg(stated)
+    assert set(opt.model_error_sources().values()) == {"corrections (stated replaced)"}
+    msg = " ".join(opt.model_error_warnings())
+    assert "stated model error is not used" in msg and "H2-16O (A, B, C)" in msg
+    np.testing.assert_allclose(opt.internal_coordinate_posterior()["std_err"],
+                               plain.internal_coordinate_posterior()["std_err"], rtol=1e-9)
+    assert not plain.model_error_warnings()
+
+
+def test_a_dropped_component_keeps_the_stated_label():
+    """The given values were matched by position, so once the sanitizer
+    dropped a component (A of a near-linear start) no row matched and the
+    stated rows were labelled "corrections"."""
+    cfg = _water_cfg()
+    cfg["rovibrational_corrections"] = {"mode": "none"}
+    obs = cfg["isotopologues"][0]["obs_b0_mhz"]
+    cfg["isotopologues"][0]["sigma_systematic_mhz"] = [0.01 * float(b) for b in obs]
+    import contextlib
+    import io
+    from runner.run_from_config import build_optimizer_from_config
+    with contextlib.redirect_stdout(io.StringIO()):
+        opt = build_optimizer_from_config(cfg, multistart=False, verbose=False)
+    assert set(opt.model_error_sources().values()) == {"stated"}
+    iso = opt.spectral.isotopologues[0]
+    for key in ("obs_constants", "sigma_constants", "alpha_constants", "sigma_systematic_constants"):
+        if iso.get(key) is not None:   # sliced as sanitize_isotopologues slices them
+            iso[key] = list(np.asarray(iso[key], dtype=float).ravel()[1:])
+    iso["component_indices"] = [1, 2]
+    assert set(opt.model_error_sources().values()) == {"stated"}
 
 
 def test_per_component_lists_follow_the_internal_rotor_filter():

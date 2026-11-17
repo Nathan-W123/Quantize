@@ -716,11 +716,19 @@ class MolecularOptimizer:
         # Kept as given: a vibrational correction later writes its own sigma
         # into sigma_systematic_constants (resolve_corrections), so the field
         # alone cannot say which rows the caller stated.
-        self._model_error_given = {
-            str(_i.get("name", "iso")): (
-                "estimated" if str(_i.get("name", "iso")) in _estimated else "stated",
-                np.abs(np.asarray(_i["sigma_systematic_constants"], dtype=float).ravel()))
-            for _i in isotopologues if _i.get("sigma_systematic_constants") is not None}
+        # Recorded by component (0, 1, 2 for A, B, C), not by position: the
+        # sanitizer can drop a component, and a positional record then
+        # matched no row, so stated values were labelled "corrections".
+        self._model_error_given = {}
+        for _i in isotopologues:
+            if _i.get("sigma_systematic_constants") is None:
+                continue
+            _vals = np.abs(np.asarray(_i["sigma_systematic_constants"], dtype=float).ravel())
+            _comps = np.asarray(_i.get("component_indices", range(_vals.size)), dtype=int).ravel()
+            _name = str(_i.get("name", "iso"))
+            self._model_error_given[_name] = (
+                "estimated" if _name in _estimated else "stated",
+                {int(c): float(v) for c, v in zip(_comps, _vals)})
         if _filled:
             print(f"  [sigma] derived for {len(_filled)} species: "
                   f"{', '.join(_filled[:3])}{' ...' if len(_filled) > 3 else ''}")
@@ -1890,6 +1898,41 @@ class MolecularOptimizer:
                             "reduction_source": str(iso.get("cd_reduction_source", ""))})
         return out
 
+    def _model_error_rows(self):
+        """Per isotopologue: the kinds of model error its rows carry (see
+        model_error_sources) and the components whose given value -- stated,
+        or the engine's estimate -- a correction's sigma replaced."""
+        out = {}
+        given = getattr(self, "_model_error_given", {})
+        for iso in self.spectral.isotopologues:
+            name = str(iso.get("name", "iso"))
+            comps = np.asarray(iso["component_indices"], dtype=int).ravel()
+            n = comps.size
+            sys_sig = iso.get("sigma_systematic_constants")
+            sys_sig = (np.zeros(n) if sys_sig is None
+                       else np.abs(np.asarray(sys_sig, dtype=float).ravel()))
+            if sys_sig.size != n:
+                sys_sig = np.zeros(n)
+            corr = np.asarray(self.spectral._correction_sigma(iso, n), dtype=float)
+            kind_given, vals_given = given.get(name, (None, {}))
+            kinds, replaced = set(), []
+            for c, cs, s in zip(comps, corr, sys_sig):
+                g = vals_given.get(int(c))
+                if cs > 0.0 or (s > 0.0 and not (
+                        g is not None and np.isclose(s, g, rtol=1e-12, atol=0.0))):
+                    # A correction's sigma: it replaces the gap's in
+                    # _systematic_covariance, and a vibrational correction
+                    # writes its own into sigma_systematic_constants.
+                    kinds.add("corrections")
+                    if g is not None and g > 0.0:
+                        replaced.append(int(c))
+                elif s > 0.0:
+                    kinds.add(kind_given)
+                else:
+                    kinds.add(None)
+            out[name] = (kinds, kind_given, replaced)
+        return out
+
     def model_error_sources(self):
         """Per isotopologue, where its rows' model error -- the B0-versus-Be
         gap, propagated as shared across isotopologues -- comes from:
@@ -1897,36 +1940,17 @@ class MolecularOptimizer:
         (auto_systematic_sigma), "corrections" (a B0 -> Be correction with a
         stated sigma on its rows), a "+" join where rows differ, or None
         where no row carries any: its widths cover measurement precision
-        only. Distortion rows carry none by design and are not counted."""
+        only. "(stated replaced)" marks a species whose given value a
+        correction's sigma replaced on some row (model_error_warnings names
+        the rows). Distortion rows carry none by design and are not counted."""
         out = {}
-        given = getattr(self, "_model_error_given", {})
-        for iso in self.spectral.isotopologues:
-            name = str(iso.get("name", "iso"))
-            n = len(np.asarray(iso["component_indices"]).ravel())
-            sys_sig = iso.get("sigma_systematic_constants")
-            sys_sig = (np.zeros(n) if sys_sig is None
-                       else np.abs(np.asarray(sys_sig, dtype=float).ravel()))
-            if sys_sig.size != n:
-                sys_sig = np.zeros(n)
-            corr = np.asarray(self.spectral._correction_sigma(iso, n), dtype=float)
-            kind_given, vals_given = given.get(name, (None, None))
-            kinds = set()
-            for k, (c, s) in enumerate(zip(corr, sys_sig)):
-                if c > 0.0:
-                    kinds.add("corrections")
-                elif s > 0.0:
-                    # Still the value it was given with: stated or estimated;
-                    # otherwise a vibrational correction replaced it.
-                    same = (vals_given is not None and vals_given.size == n
-                            and np.isclose(s, vals_given[k], rtol=1e-12, atol=0.0))
-                    kinds.add(kind_given if same else "corrections")
-                else:
-                    kinds.add(None)
+        for name, (kinds, kind_given, replaced) in self._model_error_rows().items():
             if kinds == {None}:
                 out[name] = None
-            else:
-                out[name] = "+".join(sorted(k for k in kinds if k)) + (
-                    " (some rows none)" if None in kinds else "")
+                continue
+            out[name] = ("+".join(sorted(k for k in kinds if k))
+                         + (" (some rows none)" if None in kinds else "")
+                         + (f" ({kind_given} replaced)" if replaced else ""))
         return out
 
     def model_error_warnings(self):
@@ -1952,6 +1976,19 @@ class MolecularOptimizer:
                 "the model-error term covers only part of the data: "
                 + ", ".join(bare + part) + " carry it on none or only some of their rows, "
                 "and their widths there cover measurement precision only")
+        # A given value a correction replaced was dropped without a word: the
+        # widths did not move for a stated 1% or 10% on corrected water.
+        swapped = [(n, kg, r) for n, (_k, kg, r) in self._model_error_rows().items() if r]
+        if swapped:
+            what = "; ".join(f"{n} ({', '.join('ABC'[c] if 0 <= c < 3 else str(c) for c in r)})"
+                             for n, _kg, r in swapped)
+            given_as = sorted({kg for _n, kg, _r in swapped})
+            msgs.append(
+                f"the {' and '.join(given_as)} model error is not used on rows a B0 -> Be "
+                f"correction with its own sigma was applied to: {what}. The correction "
+                f"removes the gap that value stood for, and its sigma is the error left; "
+                f"to widen those rows, raise the correction's sigma "
+                f"(harmonic_sigma_fraction, sigma_correction_mhz)")
         return msgs
 
     def distortion_warnings(self):
