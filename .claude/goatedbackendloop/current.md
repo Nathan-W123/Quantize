@@ -87,6 +87,13 @@ current code (RHF/6-31G and B3LYP/6-31G(d), all configurations).
   "end pass 1 b3lyp", then runs partial_data.py with PD_METHOD=b3lyp
   (sigma_x 0.007) on the cached Hessians -> partial_b3lyp.json.
 
+- 19:03Z RHF done (pass 2 64 min): best-of-15 theory 15.29 / ME 12.90 /
+  hybrid 7.74 mA; base only 21.47 / 17.59 / 11.48 (hybrid beats theory 9/9,
+  ME 5/9). Archived to reports/accuracy_upgrades (a7473f3).
+- 19:04Z B3LYP restarted with THREADS=4 (cores freed; vinyl and acetyl
+  fluoride rows and the Hessian cache kept); the wrapper was stopped before
+  python so no "end pass 1" line fired the queued partial-data test early.
+
 ## Observations
 - 2026-11-17: code_vintage() reads `git status --porcelain`, so editing the
   loop records (tracked) while a benchmark starts stamps it dirty. Caught
