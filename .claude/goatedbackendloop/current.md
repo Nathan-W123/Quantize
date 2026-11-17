@@ -1,5 +1,5 @@
 # Current task
-Status: done (search; efficiency wins implemented)
+Status: done (search follow-ups: defect fix + small fixes)
 Request: N4 -- config runs carry no model-error term (no config key reaches
 sigma_systematic_constants).
 
@@ -43,7 +43,22 @@ honest label, default unchanged (D-26).
   11.6 -> 0.25 s). Clean-checkout suite at e84d1e7: 1590 passed, 23
   skipped, 127 s (was 137-151).
 
+- User then chose "Defect fix + small fixes". DONE: 024caec defect probe
+  read at the prior target (CFM restart 5.85 -> 0.000 mA, AcF 1.74 ->
+  0.0005; first fits identical), 14125f3 the config's rng_seed seeds the
+  draws without --seed (bundle records seed and source), 9aa7c28 docs commit
+  dating the README table (4f0ece6, 2026-10-05) and correcting the
+  water/B3LYP claim (re-measured 0.050 mA at sigma_x 0.007; 0.403 / 0.753
+  wider). Clean-checkout suite: 1591 passed, 1 failed: the timing test
+  test_residual_only_is_actually_cheaper (ratio now 1.3-3.4x since the
+  closed-form Jacobian made the full path cheap), rewritten to count
+  Jacobian builds (mutation-checked), 4c9a2dd; clean suite 1592 passed.
+
 ## Observations
+- 2026-11-17: the clean-checkout suite caught a timing test that a speed-up
+  (6952211) had pushed onto its 2x line: it passed at 1590 earlier only by
+  chance. Counting the skipped work is the exact check; timing ratios move
+  whenever either path gets faster.
 - E4: the agent's "bit-identical for Cartesian fits" held, but the CD-path
   difference it flagged as small was a trajectory change (multistart spread
   1e-5 relative), not rounding; checking the whole payload, not just the

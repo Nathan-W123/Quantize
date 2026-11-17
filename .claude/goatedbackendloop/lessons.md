@@ -184,3 +184,18 @@ only here.
   point is valid and the reference is the wrong comparator.
 - Scope: project
 - Status: provisional
+
+### L-13 · A speed-up can push someone else's timing test onto its line
+- Observation: a timing-ratio test (residual-only must be 2x faster than the
+  full stacked call) failed on the clean-checkout suite after E1 (6952211)
+  made the full path cheaper; the ratio now wanders 1.3-3.4x run to run, so
+  the earlier 1590-pass was luck.
+- Evidence: 2026-11-17 · `test_residual_only_is_actually_cheaper[two_species]`
+  0.000118 vs 0.000224 s; rewritten to count Jacobian builds, mutation-checked
+  (always-build makes it fail for both parametrizations).
+- Adjustment: after a speed-up, grep the tests for `perf_counter`/timing
+  ratios on the code you made faster and rerun them several times; assert the
+  skipped work (call counts) rather than a speed ratio.
+- Scope: project
+- Status: provisional
+- Outcomes:
