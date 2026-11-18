@@ -2010,6 +2010,11 @@ def build_run_inputs(cfg: dict[str, Any], *, verbose: bool = True) -> dict[str, 
     )
     anharmonic_from_hessian = bool(_rc_block.get("anharmonic_from_hessian", False))
     anharmonic_fd_delta_ang = float(_rc_block.get("anharmonic_fd_delta_ang", 0.01))
+    # The level the Hessian-built corrections come from, when it is not the
+    # fit's (MolecularOptimizer._correction_level_table): evaluated at that
+    # level's own minimum, once.
+    correction_method = _rc_block.get("correction_method")
+    correction_basis = _rc_block.get("correction_basis")
     nonconvergent_policy = str(_rc_block.get("nonconvergent_policy", "warn")).strip().lower()
     # Scheme choices that previously existed only as arguments to
     # build_correction_table_from_hessian, so a benchmark script could pick
@@ -2175,6 +2180,8 @@ def build_run_inputs(cfg: dict[str, Any], *, verbose: bool = True) -> dict[str, 
         harmonic_sigma_fraction=harmonic_sigma_fraction,
         anharmonic_from_hessian=anharmonic_from_hessian,
         anharmonic_fd_delta_ang=anharmonic_fd_delta_ang,
+        correction_method=correction_method,
+        correction_basis=correction_basis,
         nonconvergent_policy=nonconvergent_policy,
         harmonic_scheme=harmonic_scheme,
         cubic_scheme=cubic_scheme,

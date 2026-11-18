@@ -492,6 +492,8 @@ class MolecularOptimizer:
         harmonic_sigma_fraction=0.02,
         anharmonic_from_hessian=False,
         anharmonic_fd_delta_ang=0.01,
+        correction_method=None,
+        correction_basis=None,
         nonconvergent_policy="warn",
         harmonic_scheme="watson",
     #: normal_mode, not cartesian, and the difference is not small. Both compute the
@@ -580,6 +582,26 @@ class MolecularOptimizer:
         # reachable only from runner/run_generic.py, so none of that physics
         # could be scored by any benchmark, all of which run through this class.
         self._torsion_replacement = torsion_replacement
+        # The level the Hessian-built corrections come from when it is not the
+        # fit's own: None keeps the fit's level, re-expanded at the current
+        # geometry on every Hessian refresh, as before. See
+        # _correction_level_table for what a separate level does and why.
+        self._correction_level = (
+            None if correction_method is None and correction_basis is None
+            else (None if correction_method is None else str(correction_method).strip(),
+                  None if correction_basis is None else str(correction_basis).strip()))
+        self._corr_backend = None
+        self._corr_table = None     # (geometry, raw table, info), built once
+        if self._correction_level is not None:
+            if not self._harmonic_from_hessian:
+                raise ValueError(
+                    "correction_method / correction_basis set the level of the "
+                    "Hessian-built corrections, but harmonic_from_hessian is off, so "
+                    "there are none for them to change: turn it on, or drop them.")
+            if torsion_replacement is not None:
+                raise ValueError(
+                    "torsion_replacement is computed at the fit's level; with a "
+                    "separate correction level it would mix two force fields.")
         self._defect_bias_scale = bool(defect_bias_scale)
         self._harmonic_cd_from_hessian = bool(harmonic_cd_from_hessian)
         self._warned_cd_unvalidated = False
@@ -1301,6 +1323,8 @@ class MolecularOptimizer:
                     charge=self.charge,
                     multiplicity=self.multiplicity,
                 )
+        if self._correction_level is not None:
+            self._corr_backend = self._make_correction_backend()
 
     @staticmethod
     def _covalent_radius(elem):
@@ -1557,6 +1581,78 @@ class MolecularOptimizer:
             if parts:
                 print(f"  [vpt2-check]   {label}: {';  '.join(parts)}")
 
+    def _make_correction_backend(self):
+        """The backend the corrections come from: the fit's backend class at
+        correction_method / correction_basis (each defaulting to the fit's)."""
+        method = self._correction_level[0] or self.orca_method
+        basis = self._correction_level[1] or self.orca_basis
+        if self.spectral_only:
+            raise ValueError("a correction level needs a quantum backend; this fit is "
+                             "spectral-only")
+        if self.quantum_backend in ("orca", "psi4"):
+            raise ValueError(
+                f"a separate correction level is evaluated at that level's own minimum, "
+                f"so its backend must optimise a geometry; the '{self.quantum_backend}' "
+                f"backend here does not (pyscf_hf does)")
+        be = get_backend(self.quantum_backend)(
+            elems=self.elems, method=method, basis=basis,
+            charge=self.charge, multiplicity=self.multiplicity)
+        if not callable(getattr(be, "optimise", None)):
+            raise ValueError(
+                f"a separate correction level is evaluated at that level's own minimum, "
+                f"so its backend must optimise a geometry; '{self.quantum_backend}' has "
+                f"no optimise()")
+        return be
+
+    def _correction_level_table(self):
+        """The Hessian-built correction table at the correction level, at that
+        level's own minimum: built once, then kept across Hessian refreshes.
+
+        alpha is a property of a force field and the masses, so it is
+        evaluated where that force field is stationary -- the benchmark's corr
+        protocol (scripts/accuracy_upgrades_benchmark.py), whose notes record
+        that evaluating another level's Hessians at the fit's geometry, off
+        that level's minimum, made the level look irrelevant: an artefact of
+        the protocol. And it is kept, not re-expanded at each refresh as the
+        fit's own corrections are: it describes the correction level's
+        surface, not where the fit has got to.
+
+        Measured on water (fit and prior CCSD/cc-pVDZ, sigma_x 0.020, H2O +
+        D2O, against r_e): bond -0.58 mA with the fit level's own
+        corrections, -0.03 with them at MP2/cc-pVTZ (7 Hessians, 3.7 min),
+        -0.08 at CCSD/cc-pVTZ (33 min); angle +0.164, +0.136, +0.102 deg.
+        """
+        if self._corr_table is not None:
+            return self._corr_table[1], self._corr_table[2]
+        from backend.spectral.harmonic_alpha import build_correction_table_from_hessian  # pylint: disable=import-outside-toplevel
+
+        be = self._corr_backend
+        label = f"{be.method}/{be.basis}" if hasattr(be, "method") else "the correction level"
+        print(f"\n  [correction-level] Optimising at {label} for the corrections' own minimum...")
+        geom = np.asarray(be.optimise(np.asarray(self.coords, dtype=float)), dtype=float)
+        hess = np.asarray(be.run_hessian(geom).hessian_bohr, dtype=float)
+        hessian_fn = None
+        if self._anharmonic_from_hessian:
+            def hessian_fn(coords_ang):
+                return be.run_hessian(coords_ang).hessian_bohr
+        ctbl_raw, info = build_correction_table_from_hessian(
+            hess, geom, self._raw_isotopologues,
+            sigma_fraction=self._harmonic_sigma_fraction,
+            hessian_fn=hessian_fn,
+            fd_delta_cubic=self._anharmonic_fd_delta_ang,
+            nonconvergent_policy=self._nonconvergent_policy,
+            harmonic_scheme=self._harmonic_scheme,
+            cubic_scheme=self._cubic_scheme,
+            freq_scale=self._freq_scale,
+            lam_freq_cm=self._lam_freq_cm,
+        )
+        here = np.asarray(self.coords, dtype=float)
+        shift = float(np.sqrt(np.mean(np.sum((here - _kabsch_align(geom, here)) ** 2, axis=1))))
+        print(f"  [correction-level] corrections at {label}, at its minimum "
+              f"({1e3 * shift:.2f} mA RMS from the fit's geometry); kept for the whole fit.")
+        self._corr_table = (geom, ctbl_raw, info)
+        return ctbl_raw, info
+
     def _apply_harmonic_alpha_corrections(self):
         """Recompute harmonic alpha from the current Hessian and update spectral targets.
 
@@ -1577,44 +1673,48 @@ class MolecularOptimizer:
 
         if self.quantum is None:
             return
-        hess_bohr = self.quantum._hessian_bohr
+        if self._corr_backend is not None:
+            # A separate correction level: its own minimum, built once.
+            ctbl_raw, _res_info = self._correction_level_table()
+        else:
+            hess_bohr = self.quantum._hessian_bohr
 
-        # The anharmonic (cubic) term is the dominant contribution to alpha and
-        # carries the opposite sign to the harmonic one, so omitting it biases
-        # B_e systematically. It costs 6N extra Hessians, hence opt-in.
-        hessian_fn = None
-        if self._anharmonic_from_hessian:
-            if self._backend is None:
-                print(
-                    "  [anharmonic] Requested but no quantum backend is available; "
-                    "falling back to harmonic+Coriolis alpha only."
-                )
-            else:
-                n_hess = 6 * len(self.elems)
-                print(
-                    f"  [anharmonic] Building Cartesian cubic force field "
-                    f"({n_hess} Hessian evaluations)..."
-                )
+            # The anharmonic (cubic) term is the dominant contribution to alpha and
+            # carries the opposite sign to the harmonic one, so omitting it biases
+            # B_e systematically. It costs 6N extra Hessians, hence opt-in.
+            hessian_fn = None
+            if self._anharmonic_from_hessian:
+                if self._backend is None:
+                    print(
+                        "  [anharmonic] Requested but no quantum backend is available; "
+                        "falling back to harmonic+Coriolis alpha only."
+                    )
+                else:
+                    n_hess = 6 * len(self.elems)
+                    print(
+                        f"  [anharmonic] Building Cartesian cubic force field "
+                        f"({n_hess} Hessian evaluations)..."
+                    )
 
-                def hessian_fn(coords_ang):
-                    return self._backend.run_hessian(coords_ang).hessian_bohr
+                    def hessian_fn(coords_ang):
+                        return self._backend.run_hessian(coords_ang).hessian_bohr
 
-        label = "alpha (harmonic+Coriolis+anharmonic)" if hessian_fn else "harmonic alpha"
-        print(f"\n  [harmonic-alpha] Computing {label} from Hessian...")
-        ctbl_raw, _res_info = build_correction_table_from_hessian(
-            hess_bohr,
-            self.coords,
-            self._raw_isotopologues,
-            sigma_fraction=self._harmonic_sigma_fraction,
-            hessian_fn=hessian_fn,
-            fd_delta_cubic=self._anharmonic_fd_delta_ang,
-            nonconvergent_policy=self._nonconvergent_policy,
-            harmonic_scheme=self._harmonic_scheme,
-            cubic_scheme=self._cubic_scheme,
-            freq_scale=self._freq_scale,
-            lam_freq_cm=self._lam_freq_cm,
-            torsion_replacement=self._torsion_replacement,
-        )
+            label = "alpha (harmonic+Coriolis+anharmonic)" if hessian_fn else "harmonic alpha"
+            print(f"\n  [harmonic-alpha] Computing {label} from Hessian...")
+            ctbl_raw, _res_info = build_correction_table_from_hessian(
+                hess_bohr,
+                self.coords,
+                self._raw_isotopologues,
+                sigma_fraction=self._harmonic_sigma_fraction,
+                hessian_fn=hessian_fn,
+                fd_delta_cubic=self._anharmonic_fd_delta_ang,
+                nonconvergent_policy=self._nonconvergent_policy,
+                harmonic_scheme=self._harmonic_scheme,
+                cubic_scheme=self._cubic_scheme,
+                freq_scale=self._freq_scale,
+                lam_freq_cm=self._lam_freq_cm,
+                torsion_replacement=self._torsion_replacement,
+            )
         for status in dict.fromkeys(_res_info.get("anharmonic_statuses", [])):
             if status not in ("cubic_fd", "not_requested"):
                 print(f"  [anharmonic] WARNING: {status}")

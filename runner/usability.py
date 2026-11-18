@@ -402,6 +402,28 @@ def _validate_run_controls(cfg: dict[str, Any], elements: list[Any]) -> None:
                                   integer=integer)
             if why:
                 raise ConfigError(why)
+        # A separate level for the Hessian-built corrections: it acts only on
+        # those corrections, and is evaluated at its own minimum, which needs a
+        # backend that optimises (the constructor would refuse both later).
+        level = {k: rc.get(k) for k in ("correction_method", "correction_basis")
+                 if rc.get(k) is not None}
+        for key, value in level.items():
+            if not isinstance(value, str) or not value.strip():
+                raise ConfigError(f"'rovibrational_corrections.{key}' must be a method or "
+                                  f"basis name (got {value!r}).")
+        if level:
+            if not rc.get("harmonic_from_hessian"):
+                raise ConfigError(
+                    "'rovibrational_corrections.correction_method/correction_basis' set the "
+                    "level of the Hessian-built corrections, but harmonic_from_hessian is "
+                    "off, so there are none for them to change: set harmonic_from_hessian: "
+                    "true, or drop them.")
+            backend = str((cfg.get("quantum") or {}).get("backend", "orca")).strip().lower()
+            if backend != "pyscf_hf":
+                raise ConfigError(
+                    f"'rovibrational_corrections.correction_method/correction_basis' need a "
+                    f"backend that optimises the correction level's own minimum (pyscf_hf); "
+                    f"'quantum.backend' is {backend!r}.")
     # The flat legacy spellings the builder still falls back to.
     for key, integer in (("rovib_recalc_every", True), ("correction_sigma_vib_fraction", False),
                          ("correction_sigma_elec_fraction", False)):
