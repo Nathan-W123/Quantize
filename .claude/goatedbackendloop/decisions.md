@@ -373,3 +373,19 @@
 - Source: stated by user ("Leave them out").
 - Revisit if: pyscf.prop becomes available (one g-tensor per molecule).
 
+### D-30 · A separate correction level, at its own minimum, built once, opt-in (2026-11-18)
+- Decision: correction_method / correction_basis (constructor and
+  rovibrational_corrections keys) build the Hessian-built corrections at that
+  level's own minimum, once, kept across refreshes; off by default; refused
+  without harmonic_from_hessian, with a backend that cannot optimise
+  (pyscf_hf only), spectral-only, or with a torsion replacement.
+- Why: on water the fit level's corrections set the floor (CCSD/cc-pVDZ
+  -0.58 mA, data-only the same); MP2/cc-pVTZ corrections gave -0.03 mA for
+  ~3 min. The benchmark's corr protocol (own minimum) is the measured one;
+  evaluating another level's Hessian off its minimum gave an artefact there.
+- Alternatives considered: the other level's Hessian at the fit's geometry
+  (refreshed); making it the default (adds cost to every run: D-03).
+- Source: recommended and approved ("Correction-level option").
+- Revisit if: a default correction level is wanted (cost per molecule:
+  ~7 Hessians at the correction level for a triatomic).
+

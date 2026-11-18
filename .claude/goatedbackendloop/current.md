@@ -109,6 +109,14 @@ current code (RHF/6-31G and B3LYP/6-31G(d), all configurations).
   isotopologue with the hybrid comes within 0.16 mA of all of them; both
   differences are below the r_s references' resolution (N3).
 
+- 03:25Z container restart had stopped B3LYP pass 2 at ~21:34Z (vinyl
+  fluoride and acetyl fluoride's tracking rows kept, archived 5a244f6);
+  pass 2 restarted on 4 threads.
+- User chose the correction-level option (step 1): 2aa8755
+  (correction_method / correction_basis, D-30). Engine path on water
+  reproduces the scratch result (-0.033 mA / +0.1364 deg full, -0.026 /
+  +0.1637 H2O only); default path bit-identical; clean suite 1630 passed.
+
 ## Observations
 - 2026-11-17: code_vintage() reads `git status --porcelain`, so editing the
   loop records (tracked) while a benchmark starts stamps it dirty. Caught
