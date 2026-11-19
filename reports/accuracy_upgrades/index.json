@@ -29,9 +29,10 @@
       "track_quadratic": 9
     },
     "code_vintages": {
-      "5cfc5d4": 135
+      "5cfc5d4": 120,
+      "72e3a7c": 15
     },
-    "mixed_vintage": false
+    "mixed_vintage": true
   },
   "b3lyp_6-31gd": {
     "molecules": [
@@ -53,16 +54,17 @@
       "offsets": 9,
       "offsets+bob": 9,
       "offsets+defect": 9,
-      "offsets+torsion": 1,
-      "offsets+track": 2,
-      "torsion": 1,
-      "track": 2,
-      "track_direct": 2,
-      "track_quadratic": 2
+      "offsets+torsion": 6,
+      "offsets+track": 8,
+      "torsion": 6,
+      "track": 8,
+      "track_direct": 7,
+      "track_quadratic": 7
     },
     "code_vintages": {
-      "5cfc5d4": 73
+      "5cfc5d4": 92,
+      "72e3a7c": 13
     },
-    "mixed_vintage": false
+    "mixed_vintage": true
   }
 }

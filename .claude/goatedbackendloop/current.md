@@ -150,6 +150,13 @@ current code (RHF/6-31G and B3LYP/6-31G(d), all configurations).
   Next: rerun vinyl fluoride rows (both levels, all configs) at the head
   commit once B3LYP pass 2 ends (n13/vf_rerun.sh), merge, then N13 tables.
 
+- 06:25Z vinyl fluoride rerun done (72e3a7c, 28 rows): hybrid better in
+  28/28 configs (RHF base 18.34 -> 13.90, B3LYP 6.20 -> 5.48); ME better
+  except RHF defect (13.67 -> 14.69) and offsets+defect (6.41 -> 6.44);
+  theory identical everywhere. Merged into reports/accuracy_upgrades
+  (n13/merge_vf.py; index marks the mix). Pass 2 per molecule: 5 molecules
+  banked by 06:20Z, CH2ClF running.
+
 ## Observations
 - 2026-11-19: reproducing the archived base rows to the digit before
   reporting the pull (L-P04) is what lets the drop-row numbers be read as
