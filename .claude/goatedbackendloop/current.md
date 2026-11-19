@@ -157,6 +157,15 @@ current code (RHF/6-31G and B3LYP/6-31G(d), all configurations).
   (n13/merge_vf.py; index marks the mix). Pass 2 per molecule: 5 molecules
   banked by 06:20Z, CH2ClF running.
 
+- 17:25Z container restart (pass 2 died in fluoroethane); relaunched
+  fluoroethane + acetyl fluoride on 4 threads (MOLS= in chain_p2.sh).
+- User chose "Check prior vs data balance". Brief: for water and ozone
+  (independent r_e), CH2ClF (r_e^SE) and HNCO / vinyl fluoride (SE100,
+  caveat), fit theory, ME, hybrid at sigma_x x1/x2/x5/x20, x1 without chi2
+  rescale, data only; score vs r_e; record rank, chi2/nu, rescale events;
+  x1 must reproduce the archived base row. Diagnostic only -- any change
+  goes back to the user. Running: scratchpad balance/balance.py (1 thread).
+
 ## Observations
 - 2026-11-19: reproducing the archived base rows to the digit before
   reporting the pull (L-P04) is what lets the drop-row numbers be read as

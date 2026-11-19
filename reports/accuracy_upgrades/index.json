@@ -54,15 +54,15 @@
       "offsets": 9,
       "offsets+bob": 9,
       "offsets+defect": 9,
-      "offsets+torsion": 6,
+      "offsets+torsion": 7,
       "offsets+track": 8,
-      "torsion": 6,
-      "track": 8,
-      "track_direct": 7,
-      "track_quadratic": 7
+      "torsion": 7,
+      "track": 9,
+      "track_direct": 8,
+      "track_quadratic": 8
     },
     "code_vintages": {
-      "5cfc5d4": 92,
+      "5cfc5d4": 97,
       "72e3a7c": 13
     },
     "mixed_vintage": true
