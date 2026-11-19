@@ -249,6 +249,17 @@ current code (RHF/6-31G and B3LYP/6-31G(d), all configurations).
   default, so not dead). Copy-paste negligible (77 lines). Not dead:
   load_orca (named in ORCA error messages), get_run_settings.
 
+- 19:20Z vinyl fluoride rerun at 676eb0d done and archived (28 rows, now
+  also scored vs Piccardo r_e). vs r_e, base / offsets: RHF hybrid 11.39 /
+  2.84 mA (theory 17.98 / 4.30, ME 10.70 / 3.12); B3LYP hybrid 3.36 / 1.03
+  (theory 5.86 / 0.90, ME 3.87 / 2.27). defect == base now (consistent
+  data). vs the effective reference everything sits ~5.2 mA.
+- B3LYP pass 2 chain stopped at the 2 h background limit (it already had
+  the maximum timeout, so not restarted). Banked: fluoroethane's 4 tracking
+  rows. Missing: torsion + offsets+torsion for fluoroethane and acetyl
+  fluoride (4 of 117 rows); a single B3LYP torsion config has outlived a
+  3 h run before. Asked the user how to proceed.
+
 ## Observations
 - 2026-11-19: I estimated N17's saving ("2 wasted refits") without
   measuring; measured, it was ~0.2 s and no QC calls. Measure cost before
