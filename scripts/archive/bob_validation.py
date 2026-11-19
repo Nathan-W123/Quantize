@@ -75,7 +75,7 @@ from pathlib import Path
 
 import numpy as np
 
-_ROOT = Path(__file__).resolve().parent.parent
+_ROOT = Path(__file__).resolve().parent.parent.parent
 for _p in (_ROOT / ".github", _ROOT):
     sys.path.insert(0, str(_p))
 
