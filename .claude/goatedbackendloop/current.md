@@ -166,7 +166,29 @@ current code (RHF/6-31G and B3LYP/6-31G(d), all configurations).
   x1 must reproduce the archived base row. Diagnostic only -- any change
   goes back to the user. Running: scratchpad balance/balance.py (1 thread).
 
+- Prior-vs-data balance done (scratchpad balance/*.json; every hybrid x1
+  reproduced its archived base row). Bond RMS mA vs yardstick, default
+  hybrid / best looser hybrid / data only:
+    independent r_e: water RHF 0.56 / 0.66 / 0.69, B3LYP 0.05 / 0.63 / 0.87;
+    ozone RHF 3.13 / 2.75 / 2.76, B3LYP 0.06 / 0.34 / 0.43. Angles best at
+    the default for both at both levels.
+    SE-type: CH2ClF (Vogt, rank 5/9) RHF 10.80 / 8.68 / 8.56, B3LYP
+    9.24 / 7.51 / 3.48; HNCO (SE100) RHF 22.36 / 7.28 / 7.06, B3LYP
+    2.27 / 1.83 / 1.76; vinyl fluoride (SE100, stated sigmas) RHF 11.05 /
+    9.48 / 17.10, B3LYP 4.35 / 4.39 / 17.10.
+  Verdict: no evidence the default prior holds back fully determined fits --
+  on the independent r_e it is the best option by 10-17x at B3LYP. The
+  CH2ClF gap is not prior width (20x looser: C-F still -9.5 mA): both fits
+  reproduce the data (chi2/nu 0.0009 vs 0.0000); the hybrid's joint
+  objective picks a structure that moves C-F -11 mA, data-only's minimum-
+  norm step puts it all in C-Cl (-0.8). chi2 rescale: floored by design for
+  corrected targets, so it refits 3x doing nothing (only vinyl fluoride
+  moves). No change made.
+
 ## Observations
+- 2026-11-19: the hypothesis I offered (prior holds back determined fits)
+  came from an SE-type yardstick; the independent r_e reversed it. Rank the
+  yardsticks by independence before proposing an engine change.
 - 2026-11-19: reproducing the archived base rows to the digit before
   reporting the pull (L-P04) is what lets the drop-row numbers be read as
   the benchmark's own, not a script's.
