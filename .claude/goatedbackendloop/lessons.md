@@ -107,8 +107,10 @@ only here.
   names, with a fixture that exercises that branch; assert the work skipped
   (call counts), not a speed ratio; compare against an inlined copy of the
   old formula, never the function's own wrapper; print both sides of an
-  inequality before trusting it, suspecting exact 0.0, 1.0 or nan.
-- Scope: project · Status: validated (two sessions)
+  inequality before trusting it, suspecting exact 0.0, 1.0 or nan; assert
+  the fixture's premise in the test itself (a rescale test passed while
+  widening, not tightening -- 2026-11-19).
+- Scope: project · Status: validated (two sessions) · Outcomes: +2026-11-19
 
 ### L-16 · Break an aggregate diagnostic down by row before naming its cause
 - Observation: an aggregate mismatch pointed at the wrong culprit twice in one

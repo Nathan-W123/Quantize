@@ -77,6 +77,17 @@ Sessions: 0 · Last consolidated: never
 - Scope: workflow
 - Status: provisional
 - Outcomes:
+### L-07 · Classify a tool's findings before quoting its count
+- Observation: a dead-code report quoted a raw tool count to the user; most of
+  it was intentional on inspection.
+- Evidence: 2026-11-19 · pyflakes' "79 unused imports" was 67 backend
+  registrations + 9 re-exports / noqa lines; 7 were real. Vulture's whole-repo
+  list likewise mixed decorators, dataclass fields and library callbacks in.
+- Adjustment: before reporting how much of something a static tool found,
+  sort its hits into real / intentional / false positive and quote the real
+  number; say what the tool cannot see (registries, string dispatch, fixtures).
+- Scope: workflow · Status: provisional
+
 ## Retired
 ## Changelog
 - 2026-11-12 created; L-01 added.
