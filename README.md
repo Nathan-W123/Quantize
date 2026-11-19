@@ -271,7 +271,9 @@ What does hold up:
   compilation (784 and 788 have negative inertial defects; see
   `dev/monofluoro_references.py`). Without those five, the corrected
   spectroscopy-only fit is 5.4 mÅ from the reference and 0.9 mÅ from SE100's
-  r_e^SE, which was itself derived from much the same B and C data.)*
+  r_e^SE, which was itself derived from much the same B and C data. The
+  constants have since been replaced by Hayashi & Inagusa's 1989
+  measurements, with which every species' inertial defect is normal.)*
 
 ## Torsion / Large-Amplitude Motion (LAM) pipeline
 

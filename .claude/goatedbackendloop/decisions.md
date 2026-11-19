@@ -390,7 +390,7 @@
   ~7 Hessians at the correction level for a triatomic).
 
 
-### D-31 · Vinyl fluoride's deuterated A0 carry a stated measurement sigma (2026-11-19)
+### D-31 · Vinyl fluoride's deuterated A0 carry a stated measurement sigma (2026-11-19) — superseded by D-32
 - Decision: new optional `Isotopologue.measured_sigma_mhz` (measurement side:
   max with the quoted step, survives a vibrational correction, not in the
   systematic part). Vinyl fluoride 784/787/788/789/791 A get
@@ -410,3 +410,18 @@
 - Revisit if: the original A0 papers (NBS refs 804, 875, 948) or a modern
   measurement are found; or a component-aware defect floor lands in the
   engine (would make the stated values redundant).
+
+### D-32 · Vinyl fluoride's constants are Hayashi & Inagusa's 1989 measurements (2026-11-19)
+- Decision: replace NBS 1968 (entry 780) with Hayashi & Inagusa, J. Mol.
+  Spectrosc. 138, 135 (1989), as tabulated in Piccardo et al. 2015's SI, for
+  the module's eight species (adds A for both 13C species: 24 constants);
+  each stated uncertainty becomes measured_sigma_mhz. D-31's defect-sized
+  sigmas go. Rerun vinyl fluoride at both levels (also adds its r_e scoring).
+- Why: the 1968 deuterated A were off by 118-1350 MHz; with the 1989 set
+  every inertial defect is normal and Piccardo's r_e^SE reproduces all 24
+  constants (with B3LYP corrections) to 0.06%.
+- Alternatives considered: keep D-31's stated sigmas (estimates of errors
+  now measured); also add the two CD2 isotopologues (offered; not chosen).
+- Source: recommended and approved ("Yes, replace them").
+- Revisit if: the original paper's table can be read directly (the SI is a
+  secondary transcription; 791's B and C lack the source footnote).

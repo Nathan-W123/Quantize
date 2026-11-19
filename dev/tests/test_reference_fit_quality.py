@@ -17,8 +17,8 @@ away from it:
   fluoroacetylene         5.2        0.02             0.10
   ethylene oxide          9.3        0.02             2.19
 
-(*) measured before vinyl fluoride's deuterated A values gained stated
-measurement sigmas (2026-11-19); the published residual is now 0.93.
+(*) measured with the 1968 compilation's constants; with Hayashi &
+Inagusa's 1989 set (since 2026-11-19) the published residual is 1.00.
 
 So the constants admit a family of structures several mAng wide -- the
 underdetermination this engine's prior exists to resolve -- and the published
@@ -53,9 +53,11 @@ from scripts.monofluoro_benchmark import build_isotopologues  # noqa: E402
 #: structure's own residual as measured. Anything far from these means either
 #: the reference data or the spectral model moved.
 MEASURED_REFERENCE_RMS = {
-    # 0.98 until 2026-11-19, when its five deuterated A values gained stated
-    # measurement sigmas (dev/monofluoro_references.py; poor round numbers).
-    "VINYL_FLUORIDE": 0.93,
+    # 0.98 with the 1968 compilation's constants; 0.93 for a few hours on
+    # 2026-11-19 with stated sigmas on its poor deuterated A values; 1.00
+    # since they were replaced by Hayashi & Inagusa's 1989 set (D-32), 24
+    # constants instead of 22.
+    "VINYL_FLUORIDE": 1.00,
     "ACETYL_FLUORIDE": 0.37,
     "FLUOROETHANE": 0.75,
     "FORMYL_FLUORIDE": 0.69,

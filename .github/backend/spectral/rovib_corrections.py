@@ -753,7 +753,8 @@ def _apply_defect_bias_floor(targets, isotopologues, coords_ang):
     1.9-2.0. Those are the species whose A0 the compilation gives as round
     numbers, and 784 and 788 have negative defects before any correction. So
     for vinyl fluoride the probe is mostly detecting poor input A values, not
-    correction bias (dev/monofluoro_references.py; backlog N15). Nor does
+    correction bias (dev/monofluoro_references.py; those constants were
+    replaced by Hayashi & Inagusa's 1989 measurements, D-32). Nor does
     "theory beats the hybrid" hold at code 5cfc5d4: RHF theory 19.05 mA,
     hybrid 18.34 mA against the module's reference.
 

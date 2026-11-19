@@ -85,30 +85,16 @@ def test_default_reproduces_the_hand_entered_reference_sigmas():
     agreement is better than 1%, the residual being the quoted-digit floor that
     only a human reading the paper can supply -- and which is negligible against
     the model term.
-
-    The exception is a constant with a stated measurement sigma
-    (``measured_sigma_mhz``: vinyl fluoride's deuterated A values), which is
-    exactly that human-supplied knowledge and is meant to depart. There the
-    hand sigma may only be larger than the default, never smaller.
     """
     from dev.monofluoro_references import MOLECULES, MOLECULES_SET2
 
     worst = 0.0
-    n_stated = 0
     for mol in list(MOLECULES) + list(MOLECULES_SET2):
         for sp in mol.species:
             hand = np.asarray(sp.sigmas(), dtype=float)
             auto = default_sigma_constants(sp.observed(), list(sp.component_indices))
-            for j, k in enumerate(sp.component_indices):
-                stated = (sp.measured_sigma_mhz is not None
-                          and sp.measured_sigma_mhz[k] is not None)
-                if stated:
-                    n_stated += 1
-                    assert hand[j] > auto[j], (mol.key, sp.label, k)
-                    continue
-                worst = max(worst, float(abs(auto[j] - hand[j]) / hand[j]))
+            worst = max(worst, float(np.max(np.abs(auto - hand) / hand)))
     assert worst < 0.02, f"auto sigma departs from hand-entered by {100 * worst:.2f}%"
-    assert n_stated == 5, n_stated  # pins the exception's size
 
 
 # ── Defect-derived sigma ─────────────────────────────────────────────────────

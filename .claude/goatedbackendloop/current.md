@@ -216,6 +216,13 @@ current code (RHF/6-31G and B3LYP/6-31G(d), all configurations).
   unstated) or HCCF (0.8 mA, too coarse). Pending user: replace the
   constants (N15).
 
+- User approved replacing the constants: Hayashi & Inagusa 1989 for the 8
+  species (24 constants, stated uncertainties as measured sigma), D-32
+  supersedes D-31; tests rewritten (test_vinyl_fluoride_constants.py, 9
+  tests, 2 mutations caught), default-sigma test restored, pinned residual
+  0.93 -> 1.00; suite 1641 passed. Next: vinyl fluoride rerun at this
+  commit (n13/wt_vf2), merge, then N13 tables.
+
 ## Observations
 - 2026-11-19: classifying bonds vs angles by counting '-' in their names
   garbled C=O / O=C-F rows; caught by eye (a 451 'mA' angle). Use the

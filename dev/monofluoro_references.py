@@ -311,34 +311,24 @@ class ReferenceMolecule:
 
 # ── Vinyl fluoride, CH2=CHF ──────────────────────────────────────────────────
 # Structure: Hayashi & Inagusa, J. Mol. Spectrosc. 138, 135 (1989), via CCCBDB.
-# Constants: NBS Monograph 70 Vol. IV p.183, entry 780 (refs 804, 875, 948).
+# Constants: the same paper, as tabulated (with uncertainties) in the SI of
+# Piccardo et al., J. Phys. Chem. A 119, 2058 (2015), open accepted manuscript
+# (cris.unibo.it 11585/523965); each stated uncertainty is the constant's
+# measurement sigma. Read 2026-11-19 (D-32).
 # Atom order: C1 (bears F and H4), C2 (bears H5, H6), F3, H4, H5, H6.
 # H5 is cis to F across the double bond, H6 is trans (verified geometrically,
-# and again 2026-11-19: SE100's r_e reproduces every B and C below to 0.04-0.06%
-# with this assignment; swapping the D cis / D trans species labels would put
-# 787's B 5.8% off, and reading SE100's H5 as trans costs up to 0.3%).
-# The deuterated A values are the compilation's own round numbers (48960.,
-# 53400., ...; transcription re-checked against the monograph 2026-11-19) and
-# are poor: 784 and 788 give NEGATIVE inertial defects (-0.104, -0.088 amu A^2,
-# also printed in the compilation) for a planar molecule whose other species
-# give +0.016 to +0.069, and both SE100's r_e and the B3LYP minimum miss them by
-# 2-3% after vibrational correction, against 0.09% for the parent's A. Their
-# sigmas here used not to say so. MODERN VALUES EXIST: Hayashi & Inagusa 1989
-# -- the paper the structure above is taken from -- measured every one, e.g.
-# 784 A 49930.986(91), 788 A 63789.713(78) MHz (tabulated in Piccardo et al.
-# 2015's SI); the compilation's are off by 118-1350 MHz, and with the modern
-# set every species' defect is +0.084 to +0.104. Replacing the constants is
-# backlog N15. Until then they carry a stated measurement sigma
-# (2026-11-19, backlog N15), from the data alone: the excess inertial defect
-# relative to the parent's, charged to A,
-#     sigma_A = |Delta0(species) - Delta0(parent)| * A^2 / K,   K = 505379.0089,
-# rounded to 10 MHz. A takes it all because B and C are quoted to 0.01 MHz and
-# a ~40 MHz error in B would be needed. Clean planar species elsewhere in this
-# module vary by only 0.01-0.02 amu A^2 between isotopologues (formyl fluoride,
-# ozone, water), so 787 and 791 come out near their quoted steps while 784
-# and 788 get ~2%. This is an estimate sized from the very inconsistency it
-# absorbs -- an honest weight, not an independent measurement
-# (dev/tests/test_vinyl_fluoride_a_sigma.py recomputes it).
+# and again 2026-11-19: the r_e^SE below reproduces every constant to
+# 0.034-0.086% with this assignment; swapping the D cis / D trans species
+# labels would put 787's B 5.8% off).
+#
+# UNTIL 2026-11-19 these came from NBS Monograph 70 Vol. IV entry 780 (1968),
+# whose deuterated A values were round numbers (48960., 53400., 62440.,
+# 49250., 42700.) off by 118-1350 MHz: 784 and 788 gave NEGATIVE inertial
+# defects for this planar molecule. With the 1989 set every species' defect
+# is +0.084 to +0.104 amu A^2. For a few hours they carried a measurement
+# sigma sized from those defects (D-31, superseded), which came out at
+# 60-100% of the true errors -- a useful check on that method
+# (dev/tests/test_vinyl_fluoride_constants.py keeps it).
 
 #: r_e^SE of vinyl fluoride: Piccardo, Penocchio, Puzzarini, Biczysko & Barone,
 #: J. Phys. Chem. A 119, 2058 (2015), doi 10.1021/jp511432m, Table 1, column
@@ -352,10 +342,9 @@ class ReferenceMolecule:
 #: CHECKED before being wired in: with Hayashi & Inagusa's constants (the
 #: paper's SI) plus B3LYP/6-31G(d) corrections, this structure reproduces all
 #: 24 rotational constants of the eight species below, A included, to
-#: 0.034-0.086% (rms 0.058%; Vogt's CH2ClF control: 0.051%). Against this
-#: file's own constants it matches every B and C to 0.04-0.06%, but misses
-#: the deuterated A values by up to 2.2% -- those are the compilation's poor
-#: round numbers (see the comment above VINYL_FLUORIDE), not a fault here.
+#: 0.034-0.086% (rms 0.058%; Vogt's CH2ClF control: 0.051%) -- the same
+#: constants this file now carries. Against the 1968 compilation's it missed
+#: the deuterated A values by up to 2.2%, which is how those were caught.
 #: Its H-C1=C2 angle, 126.18 deg, agrees with Demaison 2006's 125.95(20)
 #: (VINYL_FLUORIDE_RE_CCH_DEG) to 1.2 sigma.
 VINYL_FLUORIDE_RE_SE = {
@@ -400,31 +389,36 @@ VINYL_FLUORIDE = ReferenceMolecule(
     ]),
     masses=np.array([M_C12, M_C12, M_F, M_H, M_H, M_H]),
     species=[
-        Isotopologue("781 parent", {}, (64582.7, 10636.79, 9118.19), (1, 2, 2)),
-        Isotopologue("782 13C (CH2)", {1: M_C13}, (None, 10295.26, 8859.05),
-                     (0, 2, 2)),
-        Isotopologue("783 13C (CHF)", {0: M_C13}, (None, 10635.02, 9082.78),
-                     (0, 2, 2)),
-        Isotopologue("784 D (CHF)", {3: M_D}, (48960.0, 10635.60, 8753.27),
-                     (-1, 2, 2), measured_sigma_mhz=(910.0, None, None)),
-        Isotopologue("787 D cis", {4: M_D}, (53400.0, 10278.20, 8610.48),
-                     (-2, 2, 2), measured_sigma_mhz=(160.0, None, None)),
-        Isotopologue("788 D trans", {5: M_D}, (62440.0, 9668.14, 8384.03),
-                     (-1, 2, 2), measured_sigma_mhz=(1350.0, None, None)),
-        # Labelled c-/t- in the compilation; assigned from the constants instead.
+        # (A, B, C) MHz, Hayashi & Inagusa 1989; uncertainties in the last digits.
+        Isotopologue("781 parent", {}, (64584.672, 10636.809, 9118.108), (3, 3, 3),
+                     measured_sigma_mhz=(0.051, 0.009, 0.006)),
+        Isotopologue("782 13C (CH2)", {1: M_C13}, (64211.333, 10295.265, 8858.851),
+                     (3, 3, 3), measured_sigma_mhz=(0.108, 0.018, 0.013)),
+        Isotopologue("783 13C (CHF)", {0: M_C13}, (62977.398, 10634.218, 9083.166),
+                     (3, 3, 3), measured_sigma_mhz=(0.077, 0.013, 0.009)),
+        Isotopologue("784 D (CHF)", {3: M_D}, (49930.986, 10635.434, 8753.124),
+                     (3, 3, 3), measured_sigma_mhz=(0.091, 0.015, 0.009)),
+        Isotopologue("787 D cis", {4: M_D}, (53609.855, 10278.245, 8610.352),
+                     (3, 3, 3), measured_sigma_mhz=(0.227, 0.039, 0.025)),
+        Isotopologue("788 D trans", {5: M_D}, (63789.713, 9668.180, 8383.947),
+                     (3, 3, 3), measured_sigma_mhz=(0.078, 0.014, 0.009)),
         Isotopologue("789 D trans + D (CHF)", {5: M_D, 3: M_D},
-                     (49250.0, 9667.07, 8077.02), (-1, 2, 2),
-                     measured_sigma_mhz=(280.0, None, None)),
+                     (49547.985, 9667.173, 8076.940), (3, 3, 3),
+                     measured_sigma_mhz=(0.099, 0.015, 0.010)),
+        # The SI marks only this species' A with the source's footnote; B and C
+        # carry none, which may be a typesetting slip. They sit within 0.10 MHz
+        # of the 1968 values, as six of the eight species' B and C do.
         Isotopologue("791 D cis + D (CHF)", {4: M_D, 3: M_D},
-                     (42700.0, 10274.57, 8272.36), (-2, 2, 2),
-                     measured_sigma_mhz=(70.0, None, None)),
+                     (42818.339, 10274.671, 8272.260), (3, 3, 3),
+                     measured_sigma_mhz=(0.211, 0.044, 0.040)),
     ],
     structure_source="Hayashi & Inagusa, J. Mol. Spectrosc. 138, 135 (1989); CCCBDB",
     geometry_re=_vinyl_fluoride_geometry_re(*(VINYL_FLUORIDE_RE_SE[k][0] for k in (
         "C1-F", "C1-H4", "C1=C2", "C2-H6", "C2-H5", "F-C1-H4", "F-C1=C2", "C1=C2-H6", "C1=C2-H5"))),
     geometry_re_source=VINYL_FLUORIDE_RE_SE_SOURCE,
     geometry_re_uncertainty_ma=0.2,
-    constants_source="NBS Monograph 70 Vol. IV p.183 (entry 780)",
+    constants_source=("Hayashi & Inagusa, J. Mol. Spectrosc. 138, 135 (1989), "
+                      "via Piccardo et al. 2015 SI (until 2026-11-19: NBS Monograph 70 IV entry 780)"),
     bonds={
         "C1=C2":  [(0, 1)],
         "C1-F":   [(0, 2)],
