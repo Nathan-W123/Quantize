@@ -117,7 +117,19 @@ current code (RHF/6-31G and B3LYP/6-31G(d), all configurations).
   reproduces the scratch result (-0.033 mA / +0.1364 deg full, -0.026 /
   +0.1637 H2O only); default path bit-identical; clean suite 1630 passed.
 
+- 02:20Z (11-19) another container restart; B3LYP pass 2 restarted.
+- User chose step 4 (r_e references): chlorofluoromethane r_e^SE (Vogt,
+  Demaison & Rudolph 2014, via Bailey's NQCC table; checked: B_e reproduce
+  B0 + B3LYP corrections to 0.06%) wired, 221ef62; scored vs r_e: B3LYP
+  hybrid 9.24 mA (effective 10.85), RHF 10.80 (13.38). Others: leads only
+  (backlog N3). Clean suite 1631 passed.
+
 ## Observations
+- 2026-11-19: a secondary table (NQCC) was the only readable source for
+  the CH2FCl r_e; checking its numbers against the repo's own B0 and the
+  engine's corrections (0.06%, inside the corrections' sigma) is what made
+  it safe to wire in. Use a data-consistency check whenever the primary is
+  not readable.
 - 2026-11-17: code_vintage() reads `git status --porcelain`, so editing the
   loop records (tracked) while a benchmark starts stamps it dirty. Caught
   from the log header within a minute; runs moved to a frozen worktree.
