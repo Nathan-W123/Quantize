@@ -265,7 +265,13 @@ What does hold up:
   residual that the fit removes by distorting the structure. In vinyl fluoride
   that makes the spectroscopy-only fit *worse* with 22 constants (31.1 mÅ) than
   with 3 (21.0 mÅ). Applying `anharmonic_from_hessian` here is the obvious next
-  step.
+  step. *(2026-11-19, code 5cfc5d4: with the corrections applied, the
+  spectroscopy-only fit to all 22 constants is still 25.6 mÅ at RHF/6-31G. Most
+  of that comes from five low-precision deuterated A₀ values in the
+  compilation (784 and 788 have negative inertial defects; see
+  `dev/monofluoro_references.py`). Without those five, the corrected
+  spectroscopy-only fit is 5.4 mÅ from the reference and 0.9 mÅ from SE100's
+  r_e^SE, which was itself derived from much the same B and C data.)*
 
 ## Torsion / Large-Amplitude Motion (LAM) pipeline
 

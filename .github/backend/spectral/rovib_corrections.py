@@ -747,6 +747,16 @@ def _apply_defect_bias_floor(targets, isotopologues, coords_ang):
     fluoride and on nothing else in the set -- so a probe that never sees a
     reference structure picks out the biased targets on its own.
 
+    Vinyl fluoride, re-measured by species (2026-11-19; RHF/6-31G and
+    B3LYP/6-31G(d) give the same ratios): the parent goes 0.088 -> 0.001 amu A^2
+    (ratio 0.01, the correction works); 787 and 791 0.4-0.6; 784, 788 and 789
+    1.9-2.0. Those are the species whose A0 the compilation gives as round
+    numbers, and 784 and 788 have negative defects before any correction. So
+    for vinyl fluoride the probe is mostly detecting poor input A values, not
+    correction bias (dev/monofluoro_references.py; backlog N15). Nor does
+    "theory beats the hybrid" hold at code 5cfc5d4: RHF theory 19.05 mA,
+    hybrid 18.34 mA against the module's reference.
+
     It also catches sigmas that are absurd on their face. Acetyl fluoride's A
     constants leave the correction chain with sigma of 0.5 to 2.8 MHz while the
     defect says its corrected constants are mutually inconsistent at about

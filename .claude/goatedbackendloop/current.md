@@ -132,7 +132,20 @@ current code (RHF/6-31G and B3LYP/6-31G(d), all configurations).
   inertial defects, 2-3% misses; compilation re-read, no transcription
   slip): backlog N15, not changed (benchmark inputs, user's call).
 
+- User chose "Measure the A-row pull": base config, both levels, the
+  benchmark's own fit path (all-rows runs reproduce the archived 5cfc5d4
+  rows to the digit). Dropping A of 784/788: RHF hybrid 18.34 -> 13.63 mA
+  vs ref (14.86 -> 10.98 vs SE100); B3LYP 6.20 -> 5.42 (4.62 -> 4.45).
+  Dropping all D-species A: data-only lands 0.9-1.0 mA from SE100 at both
+  levels. Robust losses don't fix it. Per-species defect: the parent's
+  correction works (ratio 0.01); the round-number-A species drive the
+  ratio. Corrected two misattributed claims (rovib_corrections
+  _apply_defect_bias_floor docstring; README monofluoro paragraph).
+
 ## Observations
+- 2026-11-19: reproducing the archived base rows to the digit before
+  reporting the pull (L-P04) is what lets the drop-row numbers be read as
+  the benchmark's own, not a script's.
 - 2026-11-19: the SE100 consistency check, run per constant rather than as
   one RMS, separated a reference that is fine (all B, C at 0.04%) from bad
   input data (five A rows). An aggregate 0.67% would have read as "SE100
