@@ -185,7 +185,27 @@ current code (RHF/6-31G and B3LYP/6-31G(d), all configurations).
   corrected targets, so it refits 3x doing nothing (only vinyl fluoride
   moves). No change made.
 
+- User chose "Examine the split" (N16). CH2ClF B3LYP: under the x1
+  hybrid's own Phi the hybrid answer is the optimum (Phi 13.57; data-only
+  point 16.69; x20 14.05) and a restart from the data-only answer returns
+  to it exactly -> not the solver; the chooser is the objective's quantum
+  prior 1/2 w d^T H d (prior covariance ~ H^-1): it splits a correction the
+  data cannot attribute by bond stiffness (C-Cl -28 + C-F -10 cheaper than
+  C-Cl -39), which fails when the theory's error is concentrated in one
+  bond (B3LYP C-Cl +38, C-F ~0). Offsets cannot help: C-Cl is a one-member
+  class (leave-one-out leaves it), and bond_offsets.prior_sigma_for_molecule
+  computes per-bond widths then collapses them to one RMS. Linear metric
+  solve diverged (rigid modes not projected) -- not needed. Others (B3LYP,
+  vs effective refs): hybrid vs data-only differ 4-6 mA bond RMS in formyl
+  fluoride, fluoroethane, acetyl fluoride (HNCO 0.85); fluoroethane and
+  acetyl fluoride show the same fix-one-bond-push-a-neighbour pattern
+  (C-F -5 -> -14; C-C -2 -> -15) but data-only does it too there, and the
+  references are old effective structures, so right/wrong is unknown.
+
 ## Observations
+- 2026-11-19: classifying bonds vs angles by counting '-' in their names
+  garbled C=O / O=C-F rows; caught by eye (a 451 'mA' angle). Use the
+  molecule's own bonds / angles keys, never the label's spelling.
 - 2026-11-19: the hypothesis I offered (prior holds back determined fits)
   came from an SE-type yardstick; the independent r_e reversed it. Rank the
   yardsticks by independence before proposing an engine change.
