@@ -389,3 +389,24 @@
 - Revisit if: a default correction level is wanted (cost per molecule:
   ~7 Hessians at the correction level for a triatomic).
 
+
+### D-31 · Vinyl fluoride's deuterated A0 carry a stated measurement sigma (2026-11-19)
+- Decision: new optional `Isotopologue.measured_sigma_mhz` (measurement side:
+  max with the quoted step, survives a vibrational correction, not in the
+  systematic part). Vinyl fluoride 784/787/788/789/791 A get
+  |Delta0 - Delta0(parent)| A^2/K rounded to 10 MHz: 910, 160, 1350, 280,
+  70 MHz. Benchmark vinyl fluoride rows re-run at the branch head (only this
+  change affects them since 5cfc5d4; base config reproduced exactly before
+  it) and merged into the archive; the table states the vintage mix.
+- Why: the compilation's round-number A values are inconsistent (negative
+  defects for 784/788); data-only justification, no reference used. Effect:
+  RHF hybrid 18.34 -> 13.90 mA vs ref (11.05 vs SE100), B3LYP 6.20 -> 5.48,
+  matching hand-dropping 784/788 (13.63 / 5.42) without discarding data.
+- Alternatives considered: drop the rows (loses B/C-consistent information,
+  and dropping all D A made RHF worse, 15.75); sigma_rel (model error --
+  removed by the correction, so no effect on corrected fits); robust losses
+  (measured, no fix); sizing to SE100's misses (tunes to the yardstick).
+- Source: recommended and approved ("Down-weight those A rows").
+- Revisit if: the original A0 papers (NBS refs 804, 875, 948) or a modern
+  measurement are found; or a component-aware defect floor lands in the
+  engine (would make the stated values redundant).

@@ -10,12 +10,15 @@ structure does -- in six cases out of six -- while sitting 2.8 to 21.3 mAng
 away from it:
 
   molecule           dist mAng   engine rms/sig   published rms/sig
-  vinyl fluoride         21.3        0.37             0.98
+  vinyl fluoride         21.3        0.37             0.98  (*)
   acetyl fluoride         5.1        0.04             0.37
   fluoroethane            7.3        0.04             0.75
   formyl fluoride         2.8        0.16             0.69
   fluoroacetylene         5.2        0.02             0.10
   ethylene oxide          9.3        0.02             2.19
+
+(*) measured before vinyl fluoride's deuterated A values gained stated
+measurement sigmas (2026-11-19); the published residual is now 0.93.
 
 So the constants admit a family of structures several mAng wide -- the
 underdetermination this engine's prior exists to resolve -- and the published
@@ -50,7 +53,9 @@ from scripts.monofluoro_benchmark import build_isotopologues  # noqa: E402
 #: structure's own residual as measured. Anything far from these means either
 #: the reference data or the spectral model moved.
 MEASURED_REFERENCE_RMS = {
-    "VINYL_FLUORIDE": 0.98,
+    # 0.98 until 2026-11-19, when its five deuterated A values gained stated
+    # measurement sigmas (dev/monofluoro_references.py; poor round numbers).
+    "VINYL_FLUORIDE": 0.93,
     "ACETYL_FLUORIDE": 0.37,
     "FLUOROETHANE": 0.75,
     "FORMYL_FLUORIDE": 0.69,

@@ -142,6 +142,14 @@ current code (RHF/6-31G and B3LYP/6-31G(d), all configurations).
   ratio. Corrected two misattributed claims (rovib_corrections
   _apply_defect_bias_floor docstring; README monofluoro paragraph).
 
+- User chose "Down-weight those A rows": measured_sigma_mhz field, values
+  910/160/1350/280/70 MHz from the inertial defects (D-31). All 22 rows,
+  RHF hybrid 13.90 mA vs ref (11.05 vs SE100), B3LYP 5.48 (4.35): same as
+  dropping 784/788. Data-only 17.9 (was 25.6). Tests: 7 new, 5 mutations
+  caught; two pinned values updated with reasons; suite 1638 passed.
+  Next: rerun vinyl fluoride rows (both levels, all configs) at the head
+  commit once B3LYP pass 2 ends (n13/vf_rerun.sh), merge, then N13 tables.
+
 ## Observations
 - 2026-11-19: reproducing the archived base rows to the digit before
   reporting the pull (L-P04) is what lets the drop-row numbers be read as

@@ -112,6 +112,13 @@ class Isotopologue:
     #: Per-species relative uncertainty, overriding SIGMA_REL. Needed where the
     #: rigid-rotor model error is larger than the usual r_s-vs-r_0 gap.
     sigma_rel: tuple | None = None
+    #: Stated MEASUREMENT uncertainty per constant (MHz; None entries keep the
+    #: quoted-precision floor). For a constant known to be worse than its
+    #: digits say. It is measurement error, not model error: it stays in
+    #: sigmas() after a vibrational correction removes the model-error part,
+    #: and it does not enter sigmas_systematic(), because one species' bad
+    #: constant is not shared by the others.
+    measured_sigma_mhz: tuple | None = None
 
     def masses(self, parent: np.ndarray) -> np.ndarray:
         m = parent.copy()
@@ -148,9 +155,15 @@ class Isotopologue:
         for k in self.component_indices:
             v = float(self.abc_mhz[k])
             rel = self.sigma_rel or SIGMA_REL
-            out.append(float(np.hypot(rel[k] * abs(v),
-                                      _quoted_step(v, self.decimals[k]))))
+            out.append(float(np.hypot(rel[k] * abs(v), self.measurement_sigma(k))))
         return out
+
+    def measurement_sigma(self, k: int) -> float:
+        """The measurement part of constant k: the quoted precision, or a
+        stated uncertainty where that is larger."""
+        floor = _quoted_step(float(self.abc_mhz[k]), self.decimals[k])
+        stated = None if self.measured_sigma_mhz is None else self.measured_sigma_mhz[k]
+        return floor if stated is None else max(floor, float(stated))
 
     def sigmas_systematic(self) -> list[float]:
         """Model error: the r_s-versus-r_0 and B0-versus-Be mismatch.
@@ -310,7 +323,17 @@ class ReferenceMolecule:
 # also printed in the compilation) for a planar molecule whose other species
 # give +0.016 to +0.069, and both SE100's r_e and the B3LYP minimum miss them by
 # 2-3% after vibrational correction, against 0.09% for the parent's A. Their
-# sigmas here do not say so (backlog N15).
+# sigmas here used not to say so. They now carry a stated measurement sigma
+# (2026-11-19, backlog N15), from the data alone: the excess inertial defect
+# relative to the parent's, charged to A,
+#     sigma_A = |Delta0(species) - Delta0(parent)| * A^2 / K,   K = 505379.0089,
+# rounded to 10 MHz. A takes it all because B and C are quoted to 0.01 MHz and
+# a ~40 MHz error in B would be needed. Clean planar species elsewhere in this
+# module vary by only 0.01-0.02 amu A^2 between isotopologues (formyl fluoride,
+# ozone, water), so 787 and 791 come out near their quoted steps while 784
+# and 788 get ~2%. This is an estimate sized from the very inconsistency it
+# absorbs -- an honest weight, not an independent measurement
+# (dev/tests/test_vinyl_fluoride_a_sigma.py recomputes it).
 
 VINYL_FLUORIDE = ReferenceMolecule(
     key="vinyl_fluoride",
@@ -333,16 +356,18 @@ VINYL_FLUORIDE = ReferenceMolecule(
         Isotopologue("783 13C (CHF)", {0: M_C13}, (None, 10635.02, 9082.78),
                      (0, 2, 2)),
         Isotopologue("784 D (CHF)", {3: M_D}, (48960.0, 10635.60, 8753.27),
-                     (-1, 2, 2)),
+                     (-1, 2, 2), measured_sigma_mhz=(910.0, None, None)),
         Isotopologue("787 D cis", {4: M_D}, (53400.0, 10278.20, 8610.48),
-                     (-2, 2, 2)),
+                     (-2, 2, 2), measured_sigma_mhz=(160.0, None, None)),
         Isotopologue("788 D trans", {5: M_D}, (62440.0, 9668.14, 8384.03),
-                     (-1, 2, 2)),
+                     (-1, 2, 2), measured_sigma_mhz=(1350.0, None, None)),
         # Labelled c-/t- in the compilation; assigned from the constants instead.
         Isotopologue("789 D trans + D (CHF)", {5: M_D, 3: M_D},
-                     (49250.0, 9667.07, 8077.02), (-1, 2, 2)),
+                     (49250.0, 9667.07, 8077.02), (-1, 2, 2),
+                     measured_sigma_mhz=(280.0, None, None)),
         Isotopologue("791 D cis + D (CHF)", {4: M_D, 3: M_D},
-                     (42700.0, 10274.57, 8272.36), (-2, 2, 2)),
+                     (42700.0, 10274.57, 8272.36), (-2, 2, 2),
+                     measured_sigma_mhz=(70.0, None, None)),
     ],
     structure_source="Hayashi & Inagusa, J. Mol. Spectrosc. 138, 135 (1989); CCCBDB",
     constants_source="NBS Monograph 70 Vol. IV p.183 (entry 780)",
