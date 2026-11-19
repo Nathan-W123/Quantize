@@ -3844,8 +3844,9 @@ class MolecularOptimizer:
         return out
 
     #: Data-information fractions at which a coordinate is labelled
-    #: data-constrained / prior-dominated -- the thresholds
-    #: priors.prior_sensitivity.classify_prior_dominance has always used.
+    #: data-constrained / prior-dominated -- the thresholds the former
+    #: priors.prior_sensitivity module used (removed 2026-11-19; this method
+    #: is what the product reports).
     _DATA_FRACTION_LABELS = (0.8, 0.2)
 
     def internal_coordinate_posterior(self):

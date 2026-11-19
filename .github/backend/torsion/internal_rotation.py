@@ -64,7 +64,8 @@ module existed. Computing them from a methanol geometry reproduces both
 implemented in the convention the rest of the torsion package expects.
 
 ONE TOP ONLY. Two coupled tops need a 2x2 reduced inertia matrix and a
-different Hamiltonian; ``torsion_average_2d`` is where that would go. This
+different Hamiltonian, which this package does not implement (a two-rotor
+module existed untested by any user path and was removed 2026-11-19). This
 module raises rather than quietly returning a one-top answer for a molecule
 with two equivalent rotors.
 """

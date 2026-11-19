@@ -230,6 +230,12 @@ def parse_correction_table(source: Union[dict, str, Path, None]) -> dict:
     path = Path(source)
     if not path.is_file():
         raise FileNotFoundError(f"Correction table not found: {path}")
+    if path.suffix.lower() == ".csv":
+        # The config validator has always accepted .csv here, but this read
+        # every file as YAML and failed on a CSV with "must be a mapping at top
+        # level, got str". The CSV reader existed (rovib_tables) and was wired
+        # to nothing; found by the 2026-11-19 bloat audit.
+        return _validate_table(_csv_table_as_mapping(path))
     try:
         import yaml  # type: ignore
     except ModuleNotFoundError as exc:
@@ -243,6 +249,38 @@ def parse_correction_table(source: Union[dict, str, Path, None]) -> dict:
             f"Correction table YAML must be a mapping at top level, got {type(data).__name__}"
         )
     return _validate_table(data)
+
+
+def _csv_table_as_mapping(path: Path) -> dict:
+    """A CSV correction table (either layout rovib_tables reads) as the
+    mapping parse_correction_table returns.
+
+    alpha_MHz is the alpha sum for that constant, so it maps to
+    alpha_sum_mhz (delta = 0.5 * alpha_sum, applied downstream); the reader
+    has already halved sigma_alpha into the delta's sigma. delta_vib_MHz maps
+    to delta_mhz unchanged.
+    """
+    from backend.spectral.rovib_tables import load_rovib_correction_table  # noqa: PLC0415 (cycle)
+
+    out: dict = {}
+    for name, corr in load_rovib_correction_table(path).items():
+        specs = {}
+        for comp in ("A", "B", "C"):
+            delta = getattr(corr, f"delta_vib_{comp}")
+            alpha = getattr(corr, f"alpha_{comp}")
+            if delta is None and alpha is None:
+                continue
+            spec = {"delta_mhz": float(delta)} if delta is not None else {"alpha_sum_mhz": float(alpha)}
+            sigma = getattr(corr, f"sigma_delta_{comp}")
+            if sigma is not None:
+                spec["sigma_mhz"] = float(sigma)
+            for key in ("source", "method", "basis"):
+                if getattr(corr, key):
+                    spec[key] = getattr(corr, key)
+            specs[comp] = spec
+        if specs:
+            out[name] = specs
+    return out
 
 
 def _validate_table(tbl: dict) -> dict:

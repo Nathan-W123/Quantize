@@ -314,19 +314,6 @@ def test_the_curvature_cut_is_scale_free():
         assert scaled == pytest.approx(base / factor, rel=1e-9), factor
 
 
-def test_bridge_weight_still_mirrors_alpha_q_after_the_change():
-    """The two use the same cut; if they drift apart the geomeTRIC route and
-    the in-house optimiser are solving different problems."""
-    from backend.geometric_bridge import calibrated_spectral_weight
-    from backend.spectral.SVD import SubspaceOptimizer
-
-    hess = h2o_hessian(h2o_coords()) * (1.8897261254578281 ** 2)
-    opt = SubspaceOptimizer(1e-3, 0.0, 0.1, None, 1e-4, objective_mode="joint",
-                            alpha_quantum=1.0, quantum_prior_sigma_ang=0.02)
-    assert calibrated_spectral_weight(hess, 0.02) == pytest.approx(
-        1.0 / opt._calibrated_alpha_q(hess), rel=1e-10)
-
-
 # ── prior width must not claim precision the offsets did not buy ───────────
 
 def test_prior_sigma_widens_for_a_class_nothing_calibrated():

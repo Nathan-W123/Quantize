@@ -56,7 +56,8 @@ So the remaining error is the level of theory, not the machinery. A correlated
 method with a decent basis is what would move these, not a change here.
 
 WHAT THIS DOES NOT DO. One torsion at a time. Two coupled rotors need a 2D
-scan and ``torsion_average_2d``; a scan that passes through a conformational
+scan and a two-rotor averaging this package does not have; a scan that passes
+through a conformational
 change of the frame will produce a discontinuous potential, which
 ``preprocess_scan`` is there to catch and this module does not try to.
 """

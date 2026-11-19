@@ -38,8 +38,8 @@ exists now:
   torsion_fitter.fit_torsion_to_levels / _to_transitions / _joint
       Gauss-Newton fitting to observed levels and transitions, with bounds,
       priors and Jacobian uncertainties
-  torsion_average / torsion_average_2d
-      torsional averaging of the rotational constants, one and two rotors
+  torsion_average
+      torsional averaging of the rotational constants, one rotor
 
 RAM-lite remains the fast single-(J,K)-block path and is what torsion_fitter
 calls by default. What is genuinely missing: nuclear spin weights and selection
