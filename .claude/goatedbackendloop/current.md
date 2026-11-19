@@ -202,6 +202,20 @@ current code (RHF/6-31G and B3LYP/6-31G(d), all configurations).
   (C-F -5 -> -14; C-C -2 -> -15) but data-only does it too there, and the
   references are old effective structures, so right/wrong is unknown.
 
+- User chose "Find more references". Found: Piccardo et al. 2015 JPCA
+  (open accepted manuscript, cris.unibo.it 11585/523965) Table 1 gives
+  vinyl fluoride r_e^SE (CCSD(T) corrections) WITH fit sd (0.1-0.2 mA) --
+  the source of SE100's numbers -- and its SI tabulates Hayashi & Inagusa
+  1989's constants for 10 isotopologues. Checked: with those constants plus
+  B3LYP corrections the r_e reproduces all 24 constants of our 8 species to
+  0.034-0.086% (rms 0.058%); every inertial defect +0.084..+0.104. Wired
+  vinyl fluoride's r_e (0.2 mA, rule met; tests + 3 mutations; suite 1639
+  passed). Our deuterated A0 (NBS 1968) are off by 118-1350 MHz from the
+  1989 values; D-31's defect-sized sigmas were 60-100% of the true errors.
+  Nothing new for HCOF, fluoroethane, acetyl fluoride, HNCO (SE100 only,
+  unstated) or HCCF (0.8 mA, too coarse). Pending user: replace the
+  constants (N15).
+
 ## Observations
 - 2026-11-19: classifying bonds vs angles by counting '-' in their names
   garbled C=O / O=C-F rows; caught by eye (a 451 'mA' angle). Use the

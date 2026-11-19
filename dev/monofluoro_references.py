@@ -323,7 +323,12 @@ class ReferenceMolecule:
 # also printed in the compilation) for a planar molecule whose other species
 # give +0.016 to +0.069, and both SE100's r_e and the B3LYP minimum miss them by
 # 2-3% after vibrational correction, against 0.09% for the parent's A. Their
-# sigmas here used not to say so. They now carry a stated measurement sigma
+# sigmas here used not to say so. MODERN VALUES EXIST: Hayashi & Inagusa 1989
+# -- the paper the structure above is taken from -- measured every one, e.g.
+# 784 A 49930.986(91), 788 A 63789.713(78) MHz (tabulated in Piccardo et al.
+# 2015's SI); the compilation's are off by 118-1350 MHz, and with the modern
+# set every species' defect is +0.084 to +0.104. Replacing the constants is
+# backlog N15. Until then they carry a stated measurement sigma
 # (2026-11-19, backlog N15), from the data alone: the excess inertial defect
 # relative to the parent's, charged to A,
 #     sigma_A = |Delta0(species) - Delta0(parent)| * A^2 / K,   K = 505379.0089,
@@ -334,6 +339,51 @@ class ReferenceMolecule:
 # and 788 get ~2%. This is an estimate sized from the very inconsistency it
 # absorbs -- an honest weight, not an independent measurement
 # (dev/tests/test_vinyl_fluoride_a_sigma.py recomputes it).
+
+#: r_e^SE of vinyl fluoride: Piccardo, Penocchio, Puzzarini, Biczysko & Barone,
+#: J. Phys. Chem. A 119, 2058 (2015), doi 10.1021/jp511432m, Table 1, column
+#: "reSE CCSD(T)" -- Hayashi & Inagusa's ground-state constants for eight
+#: isotopologues, CCSD(T)/cc-pVTZ vibrational and electronic corrections; the
+#: parenthesised figures are the fit's standard deviations. Read from the
+#: accepted manuscript, open on the Bologna repository (cris.unibo.it,
+#: handle 11585/523965). SE100 (Ceselin et al. 2021) lists the same numbers
+#: without uncertainties.
+#:
+#: CHECKED before being wired in: with Hayashi & Inagusa's constants (the
+#: paper's SI) plus B3LYP/6-31G(d) corrections, this structure reproduces all
+#: 24 rotational constants of the eight species below, A included, to
+#: 0.034-0.086% (rms 0.058%; Vogt's CH2ClF control: 0.051%). Against this
+#: file's own constants it matches every B and C to 0.04-0.06%, but misses
+#: the deuterated A values by up to 2.2% -- those are the compilation's poor
+#: round numbers (see the comment above VINYL_FLUORIDE), not a fault here.
+#: Its H-C1=C2 angle, 126.18 deg, agrees with Demaison 2006's 125.95(20)
+#: (VINYL_FLUORIDE_RE_CCH_DEG) to 1.2 sigma.
+VINYL_FLUORIDE_RE_SE = {
+    "C1-F": (1.3424, 0.0002), "C1-H4": (1.0792, 0.0001), "C1=C2": (1.3213, 0.0002),
+    "C2-H6": (1.0772, 0.0001), "C2-H5": (1.0785, 0.0001),       # H6 trans, H5 cis to F
+    "F-C1-H4": (112.10, 0.06), "F-C1=C2": (121.72, 0.01),
+    "C1=C2-H6": (118.95, 0.01), "C1=C2-H5": (121.32, 0.01),
+}
+VINYL_FLUORIDE_RE_SE_SOURCE = (
+    "r_e^SE, Piccardo et al., J. Phys. Chem. A 119, 2058 (2015), "
+    "doi 10.1021/jp511432m, Table 1 (CCSD(T) corrections); checked against "
+    "Hayashi & Inagusa's constants plus B3LYP/6-31G(d) corrections to 0.06%")
+
+
+def _vinyl_fluoride_geometry_re(rCF, rC1H, rCC, rC2Ht, rC2Hc, aFCH, aFCC, aCCHt, aCCHc):
+    """Planar CH2=CHF in this file's atom order -- C1, C2, F3, H4 (on C1),
+    H5 (cis to F), H6 (trans) -- from the parameters an equilibrium study
+    publishes. C1 at the origin, C2 on +x, F on the -y side."""
+    def u(deg):
+        t = np.radians(deg)
+        return np.array([np.cos(t), np.sin(t), 0.0])
+    c1, c2 = np.zeros(3), rCC * u(0.0)
+    f = rCF * u(-aFCC)
+    h4 = rC1H * u(360.0 - aFCC - aFCH)
+    h5 = c2 + rC2Hc * u(180.0 + aCCHc)      # same side as F: cis
+    h6 = c2 + rC2Ht * u(180.0 - aCCHt)
+    return np.array([c1, c2, f, h4, h5, h6])
+
 
 VINYL_FLUORIDE = ReferenceMolecule(
     key="vinyl_fluoride",
@@ -370,6 +420,10 @@ VINYL_FLUORIDE = ReferenceMolecule(
                      measured_sigma_mhz=(70.0, None, None)),
     ],
     structure_source="Hayashi & Inagusa, J. Mol. Spectrosc. 138, 135 (1989); CCCBDB",
+    geometry_re=_vinyl_fluoride_geometry_re(*(VINYL_FLUORIDE_RE_SE[k][0] for k in (
+        "C1-F", "C1-H4", "C1=C2", "C2-H6", "C2-H5", "F-C1-H4", "F-C1=C2", "C1=C2-H6", "C1=C2-H5"))),
+    geometry_re_source=VINYL_FLUORIDE_RE_SE_SOURCE,
+    geometry_re_uncertainty_ma=0.2,
     constants_source="NBS Monograph 70 Vol. IV p.183 (entry 780)",
     bonds={
         "C1=C2":  [(0, 1)],
@@ -779,10 +833,12 @@ def _bent_xy(r_ang: float, theta_deg: float) -> np.ndarray:
 #: its own magnitude.
 # ── Equilibrium references still wanted ─────────────────────────────────────
 #
-# Three of nine molecules have a published r_e here: water (Csaszar et al.
+# Four of nine molecules have a published r_e here: water (Csaszar et al.
 # 2005), ozone (Tyuterev et al. 1999, below) and, since 2026-11-19,
 # chlorofluoromethane (Vogt, Demaison & Rudolph 2014, r_e^SE, +/-0.3 mA; see
-# CH2CLF_RE_SE). The other six are scored against r_s or effective structures, which is the binding constraint on what the
+# CH2CLF_RE_SE) and vinyl fluoride (Piccardo et al. 2015, r_e^SE, +/-0.2 mA;
+# see VINYL_FLUORIDE_RE_SE). The other five are scored against r_s or
+# effective structures, which is the binding constraint on what the
 # benchmark can demonstrate -- ozone's two references are 1.06 mA apart, and
 # that is larger than most of the differences between configurations the
 # benchmark is trying to resolve.
@@ -875,7 +931,9 @@ def _bent_xy(r_ang: float, theta_deg: float) -> np.ndarray:
 #                         Mills (1981) give r_z, which is NOT r_e
 #   formyl fluoride       Demaison & Csaszar, J. Mol. Struct. 1023, 7 (2012)
 #                         covers equilibrium C=O lengths incl. F2CO/Cl2CO
-#   vinyl fluoride        r_e^SE from the halogenated-ethylene series
+#   vinyl fluoride        FOUND (2026-11-19): r_e^SE in Piccardo et al.,
+#                         J. Phys. Chem. A 119, 2058 (2015), open accepted
+#                         manuscript -- wired in above (VINYL_FLUORIDE_RE_SE)
 #   fluoroethane          r_e^SE; compare the propyne treatment
 #   acetyl fluoride       unlikely to exist; a CCSD(T) r_e would have to
 #                         stand in, and then it is theory, not a reference
@@ -901,9 +959,11 @@ def _bent_xy(r_ang: float, theta_deg: float) -> np.ndarray:
 #                         well as Vogt's r_e does (HNCO 0.042% rms; vinyl
 #                         fluoride B, C 0.035-0.057%), but Table S1 states NO
 #                         uncertainty -- per-parameter sd appear only for the
-#                         main text's eight new molecules -- so both stay
-#                         unwired ("unstated"). Their sources (Piccardo 2015
-#                         JPCA; Penocchio 2015 JCTC) are not open access.
+#                         main text's eight new molecules. Vinyl fluoride's
+#                         source, Piccardo 2015 JPCA, turned out to be open
+#                         (accepted manuscript) WITH sd, and is wired in;
+#                         HNCO's (Penocchio 2015 JCTC) is not, and it stays
+#                         unwired ("unstated").
 #                         No HCOF, HCCF, fluoroethane or acetyl fluoride.
 #
 # The canonical compilation is Demaison & Vogt, "Accurate Structure

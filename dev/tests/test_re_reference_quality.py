@@ -68,7 +68,7 @@ def test_every_molecule_reports_a_verdict(name):
 
 
 def test_the_usable_references_pass():
-    for name in ("WATER", "OZONE", "CHLOROFLUOROMETHANE"):
+    for name in ("WATER", "OZONE", "CHLOROFLUOROMETHANE", "VINYL_FLUORIDE"):
         mol = getattr(REF, name)
         assert mol.equilibrium_reference_quality() == "ok", name
         assert mol.equilibrium_geometry is not None
@@ -79,7 +79,7 @@ def test_nothing_else_claims_an_equilibrium_reference():
     """If this starts failing, somebody added one -- check its uncertainty."""
     have = {n for n in ALL_MOLECULES
             if getattr(REF, n).equilibrium_geometry is not None}
-    assert have == {"WATER", "OZONE", "CHLOROFLUOROMETHANE"}, have
+    assert have == {"WATER", "OZONE", "CHLOROFLUOROMETHANE", "VINYL_FLUORIDE"}, have
 
 
 def test_an_unstated_uncertainty_is_not_treated_as_good():
@@ -137,9 +137,12 @@ def test_the_one_sourced_equilibrium_parameter_is_recorded():
     assert REF.VINYL_FLUORIDE_RE_CCH_UNC_DEG == pytest.approx(0.20, abs=0.005)
     src = REF.VINYL_FLUORIDE_RE_CCH_SOURCE
     assert "Demaison" in src and "239" in src
-    # It is a parameter, not a geometry: vinyl fluoride still has no r_e.
-    assert REF.VINYL_FLUORIDE.equilibrium_geometry is None
-    assert REF.VINYL_FLUORIDE.equilibrium_reference_quality() == "none"
+    # A parameter, not a geometry -- but since 2026-11-19 vinyl fluoride has a
+    # full r_e (Piccardo et al. 2015), and the two equilibrium determinations
+    # must agree on this angle (H-C1=C2: 126.18 against 125.95(20)).
+    q = REF.VINYL_FLUORIDE.internal_coordinates(REF.VINYL_FLUORIDE.equilibrium_geometry)
+    assert abs(q["H4-C1=C2"] - REF.VINYL_FLUORIDE_RE_CCH_DEG) < 1.5 * REF.VINYL_FLUORIDE_RE_CCH_UNC_DEG
+    assert REF.VINYL_FLUORIDE.equilibrium_reference_quality() == "ok"
 
 
 def test_published_r0_scatter_exceeds_our_measured_distance():
@@ -187,3 +190,22 @@ def test_chlorofluoromethane_s_r_e_is_the_published_structure():
     d = np.sqrt(np.mean(np.sum((g - mol.geometry) ** 2, axis=1)))
     assert d < 0.02
 
+
+
+def test_vinyl_fluoride_s_r_e_is_the_published_structure():
+    """Piccardo et al. (2015) r_e^SE, wired in 2026-11-19: every published
+    parameter reproduced, the uncertainty the largest quoted on a bond, H5
+    cis to F as in the rest of this module, and the source named."""
+    mol = REF.VINYL_FLUORIDE
+    q = mol.internal_coordinates(mol.geometry_re)
+    p = REF.VINYL_FLUORIDE_RE_SE
+    for key, (value, _sd) in p.items():
+        assert q[key] == pytest.approx(value, abs=1e-9), key
+    # Derived, not tabulated: the angle Demaison 2006 quotes, within 1.2 sigma.
+    assert q["H4-C1=C2"] == pytest.approx(360.0 - 121.72 - 112.10, abs=1e-9)
+    assert abs(q["H4-C1=C2"] - REF.VINYL_FLUORIDE_RE_CCH_DEG) < 1.5 * 0.20
+    g = mol.geometry_re
+    assert np.linalg.norm(g[2] - g[4]) < np.linalg.norm(g[2] - g[5])  # H5 is cis
+    bond_sd_ma = max(sd for k, (_v, sd) in p.items() if k in mol.bonds) * 1000.0
+    assert mol.geometry_re_uncertainty_ma == pytest.approx(bond_sd_ma)
+    assert "Piccardo" in mol.geometry_re_source and "2015" in mol.geometry_re_source

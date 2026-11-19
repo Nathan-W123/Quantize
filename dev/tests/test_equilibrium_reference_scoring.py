@@ -58,13 +58,14 @@ class TestEquilibriumGeometryProperty:
         assert "1999" in OZONE.geometry_re_source
 
     def test_molecules_without_a_published_r_e_return_none(self):
-        # Six of nine (chlorofluoromethane gained Vogt et al.'s r_e^SE on
-        # 2026-11-19). Returning None rather than falling back to r_s is the
+        # Five of nine (chlorofluoromethane gained Vogt et al.'s r_e^SE and
+        # vinyl fluoride Piccardo et al.'s on 2026-11-19). Returning None
+        # rather than falling back to r_s is the
         # point: a caller that wants equilibrium must skip them, not be handed
         # a substitution structure wearing the wrong label.
         without = [m.key for m in _pool() if m.equilibrium_geometry is None]
         assert set(without) == {
-            "vinyl_fluoride", "acetyl_fluoride", "fluoroethane",
+            "acetyl_fluoride", "fluoroethane",
             "formyl_fluoride", "fluoroacetylene", "isocyanic_acid",
         }, without
 
