@@ -409,7 +409,7 @@ def compute_harmonic_alpha(
     masses = np.asarray(masses_amu, dtype=float)
     coords = np.asarray(coords_ang, dtype=float)
 
-    I_eig, V_paf, _ = _inertia_paf(coords, masses)
+    _, V_paf, _ = _inertia_paf(coords, masses)
     B_e_mhz = _rotational_constants(coords, masses)
     B_e_cm = B_e_mhz * _MHZ_TO_CM
 

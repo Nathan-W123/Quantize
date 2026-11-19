@@ -540,7 +540,7 @@ def _cmd_uncertainty(args) -> int:
             except Exception:
                 where = None
             if where is not None:
-                print(f"\n[uncertainty] Summary written: " + _write_bundle(
+                print("\n[uncertainty] Summary written: " + _write_bundle(
                     where, _note_earlier_run_files({
                         "generated_at": datetime.now(UTC).isoformat(),
                         "config_path": str(args.config), "mode": args.mode,
@@ -733,7 +733,6 @@ def _cmd_uncertainty(args) -> int:
     mcmc_refused = False
     mcmc_refusal_reason = None
     mcmc_no_diagnostics = False
-    boot_refused = False
     boot_summary = None
     #: Requested parts that produced nothing usable, when an interval is
     #: still reported: exit status 3 and "partial" in the bundle.
@@ -756,7 +755,6 @@ def _cmd_uncertainty(args) -> int:
             # they still run (this used to return here and lose the MCMC half
             # as well), and the interval carries the split caveat below.
             print("[bootstrap] refused; running the MCMC half of --mode both.")
-            boot_refused = True
             boot_cfg = None
             partial.append(f"--bootstrap-strategy {args.bootstrap_strategy} was refused after "
                            f"the base fit, so this run's result has no bootstrap: {exc}")

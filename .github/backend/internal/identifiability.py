@@ -132,13 +132,3 @@ def identifiability_table(
         })
     return rows, sv, rank
 
-
-def print_identifiability_table(rows: list[dict], sv: np.ndarray, rank: int) -> None:
-    """Pretty-print the identifiability table."""
-    print(f"\nIdentifiability analysis  (SVD rank = {rank}, "
-          f"top sv = {sv[0]:.3e}, bottom sv = {sv[-1]:.3e})")
-    print(f"{'Coordinate':<28}  {'Score':>8}  {'Label'}")
-    print("-" * 55)
-    for r in rows:
-        bar = "#" * int(r["score"] * 20)
-        print(f"{r['name']:<28}  {r['score']:>8.4f}  {r['label']}  |{bar:<20}|")

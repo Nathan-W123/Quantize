@@ -98,7 +98,6 @@ from scripts.mixed_estimation_baseline import (  # noqa: E402
     _SIGMA_X_BY_LEVEL,
     corrected_targets,
     mixed_estimation_fit,
-    rms_bond_error,
 )
 from scripts.monofluoro_benchmark import build_isotopologues, start_geometry  # noqa: E402
 

@@ -589,7 +589,7 @@ def test_sigma_comes_from_the_averaging_not_from_the_discarded_magnitude():
     assert n_vib >= 1
 
     wide = 1.0e6  # a threshold that catches every mode
-    lam_only, s_lam, i_lam = _water_alpha(lam_freq_cm=wide)
+    _, s_lam, i_lam = _water_alpha(lam_freq_cm=wide)
     assert i_lam["lam_modes_cm"], "sanity: lam should have caught modes"
 
     both, s_both, i_both = _water_alpha(

@@ -5,7 +5,6 @@ import os
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from copy import deepcopy
-from typing import Any
 
 import numpy as np
 
@@ -13,7 +12,6 @@ from backend.quantize import MolecularOptimizer
 
 from .models import BootstrapConfig, BootstrapRunSummary, BootstrapSampleResult, json_ready
 from .resampling import (
-    draw_quantum_prior_shift,
     quantum_prior_shift_sampler,
     resample_cd_observed,
     resample_error_model,

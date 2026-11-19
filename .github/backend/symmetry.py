@@ -738,11 +738,6 @@ class PointGroupSymmetry:
         """3N × 3N symmetry projection matrix (lab frame)."""
         return self._projection
 
-    @property
-    def equiv_groups(self) -> List[List[int]]:
-        """Groups of symmetry-equivalent atom indices."""
-        return self._equiv
-
     def project_step(self, step) -> np.ndarray:
         """
         Remove the symmetry-breaking component of a (3N,) Cartesian step.
@@ -788,8 +783,3 @@ class PointGroupSymmetry:
         n_dof_free = int(np.round(np.trace(self._projection))) if self._projection is not None else 3 * self.n_atoms
         lines.append(f"  Symmetric degrees of freedom: {n_dof_free} / {3 * self.n_atoms}")
         return "\n".join(lines)
-
-    @staticmethod
-    def supported_groups() -> List[str]:
-        """Return all supported point group labels."""
-        return sorted(k for k, v in _GROUP_OPS.items() if v is not None) + ["Cinf_v", "Dinf_h"]

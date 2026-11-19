@@ -76,9 +76,6 @@ from backend.spectral.harmonic_alpha import (  # noqa: E402
 from dev.monofluoro_references import (  # noqa: E402
     OZONE,
     WATER,
-    WATER_R_E,
-    WATER_THETA_E_DEG,
-    _bent_xy,
 )
 from scripts.monofluoro_benchmark import start_geometry  # noqa: E402
 

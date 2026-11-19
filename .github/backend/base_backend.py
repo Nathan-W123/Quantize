@@ -7,7 +7,7 @@ Adding a new backend
 2. Set ``name = "gaussian"`` (the string key used in configs).
 3. Decorate with ``@register_backend`` from ``backend.registry``.
 4. Implement ``run_hessian`` and ``run_gradient``; optionally override
-   ``run_rovib`` and ``run_cheap_opt`` (both default to returning ``None``).
+   ``run_rovib`` (defaults to returning ``None``).
 5. Add one import line in ``.github/backend/__init__.py`` to trigger registration.
 """
 
@@ -106,12 +106,5 @@ class QuantumBackend(ABC):
         ``alpha_constants``, and optionally ``rovib_table``.
 
         Returns ``None`` if the backend does not support rovib calculations.
-        """
-        return None
-
-    def run_cheap_opt(self, coords_ang: np.ndarray) -> np.ndarray | None:
-        """Optional: fast geometry pre-optimisation.
-
-        Returns updated coordinates (Angstrom) or ``None`` if unsupported.
         """
         return None

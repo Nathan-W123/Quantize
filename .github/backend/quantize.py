@@ -1269,7 +1269,6 @@ class MolecularOptimizer:
         # rebuilding its own (see _posterior_blocks).
         self._last_ic_prior = None
         self._last_alpha_q_eff = None
-        self._orca_call_count = 0
         # Quantum updates since the last full Hessian / rovib job. None means
         # "never computed", which forces one on the next update.
         self._since_hessian = None
@@ -1913,7 +1912,6 @@ class MolecularOptimizer:
         objective than it used to, because there the Hessian *is* the quantum
         prior -- a stale one anchors the prior to a geometry the fit has left.
         """
-        self._orca_call_count += 1
         # Count the call first, then test: `_since_hessian` is the number of
         # updates that have happened since the last Hessian, so a period of 1
         # has to fire on the very next call. Testing before incrementing makes

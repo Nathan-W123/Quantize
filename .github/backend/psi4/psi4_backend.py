@@ -63,4 +63,3 @@ class Psi4Backend(QuantumBackend):
             gradient_bohr=np.asarray(grad_bohr, dtype=float).ravel(),
         )
     # run_rovib → inherits None default (Psi4 does not support VPT2 rovib)
-    # run_cheap_opt → inherits None default

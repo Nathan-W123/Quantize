@@ -148,7 +148,7 @@ def test_the_laplace_ridge_reaches_the_interval_and_the_analytic_column(tmp_path
         b = _bundle(run)
         widths[reg] = (b["bootstrap"]["analytic"]["posterior_std"],
                        {s["name"]: s["std"] for s in b["cloud"]["coordinate_stats"]})
-    post_lo, cloud_lo = widths["1e-8"]
+    post_lo, _ = widths["1e-8"]
     post_hi, cloud_hi = widths["1e4"]
     assert post_hi[0] < 0.9 * post_lo[0], "premise: the ridge narrows the Laplace"
     assert cloud_hi["bond 1-2"] == pytest.approx(post_hi[0], rel=0.06)
@@ -479,7 +479,6 @@ def test_a_bad_field_is_named_by_validation(edit, said, tmp_path):
     """These passed `quantize validate` and then failed in the builder with
     Python's own text ("'Xx' is not in list", "could not convert string to
     float: 'x'") or a traceback (TypeError)."""
-    import yaml
     from runner.usability import ConfigError, load_config, validate_config
     cfg = load_config(CONFIG)
     edit(cfg)
@@ -521,7 +520,7 @@ def test_a_fit_that_stops_at_max_iter_is_warned_about(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     out, err = io.StringIO(), io.StringIO()
     with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-        code = cli.main(["uncertainty", str(path), "--mode", "bootstrap", "--samples", "2"] + _QUIET)
+        cli.main(["uncertainty", str(path), "--mode", "bootstrap", "--samples", "2"] + _QUIET)
     b = _bundle(tmp_path)
     assert b["hessian_refresh"]["termination"] == "max_iter"
     assert any("stopped at max_iter" in w for w in b["warnings"])

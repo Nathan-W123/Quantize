@@ -275,7 +275,7 @@ def test_directional_check_matches_a_full_hessian(tight_sigma):
     soft = opt.gauss_newton_discrepancy()[0]
     # Reconstruct the same direction the method used.
     J, _ = opt.spectral.stacked(opt.coords)
-    g_q, H_q = opt._project_quantum_terms(opt.quantum.gradient, opt.quantum.hessian)
+    _, H_q = opt._project_quantum_terms(opt.quantum.gradient, opt.quantum.hessian)
     a_eff = opt.optimizer.effective_quantum_weight(
         J, int(np.linalg.matrix_rank(J)), hessian=H_q)
     H_quant = a_eff * opt.optimizer._spd_hessian(H_q)

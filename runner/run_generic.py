@@ -1098,7 +1098,7 @@ def _run_torsion_phase2_exports(
 
             fitted_spec = fit_result.get("fitted_spec")
             if isinstance(fitted_spec, TorsionHamiltonianSpec):
-                fitted_rows, fit_row_warnings, fitted_block_rows = _collect_level_rows(
+                fitted_rows, fit_row_warnings, _ = _collect_level_rows(
                     fitted_spec, J_values, K_values, n_levels, symmetry_mode, label_levels,
                     return_blocks=export_blocks,
                 )

@@ -331,22 +331,6 @@ class OrcaBackend(QuantumBackend):
             return self._run_rovib_iso_specific(coords_ang, isotopologues)
         return self._run_rovib_shared(coords_ang, isotopologues)
 
-    def run_cheap_opt(self, coords_ang: np.ndarray) -> np.ndarray | None:
-        """Fast geometry pre-optimisation using ORCA with a lightweight method."""
-        try:
-            from backend.orca.orca_cheap_opt import minimize_geometry_cheap_orca  # pylint: disable=import-outside-toplevel
-            return minimize_geometry_cheap_orca(
-                coords=coords_ang,
-                elems=self.elems,
-                charge=self.charge,
-                multiplicity=self.multiplicity,
-                orca_exe=self._exe,
-                workdir=os.path.join(self.workdir, "cheap_opt"),
-            )
-        except Exception as exc:  # noqa: BLE001
-            print(f"  [ORCA] cheap_opt failed: {exc}")
-            return None
-
     # ── Rovib helpers ──────────────────────────────────────────────────────────
 
     def _run_rovib_shared(self, coords_ang, isotopologues):

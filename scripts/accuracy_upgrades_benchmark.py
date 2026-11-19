@@ -167,7 +167,6 @@ from backend.spectral.correction_models import (  # noqa: E402
 )
 from backend.spectral.electronic_g import (  # noqa: E402
     g_tensors_for_isotopologues,
-    rotational_g_tensor,
 )
 from backend.spectral.hessian_cache import HessianCache  # noqa: E402
 from backend.spectral.harmonic_alpha import (  # noqa: E402
@@ -681,7 +680,7 @@ def torsion_replacement_for(mol, coords_ang, backend, freq_cm=LAM_FREQ_CM,
             frame_atom=rotor["frame_atom"], top_atom=rotor["top_atom"],
             symmetry_number=rotor["symmetry_number"],
             top_indices=rotor["top_indices"])
-        replacement, rep_info = torsion_replacement_from_scan(
+        replacement, _ = torsion_replacement_from_scan(
             list(mol.elems), scan, spec, coords, masses,
             symmetry_number=rotor["symmetry_number"],
             mode_indices=(int(ov_info["best"]),), freq_cm=float(freq_cm))

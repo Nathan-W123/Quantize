@@ -357,9 +357,6 @@ class TestFitTorsionJoint:
         abc_grid = [abc] * 6  # six equally spaced points
         return _make_joint_scan(abc_grid)
 
-    def _build_spec(self):
-        return _make_joint_spec()
-
     def test_output_keys_present(self):
         truth = self._truth_spec()
         level_rows = self._level_rows(truth)

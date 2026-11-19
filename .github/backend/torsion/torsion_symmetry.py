@@ -138,8 +138,6 @@ _ROTOR_FOLD_WEIGHTS: dict[int, dict[str, int]] = {
     n: nuclear_spin_weights(n, spin=0.5) for n in (2, 3, 4, 6)
 }
 
-C2_NUCLEAR_SPIN_WEIGHTS: dict[str, int] = _ROTOR_FOLD_WEIGHTS[2]
-C3_NUCLEAR_SPIN_WEIGHTS: dict[str, int] = _ROTOR_FOLD_WEIGHTS[3]
 
 
 def nuclear_spin_weight(symmetry_label: str, rotor_fold: int = 3) -> int:
