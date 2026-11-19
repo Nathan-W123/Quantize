@@ -31,7 +31,8 @@ only here.
 - Evidence: 2026-11-10 · a Costain-rule r_s floor gave 852 mA for ozone
   against the docstring's 4.1.
 - Scope: project · Status: validated · Outcomes: +2026-11-19 (Vogt's CH2ClF r_e as the
-  control row is what made the SE100 HNCO / vinyl fluoride check readable)
+  control row is what made the SE100 HNCO / vinyl fluoride check readable; reproducing the archived
+  base rows to the digit made the A-row pull numbers the benchmark's own)
 
 ### L-P06 · A library module with only a script consumer is misplaced
 - Adjustment: before committing a module under backend/, list its importers;
@@ -108,3 +109,16 @@ only here.
   old formula, never the function's own wrapper; print both sides of an
   inequality before trusting it, suspecting exact 0.0, 1.0 or nan.
 - Scope: project · Status: validated (two sessions)
+
+### L-16 · Break an aggregate diagnostic down by row before naming its cause
+- Observation: an aggregate mismatch pointed at the wrong culprit twice in one
+  session; the per-row view found the real one both times.
+- Evidence: 2026-11-19 · SE100's vinyl fluoride r_e "missed" by 0.67% RMS,
+  but every B and C agreed to 0.04% and five A rows carried it all (bad input
+  data, not a bad reference); the defect probe's 1.66 for vinyl fluoride had
+  been read as correction bias, but the parent's ratio is 0.01 and the
+  round-number-A species carry 1.9-2.0.
+- Adjustment: before attributing a failed consistency check or diagnostic
+  ratio to a cause, print it per species and per component; check whether the
+  outliers share a property (precision, source, substitution site).
+- Scope: project · Status: provisional
