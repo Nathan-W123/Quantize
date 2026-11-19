@@ -177,11 +177,20 @@ current code (RHF/6-31G and B3LYP/6-31G(d), all configurations).
   0.29). Check a quantity's units against a known value before reporting.
 
 ## Handoff
-To resume N13 after a restart: `git worktree add --detach <scratch>/n13/wt
-5cfc5d4` if the worktree is gone; copy reports/accuracy_upgrades/*.json into
-its output/ (finished rows are skipped); remove stale *.lock; run
-scratchpad n13/run_level.sh (THREADS=4) for b3lyp with the CHEAP and DEAR
-config lists in this file's brief (minus elec, all); re-arm
-partial/after_b3lyp.sh. Then `--table results=<wt>/output` (and
-configs=base), archive, and update README + docstring.
-
+Two background chains (scratchpad n13/), both resumable (finished rows are
+skipped; each invocation banks its rows when it ends):
+- chain_p2.sh: B3LYP pass 2 in worktree n13/wt (5cfc5d4), one molecule per
+  invocation, cheapest first, acetyl fluoride (torsion, >3 h) last. Status in
+  n13/b3lyp.status.
+- chain_vf.sh: vinyl fluoride rerun in worktree n13/wt_vf (72e3a7c, D-31),
+  hf then b3lyp, each split in two. Status in n13/vf.status.
+After a container restart: check `pgrep -af accuracy_upgrades`; delete the
+stale *.lock in that worktree's output/; relaunch the chain with THREADS=2
+(both) or THREADS=4 (one alone). If a worktree is gone: `git worktree add
+--detach <path> <sha>`, copy theory_geometries_*.json and hessian_cache from
+the other worktree (or reports/accuracy_upgrades/*.json for rows).
+When both are done: archive wt rows (scripts/archive_benchmark_results.py),
+then replace the vinyl_fluoride entry in reports/accuracy_upgrades/*.json
+with wt_vf's (vintage 72e3a7c; only D-31 differs from 5cfc5d4 for it), then
+`--table results=...` (best-of and configs=base), README + docstring, noting
+the vintage mix, elec/all excluded (D-29), CH2ClF r_e scoring.
