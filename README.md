@@ -18,30 +18,49 @@ Key formulas are documented in module docstrings (see `.github/backend/spectral/
 
 ## Results
 
-Against published structures for nine molecules, with each method at its own
-best configuration ([`scripts/accuracy_upgrades_benchmark.py`](scripts/accuracy_upgrades_benchmark.py)),
-mean all-bond RMS error in mÅ:
+Against published structures for nine molecules
+([`scripts/accuracy_upgrades_benchmark.py`](scripts/accuracy_upgrades_benchmark.py),
+`--table results=reports/accuracy_upgrades`), mean all-bond RMS error in mÅ:
 
 | Level of theory | Theory alone | Mixed estimation | Quantize hybrid |
 |-----------------|-------------:|-----------------:|----------------:|
-| RHF/6-31G       | 15.29 | 12.34 | **7.59** |
-| B3LYP/6-31G(d)  | 8.11  | 6.50  | **5.48** |
+| RHF/6-31G, best configuration per method | 15.29 | 12.92 | **7.76** |
+| RHF/6-31G, base configuration            | 21.47 | 17.35 | **11.03** |
+| B3LYP/6-31G(d), best configuration per method | 8.12 | 4.98 | **4.20** |
+| B3LYP/6-31G(d), base configuration            | 9.19 | 5.42 | **4.63** |
 
-The hybrid is best of the three on 6 of 9 molecules at RHF and 5 of 9 at B3LYP.
-Theory alone still beats it on vinyl and acetyl fluoride at both levels and on
-fluoroethane at B3LYP, and those are the molecules whose published references
-are r_s substitution structures rather than r_e. On water, the one molecule with
-a genuine r_e reference, the hybrid scores 1.36 and 4.13 mÅ against theory's
-8.14 and 10.89.
+"Best configuration" gives each method its own best of the 15 (RHF) or 13
+(B3LYP) settings per molecule, which flatters all three; "base" is one setting
+for everything. On the best-of rows the hybrid is the best of the three on 6 of 9
+molecules at RHF and 5 of 9 at B3LYP, beats mixed estimation on 8/9 and 5/9 and
+theory alone on 7/9 and 7/9, and improves from RHF to B3LYP on all nine.
 
-> **Vintage.** This table's numbers were recorded in the benchmark script at
-> 41a4a02 (2026-09-24; some at ff7dbdf, 2026-09-23) and copied here at 4f0ece6
-> (2026-10-05), after 11 more backend commits, and before the
-> November fixes to the fit (Cartesian prior weight, step acceptance, convergence
-> scale, the target prior's curvature). The engine has moved since: at 14125f3 the
-> base-configuration hybrid gives water 0.56 mÅ at RHF/6-31G and 0.050 mÅ at
-> B3LYP/6-31G(d), not 1.36 and 4.13. Regenerate it with the benchmark script
-> before quoting it.
+Most of these references are r_s or effective structures, which sit several mÅ
+from equilibrium (vinyl fluoride's is 5.7 mÅ from its r_e), so they cannot rank
+differences below that. Against the four molecules with a published r_e
+(base configuration, mÅ):
+
+| Molecule (r_e source) | RHF theory | ME | hybrid | B3LYP theory | ME | hybrid |
+|---|---:|---:|---:|---:|---:|---:|
+| water (Császár 2005) | 8.14 | **0.17** | 0.56 | 10.89 | 0.92 | **0.05** |
+| ozone (Tyuterev 1999) | 22.09 | **2.88** | 3.13 | 8.65 | 0.21 | **0.06** |
+| vinyl fluoride (Piccardo 2015, r_e^SE) | 17.98 | **10.70** | 11.39 | 5.86 | 3.87 | **3.36** |
+| chlorofluoromethane (Vogt 2014, r_e^SE)* | 45.68 | 28.16 | **10.80** | 22.37 | 14.38 | **9.24** |
+
+The hybrid beats theory alone on all four at both levels and is the best of the
+three on all four at B3LYP; at RHF mixed estimation is ahead on three.
+*Chlorofluoromethane's benchmark rows predate its r_e, so its numbers come from
+fits that reproduce those rows exactly, scored against Vogt's structure.
+
+> **Provenance.** Code vintage 5cfc5d4 (2026-11-17) for every row except vinyl
+> fluoride's, rerun at 676eb0d (2026-11-19) after its rotational constants were
+> replaced by Hayashi & Inagusa's 1989 measurements -- the only change since
+> 5cfc5d4 that affects it. Not run: the `elec` and `all` configurations (they
+> need `pyscf.prop`, not installed here), and at B3LYP the `torsion` and
+> `offsets+torsion` rows of fluoroethane and acetyl fluoride (a single scan
+> outlasts the 2-hour job limit), so those two molecules' B3LYP best-of is over
+> 11 configurations. Results are archived in
+> [`reports/accuracy_upgrades/`](reports/accuracy_upgrades/).
 
 Held-out prediction needs no reference structure at all. Fitted to every
 isotopologue but one, the hybrid predicts the withheld species' rotational

@@ -1,5 +1,5 @@
 # Current task
-Status: building
+Status: done
 Request: N13 -- regenerate the README / benchmark results table at the
 current code (RHF/6-31G and B3LYP/6-31G(d), all configurations).
 
@@ -259,6 +259,18 @@ current code (RHF/6-31G and B3LYP/6-31G(d), all configurations).
   rows. Missing: torsion + offsets+torsion for fluoroethane and acetyl
   fluoride (4 of 117 rows); a single B3LYP torsion config has outlived a
   3 h run before. Asked the user how to proceed.
+
+- Cleanups done (user: "do 1-3"): efabab3 dead code; a2aafb9 ten scripts
+  archived; 988bad5 CSV correction tables wired (real bug: validated, then
+  failed in the engine) and five unused module groups deleted (-2265 lines
+  incl. tests). Suite 1596 passed.
+- N13 DONE (user: publish without the 4 B3LYP torsion rows): README Results
+  and the benchmark docstring regenerated from reports/accuracy_upgrades --
+  best-of RHF 15.29 / 12.92 / 7.76, B3LYP 8.12 / 4.98 / 4.20; base 21.47 /
+  17.35 / 11.03 and 9.19 / 5.42 / 4.63; plus an r_e table for water, ozone,
+  vinyl fluoride and CH2ClF (hybrid beats theory on all four at both levels,
+  best of three on all four at B3LYP). Stale 1.36 -> 4.13 water claims
+  corrected in prior_widths, holdout_validation, test_prior_widths.
 
 ## Observations
 - 2026-11-19: I estimated N17's saving ("2 wasted refits") without

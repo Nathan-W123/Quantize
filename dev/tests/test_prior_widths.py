@@ -95,8 +95,8 @@ def test_an_uncalibrated_level_degrades_loosely_and_says_so():
 
 
 def test_the_default_is_the_loosest_calibrated_value():
-    """An unmeasured level has earned no confidence. Asserting a precision the
-    surface does not have is what cost water 1.36 -> 4.13 mA."""
+    """An unmeasured level has earned no confidence, so it must not assert a
+    precision the surface has not been shown to have."""
     assert DEFAULT_PRIOR_SIGMA_ANG >= max(PRIOR_SIGMA_BY_LEVEL.values())
 
 

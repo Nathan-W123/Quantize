@@ -58,9 +58,11 @@ by itself establish that a structure is closer to the true equilibrium
 geometry. What it does establish is that the fitted structures capture the
 isotopic dependence of the constants and the level of theory does not.
 
-The one independent check available points the same way: water is the only
-molecule in the set with a genuine r_e reference, and there the hybrid scores
-4.13 mA against theory's 10.89.
+The independent checks available point the same way: against the four
+molecules with a published r_e, at B3LYP/6-31G(d) (base configuration), the
+hybrid scores water 0.05, ozone 0.06, vinyl fluoride 3.36 and
+chlorofluoromethane 9.24 mA against theory's 10.89, 8.65, 5.86 and 22.37
+(README, Results; regenerated 2026-11-19).
 """
 
 from __future__ import annotations

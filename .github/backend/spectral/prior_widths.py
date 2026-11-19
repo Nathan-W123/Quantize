@@ -41,12 +41,15 @@ in directions where theory was the better witness. They were not the same
 engine.
 
 WHAT A WRONG sigma_x COSTS, measured. Too loose and the quantum term stops
-holding the directions the spectrum cannot see. Too tight is worse: water's
-B3LYP/6-31G(d) row went 1.36 -> 4.13 mA when sigma_x claimed 7 mA for a method
-that was 10.89 mA out on O-H, because the fit was instructed to trust a bad
-prior. Both failures are the same mistake -- asserting a precision the surface
-does not have -- so an uncalibrated level falls back to the loose default
-rather than to an optimistic guess.
+holding the directions the spectrum cannot see. Too tight tells the fit to
+trust a bad prior. Both failures are the same mistake -- asserting a precision
+the surface does not have -- so an uncalibrated level falls back to the loose
+default rather than to an optimistic guess. (The example once cited here,
+water's B3LYP/6-31G(d) row going 1.36 -> 4.13 mA, was of a September code
+vintage. At the regenerated 5cfc5d4 benchmark that row is 0.05 mA at the
+calibrated sigma_x of 7 mA, and widening it makes water worse -- 0.403 mA at
+10, 0.753 at 20 -- so for a calibrated level the measured width is the right
+one.)
 
 Per-level, not per-molecule. ``bond_offsets.prior_sigma_for_molecule`` computes
 a better width bond by bond, but it needs offsets measured across a calibration
