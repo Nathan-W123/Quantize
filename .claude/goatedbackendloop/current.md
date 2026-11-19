@@ -223,7 +223,21 @@ current code (RHF/6-31G and B3LYP/6-31G(d), all configurations).
   0.93 -> 1.00; suite 1641 passed. Next: vinyl fluoride rerun at this
   commit (n13/wt_vf2), merge, then N13 tables.
 
+- N17 done: run() stops the chi2 loop when a downward scale changes no
+  sigma (rtol 1e-12) and says the floor binds. Measured first: the no-op
+  refits cost 0.1-0.4 s per fit at RHF, no new Hessians, and moved results
+  by <2e-7 A -- so the gain is an honest log, not speed. Answers unchanged
+  (4 molecules bit-identical, ozone 2e-8 A). 2 tests (premise asserted
+  after a fixture first widened instead of tightening), mutations caught;
+  suite 1643 passed.
+
 ## Observations
+- 2026-11-19: I estimated N17's saving ("2 wasted refits") without
+  measuring; measured, it was ~0.2 s and no QC calls. Measure cost before
+  pitching an efficiency fix.
+- 2026-11-19: a rescale test passed for the wrong reason (the fixture
+  widened, the test assumed tightening); asserting the premise in the test
+  caught it (L-15 again).
 - 2026-11-19: classifying bonds vs angles by counting '-' in their names
   garbled C=O / O=C-F rows; caught by eye (a 451 'mA' angle). Use the
   molecule's own bonds / angles keys, never the label's spelling.

@@ -2867,13 +2867,30 @@ class MolecularOptimizer:
                                    CHI2_RESCALE_MAX_FACTOR))
             direction = "optimistic" if chi2_nu > 1.0 else "conservative"
             verb = "widening" if chi2_nu > 1.0 else "tightening"
+            # A downward scale stops at each row's model-error floor (see
+            # SpectralEngine.scale_sigma). Once every row is there it changes
+            # nothing, and refitting the same objective is a no-op that used to
+            # run, and say "refitting", up to chi2_rescale_max_passes times.
+            # Measured 2026-11-19 on water, ozone, CH2ClF and vinyl fluoride:
+            # passes after the first moved the fit by under 2e-7 A.
+            before = [np.array(iso["sigma_constants"], dtype=float)
+                      for iso in self.spectral.isotopologues]
+            self.spectral.scale_sigma(factor)
+            after = [np.asarray(iso["sigma_constants"], dtype=float)
+                     for iso in self.spectral.isotopologues]
+            if all(np.allclose(a, b, rtol=1e-12, atol=0.0) for a, b in zip(after, before)):
+                print(
+                    f"\n  [chi2-rescale] reduced chi-square = {chi2_nu:.3g}, but every "
+                    f"sigma is already at its model-error floor, which a small "
+                    f"chi-square cannot lower; not refitting."
+                )
+                break
             print(
                 f"\n  [chi2-rescale] reduced chi-square = {chi2_nu:.3g}, outside "
                 f"[{lo:.3g}, {self.chi2_rescale_threshold:g}].\n"
                 f"                 The stated sigmas are {direction} by about "
                 f"{max(factor, 1 / factor):.1f}x; {verb} them and refitting."
             )
-            self.spectral.scale_sigma(factor)
             coords = self._optimise_once()
         return coords
 
