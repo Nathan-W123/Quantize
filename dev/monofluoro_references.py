@@ -647,6 +647,43 @@ def _ch2clf_geometry(rF=1.359, rCl=1.759, rH=1.087,
                      rH * np.array([ux, uy, uz]), rH * np.array([ux, -uy, uz])])
 
 
+#: Chlorofluoromethane's semi-experimental equilibrium structure, as
+#: published parameters (Angstrom, degrees) with their quoted uncertainties:
+#: Vogt, Demaison & Rudolph, "Accurate equilibrium structures of fluoro- and
+#: chloroderivatives of methane", Mol. Phys. 112, 2873 (2014), doi
+#: 10.1080/00268976.2014.915067. Read from W. C. Bailey's NQCC compilation
+#: (nqcc-549512.pages.gwdg.de/CH2FCl.html, Table 3, "reSE [4]"); the paper's
+#: own full text is paywalled and was not read.
+#:
+#: CHECKED against this file's own data before being wired in, which a
+#: mis-copied digit would fail: the r_e's rotational constants reproduce the
+#: B0 below plus B3LYP/6-31G(d) vibrational corrections (normal-mode cubic,
+#: Watson) to 0.044-0.057% on A, B and C of both chlorine isotopologues --
+#: 18.8, 3.3 and 2.6 MHz on the 35Cl species against correction sigmas of
+#: 128, 6.8 and 6.1 -- while the effective structure above misses them by
+#: 0.26-0.35% (3-4 sigma on B and C). A 1 mA slip in C-Cl alone moves B by
+#: ~0.1%. The two structures differ by 3.24 mA (bond RMS).
+CH2CLF_RE_SE = {"C-Cl": (1.7641, 0.0003), "C-F": (1.3595, 0.0003), "C-H": (1.0847, 0.0002),
+                "Cl-C-F": (110.03, 0.01), "Cl-C-H": (107.91, 0.02), "H-C-H": (112.52, 0.03)}
+CH2CLF_RE_SE_SOURCE = (
+    "r_e^SE, Vogt, Demaison & Rudolph, Mol. Phys. 112, 2873 (2014), "
+    "doi 10.1080/00268976.2014.915067, as tabulated in Bailey's NQCC "
+    "compilation (CH2FCl, Table 3); checked against this file's B0 plus "
+    "B3LYP/6-31G(d) corrections to 0.06%")
+
+
+def _ch2clf_geometry_hch(rCl, rF, rH, aClF, aClH, aHH):
+    """CH2ClF from the parameters an equilibrium study publishes (H-C-H, not
+    F-C-H): C at the origin, Cl on +z, F in the xz-plane, the H pair mirrored
+    in y on the side away from F -- the frame _ch2clf_geometry uses."""
+    aClF, aClH, aHH = np.radians([aClF, aClH, aHH])
+    uz = np.cos(aClH)
+    uy = np.sqrt((1.0 - np.cos(aHH)) / 2.0)
+    ux = -np.sqrt(max(0.0, 1.0 - uz ** 2 - uy ** 2))
+    return np.array([np.zeros(3), [0.0, 0.0, rCl], rF * np.array([np.sin(aClF), 0.0, np.cos(aClF)]),
+                     rH * np.array([ux, uy, uz]), rH * np.array([ux, -uy, uz])])
+
+
 # ── Chlorofluoromethane, CH2ClF ──────────────────────────────────────────────
 # Structure: Müller, J. Am. Chem. Soc. 75, 860 (1953) / Landolt-Bornstein.
 # Constants: NBS Monograph 70 Vol. IV p.77, entry 330.
@@ -666,6 +703,10 @@ CHLOROFLUOROMETHANE = ReferenceMolecule(
     ],
     structure_source="Muller, J. Am. Chem. Soc. 75, 860 (1953)",
     constants_source="NBS Monograph 70 Vol. IV p.77 (entry 330)",
+    geometry_re=_ch2clf_geometry_hch(*(CH2CLF_RE_SE[k][0] for k in (
+        "C-Cl", "C-F", "C-H", "Cl-C-F", "Cl-C-H", "H-C-H"))),
+    geometry_re_source=CH2CLF_RE_SE_SOURCE,
+    geometry_re_uncertainty_ma=0.3,
     bonds={"C-Cl": [(0, 1)], "C-F": [(0, 2)], "C-H": [(0, 3), (0, 4)]},
     angles={"F-C-Cl": [(2, 0, 1)], "Cl-C-H": [(1, 0, 3), (1, 0, 4)],
             "F-C-H": [(2, 0, 3), (2, 0, 4)], "H-C-H": [(3, 0, 4)]},
@@ -703,9 +744,10 @@ def _bent_xy(r_ang: float, theta_deg: float) -> np.ndarray:
 #: its own magnitude.
 # ── Equilibrium references still wanted ─────────────────────────────────────
 #
-# Two of nine molecules have a published r_e here: water (Csaszar et al. 2005)
-# and ozone (Tyuterev et al. 1999, below). The other seven are scored against
-# r_s or effective structures, which is the binding constraint on what the
+# Three of nine molecules have a published r_e here: water (Csaszar et al.
+# 2005), ozone (Tyuterev et al. 1999, below) and, since 2026-11-19,
+# chlorofluoromethane (Vogt, Demaison & Rudolph 2014, r_e^SE, +/-0.3 mA; see
+# CH2CLF_RE_SE). The other six are scored against r_s or effective structures, which is the binding constraint on what the
 # benchmark can demonstrate -- ozone's two references are 1.06 mA apart, and
 # that is larger than most of the differences between configurations the
 # benchmark is trying to resolve.
@@ -802,7 +844,20 @@ def _bent_xy(r_ang: float, theta_deg: float) -> np.ndarray:
 #   fluoroethane          r_e^SE; compare the propyne treatment
 #   acetyl fluoride       unlikely to exist; a CCSD(T) r_e would have to
 #                         stand in, and then it is theory, not a reference
-#   chlorofluoromethane   unlikely to exist, same caveat
+#   chlorofluoromethane   FOUND (2026-11-19): r_e^SE in Vogt, Demaison &
+#                         Rudolph, Mol. Phys. 112, 2873 (2014) -- wired in
+#                         above. The same paper covers CHF2Cl, CHFCl2 and
+#                         the other fluoro/chloromethanes.
+#   fluoroacetylene, 2026-11-19 lead: Borro & Mills, J. Mol. Struct. 320, 237
+#                         (1994) give r_e CH 1.0555(15), CC 1.1955(8), CF
+#                         1.2781(8) A -- read from a search-engine summary of
+#                         the abstract, not from the paper (its repository
+#                         host is outside this session's network), and at
+#                         0.8 mA too coarse for the bar in any case.
+#   SE100 (Ceselin, Barone & Tasinato, J. Chem. Theory Comput. 17, 7290
+#                         (2021), open on PMC) is a database of r_e^SE with
+#                         per-parameter sd; its molecule list is in figures
+#                         and supporting information not yet read.
 #
 # The canonical compilation is Demaison & Vogt, "Accurate Structure
 # Determination of Free Molecules", which tabulates r_e for small molecules

@@ -67,8 +67,8 @@ def test_every_molecule_reports_a_verdict(name):
         "none", "ok", "too_coarse", "unstated"}
 
 
-def test_the_two_usable_references_pass():
-    for name in ("WATER", "OZONE"):
+def test_the_usable_references_pass():
+    for name in ("WATER", "OZONE", "CHLOROFLUOROMETHANE"):
         mol = getattr(REF, name)
         assert mol.equilibrium_reference_quality() == "ok", name
         assert mol.equilibrium_geometry is not None
@@ -79,7 +79,7 @@ def test_nothing_else_claims_an_equilibrium_reference():
     """If this starts failing, somebody added one -- check its uncertainty."""
     have = {n for n in ALL_MOLECULES
             if getattr(REF, n).equilibrium_geometry is not None}
-    assert have == {"WATER", "OZONE"}, have
+    assert have == {"WATER", "OZONE", "CHLOROFLUOROMETHANE"}, have
 
 
 def test_an_unstated_uncertainty_is_not_treated_as_good():
@@ -156,3 +156,34 @@ def test_published_r0_scatter_exceeds_our_measured_distance():
     our_distance_deg = 2.2918       # measured, data-only fit vs published r_0
     assert scatter > 8.0
     assert our_distance_deg < scatter
+
+
+def test_chlorofluoromethane_s_r_e_is_the_published_structure():
+    """Vogt, Demaison & Rudolph (2014) r_e^SE, wired in 2026-11-19: the
+    geometry must reproduce the published parameters, the uncertainty must be
+    the largest quoted on a bond, and the provenance must say where the
+    numbers were read (a compilation, not the paywalled paper)."""
+    mol = REF.CHLOROFLUOROMETHANE
+    g = mol.geometry_re
+
+    def ang(i, j, k):
+        a, b = g[i] - g[j], g[k] - g[j]
+        return np.degrees(np.arccos(a @ b / np.linalg.norm(a) / np.linalg.norm(b)))
+
+    p = REF.CH2CLF_RE_SE
+    assert np.linalg.norm(g[1] - g[0]) == pytest.approx(p["C-Cl"][0], abs=1e-9)
+    assert np.linalg.norm(g[2] - g[0]) == pytest.approx(p["C-F"][0], abs=1e-9)
+    assert np.linalg.norm(g[3] - g[0]) == pytest.approx(p["C-H"][0], abs=1e-9)
+    assert np.linalg.norm(g[4] - g[0]) == pytest.approx(p["C-H"][0], abs=1e-9)
+    assert ang(1, 0, 2) == pytest.approx(p["Cl-C-F"][0], abs=1e-7)
+    assert ang(1, 0, 3) == pytest.approx(p["Cl-C-H"][0], abs=1e-7)
+    assert ang(3, 0, 4) == pytest.approx(p["H-C-H"][0], abs=1e-7)
+    assert mol.geometry_re_uncertainty_ma == pytest.approx(
+        1e3 * max(p[k][1] for k in ("C-Cl", "C-F", "C-H")))
+    src = mol.geometry_re_source
+    assert "Vogt" in src and "2873" in src and "NQCC" in src
+    # Same frame and atom order as the effective structure: a few mA apart,
+    # not a relabelled or mirrored molecule.
+    d = np.sqrt(np.mean(np.sum((g - mol.geometry) ** 2, axis=1)))
+    assert d < 0.02
+
