@@ -231,6 +231,24 @@ current code (RHF/6-31G and B3LYP/6-31G(d), all configurations).
   after a fixture first widened instead of tightening), mutations caught;
   suite 1643 passed.
 
+- User asked for a bloat audit (mid-task). Tools: vulture 2.16, pyflakes,
+  an AST import graph from cli.py/runner (package __init__s counted), an
+  AST duplicate-body scan, a kwargs-never-passed scan; every 'referenced
+  nowhere' candidate re-checked with git grep. Findings (scratchpad
+  audit/): (1) dead, zero behaviour: 79 unused imports, ~15 dead locals /
+  write-only attributes (incl. quantize.py hessian_fn x2, _orca_call_count,
+  _mass_dependent_c), 7 unreferenced defs (RunDiagnostics module,
+  print_identifiability_table, symmetry.equiv_groups/supported_groups,
+  VALID_BACKENDS, 2 unused script backends); (2) 11 investigation scripts
+  (~3.1k lines) referenced by no doc, code or test; (3) 13 backend modules
+  (~3.2k lines) unreachable from the CLI/runner -- torsion extras 1.4k,
+  model_selection, prior_sensitivity, bayes_tune, geometric_bridge,
+  rovib_tables, plus benchmark infra (hessian_cache, bond_offsets,
+  electronic_g) -- and 47 functions only tests/scripts call; (4) 13 of
+  143 optimizer kwargs never passed anywhere (guardrails active by
+  default, so not dead). Copy-paste negligible (77 lines). Not dead:
+  load_orca (named in ORCA error messages), get_run_settings.
+
 ## Observations
 - 2026-11-19: I estimated N17's saving ("2 wasted refits") without
   measuring; measured, it was ~0.2 s and no QC calls. Measure cost before
