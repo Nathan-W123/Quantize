@@ -124,7 +124,24 @@ current code (RHF/6-31G and B3LYP/6-31G(d), all configurations).
   hybrid 9.24 mA (effective 10.85), RHF 10.80 (13.38). Others: leads only
   (backlog N3). Clean suite 1631 passed.
 
+- User chose "Read SE100's data": SI Table S1 has HNCO and CH2=CHF r_e^SE
+  but no uncertainties (unwired, values in the module comment). Both
+  reproduce B0 + B3LYP corrections like Vogt's control (HNCO 0.042%; vinyl
+  fluoride B, C 0.035-0.057%, H5 cis to F as in the module). It exposed
+  bad deuterated A0 values in vinyl fluoride's data (784, 788: negative
+  inertial defects, 2-3% misses; compilation re-read, no transcription
+  slip): backlog N15, not changed (benchmark inputs, user's call).
+
 ## Observations
+- 2026-11-19: the SE100 consistency check, run per constant rather than as
+  one RMS, separated a reference that is fine (all B, C at 0.04%) from bad
+  input data (five A rows). An aggregate 0.67% would have read as "SE100
+  disagrees". Break a failed consistency check down by row before judging
+  the reference.
+- 2026-11-19: I wrote a verification claim into a comment ("swapping the
+  labels costs 0.3%") from a different computation; caught on re-read
+  (the label swap is 5.8%). Tie each number in a comment to the run that
+  produced it.
 - 2026-11-19: a secondary table (NQCC) was the only readable source for
   the CH2FCl r_e; checking its numbers against the repo's own B0 and the
   engine's corrections (0.06%, inside the corrections' sigma) is what made

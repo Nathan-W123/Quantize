@@ -300,7 +300,17 @@ class ReferenceMolecule:
 # Structure: Hayashi & Inagusa, J. Mol. Spectrosc. 138, 135 (1989), via CCCBDB.
 # Constants: NBS Monograph 70 Vol. IV p.183, entry 780 (refs 804, 875, 948).
 # Atom order: C1 (bears F and H4), C2 (bears H5, H6), F3, H4, H5, H6.
-# H5 is cis to F across the double bond, H6 is trans (verified geometrically).
+# H5 is cis to F across the double bond, H6 is trans (verified geometrically,
+# and again 2026-11-19: SE100's r_e reproduces every B and C below to 0.04-0.06%
+# with this assignment; swapping the D cis / D trans species labels would put
+# 787's B 5.8% off, and reading SE100's H5 as trans costs up to 0.3%).
+# The deuterated A values are the compilation's own round numbers (48960.,
+# 53400., ...; transcription re-checked against the monograph 2026-11-19) and
+# are poor: 784 and 788 give NEGATIVE inertial defects (-0.104, -0.088 amu A^2,
+# also printed in the compilation) for a planar molecule whose other species
+# give +0.016 to +0.069, and both SE100's r_e and the B3LYP minimum miss them by
+# 2-3% after vibrational correction, against 0.09% for the parent's A. Their
+# sigmas here do not say so (backlog N15).
 
 VINYL_FLUORIDE = ReferenceMolecule(
     key="vinyl_fluoride",
@@ -855,9 +865,21 @@ def _bent_xy(r_ang: float, theta_deg: float) -> np.ndarray:
 #                         host is outside this session's network), and at
 #                         0.8 mA too coarse for the bar in any case.
 #   SE100 (Ceselin, Barone & Tasinato, J. Chem. Theory Comput. 17, 7290
-#                         (2021), open on PMC) is a database of r_e^SE with
-#                         per-parameter sd; its molecule list is in figures
-#                         and supporting information not yet read.
+#                         (2021), open on PMC). Read 2026-11-19: SI Table S1
+#                         lists r_e^SE for HNCO (C=O 1.1644, C=N 1.2147, N-H
+#                         1.0059 A; CNH 123.02, NCO 171.51 deg) and CH2=CHF
+#                         (C1-F 1.3424, C=C 1.3213, C1-H4 1.0792, C2-H5 1.0785,
+#                         C2-H6 1.0772 A; F-C1-H4 112.10, F-C1=C2 121.72,
+#                         C1=C2-H5 121.32, C1=C2-H6 118.95 deg; SE100's H5 is
+#                         cis to F, as here), and corroborates Vogt's CH2ClF.
+#                         Both reproduce B0 + B3LYP/6-31G(d) corrections as
+#                         well as Vogt's r_e does (HNCO 0.042% rms; vinyl
+#                         fluoride B, C 0.035-0.057%), but Table S1 states NO
+#                         uncertainty -- per-parameter sd appear only for the
+#                         main text's eight new molecules -- so both stay
+#                         unwired ("unstated"). Their sources (Piccardo 2015
+#                         JPCA; Penocchio 2015 JCTC) are not open access.
+#                         No HCOF, HCCF, fluoroethane or acetyl fluoride.
 #
 # The canonical compilation is Demaison & Vogt, "Accurate Structure
 # Determination of Free Molecules", which tabulates r_e for small molecules

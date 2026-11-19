@@ -30,7 +30,8 @@ only here.
   reason for suspicion.
 - Evidence: 2026-11-10 · a Costain-rule r_s floor gave 852 mA for ozone
   against the docstring's 4.1.
-- Scope: project · Status: validated
+- Scope: project · Status: validated · Outcomes: +2026-11-19 (Vogt's CH2ClF r_e as the
+  control row is what made the SE100 HNCO / vinyl fluoride check readable)
 
 ### L-P06 · A library module with only a script consumer is misplaced
 - Adjustment: before committing a module under backend/, list its importers;
