@@ -33,6 +33,8 @@ only here.
 - Scope: project · Status: validated · Outcomes: +2026-11-19 (Vogt's CH2ClF r_e as the
   control row is what made the SE100 HNCO / vinyl fluoride check readable; reproducing the archived
   base rows to the digit made the A-row pull numbers the benchmark's own)
+  +2026-11-19 (a per-bond prior patch checked through the engine's own accessors -- added
+  variance / s^2 must be 1 -- failed at 2.15 and caught a patch on the wrong matrix)
 
 ### L-P06 · A library module with only a script consumer is misplaced
 - Adjustment: before committing a module under backend/, list its importers;

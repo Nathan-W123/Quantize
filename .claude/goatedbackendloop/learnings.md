@@ -73,10 +73,13 @@ Sessions: 0 · Last consolidated: never
 - Evidence: 2026-11-10 · Quantize (was project lesson L-P05).
 - Adjustment: when a failure surfaces from inside a library call, log the
   inputs to that call across the failing sequence before forming a theory
-  about the library's settings.
+  about the library's settings. The same holds for a runtime patch: log what
+  the engine's own call receives before trusting the patch's inputs.
 - Scope: workflow
 - Status: provisional
-- Outcomes:
+- Outcomes: +2026-11-19 (a monkeypatched prior gave wrong numbers; logging
+  what _calibrated_alpha_q received showed the fit reads a rigid-projected
+  Hessian, not the raw one the patch changed -- one probe, cause found)
 ### L-07 · Classify a tool's findings before quoting its count
 - Observation: a dead-code report quoted a raw tool count to the user; most of
   it was intentional on inspection.
