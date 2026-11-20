@@ -1,103 +1,75 @@
 # Current task
-Task: T-08
-Status: done
-Request: why chlorofluoromethane's offsets hybrid is worse at B3LYP than at
-RHF (6.00 vs 2.91 mA vs Vogt r_e^SE); diagnostic only, no engine change
-(D-39, auto-picked at Q-07).
+Task: T-09
+Status: building
+Request: find chlorofluoromethane isotopologues (13C, D, ...) with published
+ground-state constants; literature first, no engine change (D-40,
+auto-picked at Q-08).
 
 ## Brief
-- Outcome: the gap attributed, with numbers, to (a) the prior centre (how
-  well each class's leave-one-out offset transfers to CH2ClF at each level),
-  (b) the fit (what two Cl isotopologues, rank 5/9, can and cannot place,
-  and what the vibrational corrections do), or both.
-- Approach: reproduce the offsets row at both levels from the frozen caches
-  (t07/wt2, c8904da), then per bond vs Vogt r_e^SE at each stage: raw
-  theory, offset-corrected centre, mixed estimation, hybrid. Then two
-  counterfactual fits: centre with CH2ClF's own C-Cl error removed, and
-  centre = r_e itself (how far the data + corrections pull the fit off the
-  truth at each level).
-- Hypothesis to test, not assume: B3LYP's C-Cl error transfers worse from
-  CH3Cl (+25.4 mA) to CH2ClF than HF's does (+85.6), and the 2-isotopologue
-  data spread the residual into C-F (N16 mechanism).
-- Success: each stage reproduces the archived RMS (2.91 / 6.00 vs r_e,
-  5.42 / 8.18 vs primary) and the attribution sums to the gap.
-- Trade-off: none in code; the cost is one fit per counterfactual, Hessians
-  cached.
+- Outcome: a table of CH2ClF species with published ground-state rotational
+  constants (value, uncertainty, reduction, source, whether readable), or a
+  stated "not found" with what was searched.
+- Why: T-08 -- two Cl isotopologues leave a valley the C-Cl / C-F offset
+  misses sit in; 13C and D substitution move different atoms. The present
+  constants (NBS Monograph 70, 1950s; 41810.1 / 5715.7 / 5194.6 MHz) may
+  also be superseded by modern 35Cl / 37Cl fits.
+- Accept: ground-state A0, B0, C0 (or Watson parameters convertible to
+  them) from a published fit, reduction stated, read from the paper or a
+  reliable compilation; unambiguous isotopic composition.
+- Gate: adding species or replacing constants changes a benchmark input
+  and every CH2ClF row; that is a separate question, not part of this
+  search.
 
 ## Graph
-- N1 · explore · per-bond breakdown at each stage, both levels · after: none · running · handoff: done; visibility (t08/vis.py) both levels done
-- N2 · explore · transferability: pool offset vs CH2ClF's own error per class · after: none · done · handoff: C-Cl misses 12.4 (HF, over) / 12.8 (B3LYP, under); C-F 2.2 / 5.7
-- N3 · explore · counterfactual fits (C-Cl oracle centre, r_e centre) · after: N1 · done · handoff: B3LYP oracle 6.00 -> 2.95, HF oracle 2.91 -> 4.16; r_e centre stays <= 0.44 at both
-- N4 · verify · fresh agent re-derives the attribution from the script and data · after: N1, N2, N3 · done · handoff: conclusion confirmed; C-F is an equal co-cause; quadratic estimate corrected (376 / 278); width, tables, Hessians ruled out (<= 0.3 mA)
-- N5 · build · README sentence + backlog N16 note · after: N4 · done · handoff: README, docstring, scripts/archive/chlorofluoromethane_level_gap.py (reproduces at HF)
+- N1 · explore · NQCC CH2FCl page and its references (Vogt 2014's isotopologues) · after: none · done · handoff: no constants; primary source Blanco et al. JMS 174, 397 (1995)
+- N2 · explore · literature search for 13C / D / CHD / CD2 rotational spectra · after: none · done · handoff: 13C only (Blanco 1995, paywalled); no D; modern 35Cl constants = NBS to <= 1.1 MHz
+- N2b · explore · synthetic 13C test: does a third species close the valley? · after: N2 · running · handoff: no at both levels (RHF 2.91 -> 2.93/2.98, B3LYP 6.00 -> 5.86/5.97); verify running
+- N3 · gate · Q-09: add which species / replace constants? · after: N1, N2 · pending · handoff: -
 
 ## Progress
-- Script: scratchpad t08/diag.py <hf|b3lyp> <out.json> (frozen caches t07/wt2,
-  repo code; engine unchanged since c8904da).
-- RHF (t08/hf.json): reproduces the archived offsets row exactly (hybrid
-  5.4233 vs primary, 2.9080 vs r_e; ME 4.2636 vs r_e). Per bond vs Vogt
-  r_e^SE (mA), C-Cl / C-F / C-H:
-  theory +73.2 / +25.9 / -15.0; pool offsets +85.6 (CH3Cl) / +28.1 / -10.6;
-  centre -12.4 / -2.2 / -4.4 (C-Cl over-corrected: CH3Cl's HF C-Cl error is
-  12 mA larger than CH2ClF's); ME -5.4 / +1.5 / -4.8; hybrid +1.0 / +2.9 /
-  -4.0. Counterfactuals: C-Cl-oracle centre (2.84) -> hybrid 4.16 (C-Cl
-  +5.4, C-F -1.1) -- worse than the real centre; r_e centre -> hybrid 0.44,
-  ME 0.35 (data + HF corrections are consistent with r_e to <= 0.7 mA per
-  bond). So RHF's 2.91 is partly a cancellation: the fit's pull on C-Cl
-  (about +5 to +13 mA from a centre off in C-F / C-H) meets a centre 12 mA
-  short in C-Cl.
-- B3LYP (t08/b3lyp.json): reproduces the archived row exactly (8.1777 vs
-  primary, 5.9958 vs r_e; ME 6.7127). C-Cl / C-F / C-H vs r_e (mA): theory
-  +38.2 / -1.2 / +6.7; pool offsets +25.4 (CH3Cl) / +4.5 / +5.2; centre
-  +12.8 / -5.7 / +1.4 (C-Cl under-corrected by 12.8 -- the same size of miss
-  as HF's 12.4 over-correction, opposite sign; the B3LYP C-F pool spreads
-  -5.4 to +13.5 against HF's 24.6-30.7); ME +8.3 / -7.9 / +1.8; hybrid
-  +7.4 / -7.2 / +1.4. Counterfactuals: C-Cl-oracle centre (3.40) -> hybrid
-  2.95 (C-Cl +3.0, C-F -3.7); r_e centre -> hybrid 0.39, ME 0.22.
-  So the hypothesis "B3LYP's C-Cl transfers worse" is wrong: both levels
-  miss by ~12-13 mA. Removing the C-Cl centre error halves B3LYP's error
-  (6.00 -> 2.95); most of the rest is C-F's offset (centre -5.7).
-- Visibility, RHF (t08/vis_hf.json; data chi2 over the 6 corrected
-  targets, 2 isotopologues x A,B,C, the fit's sigmas): r_e 3.70, theory
-  10121, centre 1598, ME 0.02, hybrid 0.29. Line r_e -> centre: 3.7, 128,
-  433, 921, 1598. Single-class +10 / -10 mA from r_e: C-Cl 139 / 248, C-F
-  63 / 133, C-H 7 / 12. Centre's bond errors alone on r_e: 464.
-- Visibility, B3LYP (t08/vis_b3lyp.json): r_e 2.39, theory 2688, centre
-  232, ME 0.06, hybrid 0.11. Line r_e -> centre: 2.4, 7.1, 47, 122, 232.
-  Single-class +10 / -10 mA: C-Cl 136 / 220, C-F 63 / 115, C-H 7 / 9 (the
-  same per-bond sensitivity as RHF). Centre's bond errors alone on r_e: 110.
-- Reading: both fits end below r_e's own chi2 (0.29 / 0.11 vs 3.70 / 2.39),
-  so the 2-isotopologue data have a valley of structures they fit equally
-  well, several mA wide, and the fit keeps whatever part of the centre's
-  error lies along it. Quadratic check from the single-class costs: RHF's
-  centre bond error (all three short) predicts ~390 if independent and
-  scores 464 (the errors add in the moments: across the valley, removed);
-  B3LYP's (C-Cl long, C-F short) predicts ~260 and scores 110 (they cancel:
-  along the valley, kept). Not a worse level: B3LYP's raw structure is 22.4
-  mA from r_e against HF's 45.7. RHF's 2.91 is partly luck -- from a better
-  centre (C-Cl oracle) it gets 4.16.
-- Independent check (fresh agent; scratchpad t08/verify/): claims 1, 2, 4
-  confirmed; 3 weakened (0.44 / 0.39 is the RMS, worst bond 0.69 / 0.64); 5
-  confirmed with the caveat that single-class costs hold angles fixed; 6's
-  conclusion confirmed but my quadratic estimate was wrong (scaled the r_e
-  baseline: proper split 376 RHF / 278 B3LYP, cross terms +88 / -168).
-  Missed co-cause: B3LYP's C-F offset over-corrects by 5.7 mA; fixing either
-  C-Cl or C-F alone gives ~3 mA (surrogate). Real HF fits: bonds-only centre
-  2.87, angles-only centre 1.96; surrogate B3LYP 6.42 / 0.24. Prior width,
-  correction tables and Hessians swapped between levels: <= 0.3 mA.
-- Remedies (flag, not implement): (a) more data -- Vogt's r_e^SE used more
-  isotopologues than the benchmark's two Cl species (unchecked how many,
-  and whether their constants are published); (b) a second C-Cl
-  calibration molecule so the C-Cl offset is a mean, not one molecule's.
+- NQCC CH2FCl page (Bailey, last modified 2014-07-03): no rotational
+  constants at all; 35Cl / 37Cl quadrupole tables and the r_o (Blanco et al.
+  [3]) vs r_e^SE (Vogt [4]) structure table only. Refs: Muller JACS 75, 860
+  (1953); Nandi & Chatterji SA 31A, 603 (1975); Blanco, Lesarri, Lopez,
+  Alonso & Guarnieri, JMS 174, 397-416 (1995); Vogt, Demaison & Rudolph, Mol.
+  Phys. 112, 2873 (2014). Not stated which isotopologues entered r_e^SE.
+- Blanco et al. 1995 (ScienceDirect abstract via search, pii
+  S0022285285700112 -- its "85" is the journal's code, not 1985): ground
+  states of 12CH2 35ClF, 12CH2 37ClF and 13CH2 35ClF, 8-250 GHz; r_o C-Cl
+  1.7621(2), C-F 1.370(1), C-H 1.09(1), ClCF 110.1(5) -- identical to
+  NQCC's r_o [3]. No deuterated species named. Constants not yet read.
+- Searches (3, incl. one extended) found no CHDFCl / CD2FCl rotational
+  study; closest are CH2DF, CH2DCl, CHF2Cl / CDF2Cl (other molecules).
+- NQCC ClFMethanes.pdf (Bailey 2008, extracted locally, dl_clfm/): CH2FCl
+  structures (ropt, ~re, ro) and nqcc only; no rotational constants.
+- ScienceDirect (Blanco 1995) and ResearchGate (Vogt 2014): 403 to
+  automated access; not retried. Bologna PDF (unibo): the CH2ClF dimer
+  (Favero et al. PCCP 2019), not the monomer.
+- Pietropolli Charmet et al., J. Chem. Phys. 139, 164302 (2013), open at
+  ricerca.sns.it (extracted locally, dl_sns/): Table II prints Blanco 1995's
+  ground-state constants for CH2 35ClF, Watson A / Ir: A0 41811.2198(98),
+  B0 5715.97941(42), C0 5194.89167(14) MHz (benchmark's NBS values 41810.1,
+  5715.7, 5194.6: within 1.1 / 0.28 / 0.29 MHz, against fit sigmas 121 /
+  6.3 / 5.6 -- replacing them changes nothing). 37Cl and 13C values not
+  printed. Their own r_e^SE (CCSD(T)/cc-pCVTZ corrections, "different
+  isotopic species (from Ref. 21)" = Blanco's three): C-H 1.083984(17),
+  C-F 1.359385(15), C-Cl 1.764123(13), HCCl 107.9446, HCH 112.5632, FCCl
+  110.0180 -- Vogt's within 0.7 mA (C-H) and 0.04 deg.
+- Conclusion of the search: published species are 12CH2 35ClF, 12CH2 37ClF,
+  13CH2 35ClF (Blanco 1995, paywalled); no deuterated study found (5
+  searches). JPL/CDMS: no CH2ClF entry found.
+- Synthetic test (t09/synth.py; 13C species built from Vogt r_e minus the
+  level's own correction, never written to the reference), RHF: two
+  species 2.91; + exact 13C 2.93; + 13C with the 35Cl species' relative
+  correction error 2.98. The 13C species adds almost nothing (C near the
+  centre of mass; sigmas set by the correction's model error). B3LYP:
+  two species 6.00 (C-Cl +7.35, C-F -7.20); + exact 13C 5.86 (+7.00,
+  -7.22); + 13C with 35Cl-like error 5.97 (+7.26, -7.21). Does not close
+  the valley at either level. Independent check of the construction
+  running.
 
 ## Observations
-- 2026-11-20: my hypothesis (B3LYP's C-Cl offset transfers worse) was wrong; the stage-by-stage breakdown refuted it before anything was written up. The verifier caught a missed co-cause (C-F) and a sloppy quadratic estimate (L-18 again: derive quoted numbers by script).
 
 ## Pending question
-- Q-08 · what's next after T-08 · asked 2026-11-20 07:00 UTC · deadline 07:15 UTC · wake-up trig_01HxnLRpGQmxzHLHUTg4MoXy
-  1. Look for CH2ClF's other isotopologues (13C, D) with published ground-state constants (Recommended): more data to close the valley; literature first, no engine change
-  2. A second C-Cl calibration reference (CH2Cl2 or CHCl3 r_e / r_e^SE with a stated sd <= 0.5 mA)
-  3. An N-H calibration reference (NH3, formamide, methanimine)
-  4. Done for now
 
 ## Handoff

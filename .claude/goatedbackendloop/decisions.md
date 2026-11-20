@@ -531,3 +531,17 @@
   the README's sparse-data sigma rows (N2).
 - Source: auto-picked, no answer in 15 min (Q-07, recommended option)
 - Revisit if: the user picks another option.
+
+### D-40 · Next task: chlorofluoromethane's other isotopologues (2026-11-20)
+- Decision: T-09 searches the literature for CH2ClF isotopologues beyond the
+  benchmark's two Cl species (13C, D, CHD, CD2) with published ground-state
+  constants. Literature first; adding data to the reference entry is a
+  separate gate (it changes a benchmark molecule's input and its rows).
+- Why: T-08 found the B3LYP error survives because two Cl isotopologues
+  cannot see a C-Cl long / C-F short combination; more substituted species
+  are the direct test. The benchmark's constants are also 1950s values (NBS
+  Monograph 70).
+- Alternatives considered: a second C-Cl calibration reference; an N-H
+  calibration reference.
+- Source: auto-picked, no answer in 15 min (Q-08, recommended option)
+- Revisit if: the user picks another option.
