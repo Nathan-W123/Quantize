@@ -574,3 +574,18 @@
   dependence.
 - Source: auto-picked, no answer in 15 min (Q-10, recommended option)
 - Revisit if: the measurement shows either candidate hurting another molecule.
+
+### D-43 · No second C-Cl calibration reference (2026-11-20)
+- Decision: add neither CH2Cl2 nor CHF2Cl to CALIBRATION_ONLY; record the
+  measurement (dev/monofluoro_references.py comment, backlog N16).
+- Why: offsets fits on all nine molecules (T-10, one entry per unique
+  bond, verified by a fresh agent): mean hybrid RHF 5.38 -> 5.57 (+CH2Cl2)
+  / 5.70 (+CHF2Cl), B3LYP 4.13 -> 4.11 / 3.91. Neither improves both
+  levels; CHF2Cl also breaks D-35 (C-Cl sd 0.9, C-H 1.1 mA). B3LYP's C-Cl
+  error grows ~13-15 mA with a fluorine on the carbon, so only a
+  fluorinated chloride transfers to CH2ClF at B3LYP.
+- Alternatives considered: add CHF2Cl (rule exception; B3LYP -0.22, RHF
+  +0.32); add CH2Cl2 (meets D-35; net loss).
+- Source: auto-picked, no answer in 15 min (Q-11, recommended option)
+- Revisit if: a fluorinated chloride with an r_e sd <= 0.5 mA appears, or
+  uncalibrated-class widths stop depending on every class mean (N16).

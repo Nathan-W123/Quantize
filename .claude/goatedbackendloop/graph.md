@@ -23,6 +23,7 @@ the decisions record; tasks before T-01 live in git history only.
 - T-07 · calibration molecules for uncovered bond classes: CH3Cl, HCN, H2O2 as calibration-only, default pool, offsets rows rerun · 2026-11-20 · done
 - T-08 · why CH2ClF is worse at B3LYP: C-Cl and C-F offset misses along a direction two isotopologues cannot see · 2026-11-20 · done
 - T-09 · CH2ClF's other isotopologues: only 13C published (paywalled), no D; a synthetic 13C barely helps under independent weights · 2026-11-20 · done
+- T-10 · second C-Cl calibration reference: CH2Cl2 / CHF2Cl measured on all nine, neither improves both levels, none added · 2026-11-20 · done
 
 ## Edges
 - C:quantum-prior --depends-on--> C:joint-optimizer · 2026-11-20
@@ -77,3 +78,9 @@ the decisions record; tasks before T-01 live in git history only.
 - T-09 --decided--> D-40 · 2026-11-20
 - T-09 --touched--> C:references · 2026-11-20
 - T-09 --taught--> L-19 · 2026-11-20
+- T-10 --decided--> D-41 · 2026-11-20
+- T-10 --decided--> D-42 · 2026-11-20
+- T-10 --decided--> D-43 · 2026-11-20
+- D-43 --governs--> C:bond-offsets · 2026-11-20
+- T-10 --touched--> C:references · 2026-11-20
+- T-10 --taught--> L-P04 · 2026-11-20

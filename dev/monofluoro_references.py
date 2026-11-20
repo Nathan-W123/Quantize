@@ -1353,6 +1353,17 @@ MOLECULES_SET3 = [OZONE, ETHYLENE_OXIDE, ISOCYANIC_ACID]
 # N-H has no member here: no N-H equilibrium structure with a readable stated
 # uncertainty was found (2026-11-20; ammonia's 1.0110 A, Demaison, Margules &
 # Boggs, Chem. Phys. 260, 65 (2000), is quoted without one where readable).
+#
+# C-Cl has one member on purpose (2026-11-20, decisions D-43). A second was
+# measured on all nine scored molecules' offsets fits: CH2Cl2 (Vogt 2014
+# r_e^SE, inside the limit) moved the mean hybrid bond error from 5.38 to
+# 5.57 mA at HF/6-31G and from 4.13 to 4.11 at B3LYP/6-31G(d); CHF2Cl (Vogt
+# 2014, C-Cl sd 0.9 mA, outside the limit) to 5.70 and 3.91. B3LYP's C-Cl
+# error grows with fluorination (+25 mA in CH3Cl and CH2Cl2, +38 in CH2ClF,
+# +40 in CHF2Cl), so only a fluorinated chloride transfers to chlorofluoro-
+# methane there. Any new member also narrows the width given to every
+# uncalibrated class (bond_offsets.uncorrected_class_bias pools all class
+# means), which is how a C-Cl member moved isocyanic acid at HF.
 
 
 def _ch3cl_geometry(r_ccl, r_ch, a_clch_deg):

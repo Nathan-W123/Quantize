@@ -1,6 +1,6 @@
 # Current task
 Task: T-10
-Status: building
+Status: done
 Request: a second C-Cl calibration reference (CHF2Cl, CH2Cl2, CHCl3) so the
 C-Cl offset is not one molecule's; literature first, then measure; adding
 entries is a separate gate (D-41, auto-picked at Q-09).
@@ -26,7 +26,7 @@ entries is a separate gate (D-41, auto-picked at Q-09).
 - N4 · verify · offsets fits, 9 molecules x 2 levels x 3 pools (current, +CH2Cl2, +CHF2Cl) · after: N3 · done · handoff: RHF mean 5.38 -> 5.66 / 5.70; B3LYP 4.13 -> 4.10 / 3.91
 - N4v · verify · fresh agent checks pools.py recipe and both result files · after: N4 · done · handoff: recipe and all 54 rows reproduce bit-exactly; candidates entered once per atom, not per unique bond
 - N4b · build · rerun N4 with one entry per unique bond (pools2_{hf,b3lyp}.json) · after: N4v · done · handoff: RHF 5.38 -> 5.57 / 5.70; B3LYP 4.13 -> 4.11 / 3.91; matches the verifier's 4 corrected refits
-- N5 · gate · Q-11: add which, if any? · after: N4b · asked 12:43 UTC · handoff: -
+- N5 · gate · Q-11: add which, if any? · after: N4b · done · handoff: D-43 (auto-picked): add none; comment in dev/monofluoro_references.py, backlog N16
 
 ## Progress
 - NQCC pages (fetched 2026-11-20): CH2Cl2 r_e^SE (Vogt 2014) C-Cl
@@ -112,9 +112,5 @@ entries is a separate gate (D-41, auto-picked at Q-09).
 - 2026-11-20 · cl.py built candidate offsets one per atom, with a comment claiming it followed leave_one_out_offsets; I had read the consumer, not measure_offsets (the producer it stood in for). The fresh verifier caught it; N2's RHF miss table was wrong by up to 6 mA.
 
 ## Pending question
-- Q-11 (asked 12:43 UTC, deadline 12:58 UTC; send_later trig_01FMoLGqSetN9yEuFREktwBc): add
-  which second C-Cl reference, if any? 1 add nothing, record the finding
-  (Recommended; auto-pick at deadline) · 2 add CHF2Cl (bends D-35, needs
-  the user's say-so, never auto-picked) · 3 add CH2Cl2 · 4 Done for now.
 
 ## Handoff

@@ -107,6 +107,7 @@ Sessions: 0 · Last consolidated: never
 - Adjustment: when a turn ends to wait on background work, the last message says what is running, its progress (n of N), a rough ETA, and that the loop resumes on its own when it finishes.
 - Scope: workflow
 - Status: provisional
+- Outcomes: +2026-11-20 (T-10: three waits, each with run, progress and ETA; no "why did it stop" since)
 
 ## Retired
 ## Changelog
@@ -114,3 +115,4 @@ Sessions: 0 · Last consolidated: never
 - 2026-11-13 L-02 added (reproducible numbers).
 - 2026-11-16 L-03 (measure instead of tuning a proxy) and L-04 (CLI entry point) added after step 8; L-02 outcome +2026-11-16 (seeds quoted in every later commit; a verifier still caught one CLI number without its seed).
 - 2026-11-17 L-06 moved here from the project's lessons (workflow scope); lessons.md consolidated 219 -> ~110 lines (L-10 into L-14, L-P01 and L-13 into L-15); L-04 outcome +2026-11-17.
+- 2026-11-20 L-09 outcome +; project L-P04 extended (hand-built stand-ins for a library function's output).

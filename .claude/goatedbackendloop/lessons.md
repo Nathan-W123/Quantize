@@ -35,6 +35,13 @@ only here.
   base rows to the digit made the A-row pull numbers the benchmark's own)
   +2026-11-19 (a per-bond prior patch checked through the engine's own accessors -- added
   variance / s^2 must be 1 -- failed at 2.15 and caught a patch on the wrong matrix)
+  -2026-11-20 not applied (T-10: candidate offsets hand-built one per atom while
+  measure_offsets gives one per unique bond; building CH3Cl the same way and
+  comparing with its pool entry would have shown 3 C-H vs 1; a fresh verifier
+  caught it, N2's RHF miss table was off by up to 6 mA). Extension: a
+  hand-built stand-in for a library function's output counts as a derived
+  quantity -- build one existing case by hand and compare shape and
+  multiplicity, not only values.
 
 ### L-P06 · A library module with only a script consumer is misplaced
 - Adjustment: before committing a module under backend/, list its importers;
@@ -137,17 +144,18 @@ only here.
   uncovered bond class) and run all of them, on every yardstick available,
   before reporting a gain; say n when it is small.
 - Scope: project · Status: provisional
-- Outcomes: +2026-11-20 helped (T-07: running all nine molecules on both yardsticks caught ozone worse vs r_e at B3LYP and HF's trans H2O2 before the default flipped)
+- Outcomes: +2026-11-20 helped (T-07: running all nine molecules on both yardsticks caught ozone worse vs r_e at B3LYP and HF's trans H2O2 before the default flipped) +2026-11-20 (T-10: HNCO, with no C-Cl bond, lost 0.6 mA at RHF from a C-Cl member -- only the all-nine run showed it)
 
 ### L-18 · In results prose, name the row each number comes from
 - Observation: the README/docstring text for the calibration rerun mixed best-of figures with per-config row figures in "before -> after" pairs (ozone 1.00 vs the offsets row's 1.43; CH2ClF 13.38 vs 20.14) and credited corrected theory with wins mixed estimation took.
 - Evidence: 2026-11-20 · fresh-agent fact-check of 622b573 found 4 errors; the diffed tables had none.
 - Adjustment: write each quoted figure with its config and yardstick (best-of / offsets row; vs primary / vs r_e) and generate the before/after pairs from the JSON with a script, not from memory; have the prose fact-checked against the data.
 - Scope: project · Status: provisional
-- Outcomes: -2026-11-20 partly (T-08: the prose numbers were scripted, but one derived figure -- the ~390 / ~260 quadratic estimate -- was hand-computed and wrong; the verifier caught it)
+- Outcomes: +2026-11-20 (T-10: every before/after pair printed from the JSON; the verifier's recomputed means matched to 4 places) -2026-11-20 partly (T-08: the prose numbers were scripted, but one derived figure -- the ~390 / ~260 quadratic estimate -- was hand-computed and wrong; the verifier caught it)
 
 ### L-19 · A negative result through the engine is conditional on its configuration
 - Observation: "a 13C species would not fix CH2ClF" held only because the fit weights the targets as independent; with correlated weights the same species could matter.
 - Evidence: 2026-11-20 · T-09 verifier: synthetic 13C 6.00 -> 5.97 mA as configured, linearised 6.63 -> 6.15 / 5.38 -> 3.35 with correlated weights.
 - Adjustment: when an experiment through the engine finds "no effect", name the settings it depends on (weighting, prior, width) and say whether a different setting could change it.
 - Scope: project · Status: provisional
+- Outcomes: +2026-11-20 (T-10: D-43 names its dependence on the uncorrected_class_bias width rule, which drives HNCO's loss)
