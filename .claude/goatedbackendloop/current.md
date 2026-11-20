@@ -19,8 +19,8 @@ root fix), literature first, no engine change (D-34, auto-picked at Q-02).
 - N2 · explore · literature search for candidates per class · after: none · done · handoff: C-Cl, C-N, O-O/O-H found; N-H none meeting the rule
 - N3 · gate · Q-04: add CH3Cl, HCN, H2O2 and measure offsets? · after: N1, N2 · done · handoff: D-36 (auto-picked)
 - N4 · build · calibration-only entries + theory geometries + pool · after: N3 · done · handoff: refs + calibration=extended + offsets_pool; 10 tests, 3 mutations caught
-- N5 · verify · offsets shifts per molecule; offsets fits for CH2ClF, HNCO, water, ozone vs r_e · after: N4 · running · handoff: scratchpad calib/calib_{hf,b3}.log
-- N6 · gate · rerun the full offsets rows and README tables · after: N5 · pending · handoff: -
+- N5 · verify · offsets shifts per molecule; offsets fits for CH2ClF, HNCO, water, ozone vs r_e · after: N4 · done · handoff: CH2ClF big gain both levels; HNCO bonds better, angles worse; ozone worse at B3LYP (O-O bond order); others' sigma_x wider
+- N6 · gate · Q-05: rerun offsets config for all 9 with calibration=extended? · after: N5 · running · handoff: pending answer
 
 ## Progress
 - Candidates meeting the rule (r_e / r_e^SE, stated sd <= 0.5 mA):
@@ -60,8 +60,12 @@ root fix), literature first, no engine change (D-34, auto-picked at Q-02).
   4.2-4.8 mA, C-H offsets move <= 0.3 mA.
   RHF first pass invalid for H2O2 (see review): CH2ClF 17.64 -> 2.94, HNCO
   20.01 -> 7.28 (angle 1.49 -> 2.79), water 0.65 -> 0.02, ozone 2.86 ->
-  6.22; other five sigma_x 5.1-6.3 -> 7.0-7.6. Rerun with the guard:
-  calib/calib_hf2.log.
+  6.22; other five sigma_x 5.1-6.3 -> 7.0-7.6.
+  RHF rerun with the guard (calib_hf2.log): H2O2 left out (0.274 A);
+  CH2ClF 17.64 -> 2.91 (C-Cl +23.2 -> +1.0, C-F -18.5 -> +2.9, angle 0.67
+  -> 0.89); HNCO 20.01 -> 7.14 (N-H +33 -> +8), angle 1.49 -> 2.78 deg;
+  water 0.65 -> 0.64; ozone 2.86 -> 2.86; other five sigma_x 5.1-6.3 ->
+  6.1-6.9 (not refitted).
 - Independent review (fresh agent, brief + criteria + diff): default path
   and never-scored PASS. Found: HF/6-31G optimises H2O2 trans-planar
   (179.8 deg; B3LYP 117.25, r_e 113.5) -- confirmed; per-results-file lock
@@ -90,5 +94,11 @@ root fix), literature first, no engine change (D-34, auto-picked at Q-02).
   mutants); L-15 again -- the main() wiring was untested.
 
 ## Pending question
+- Q-05 · gate: 1 rerun only the offsets configuration, all 9 molecules,
+  both levels, calibration=extended, into the _calext files; compare with
+  the archived rows; no default / README change (Recommended); 2 same but
+  without H2O2's O-O (bond-order mismatch with ozone; chosen after seeing
+  results); 3 stop, keep it opt-in and recorded · deadline 02:45 UTC
+  2026-11-20 · wake-up trig_01LNuWmimjxhg2jNJcYcKu88
 
 ## Handoff
