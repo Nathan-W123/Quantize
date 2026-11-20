@@ -2,8 +2,9 @@
 
 One-off studies, each written to answer a single question; the answer is in
 the script's own docstring and in the commit that added it. None is imported
-by the engine, the tests or another script, and none is mentioned in the
-documentation, so they are kept here as a record rather than maintained.
+by the engine, the tests or another script, so they are kept here as a record
+rather than maintained; the README cites one, `chlorofluoromethane_level_gap.py`,
+for a result it states.
 
 They are not covered by the test suite and may have drifted from the current
 API. They still find the repository root from this directory and run from the
@@ -17,6 +18,7 @@ here directly.
 | `alpha_level_ladder.py` | Is the alpha correction's error set by the expansion geometry or the force field? | 3e3a1e0 2026-09-29 |
 | `bob_validation.py` | Does the data support the BOB u-parameters the engine assumes? | 74373d2 2026-10-05 |
 | `build_monofluoro_full_report.py` | Build the full monofluorinated benchmark report as a PDF. | 7216d87 2026-08-14 |
+| `chlorofluoromethane_level_gap.py` | Why is chlorofluoromethane's offsets hybrid worse at B3LYP than at RHF? (Its C-Cl and C-F offsets miss at B3LYP along a direction two isotopologues cannot see; T-08.) | 2026-11-20 |
 | `correction_scale_detector.py` | Can the data tell us the correction is biased, with no reference structure? | 45e94b5 2026-11-12 |
 | `correction_selfconsistency.py` | Does the correction need to follow the geometry the optimiser moves to? | fae16b7 2026-09-29 |
 | `fluorobenzene_three_way.py` | Fluorobenzene: theory alone vs experiment alone vs hybrid. | 7216d87 2026-08-14 |

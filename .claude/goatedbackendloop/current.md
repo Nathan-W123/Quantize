@@ -1,6 +1,6 @@
 # Current task
 Task: T-08
-Status: verifying
+Status: done
 Request: why chlorofluoromethane's offsets hybrid is worse at B3LYP than at
 RHF (6.00 vs 2.91 mA vs Vogt r_e^SE); diagnostic only, no engine change
 (D-39, auto-picked at Q-07).
@@ -28,8 +28,8 @@ RHF (6.00 vs 2.91 mA vs Vogt r_e^SE); diagnostic only, no engine change
 - N1 · explore · per-bond breakdown at each stage, both levels · after: none · running · handoff: done; visibility (t08/vis.py) both levels done
 - N2 · explore · transferability: pool offset vs CH2ClF's own error per class · after: none · done · handoff: C-Cl misses 12.4 (HF, over) / 12.8 (B3LYP, under); C-F 2.2 / 5.7
 - N3 · explore · counterfactual fits (C-Cl oracle centre, r_e centre) · after: N1 · done · handoff: B3LYP oracle 6.00 -> 2.95, HF oracle 2.91 -> 4.16; r_e centre stays <= 0.44 at both
-- N4 · verify · fresh agent re-derives the attribution from the script and data · after: N1, N2, N3 · running · handoff: -
-- N5 · build · README sentence + backlog N16 note · after: N4 · pending · handoff: -
+- N4 · verify · fresh agent re-derives the attribution from the script and data · after: N1, N2, N3 · done · handoff: conclusion confirmed; C-F is an equal co-cause; quadratic estimate corrected (376 / 278); width, tables, Hessians ruled out (<= 0.3 mA)
+- N5 · build · README sentence + backlog N16 note · after: N4 · done · handoff: README, docstring, scripts/archive/chlorofluoromethane_level_gap.py (reproduces at HF)
 
 ## Progress
 - Script: scratchpad t08/diag.py <hf|b3lyp> <out.json> (frozen caches t07/wt2,
@@ -76,12 +76,22 @@ RHF (6.00 vs 2.91 mA vs Vogt r_e^SE); diagnostic only, no engine change
   along the valley, kept). Not a worse level: B3LYP's raw structure is 22.4
   mA from r_e against HF's 45.7. RHF's 2.91 is partly luck -- from a better
   centre (C-Cl oracle) it gets 4.16.
+- Independent check (fresh agent; scratchpad t08/verify/): claims 1, 2, 4
+  confirmed; 3 weakened (0.44 / 0.39 is the RMS, worst bond 0.69 / 0.64); 5
+  confirmed with the caveat that single-class costs hold angles fixed; 6's
+  conclusion confirmed but my quadratic estimate was wrong (scaled the r_e
+  baseline: proper split 376 RHF / 278 B3LYP, cross terms +88 / -168).
+  Missed co-cause: B3LYP's C-F offset over-corrects by 5.7 mA; fixing either
+  C-Cl or C-F alone gives ~3 mA (surrogate). Real HF fits: bonds-only centre
+  2.87, angles-only centre 1.96; surrogate B3LYP 6.42 / 0.24. Prior width,
+  correction tables and Hessians swapped between levels: <= 0.3 mA.
 - Remedies (flag, not implement): (a) more data -- Vogt's r_e^SE used more
   isotopologues than the benchmark's two Cl species (unchecked how many,
   and whether their constants are published); (b) a second C-Cl
   calibration molecule so the C-Cl offset is a mean, not one molecule's.
 
 ## Observations
+- 2026-11-20: my hypothesis (B3LYP's C-Cl offset transfers worse) was wrong; the stage-by-stage breakdown refuted it before anything was written up. The verifier caught a missed co-cause (C-F) and a sloppy quadratic estimate (L-18 again: derive quoted numbers by script).
 
 ## Pending question
 

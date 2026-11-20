@@ -33,8 +33,14 @@ Against published structures for nine molecules
 (B3LYP) settings per molecule, which flatters all three; "base" is one setting
 for everything. On the best-of rows the hybrid is the best of the three on 4 of 9
 molecules at RHF and 5 of 9 at B3LYP, beats mixed estimation on 6/9 and 5/9 and
-theory alone on 7/9 and 7/9, and improves from RHF to B3LYP on eight of nine
-(chlorofluoromethane goes 5.42 -> 8.18, not yet explained).
+theory alone on 7/9 and 7/9, and improves from RHF to B3LYP on eight of nine.
+The exception, chlorofluoromethane (5.42 -> 8.18), is its offsets, not the
+level: at B3LYP methyl chloride's C–Cl offset leaves the prior's C–Cl 13 mÅ
+long and the fluorides' C–F offset leaves its C–F 6 mÅ short, a combination its
+two chlorine isotopologues barely see, so the fit keeps most of it (against r_e,
+C–Cl +7.4 and C–F −7.2 mÅ); started from r_e itself, the fit stays within
+0.44 mÅ RMS at both levels
+([`scripts/archive/chlorofluoromethane_level_gap.py`](scripts/archive/chlorofluoromethane_level_gap.py)).
 
 The best-of rows owe most of their margin over the base rows to the bond-class
 offsets: theory corrected by the error each bond class shows in the other

@@ -74,7 +74,11 @@ fluoride (a single scan outlasts the 2-hour job limit):
 The hybrid is best of the three on 4/9 at RHF and 5/9 at B3LYP, beats mixed
 estimation on 6/9 and 5/9 and theory alone on 7/9 and 7/9, and improves from
 RHF to B3LYP on eight of nine molecules -- by a factor of 11 on water -- the
-exception being chlorofluoromethane (5.42 -> 8.18, not yet explained). The
+exception being chlorofluoromethane (5.42 -> 8.18) -- its bond offsets, not
+the level: at B3LYP the C-Cl offset (methyl chloride's) under-corrects it by
+12.8 mA and the C-F offset over-corrects by 5.7, a combination two Cl
+isotopologues cannot see (scripts/archive/chlorofluoromethane_level_gap.py).
+The
 calibration pool (2026-11-20) moved the offset rows: chlorofluoromethane's C-Cl
 and isocyanic acid's C-N now get a correction, which took their RHF offsets
 hybrid from 20.14 and 21.62 to 5.42 and 8.14, but mixed estimation gains too
