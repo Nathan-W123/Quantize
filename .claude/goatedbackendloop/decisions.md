@@ -445,3 +445,13 @@
 - Revisit if: calibration molecules cover these classes, or an angle-aware
   width is tested on molecules outside this set.
 
+### D-34 · Next task: calibration molecules for the uncovered bond classes (2026-11-20)
+- Decision: T-07 looks for calibration molecules for C-Cl, N-H and C-N
+  (backlog N16's root fix), literature first, no engine change; candidates
+  and sources are reported before any molecule is added.
+- Why: per-bond widths failed (D-33); a class seen once cannot be calibrated
+  by any width rule, only by more members.
+- Alternatives considered: F13 (auto systematic sigma), N2 (sparse-data rows).
+- Source: auto-picked, no answer in 15 min (Q-02, recommended option)
+- Revisit if: the user picks another next step.
+

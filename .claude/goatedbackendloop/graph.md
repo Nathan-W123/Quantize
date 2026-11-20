@@ -20,6 +20,7 @@ the decisions record; tasks before T-01 live in git history only.
 - T-04 · bloat audit and cleanup (dead code, five modules, ten scripts archived) · 2026-11-19 · done
 - T-05 · CSV correction tables reach the engine · 2026-11-19 · done
 - T-06 · per-bond prior prototype (diagnostic): rejected, CH2ClF +, HNCO - · 2026-11-20 · done
+- T-07 · calibration molecules for uncovered bond classes (literature first) · 2026-11-20 · clarifying
 
 ## Edges
 - C:quantum-prior --depends-on--> C:joint-optimizer · 2026-11-20
@@ -50,3 +51,6 @@ the decisions record; tasks before T-01 live in git history only.
 - D-33 --governs--> C:quantum-prior · 2026-11-20
 - D-33 --governs--> C:bond-offsets · 2026-11-20
 - T-06 --taught--> L-17 · 2026-11-20
+- T-07 --decided--> D-34 · 2026-11-20
+- T-07 --touched--> C:bond-offsets · 2026-11-20
+- T-07 --touched--> C:references · 2026-11-20
