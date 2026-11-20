@@ -94,5 +94,10 @@ RHF (6.00 vs 2.91 mA vs Vogt r_e^SE); diagnostic only, no engine change
 - 2026-11-20: my hypothesis (B3LYP's C-Cl offset transfers worse) was wrong; the stage-by-stage breakdown refuted it before anything was written up. The verifier caught a missed co-cause (C-F) and a sloppy quadratic estimate (L-18 again: derive quoted numbers by script).
 
 ## Pending question
+- Q-08 · what's next after T-08 · asked 2026-11-20 07:00 UTC · deadline 07:15 UTC · wake-up trig_01HxnLRpGQmxzHLHUTg4MoXy
+  1. Look for CH2ClF's other isotopologues (13C, D) with published ground-state constants (Recommended): more data to close the valley; literature first, no engine change
+  2. A second C-Cl calibration reference (CH2Cl2 or CHCl3 r_e / r_e^SE with a stated sd <= 0.5 mA)
+  3. An N-H calibration reference (NH3, formamide, methanimine)
+  4. Done for now
 
 ## Handoff
