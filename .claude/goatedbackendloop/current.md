@@ -20,7 +20,9 @@ root fix), literature first, no engine change (D-34, auto-picked at Q-02).
 - N3 · gate · Q-04: add CH3Cl, HCN, H2O2 and measure offsets? · after: N1, N2 · done · handoff: D-36 (auto-picked)
 - N4 · build · calibration-only entries + theory geometries + pool · after: N3 · done · handoff: refs + calibration=extended + offsets_pool; 10 tests, 3 mutations caught
 - N5 · verify · offsets shifts per molecule; offsets fits for CH2ClF, HNCO, water, ozone vs r_e · after: N4 · done · handoff: CH2ClF big gain both levels; HNCO bonds better, angles worse; ozone worse at B3LYP (O-O bond order); others' sigma_x wider
-- N6 · gate · Q-05: rerun offsets config for all 9 with calibration=extended? · after: N5 · running · handoff: pending answer
+- N6 · gate · Q-05: rerun offsets config for all 9 with calibration=extended? · after: N5 · done · handoff: D-37 (auto-picked)
+- N7 · verify · offsets config, 9 molecules x 2 levels, default vs extended pool · after: N6 · running · handoff: scratchpad t07/{hf,b3lyp}.log
+- N8 · gate · make extended the default and rerun the tables? · after: N7 · pending · handoff: -
 
 ## Progress
 - Candidates meeting the rule (r_e / r_e^SE, stated sd <= 0.5 mA):
@@ -94,11 +96,12 @@ root fix), literature first, no engine change (D-34, auto-picked at Q-02).
   mutants); L-15 again -- the main() wiring was untested.
 
 ## Pending question
-- Q-05 · gate: 1 rerun only the offsets configuration, all 9 molecules,
-  both levels, calibration=extended, into the _calext files; compare with
-  the archived rows; no default / README change (Recommended); 2 same but
-  without H2O2's O-O (bond-order mismatch with ozone; chosen after seeing
-  results); 3 stop, keep it opt-in and recorded · deadline 02:45 UTC
-  2026-11-20 · wake-up trig_01LNuWmimjxhg2jNJcYcKu88
 
 ## Handoff
+Runs (started 02:47 UTC): scratchpad t07/chain.sh <hf|b3lyp>, worktree
+t07/wt (41f13eb, copies of n13/wt/output theory geometries and Hessian
+cache), one molecule per invocation, default pool then extended, rows in
+t07/wt/output/accuracy_upgrades_<tag>[_calext].json (finished molecules are
+skipped on rerun). If a chain dies: check `grep "=== exit" t07/<level>.log`,
+delete a stale t07/wt/output/*.lock, relaunch chain.sh <level> (it resumes).
+

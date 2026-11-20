@@ -484,3 +484,18 @@
 - Revisit if: the measurement says the extended pool helps, at the next gate
   (make it the default and rerun the tables), or it hurts (drop it).
 
+### D-37 · Measure the extended calibration on all nine before deciding the default (2026-11-20)
+- Decision: rerun only the offsets configuration for the nine scored
+  molecules at RHF/6-31G and B3LYP/6-31G(d), default pool and
+  calibration=extended back to back, in a frozen worktree at 41f13eb with
+  copies of the 5cfc5d4 theory-geometry and Hessian caches; compare per
+  molecule. No default, README or archived-table change.
+- Why: four molecules measured so far; the other five's prior widths move,
+  so their rows would too; a same-code default rerun makes the comparison
+  pool-only.
+- Alternatives considered: drop H2O2's O-O (bond-order mismatch with ozone;
+  chosen after seeing results); stop and keep it opt-in.
+- Source: auto-picked, no answer in 15 min (Q-05, recommended option)
+- Revisit if: the rerun shows the five getting worse, or the user picks
+  the O-O exclusion.
+
