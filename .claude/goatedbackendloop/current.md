@@ -1,6 +1,6 @@
 # Current task
 Task: T-09
-Status: building
+Status: done
 Request: find chlorofluoromethane isotopologues (13C, D, ...) with published
 ground-state constants; literature first, no engine change (D-40,
 auto-picked at Q-08).
@@ -23,8 +23,8 @@ auto-picked at Q-08).
 ## Graph
 - N1 · explore · NQCC CH2FCl page and its references (Vogt 2014's isotopologues) · after: none · done · handoff: no constants; primary source Blanco et al. JMS 174, 397 (1995)
 - N2 · explore · literature search for 13C / D / CHD / CD2 rotational spectra · after: none · done · handoff: 13C only (Blanco 1995, paywalled); no D; modern 35Cl constants = NBS to <= 1.1 MHz
-- N2b · explore · synthetic 13C test: does a third species close the valley? · after: N2 · running · handoff: no at both levels (RHF 2.91 -> 2.93/2.98, B3LYP 6.00 -> 5.86/5.97); verify running
-- N3 · gate · Q-09: add which species / replace constants? · after: N1, N2 · pending · handoff: -
+- N2b · explore · synthetic 13C test: does a third species close the valley? · after: N2 · running · handoff: no at both levels under independent weighting; correlated weighting could (F14)
+- N3 · gate · Q-09: add which species / replace constants? · after: N1, N2 · dropped · handoff: nothing readable worth adding; 35Cl constants agree to 0.05 sigma
 
 ## Progress
 - NQCC CH2FCl page (Bailey, last modified 2014-07-03): no rotational
@@ -65,11 +65,26 @@ auto-picked at Q-08).
   centre of mass; sigmas set by the correction's model error). B3LYP:
   two species 6.00 (C-Cl +7.35, C-F -7.20); + exact 13C 5.86 (+7.00,
   -7.22); + 13C with 35Cl-like error 5.97 (+7.26, -7.21). Does not close
-  the valley at either level. Independent check of the construction
-  running.
+  the valley at either level. Independent check (fresh agent,
+  t09/verify/): mechanics confirmed (13C present with mass on C, delta
+  sign/order right, exact target = B_e(r_e) to 0.000 MHz, sigmas 115.5 /
+  6.20 / 5.54 like the Cl species'); HF rerun identical. Caveat: the fit
+  weights targets as independent (rho = 0.99 only enters the reported
+  covariance), so a 13C shift (~0.1% of a constant) barely registers;
+  with correlated weights a linearised check gives B3LYP 6.63 -> 6.15 mA
+  at rho 0.99, 5.38 -> 3.35 at 0.999 (diagonal-prior approximation). So:
+  "not with this engine's weighting", not "a 13C species cannot help".
+- Recorded in dev/monofluoro_references.py (CH2ClF comment, replacing
+  "no other substitution is available", which was wrong).
 
 ## Observations
+- 2026-11-20: the verifier turned a flat "a 13C species would not help" into a conditional one (the engine's independent weighting). A negative result run through the engine is a statement about its configuration; say which.
 
 ## Pending question
+- Q-09 · what's next after T-09 · asked 2026-11-20 07:28 UTC · deadline 07:43 UTC · wake-up trig_017Gzd62Nuzv8TANrDpBevwT
+  1. A second C-Cl calibration reference (Recommended): NQCC pages for CHF2Cl, CH2Cl2, CHCl3 (r_e^SE from Vogt 2014, readable there), then measure the C-Cl offset miss
+  2. Test correlated (GLS) weighting on CH2ClF with the synthetic 13C species (diagnostic; F14)
+  3. An N-H calibration reference (NH3, formamide, methanimine)
+  4. Done for now
 
 ## Handoff

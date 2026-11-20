@@ -771,8 +771,22 @@ def _ch2clf_geometry_hch(rCl, rF, rH, aClF, aClH, aHH):
 # Structure: Müller, J. Am. Chem. Soc. 75, 860 (1953) / Landolt-Bornstein.
 # Constants: NBS Monograph 70 Vol. IV p.77, entry 330.
 # The two species come from chlorine's own natural isotopes, so no synthesis
-# was needed -- and equally, no other substitution is available. Six constants
-# against nine parameters makes this the undersaturated case of the set.
+# was needed. Six constants against nine parameters makes this the
+# undersaturated case of the set.
+#
+# Checked 2026-11-20 (T-09): the one further species published is 13CH2 35ClF
+# (Blanco, Lesarri, Lopez, Alonso & Guarnieri, J. Mol. Spectrosc. 174, 397
+# (1995), 8-250 GHz; paywalled, its constants not read); no deuterated study
+# was found. Blanco's 35Cl ground state, as printed by Pietropolli Charmet et
+# al., J. Chem. Phys. 139, 164302 (2013), Table II (Watson A, I^r): A0
+# 41811.2198(98), B0 5715.97941(42), C0 5194.89167(14) MHz -- within 1.1 /
+# 0.28 / 0.29 MHz of the values below, against fit sigmas of 121 / 6.3 / 5.6,
+# so swapping them in changes nothing. A synthetic 13C species (built from the
+# r_e^SE below) barely moves the offsets fit (B3LYP 6.00 -> 5.86-5.97 mA vs
+# r_e), because the fit weights the targets as independent and a 13C isotope
+# shift is ~0.1% of a constant; with correlated weights it could help (see
+# backlog F14), so that conclusion is about this engine's weighting, not about
+# what a 13C species can tell.
 CHLOROFLUOROMETHANE = ReferenceMolecule(
     key="chlorofluoromethane",
     name="Chlorofluoromethane",

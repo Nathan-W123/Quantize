@@ -22,6 +22,7 @@ the decisions record; tasks before T-01 live in git history only.
 - T-06 · per-bond prior prototype (diagnostic): rejected, CH2ClF +, HNCO - · 2026-11-20 · done
 - T-07 · calibration molecules for uncovered bond classes: CH3Cl, HCN, H2O2 as calibration-only, default pool, offsets rows rerun · 2026-11-20 · done
 - T-08 · why CH2ClF is worse at B3LYP: C-Cl and C-F offset misses along a direction two isotopologues cannot see · 2026-11-20 · done
+- T-09 · CH2ClF's other isotopologues: only 13C published (paywalled), no D; a synthetic 13C barely helps under independent weights · 2026-11-20 · done
 
 ## Edges
 - C:quantum-prior --depends-on--> C:joint-optimizer · 2026-11-20
@@ -73,3 +74,6 @@ the decisions record; tasks before T-01 live in git history only.
 - T-08 --touched--> C:bond-offsets · 2026-11-20
 - T-08 --touched--> C:readme · 2026-11-20
 - T-08 --taught--> L-18 · 2026-11-20
+- T-09 --decided--> D-40 · 2026-11-20
+- T-09 --touched--> C:references · 2026-11-20
+- T-09 --taught--> L-19 · 2026-11-20
