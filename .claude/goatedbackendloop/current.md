@@ -22,7 +22,7 @@ configurations (D-47, auto-picked at Q-15); measurement only.
 ## Graph
 - N1 · build · T=4 run, both levels · after: none · HF done; B3LYP 41/81 rows, resumed in two halves · handoff: HF 99/99 rows reproduce
 - N2 · build · T=3 and T=5 runs · after: N1 · HF done; B3LYP only rows with first-pass chi2 > 2.5 (none in the first 42) · handoff: HF: 4 rows flip at T=3, none at T=5
-- N3 · verify · fresh agent recomputes the flips and checks best-of impact · after: N2 · pending · handoff: -
+- N3 · verify · fresh agent recomputes the flips and checks best-of impact · after: N2 · HF half running (own HEAD copy, threshold set by source edit); B3LYP half after N1 · handoff: -
 
 ## Progress
 - 14:52 UTC: t13/wt3, wt4, wt5 copied from t12/wt (code = HEAD; only
