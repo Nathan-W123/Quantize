@@ -1,6 +1,6 @@
 # Current task
 Task: T-13
-Status: building
+Status: done
 Request: the T-12 chi2-threshold check on the benchmark's other
 configurations (D-47, auto-picked at Q-15); measurement only.
 
@@ -22,7 +22,7 @@ configurations (D-47, auto-picked at Q-15); measurement only.
 ## Graph
 - N1 · build · T=4 run, both levels · after: none · done · handoff: HF 99/99, B3LYP 81/81 rows reproduce
 - N2 · build · T=3 and T=5 runs · after: N1 · done · handoff: HF: 4 rows flip at T=3, none at T=5; B3LYP: none moves >= 1e-5 mA
-- N3 · verify · fresh agent recomputes the flips and checks best-of impact · after: N2 · running, RHF then B3LYP (own HEAD copy, threshold set by source edit) · handoff: -
+- N3 · verify · fresh agent recomputes the flips and checks best-of impact · after: N2 · done · handoff: both claims confirmed by running (all 99 + 81 rows at 3 / 5, plus 135 RHF rows at 3.0); 5.93 needs all six HNCO offsets-family rows, not the four named
 
 ## Progress
 - 14:52 UTC: t13/wt3, wt4, wt5 copied from t12/wt (code = HEAD; only
@@ -81,11 +81,26 @@ configurations (D-47, auto-picked at Q-15); measurement only.
   same fit (inferred, not run). With T-12: 5 of 216 rows run (+1 inferred),
   all one fit. Torsion rows otherwise not run.
 - B3LYP part sent to the N3 verifier.
+- 18:20 UTC N3 report (fresh copies of HEAD, threshold set by editing the
+  default in quantize.py, CLI unmodified): RHF 99 rows at 3.0 / 5.0 and
+  B3LYP 81 rows at 3.0 / 4.0 / 5.0 bit-identical to my wt3 / wt4 / wt5 rows.
+  It ran all 15 RHF configs at 3.0 (135 rows): HNCO offsets and
+  offsets+torsion flip too (13.483828), --table gives 10.39 / 9.85 / 5.93,
+  win counts 4/9, 6/9, 7/9 unchanged; torsion rows otherwise match (~1e-10).
+  Correction to my brief: the four rows alone leave the mean at 5.34 (the
+  best-of takes the min, and offsets / offsets+torsion are outside the 99).
+  Near miss: HF fluoroethane offsets+torsion (best-of row, 7.10) first chi2
+  0.368, 10% above 1/3; does not move. Archive drift at 5cfc5d4 vintage
+  (<= 4.6e-4 HF, 1.4e-4 B3LYP) is the same at every threshold.
+- 18:23 UTC: benchmark docstring caveat extended to the T-13 count (D-48);
+  N19 updated, fluoroacetylene anomaly merged into it as (b); L-20 added;
+  L-10 outcome +. Done.
 
 ## Observations
 - 2026-11-20 · fluoroacetylene's tracked hybrid fits (HF, track and offsets+track alike) start at reduced chi2 16.00 with dof 6.0 = n_obs (no data leverage), then 1.000 after the x4 widening; the first fit in the same row has 0.05 / dof 4.3. The rows get worse with tracking (13.59 -> 19.16, 4.36 -> 4.96). I guessed a sigma state leak between tracked fits; the engine copies each isotopologue dict, so that guess is wrong. Cause unknown -- backlog, not this task.
 - 2026-11-20 · my plan's B3LYP cut (rerun only rows with first-pass chi2 > 2.5) looked at one side of a two-sided test; scanning every check against both bands (lo = 1/T) found 8 rows the cut would have skipped. Scan the whole decision rule, not the side the last finding was on.
 
 ## Pending question
+- Q-16 (asked 2026-11-20 18:23 UTC, deadline 18:38 UTC; wake-up trig_01XLw6MsX9JojeFjJoxaoY8q at 18:39): what's next after T-13. Options: 1. diagnose fluoroacetylene's tracked fits, N19 (b) (Recommended); 2. F14 GLS study (correlated weights); 3. torsion rows at B3LYP for T-13's count (14 rows, relaxed scans, long); 4. Done for now. Auto-pick: 1.
 
 ## Handoff

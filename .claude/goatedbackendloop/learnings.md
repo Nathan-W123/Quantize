@@ -63,7 +63,7 @@ Sessions: 0 · Last consolidated: 2026-11-20
 - Observation: asked to force sigma_x and reproduce, a verifier found a chi2-rescale switch my reading had put down to the width itself.
 - Evidence: 2026-11-20 · Quantize T-11 (t11/verify/fine_hf.json).
 - Adjustment: state the claim as an experiment the verifier can run (hold X fixed, vary Y, reproduce the rows, by a different mechanism than yours), not as a conclusion to review.
-- Scope: workflow · Status: provisional · Outcomes: +2026-11-20 (T-12: "move the threshold to 3 and 5" gave the flip point and the floor)
+- Scope: workflow · Status: provisional · Outcomes: +2026-11-20 (T-12: "move the threshold to 3 and 5" gave the flip point and the floor) +2026-11-20 (T-13: a source edit instead of my monkeypatch reproduced every row bit for bit and showed the 5.93 best-of needs six rows, not the four I named)
 
 ## Retired
 ## Changelog
@@ -73,4 +73,5 @@ Sessions: 0 · Last consolidated: 2026-11-20
 - 2026-11-17 L-06 moved here from the project's lessons; lessons.md consolidated 219 -> ~110 lines; L-04 outcome +.
 - 2026-11-20 L-09 outcome +; project L-P04 extended (hand-built stand-ins for a library function's output).
 - 2026-11-20 L-10 added (verifiers get experiments, not readings).
+- 2026-11-20 L-10 outcome + (T-13).
 - 2026-11-20 consolidated: learnings.md 127 -> ~75 lines (observations and evidence compressed, no lesson dropped); lessons.md 161 -> ~80 (L-08 into L-07, validated lessons compressed); L-08 outcome + (T-13).

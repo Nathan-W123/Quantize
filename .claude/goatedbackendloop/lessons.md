@@ -60,3 +60,7 @@ once by a container swap).
 ### L-19 · A negative result through the engine is conditional on its configuration
 - Adjustment: when an engine experiment finds "no effect", name the settings it depends on (weighting, prior, width) and say whether another setting could change it.
 - Evidence: 2026-11-20 · T-09: a 13C species 6.00 -> 5.97 mA as configured, 6.63 -> 6.15 with correlated weights. +T-10 (D-43 names its width-rule dependence). · Scope: project · Status: provisional
+
+### L-20 · Screen against the whole decision rule, not the side the last finding was on
+- Adjustment: when a run list is cut by a screen on a test's statistic, write the test's full rule (both bounds, every pass, every parameter value compared) and screen each check against all of it before narrowing.
+- Evidence: 2026-11-20 · T-13: "rerun B3LYP only where first-pass chi2 > 2.5" missed the lower bound 1/T; scanning every check on both bands found 8 rows (water 0.217, ozone 0.226) that tighten at 3 and 4 but not 5. They moved < 1e-5 mA, so the count held, but it would have been unmeasured. · Scope: project · Status: provisional

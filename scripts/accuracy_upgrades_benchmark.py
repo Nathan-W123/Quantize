@@ -87,10 +87,13 @@ its win counts at RHF fell from 6/9 and 8/9. Isocyanic acid's 8.14 sits near
 an edge: its prior width (19.2 mA) is 1.9 mA above the point (~17.3 mA) where
 the first fit's reduced chi-square passes 4.0 and the chi-square rescale
 re-weights the data; just below it the same fit reads about 12.8 mA (backlog
-N19). It is the only base or offsets row the rescale's threshold decides:
-moved to 3.0 or 5.0, every other row stays within 1e-5 mA, because the
-tightening side stops at each row's model-error floor and no other first-pass
-chi-square exceeds 1.43. At B3LYP, ozone's offsets row
+N19). It is the only fit the rescale's threshold decides. At RHF the same fit
+is also isocyanic acid's offsets+bob, +defect, +cd, +track and +torsion rows,
+which flip with it when the threshold moves to 3.0 (to 13.48, taking the RHF
+best-of hybrid mean from 5.34 to 5.93; no win count changes). Every other row
+run at 3.0 and at 5.0 stays within 1e-5 mA (torsion rows: RHF at 3.0 only),
+because no other reduced chi-square lies between 3 and 5 and the tightening
+side stops at each row's model-error floor. At B3LYP, ozone's offsets row
 moves toward its r_s reference (1.43 -> 0.04) and away from its r_e (0.37 ->
 1.02): the O-O offset comes from hydrogen peroxide's single bond. With the base configuration alone (`configs=base`) the means are
 21.47 / 17.35 / 11.03 at RHF and 9.19 / 5.42 / 4.63 at B3LYP.

@@ -639,3 +639,10 @@
 - Alternatives considered: F14 GLS study; N3 references.
 - Source: auto-picked, no answer in 15 min (Q-15, recommended option)
 - Revisit if: the user picks another option.
+
+### D-48 · Record T-13's count in the benchmark docstring (2026-11-20)
+- Decision: extend the docstring's rescale caveat (scripts/accuracy_upgrades_benchmark.py) from "the only base or offsets row" to the T-13 count: HNCO's six RHF offsets-family rows are one fit and flip together at 3.0 (best-of 5.34 -> 5.93, no win count change); every other row run stays within 1e-5 mA. No engine or row change.
+- Why: the README's best-of table takes each leg's best over all configurations, so the base / offsets-only statement understated the reach (four more rows, one best-of figure).
+- Alternatives considered: leave the docstring as is (true but incomplete); a README note (the README does not quote 8.14).
+- Source: assumption, unconfirmed (within D-47's measurement-only scope)
+- Revisit if: the rescale becomes smooth (N19 a) or the rows are rerun.
