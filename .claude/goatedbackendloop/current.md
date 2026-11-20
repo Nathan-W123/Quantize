@@ -23,7 +23,8 @@ entries is a separate gate (D-41, auto-picked at Q-09).
 - N1 · explore · NQCC CHF2Cl / CH2Cl2 / CHCl3 pages: r_e^SE and sources · after: none · done · handoff: CH2Cl2 meets D-35; CHCl3 C-H 0.6; CHF2Cl C-Cl 0.9 / C-H 1.1
 - N2 · explore · theory geometries + offsets for candidates, both levels; C-Cl miss for CH2ClF with each pool · after: N1 · running · handoff: done; only CHF2Cl helps both levels (miss 3.1 / 5.4 from 12.4 / 12.8)
 - N3 · gate · Q-10: measure, add, or stop? · after: N2 · done · handoff: D-42 (auto-picked): measure first
-- N4 · verify · offsets fits, 9 molecules x 2 levels x 3 pools (current, +CH2Cl2, +CHF2Cl) · after: N3 · running · handoff: -
+- N4 · verify · offsets fits, 9 molecules x 2 levels x 3 pools (current, +CH2Cl2, +CHF2Cl) · after: N3 · done · handoff: RHF mean 5.38 -> 5.66 / 5.70; B3LYP 4.13 -> 4.10 / 3.91
+- N4v · verify · fresh agent checks pools.py recipe and both result files · after: N4 · running · handoff: -
 - N5 · gate · Q-11: add which, if any? · after: N4 · pending · handoff: -
 
 ## Progress
@@ -67,6 +68,17 @@ entries is a separate gate (D-41, auto-picked at Q-09).
   (H2O2 excluded), so their sigma_x is uncorrected_class_bias = RMS of all
   class means, and a C-Cl member lowers the C-Cl mean (85.6 -> ~70),
   narrowing them (HNCO 19.2 -> 18.0 / 17.9 mA).
+- B3LYP done 10:20 UTC (pools_b3lyp.json), same layout: CH2ClF
+  8.18/6.00 -> 8.05/5.85 -> 6.45/4.29 (bonds vs r_e: current C-Cl +7.4 /
+  C-F -7.2 from T-08; +CH2Cl2 +7.2 / -7.0; +CHF2Cl +5.0 / -5.3); HNCO
+  3.71 -> 3.69 -> 3.72; FF 3.34 -> 3.36 -> 3.22; FE 7.66 -> 7.66 -> 7.61;
+  AF 6.45 -> 6.40 -> 6.28; FA 2.09 -> 2.00 -> 2.09; VF 5.24/1.00 ->
+  5.25/0.98 -> 5.23/1.03; water 0.46 -> 0.47 -> 0.47; ozone 0.04/1.02 ->
+  0.00/1.06 -> 0.07/1.13. Mean 4.129 -> 4.098 -> 3.905.
+- Net: CH2Cl2 is +0.28 at RHF, -0.03 at B3LYP (a loss). CHF2Cl is +0.33
+  at RHF, -0.22 at B3LYP, and breaks D-35's sd rule. Neither improves
+  both levels; the RHF losses come from CH2ClF (its old cancellation) and
+  HNCO (uncorrected_class_bias coupling, not chemistry).
 
 ## Observations
 
