@@ -22,7 +22,9 @@ entries is a separate gate (D-41, auto-picked at Q-09).
 ## Graph
 - N1 · explore · NQCC CHF2Cl / CH2Cl2 / CHCl3 pages: r_e^SE and sources · after: none · done · handoff: CH2Cl2 meets D-35; CHCl3 C-H 0.6; CHF2Cl C-Cl 0.9 / C-H 1.1
 - N2 · explore · theory geometries + offsets for candidates, both levels; C-Cl miss for CH2ClF with each pool · after: N1 · running · handoff: done; only CHF2Cl helps both levels (miss 3.1 / 5.4 from 12.4 / 12.8)
-- N3 · gate · Q-10: add which entries? · after: N2 · pending · handoff: -
+- N3 · gate · Q-10: measure, add, or stop? · after: N2 · done · handoff: D-42 (auto-picked): measure first
+- N4 · verify · offsets fits, 9 molecules x 2 levels x 3 pools (current, +CH2Cl2, +CHF2Cl) · after: N3 · running · handoff: -
+- N5 · gate · Q-11: add which, if any? · after: N4 · pending · handoff: -
 
 ## Progress
 - NQCC pages (fetched 2026-11-20): CH2Cl2 r_e^SE (Vogt 2014) C-Cl
@@ -48,14 +50,15 @@ entries is a separate gate (D-41, auto-picked at Q-09).
   D-35's rule (C-Cl sd 0.9, C-H 1.1). Its C-F (+4.9 at B3LYP vs CH2ClF's
   own -1.2) would not help C-F. A better C-Cl centre is not a better fit by
   itself: T-08's RHF C-Cl oracle made the fit worse (2.91 -> 4.16).
+- N4 runs (t10/pools.py <level>; pools current / +CH2Cl2 / +CHF2Cl; a
+  molecule whose offsets and sigma_x are unchanged takes its archived
+  c8904da row; resumable): started 08:1x UTC, HF and B3LYP in the
+  background (logs t10/pools_{hf,b3lyp}.log). First RHF +CH2Cl2 refits
+  (C-H offsets move <= 0.35 mA): VF 6.375 -> 6.337 (vs r_e 2.796 ->
+  2.811), AF 7.274 -> 7.269, FE 7.217 -> 7.211, FF 7.154 -> 7.032.
 
 ## Observations
 
 ## Pending question
-- Q-10 · C-Cl calibration: measure, add, or stop? · asked 2026-11-20 07:49 UTC · deadline 08:05 UTC · wake-up trig_01XeeJj6evTpztH7mg4Mc8tT
-  1. Measure the offsets fits for all nine molecules at both levels with +CH2Cl2 and with +CHF2Cl, separately, before adding anything (Recommended)
-  2. Add CH2Cl2 only (meets the rule) and rerun the offsets family -- fixes RHF's miss, not B3LYP's
-  3. Stop: record that B3LYP's C-Cl error tracks fluorine substitution, so a class offset cannot transfer; add nothing
-  4. Done for now
 
 ## Handoff

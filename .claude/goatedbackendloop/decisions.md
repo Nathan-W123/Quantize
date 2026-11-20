@@ -559,3 +559,18 @@
   N-H calibration reference.
 - Source: auto-picked, no answer in 15 min (Q-09, recommended option)
 - Revisit if: the user picks another option.
+
+### D-42 · Measure C-Cl candidates on all nine molecules before adding (2026-11-20)
+- Decision: run the offsets fits for all nine molecules at both levels with
+  the current pool, the pool + CH2Cl2, and the pool + CHF2Cl (separately),
+  from scratch theory geometries; nothing is added to the repository.
+  Adding CHF2Cl would also need the user's say-so (it breaks D-35's 0.5 mA
+  rule: C-Cl 0.9, C-H 1.1 mA).
+- Why: only CHF2Cl narrows CH2ClF's C-Cl miss at both levels (3.1 / 5.4
+  from 12.4 / 12.8 mA); CH2Cl2 fixes RHF's only; a better C-Cl centre made
+  T-08's RHF fit worse, and new members also move every molecule's C-H
+  (and, for CHF2Cl, C-F) offsets (L-17).
+- Alternatives considered: add CH2Cl2 now; stop and record the fluorine
+  dependence.
+- Source: auto-picked, no answer in 15 min (Q-10, recommended option)
+- Revisit if: the measurement shows either candidate hurting another molecule.
