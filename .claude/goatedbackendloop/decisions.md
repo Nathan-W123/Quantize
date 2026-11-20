@@ -660,3 +660,10 @@
 - Alternatives considered: also project rotations out of off-stationary Hessians in the slope (may move other tracked rows; not now); record only.
 - Source: auto-picked, no answer in 15 min (Q-17, recommended option)
 - Revisit if: the user picks another option; or the separate jump at the is_linear boundary itself (I_A ~5e-5, +25 MHz) matters for a molecule.
+
+### D-51 · Next task: measure rotation projection in off-stationary alpha Hessians (2026-11-20)
+- Decision: measure, on every benchmark row a projection can reach, what projecting translations and rotations out of the Hessian before the alpha normal-mode analysis would change (T-14 verifier: the tracking slope's +-step/2 points are off-stationary and their bends carry 1-18% rotation). Measurement only; any engine change proposed before it is made.
+- Why: that contamination amplified the T-14 defect ~1e5x; whether it moves rows on its own is unmeasured.
+- Alternatives considered: F14 GLS study; N2 sparse-data sigma re-scan.
+- Source: auto-picked, no answer in 15 min (Q-18, recommended option)
+- Revisit if: the user picks another option.
