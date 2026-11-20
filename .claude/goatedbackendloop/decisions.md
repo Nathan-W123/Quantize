@@ -545,3 +545,17 @@
   calibration reference.
 - Source: auto-picked, no answer in 15 min (Q-08, recommended option)
 - Revisit if: the user picks another option.
+
+### D-41 · Next task: a second C-Cl calibration reference (2026-11-20)
+- Decision: T-10 looks for further C-Cl calibration-only references
+  (CHF2Cl, CH2Cl2, CHCl3; r_e / r_e^SE with a stated sd <= 0.5 mA, D-35's
+  rule), literature first, then measures whether they fix chlorofluoro-
+  methane's C-Cl offset miss. Adding entries is a separate gate.
+- Why: T-08 -- methyl chloride, the C-Cl class's only other member, misses
+  CH2ClF's own C-Cl error by 12.4 mA (RHF, over) / 12.8 (B3LYP, under);
+  T-09 -- more isotopologue data would not help under the engine's
+  weighting.
+- Alternatives considered: correlated (GLS) weighting on CH2ClF (F14); an
+  N-H calibration reference.
+- Source: auto-picked, no answer in 15 min (Q-09, recommended option)
+- Revisit if: the user picks another option.

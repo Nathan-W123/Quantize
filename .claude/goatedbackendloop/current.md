@@ -1,90 +1,47 @@
 # Current task
-Task: T-09
-Status: done
-Request: find chlorofluoromethane isotopologues (13C, D, ...) with published
-ground-state constants; literature first, no engine change (D-40,
-auto-picked at Q-08).
+Task: T-10
+Status: building
+Request: a second C-Cl calibration reference (CHF2Cl, CH2Cl2, CHCl3) so the
+C-Cl offset is not one molecule's; literature first, then measure; adding
+entries is a separate gate (D-41, auto-picked at Q-09).
 
 ## Brief
-- Outcome: a table of CH2ClF species with published ground-state rotational
-  constants (value, uncertainty, reduction, source, whether readable), or a
-  stated "not found" with what was searched.
-- Why: T-08 -- two Cl isotopologues leave a valley the C-Cl / C-F offset
-  misses sit in; 13C and D substitution move different atoms. The present
-  constants (NBS Monograph 70, 1950s; 41810.1 / 5715.7 / 5194.6 MHz) may
-  also be superseded by modern 35Cl / 37Cl fits.
-- Accept: ground-state A0, B0, C0 (or Watson parameters convertible to
-  them) from a published fit, reduction stated, read from the paper or a
-  reliable compilation; unambiguous isotopic composition.
-- Gate: adding species or replacing constants changes a benchmark input
-  and every CH2ClF row; that is a separate question, not part of this
-  search.
+- Outcome: candidate C-Cl references meeting D-35's rule (r_e / r_e^SE,
+  stated sd <= 0.5 mA, readable source), and a measurement of what they do
+  to CH2ClF's C-Cl offset miss (12.4 RHF over / 12.8 B3LYP under) and to
+  every other molecule whose classes they join (L-17: C-F, C-H too).
+- How: NQCC pages (Bailey) tabulated Vogt 2014's r_e^SE for CH2FCl
+  readably; the same pages for CHF2Cl, CH2Cl2, CHCl3 likely do too. Theory
+  geometries at both levels (one optimisation each), conformer guard,
+  offsets measured as for T-07's entries.
+- Expectation to test, not assume: C-Cl's theory error moves with
+  fluorination (CH3Cl +85.6 / +25.4 mA vs CH2ClF +73.2 / +38.2), so a
+  CHF2Cl member could bracket CH2ClF; CH2Cl2 / CHCl3 may not.
+- Gate: adding entries changes every offsets-family row (rerun ~2.5 h).
 
 ## Graph
-- N1 · explore · NQCC CH2FCl page and its references (Vogt 2014's isotopologues) · after: none · done · handoff: no constants; primary source Blanco et al. JMS 174, 397 (1995)
-- N2 · explore · literature search for 13C / D / CHD / CD2 rotational spectra · after: none · done · handoff: 13C only (Blanco 1995, paywalled); no D; modern 35Cl constants = NBS to <= 1.1 MHz
-- N2b · explore · synthetic 13C test: does a third species close the valley? · after: N2 · running · handoff: no at both levels under independent weighting; correlated weighting could (F14)
-- N3 · gate · Q-09: add which species / replace constants? · after: N1, N2 · dropped · handoff: nothing readable worth adding; 35Cl constants agree to 0.05 sigma
+- N1 · explore · NQCC CHF2Cl / CH2Cl2 / CHCl3 pages: r_e^SE and sources · after: none · done · handoff: CH2Cl2 meets D-35; CHCl3 C-H 0.6; CHF2Cl C-Cl 0.9 / C-H 1.1
+- N2 · explore · theory geometries + offsets for candidates, both levels; C-Cl miss for CH2ClF with each pool · after: N1 · running · handoff: RHF done; B3LYP running
+- N3 · gate · Q-10: add which entries? · after: N2 · pending · handoff: -
 
 ## Progress
-- NQCC CH2FCl page (Bailey, last modified 2014-07-03): no rotational
-  constants at all; 35Cl / 37Cl quadrupole tables and the r_o (Blanco et al.
-  [3]) vs r_e^SE (Vogt [4]) structure table only. Refs: Muller JACS 75, 860
-  (1953); Nandi & Chatterji SA 31A, 603 (1975); Blanco, Lesarri, Lopez,
-  Alonso & Guarnieri, JMS 174, 397-416 (1995); Vogt, Demaison & Rudolph, Mol.
-  Phys. 112, 2873 (2014). Not stated which isotopologues entered r_e^SE.
-- Blanco et al. 1995 (ScienceDirect abstract via search, pii
-  S0022285285700112 -- its "85" is the journal's code, not 1985): ground
-  states of 12CH2 35ClF, 12CH2 37ClF and 13CH2 35ClF, 8-250 GHz; r_o C-Cl
-  1.7621(2), C-F 1.370(1), C-H 1.09(1), ClCF 110.1(5) -- identical to
-  NQCC's r_o [3]. No deuterated species named. Constants not yet read.
-- Searches (3, incl. one extended) found no CHDFCl / CD2FCl rotational
-  study; closest are CH2DF, CH2DCl, CHF2Cl / CDF2Cl (other molecules).
-- NQCC ClFMethanes.pdf (Bailey 2008, extracted locally, dl_clfm/): CH2FCl
-  structures (ropt, ~re, ro) and nqcc only; no rotational constants.
-- ScienceDirect (Blanco 1995) and ResearchGate (Vogt 2014): 403 to
-  automated access; not retried. Bologna PDF (unibo): the CH2ClF dimer
-  (Favero et al. PCCP 2019), not the monomer.
-- Pietropolli Charmet et al., J. Chem. Phys. 139, 164302 (2013), open at
-  ricerca.sns.it (extracted locally, dl_sns/): Table II prints Blanco 1995's
-  ground-state constants for CH2 35ClF, Watson A / Ir: A0 41811.2198(98),
-  B0 5715.97941(42), C0 5194.89167(14) MHz (benchmark's NBS values 41810.1,
-  5715.7, 5194.6: within 1.1 / 0.28 / 0.29 MHz, against fit sigmas 121 /
-  6.3 / 5.6 -- replacing them changes nothing). 37Cl and 13C values not
-  printed. Their own r_e^SE (CCSD(T)/cc-pCVTZ corrections, "different
-  isotopic species (from Ref. 21)" = Blanco's three): C-H 1.083984(17),
-  C-F 1.359385(15), C-Cl 1.764123(13), HCCl 107.9446, HCH 112.5632, FCCl
-  110.0180 -- Vogt's within 0.7 mA (C-H) and 0.04 deg.
-- Conclusion of the search: published species are 12CH2 35ClF, 12CH2 37ClF,
-  13CH2 35ClF (Blanco 1995, paywalled); no deuterated study found (5
-  searches). JPL/CDMS: no CH2ClF entry found.
-- Synthetic test (t09/synth.py; 13C species built from Vogt r_e minus the
-  level's own correction, never written to the reference), RHF: two
-  species 2.91; + exact 13C 2.93; + 13C with the 35Cl species' relative
-  correction error 2.98. The 13C species adds almost nothing (C near the
-  centre of mass; sigmas set by the correction's model error). B3LYP:
-  two species 6.00 (C-Cl +7.35, C-F -7.20); + exact 13C 5.86 (+7.00,
-  -7.22); + 13C with 35Cl-like error 5.97 (+7.26, -7.21). Does not close
-  the valley at either level. Independent check (fresh agent,
-  t09/verify/): mechanics confirmed (13C present with mass on C, delta
-  sign/order right, exact target = B_e(r_e) to 0.000 MHz, sigmas 115.5 /
-  6.20 / 5.54 like the Cl species'); HF rerun identical. Caveat: the fit
-  weights targets as independent (rho = 0.99 only enters the reported
-  covariance), so a 13C shift (~0.1% of a constant) barely registers;
-  with correlated weights a linearised check gives B3LYP 6.63 -> 6.15 mA
-  at rho 0.99, 5.38 -> 3.35 at 0.999 (diagonal-prior approximation). So:
-  "not with this engine's weighting", not "a 13C species cannot help".
-- Recorded in dev/monofluoro_references.py (CH2ClF comment, replacing
-  "no other substitution is available", which was wrong).
+- NQCC pages (fetched 2026-11-20): CH2Cl2 r_e^SE (Vogt 2014) C-Cl
+  1.76425(3), C-H 1.0816(2), ClCCl 112.166(3), HCH 111.722(4) -- meets
+  D-35. CHCl3 r_e^SE (Demaison, JMS 251, 217 (2008)) C-Cl 1.7595(1), C-H
+  1.0818(6), HCCl 108.080(16), ClCCl 110.825(16) -- C-H 0.6 mA, just over.
+  CHF2Cl r_e^SE (Vogt 2014) C-H 1.0850(11), C-Cl 1.7560(9), C-F
+  1.3363(5), HCF 109.97(4), HCCl 109.60(6), ClCF 109.62(4), FCF 108.06(6)
+  -- C-Cl 0.9 and C-H 1.1 mA, over the rule.
+- RHF (t10/cl.py, cl_hf.json; geometries optimised from the r_e^SE;
+  builders check: CHF2Cl FCF 108.039 vs 108.06, CHCl3 ClCCl 110.826):
+  theory - r_e^SE C-Cl: CH3Cl +85.6, CH2ClF +73.2, CH2Cl2 +67.3, CHCl3
+  +60.7, CHF2Cl +54.7 (C-H -12.5 / -14.7 / -17.9; CHF2Cl C-F +26.4).
+  CH2ClF's C-Cl miss by pool: CH3Cl -12.37; +CH2Cl2 -0.13; +CHCl3 +6.34;
+  +CHF2Cl +3.08; +CH2Cl2+CHCl3 +6.23; all four +7.98 (class mean per
+  bond, so CHCl3's three bonds weigh three).
 
 ## Observations
-- 2026-11-20: the verifier turned a flat "a 13C species would not help" into a conditional one (the engine's independent weighting). A negative result run through the engine is a statement about its configuration; say which.
 
 ## Pending question
-- Q-09 · what's next after T-09 · asked 2026-11-20 07:28 UTC · deadline 07:43 UTC · wake-up trig_017Gzd62Nuzv8TANrDpBevwT
-  1. A second C-Cl calibration reference (Recommended): NQCC pages for CHF2Cl, CH2Cl2, CHCl3 (r_e^SE from Vogt 2014, readable there), then measure the C-Cl offset miss
-  2. Test correlated (GLS) weighting on CH2ClF with the synthetic 13C species (diagnostic; F14)
-  3. An N-H calibration reference (NH3, formamide, methanimine)
-  4. Done for now
 
 ## Handoff
