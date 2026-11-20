@@ -5,8 +5,8 @@ chlorofluoromethane's C-Cl, isocyanic acid's C-N, water's O-H and ozone's O-O
 went uncorrected. dev.monofluoro_references.CALIBRATION_ONLY adds equilibrium
 structures that give those classes a second member. These pin the published
 values each geometry was built from, that each class actually gains a member,
-and that the benchmark's offsets pool takes them only when asked
-(calibration=extended).
+and that the benchmark's offsets pool takes them by default and drops them
+only when asked (calibration=scored, the earlier pool).
 """
 
 from __future__ import annotations
@@ -186,7 +186,7 @@ def _run_main(tmp_path, monkeypatch, *argv):
     monkeypatch.setattr(b, "get_backend", lambda name: _NoQuantum)
     monkeypatch.setattr(b, "RUN_DIAGNOSTICS", False)
     configs = [c for c in ["base", "offsets", "elec", "lam", "all"] if c in b.CONFIGS]
-    name = "accuracy_upgrades_hf_6-31g" + ("_calext" if "calibration=extended" in argv else "") + ".json"
+    name = "accuracy_upgrades_hf_6-31g" + ("_calscored" if "calibration=scored" in argv else "") + ".json"
     (tmp_path / "output").mkdir(parents=True)
     (tmp_path / "output" / name).write_text(json.dumps(
         {m.key: {c: {"code_vintage": "test"} for c in configs} for m in pool}))
@@ -196,19 +196,20 @@ def _run_main(tmp_path, monkeypatch, *argv):
 
 
 def test_main_pools_and_files_by_the_flag(tmp_path, monkeypatch):
-    # Default: the scored molecules only, results in the default file (a
-    # wrong file would hold no rows and main() would start fitting).
-    keys, scored = _run_main(tmp_path / "d", monkeypatch)
-    assert keys == scored
-    # Extended: the calibration entries of the right conformer join the pool
+    # Default: the calibration entries of the right conformer join the pool
     # (trans-planar H2O2 does not), are never fitted (they have no rows
-    # anywhere), and the rows live in the _calext file.
-    keys, scored = _run_main(tmp_path / "e", monkeypatch, "calibration=extended")
+    # anywhere), and the rows live in the default file (a wrong file would
+    # hold no rows and main() would start fitting).
+    keys, scored = _run_main(tmp_path / "d", monkeypatch)
     assert keys == scored + ["methyl_chloride", "hydrogen_cyanide"]
+    # calibration=scored: the earlier pool, rows in the _calscored file.
+    keys, scored = _run_main(tmp_path / "s", monkeypatch, "calibration=scored")
+    assert keys == scored
 
 
-def test_extended_calibration_is_opt_in_and_validated():
-    assert _bench().EXTENDED_CALIBRATION is False
+def test_the_pool_flag_defaults_to_extended_and_is_validated():
+    assert _bench().EXTENDED_CALIBRATION is True
     assert _bench("calibration=extended").EXTENDED_CALIBRATION is True
+    assert _bench("calibration=scored").EXTENDED_CALIBRATION is False
     with pytest.raises(SystemExit):
         _bench("calibration=everything")

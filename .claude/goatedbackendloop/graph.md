@@ -62,3 +62,6 @@ the decisions record; tasks before T-01 live in git history only.
 - T-07 --touched--> C:benchmark · 2026-11-20
 - T-07 --decided--> D-37 · 2026-11-20
 - D-37 --governs--> C:benchmark · 2026-11-20
+- T-07 --decided--> D-38 · 2026-11-20
+- D-38 --governs--> C:benchmark · 2026-11-20
+- D-38 --governs--> C:bond-offsets · 2026-11-20

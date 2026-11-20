@@ -499,3 +499,22 @@
 - Revisit if: the rerun shows the five getting worse, or the user picks
   the O-O exclusion.
 
+### D-38 · The extended offsets pool is the benchmark default (2026-11-20)
+- Decision: the benchmark pools bond offsets from the scored molecules plus
+  CALIBRATION_ONLY by default; calibration=scored restores the earlier pool
+  and writes to *_calscored.json (the token is "scored", not "default", so
+  the name says what it does). Each offsets row records its pool
+  (offsets_pool). Every offsets-family row is rerun at both levels and the
+  README tables regenerated.
+- Why: nine molecules x two levels, offsets config: mean hybrid bond RMS vs
+  primary references 8.56 -> 5.37 mA (RHF), 4.96 -> 4.13 (B3LYP); vs r_e
+  where one exists 6.00 -> 2.30 and 3.33 -> 2.12; CH2ClF and HNCO gain most;
+  the five fluorides move <= 0.2 mA. Cost: ozone vs r_e 0.37 -> 1.02 mA at
+  B3LYP (H2O2's single O-O against ozone's 1.5-order bond); HNCO and CH2ClF
+  angles worse at RHF.
+- Alternatives considered: keep it opt-in with a README note; drop H2O2's
+  O-O first (chosen after seeing results).
+- Source: auto-picked, no answer in 15 min (Q-06, recommended option)
+- Revisit if: the full offsets-family rerun reverses the offsets-config
+  picture, or more O-O / N-H references arrive (bond-order split).
+

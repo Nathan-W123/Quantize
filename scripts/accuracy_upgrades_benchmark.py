@@ -23,8 +23,18 @@ offsets pooled from the *other* molecules only, and a bond class with no other
 member is left uncorrected. That makes the reported gain a lower bound on what
 a table calibrated on an external set would give, and never an artefact.
 
+The pool also holds three calibration-only references
+(dev.monofluoro_references.CALIBRATION_ONLY: methyl chloride, hydrogen cyanide,
+hydrogen peroxide, each with an r_e or r_e^SE inside the 0.5 mA bar). They are
+measured, never fitted or scored, and give C-Cl, C-N, O-H and O-O -- each seen
+in one scored molecule -- a second member. One is left out at a level whose
+minimum is a different conformer (HF/6-31G puts H2O2 trans-planar). N-H still
+has one member. calibration=scored runs the earlier pool, into its own results
+file.
+
     python scripts/accuracy_upgrades_benchmark.py [method=hf] [basis=6-31g]
                                                   [configs=base,offsets,all]
+                                                  [calibration=extended|scored]
                                                   [molecule_key ...]
 
 Results
@@ -206,11 +216,13 @@ WANT_CONFIGS: list[str] = []
 RESULTS_DIR = None
 HESSIAN_CACHE = True
 RUN_DIAGNOSTICS = True
-#: calibration=extended adds the calibration-only references
-#: (dev.monofluoro_references.CALIBRATION_ONLY) to the bond-offsets pool. They
-#: are measured, never fitted or scored. Off by default, so the archived tables
-#: stay reproducible; its rows go to a separate results file (see main()).
-EXTENDED_CALIBRATION = False
+#: The bond-offsets pool. By default it is the scored molecules plus the
+#: calibration-only references (dev.monofluoro_references.CALIBRATION_ONLY),
+#: which are measured, never fitted or scored, and give C-Cl, C-N, O-H and O-O
+#: a second member (decisions D-36 to D-38). calibration=scored restores the
+#: earlier pool, the scored molecules alone; its rows go to a separate results
+#: file (see main()), so the two pools' rows never share one.
+EXTENDED_CALIBRATION = True
 _args: list[str] = []
 for _tok in sys.argv[1:]:
     if _tok.startswith("method="):
@@ -233,8 +245,8 @@ for _tok in sys.argv[1:]:
         HESSIAN_CACHE = False
     elif _tok.startswith("calibration="):
         _cal = _tok.split("=", 1)[1]
-        if _cal not in ("default", "extended"):
-            raise SystemExit(f"calibration= must be default or extended, got {_cal!r}")
+        if _cal not in ("extended", "scored"):
+            raise SystemExit(f"calibration= must be extended or scored, got {_cal!r}")
         EXTENDED_CALIBRATION = _cal == "extended"
     elif _tok.startswith("configs="):
         WANT_CONFIGS = _tok.split("=", 1)[1].split(",")
@@ -778,7 +790,7 @@ def offsets_pool(theory: dict, keys) -> dict:
     """Per-molecule bond offsets for exactly ``keys``, from the theory cache.
 
     The cache is shared between runs and can hold molecules a run does not
-    use (calibration-only entries from a calibration=extended run), so the
+    use (calibration-only entries, absent from a calibration=scored run), so the
     pool is chosen by key, never by whatever the cache happens to contain.
     """
     return {k: {c: [float(x) for x in v] for c, v in theory[k]["offsets"].items()}
@@ -797,7 +809,7 @@ def main() -> None:
     tag = f"{METHOD}_{BASIS}".replace("/", "-").replace("(", "").replace(")", "")
     # Rows fitted against a different offsets pool must never share a file
     # with the default pool's rows: nothing in a row records which it used.
-    cal_tag = "_calext" if EXTENDED_CALIBRATION else ""
+    cal_tag = "" if EXTENDED_CALIBRATION else "_calscored"
     out_path = _ROOT / "output" / f"accuracy_upgrades_{tag}{cal_tag}.json"
 
     # ONE RUN PER RESULTS FILE. Every run loads the whole file at startup, adds
@@ -811,7 +823,7 @@ def main() -> None:
     # reason this guard exists. The lock carries the pid so a stale one left by
     # a killed run can be told from a live one and cleared.
     # One lock per level, not per results file: a default and a
-    # calibration=extended run at the same level write different results
+    # calibration=scored run at the same level write different results
     # files but rewrite the same theory-geometry cache, whole.
     lock_path = _ROOT / "output" / f"accuracy_upgrades_{tag}.lock"
     if lock_path.exists():
@@ -1206,6 +1218,9 @@ def main() -> None:
                 "g_per_isotopologue": bool(cfg["elec"]),
                 "loo_offsets_ma": {k: round(v * 1000.0, 2) for k, v in loo.items()}
                                   if cfg["offsets"] else None,
+                # Which molecules the offsets were pooled from: rows of the
+                # two pools must never be compared as if they were one.
+                "offsets_pool": sorted(per_molecule_offsets) if cfg["offsets"] else None,
             }
             rec[name] = entry
             out[mol.key] = rec
@@ -1276,7 +1291,7 @@ def print_summary_table(configs=None, results_dir=None) -> None:
     root = Path(results_dir) if results_dir is not None else _ROOT / "output"
     tables = {}
     for label, tag in _TABLE_LEVELS:
-        cal_tag = "_calext" if EXTENDED_CALIBRATION else ""
+        cal_tag = "" if EXTENDED_CALIBRATION else "_calscored"
         path = root / f"accuracy_upgrades_{tag}{cal_tag}.json"
         tables[label] = json.loads(path.read_text(encoding="utf-8")) \
             if path.exists() else {}

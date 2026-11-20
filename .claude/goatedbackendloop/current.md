@@ -22,7 +22,10 @@ root fix), literature first, no engine change (D-34, auto-picked at Q-02).
 - N5 · verify · offsets shifts per molecule; offsets fits for CH2ClF, HNCO, water, ozone vs r_e · after: N4 · done · handoff: CH2ClF big gain both levels; HNCO bonds better, angles worse; ozone worse at B3LYP (O-O bond order); others' sigma_x wider
 - N6 · gate · Q-05: rerun offsets config for all 9 with calibration=extended? · after: N5 · done · handoff: D-37 (auto-picked)
 - N7 · verify · offsets config, 9 molecules x 2 levels, default vs extended pool · after: N6 · done · handoff: means 8.56 -> 5.37 (RHF), 4.96 -> 4.13 (B3LYP); ozone vs r_e worse at B3LYP
-- N8 · gate · Q-06: make extended the default and rerun the offsets-family rows + README? · after: N7 · running · handoff: pending answer
+- N8 · gate · Q-06: make extended the default and rerun the offsets-family rows + README? · after: N7 · done · handoff: D-38 (auto-picked)
+- N9 · build · flip the default (calibration=scored for the old pool), record offsets_pool per row · after: N8 · done · handoff: tests updated, 3 mutations caught
+- N10 · verify · rerun offsets-family rows, both levels (HF 54, B3LYP 43) · after: N9 · running · handoff: scratchpad t07/fam_{hf,b3lyp}.log
+- N11 · build · merge into reports/, regenerate tables, README + docstring · after: N10 · pending · handoff: -
 
 ## Progress
 - Candidates meeting the rule (r_e / r_e^SE, stated sd <= 0.5 mA):
@@ -96,14 +99,6 @@ root fix), literature first, no engine change (D-34, auto-picked at Q-02).
   mutants); L-15 again -- the main() wiring was untested.
 
 ## Pending question
-- Q-06 · make the extended calibration the default? 1 yes: default flips
-  (calibration=default keeps the old pool), rerun every offsets-family
-  configuration at both levels (hours; B3LYP track/torsion may not finish,
-  flagged as before), archive, regenerate tables, README + docstring
-  (Recommended); 2 keep it opt-in, add the nine-molecule comparison to the
-  README as a note (~15 min); 3 first drop H2O2's O-O (bond order vs
-  ozone), re-measure (~30 min; chosen after seeing results) · deadline
-  04:03 UTC 2026-11-20 · wake-up trig_01Ch8KXFj5J7PepxCXNwWfbp
 
 ## Handoff
 - Nine-molecule rerun, RHF (t07/compare.py hf_6-31g): default pool
