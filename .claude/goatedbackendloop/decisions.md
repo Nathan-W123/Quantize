@@ -626,3 +626,16 @@
 - Alternatives considered: F14 GLS study; N3 references.
 - Source: auto-picked, no answer in 15 min (Q-14, recommended option)
 - Revisit if: the user picks another option.
+
+### D-47 · Next task: the chi2-threshold check on the other configurations (2026-11-20)
+- Decision: run the remaining benchmark configurations (HF: lam, bob,
+  offsets+bob, defect, offsets+defect, cd, offsets+cd, track,
+  offsets+track, track_direct, track_quadratic; B3LYP the same minus the
+  two cd rows, which were never run there) at thresholds 4 / 3 / 5 with
+  the T-12 instrumentation; torsion rows after, if time allows; measurement
+  only.
+- Why: T-12 covered base / offsets (1 of 36 fragile); the README's best-of
+  table takes each leg's best over all configurations.
+- Alternatives considered: F14 GLS study; N3 references.
+- Source: auto-picked, no answer in 15 min (Q-15, recommended option)
+- Revisit if: the user picks another option.
