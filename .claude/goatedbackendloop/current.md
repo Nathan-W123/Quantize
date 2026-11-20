@@ -19,7 +19,7 @@ auto-picked at Q-16); diagnosis first, any fix proposed before it is made.
 - N1 · build · trace the tracked fits · after: none · done · handoff: cause found (below)
 - N2 · verify · fresh agent: continuity scan across the cut + rerun with the cut changed · after: N1 · done · handoff: confirmed; clean-bend step 7-10 MHz, blow-up needs rotation-contaminated off-stationary Hessians; caught my prototype's axis bug
 - N3 · build · prototype fix in t14/fix, all RHF rows + B3LYP fluoroacetylene · after: N1 · done (corrected) · handoff: 3 HF FA rows move (track, offsets+track, track_quadratic); nothing else; best-of unchanged
-- N4 · gate · propose the fix to the user (engine change, rows move) · after: N2, N3 · asked (Q-17) · handoff: -
+- N4 · gate · propose the fix to the user (engine change, rows move) · after: N2, N3 · decided (Q-17 auto-pick, D-50) · handoff: apply fix
 
 ## Progress
 - 18:45 UTC: t14/trace.py (+ trace2 / trace3, more probes). HF
@@ -94,6 +94,5 @@ auto-picked at Q-16); diagnosis first, any fix proposed before it is made.
 - 2026-11-20 · my prototype took argmin over an array whose 'absent' entry is encoded as inf, and zeroed the wrong axis on exactly linear geometries; the verifier's independent edit disagreed on one row and exposed it. Check how the input encodes the missing case before selecting from it (L-P04 extension candidate).
 
 ## Pending question
-- Q-17 (asked 2026-11-20 19:12 UTC, deadline 19:27 UTC; wake-up trig_01DJcJ2d3FGuLR6jZPtoNiKz): apply the linear axial-moment fix? Options: 1. apply fix + regression test + rerun / archive the 3 HF rows (Recommended); 2. same, then also study projecting rotations out of off-stationary Hessians in the slope (may move other tracked rows); 3. leave the engine, record the defect only; 4. Done for now. Auto-pick: 1.
 
 ## Handoff

@@ -528,6 +528,18 @@ def compute_harmonic_alpha(
         # A linear molecule has I_a ~ 0 and no A constant; 1/I_a would blow up,
         # and no species should be fitting an A component there anyway.
         inv = np.where(np.isfinite(inertia) & (inertia > 1e-8), 1.0 / inertia, 0.0)
+        # WHICH GEOMETRIES ARE LINEAR is decided once, by rigid_mode_count
+        # (is_linear: I_min / I_max < 1e-6), and the absolute 1e-8 cut above
+        # must not overrule it. Between the two -- fluoroacetylene bent by
+        # ~1e-4 A has I_a 1e-8 to 5e-5 -- the modes are a linear molecule's
+        # (3N-5, A dropped) while this term divided by I_a: alpha_B stepped
+        # 41.26 -> 33.69 MHz as I_a crossed 1e-8 on a clean bend, and reached
+        # -7.5e6 MHz at the off-stationary point of the tracking slope
+        # (2026-11-20, decisions D-50). B_e is sorted A >= B >= C, so the
+        # axial moment is index 0.
+        if _rigid_mode_count(coords, masses) == 5:
+            inv = inv.copy()
+            inv[0] = 0.0
         d2B_watson = (1.5 * _INERTIA_TO_MHZ * (inv ** 2)[:, None]
                       * np.einsum("rxg,g->xr", a_mode ** 2, inv))
         alpha_cent = -d2B_watson * zpe_amp[None, :]

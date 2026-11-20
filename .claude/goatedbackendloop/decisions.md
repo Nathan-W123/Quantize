@@ -653,3 +653,10 @@
 - Alternatives considered: F14 GLS study; B3LYP torsion rows for T-13's count.
 - Source: auto-picked, no answer in 15 min (Q-16, recommended option)
 - Revisit if: the user picks another option.
+
+### D-50 · Fix the linear-molecule axial moment in the Watson harmonic term (2026-11-20)
+- Decision: in compute_harmonic_alpha's Watson term, drop the axial inverse moment (index 0, A) whenever _rigid_mode_count says the geometry is linear -- the decision the normal modes and the Coriolis pair already use -- instead of only below an absolute I > 1e-8 amu A^2. Add a regression test (linear triatomic bent across I_A = 1e-8) that fails on the old code; rerun and archive fluoroacetylene's RHF track, offsets+track and track_quadratic rows.
+- Why: T-14: on a geometry bent by ~1e-4 A the two linearity rules disagree; near the minimum the harmonic term steps 7-10 MHz, and at the tracking slope's off-stationary points it reached -7.5e6 MHz, leaving the tracked fits data-free (chi2 16.00) and the rows at theory (19.16 mA). The fix moves exactly those 3 rows (19.16 -> 13.64, 4.96 -> 4.36, 19.17 -> 13.64); every other row at both levels is bit-identical; best-of tables unchanged.
+- Alternatives considered: also project rotations out of off-stationary Hessians in the slope (may move other tracked rows; not now); record only.
+- Source: auto-picked, no answer in 15 min (Q-17, recommended option)
+- Revisit if: the user picks another option; or the separate jump at the is_linear boundary itself (I_A ~5e-5, +25 MHz) matters for a molecule.
