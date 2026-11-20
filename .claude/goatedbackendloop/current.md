@@ -20,8 +20,8 @@ configurations (D-47, auto-picked at Q-15); measurement only.
   independent check of the flips.
 
 ## Graph
-- N1 · build · T=4 run, both levels · after: none · HF done, B3LYP resumed · handoff: HF 99/99 rows reproduce
-- N2 · build · T=3 and T=5 runs · after: N1 · HF running; B3LYP only rows with first-pass chi2 > 2.5 · handoff: -
+- N1 · build · T=4 run, both levels · after: none · HF done; B3LYP 41/81 rows, resumed in two halves · handoff: HF 99/99 rows reproduce
+- N2 · build · T=3 and T=5 runs · after: N1 · HF done; B3LYP only rows with first-pass chi2 > 2.5 (none in the first 42) · handoff: HF: 4 rows flip at T=3, none at T=5
 - N3 · verify · fresh agent recomputes the flips and checks best-of impact · after: N2 · pending · handoff: -
 
 ## Progress
@@ -41,6 +41,22 @@ configurations (D-47, auto-picked at Q-15); measurement only.
   offsets+track / track_quadratic, whose 2nd and 3rd tracked fits start at
   16.00 (dof 6.0 = n_obs) and land on 1.000 after a x4 widening -- far
   from 4, so not threshold-fragile, but odd (see Observations).
+- 17:34 UTC: part 2 hit its 7000 s timeout at 41 / 81 B3LYP rows (25 rows in
+  ~2 h while the HF runs shared the 4 CPUs). HF T=3 / T=5 finished.
+- HF T=3 / T=5 vs T=4 over all 99 rows (hybrid_rms_ma, _deg, _ma_vs_re,
+  tolerance 1e-5): only isocyanic_acid offsets+bob / offsets+defect /
+  offsets+cd / offsets+track move, all at T=3, all 8.1373 -> 13.4838 mA
+  (deg 1.835 -> 2.919) -- the offsets row's T-12 flip. T=5: nothing moves.
+- Best-of impact (RHF): HNCO's best hybrid is 8.14, shared by all six
+  offsets-family rows (offsets+torsion too: torsion_applied False, so the
+  same fit; not rerun, inferred). At T=3 it would read 13.48, moving the
+  README RHF best-of hybrid mean 5.34 -> ~5.93; still below theory (22.10)
+  and ME (48.17) for HNCO, so no win count changes. Nothing at T=5.
+- B3LYP: first-pass chi2 of the 42 rows logged so far is <= 0.8 (scan.py).
+- 17:40 UTC: chi2run2.py takes molecule keys; B3LYP T=4 resumed
+  as two processes (OMP_NUM_THREADS=2 each): wt4 fluoroacetylene +
+  chlorofluoromethane -> t4_b3lyp_p3.json; wt5 (wt4's cache merged in)
+  water + ozone + isocyanic_acid -> t4_b3lyp_p3b.json. Task b8ihmpgy9.
 
 ## Observations
 - 2026-11-20 · fluoroacetylene's tracked hybrid fits (HF, track and offsets+track alike) start at reduced chi2 16.00 with dof 6.0 = n_obs (no data leverage), then 1.000 after the x4 widening; the first fit in the same row has 0.05 / dof 4.3. The rows get worse with tracking (13.59 -> 19.16, 4.36 -> 4.96). I guessed a sigma state leak between tracked fits; the engine copies each isotopologue dict, so that guess is wrong. Cause unknown -- backlog, not this task.
