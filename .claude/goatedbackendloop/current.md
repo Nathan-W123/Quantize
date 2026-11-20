@@ -1,6 +1,6 @@
 # Current task
 Task: T-12
-Status: building
+Status: done
 Request: count how many base / offsets benchmark rows sit near the chi2
 rescale switch (N19; D-46, auto-picked at Q-14); measurement only.
 
@@ -24,8 +24,8 @@ rescale switch (N19; D-46, auto-picked at Q-14); measurement only.
 
 ## Graph
 - N1 · build · chi2run.py, both levels in the background · after: none · done · handoff: 36/36 rows reproduce; 1 row near a switch that matters (HF HNCO offsets)
-- N2 · verify · fresh agent: rows reproduce the archive, counts recomputed, threshold moved to 3 / 5 · after: N1 · running · handoff: -
-- N3 · gate · Q-15: what to do with the count · after: N2 · pending · handoff: -
+- N2 · verify · fresh agent: rows reproduce the archive, counts recomputed, threshold moved to 3 / 5 · after: N1 · done · handoff: confirmed; only HF HNCO offsets changes (13.48 at T=3)
+- N3 · gate · Q-15: what to do with the count · after: N2 · skipped · handoff: conventional default -- record it (backlog N19, one docstring clause); no engine change
 
 ## Progress
 - 14:20 UTC: worktree t12/wt at 04ef980; 4367 cached Hessians merged from
@@ -47,6 +47,17 @@ rescale switch (N19; D-46, auto-picked at Q-14); measurement only.
 - Count: 1 of 36 base / offsets rows is fragile to the switch. Not
   measured: the other ten configurations (bob, defect, cd, track, torsion,
   lam, corr families) that feed the README's best-of table.
+- N2 (fresh agent, 14:35 UTC): thresholds 3.0 / 4.0 / 5.0 on all 36 rows
+  (three worktree copies, 108 fits). Only HF HNCO offsets changes: 8.1373
+  -> 13.4838 at T=3 (first chi2 3.468 > 3, widened x1.862, second chi2
+  2.017, 2 passes); flips only below T = 3.468. All others within 1e-5 mA.
+  The tightening side is inert: first scale changes every sigma, chi2
+  barely moves, the second scale is a no-op at the floor (max effect
+  8.5e-4 mA). B3LYP water base / ozone offsets do change their decision at
+  T=5 (1 pass instead of 2) but move 8.6e-10 / 9.6e-6 mA. The dof gate
+  never binds (min dof 1.37). T=4 rerun bit-identical to mine; offsets rows
+  18/18 bit-exact vs archive; base rows 8/18 bit-exact, rest <= 4.3e-4 mA
+  (hybrid only; theory, ME, sigma_x exact).
 
 ## Observations
 

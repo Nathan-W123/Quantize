@@ -25,6 +25,7 @@ the decisions record; tasks before T-01 live in git history only.
 - T-09 · CH2ClF's other isotopologues: only 13C published (paywalled), no D; a synthetic 13C barely helps under independent weights · 2026-11-20 · done
 - T-10 · second C-Cl calibration reference: CH2Cl2 / CHF2Cl measured on all nine, neither improves both levels, none added · 2026-11-20 · done
 - T-11 · robust fallback width for uncalibrated classes: dropped; HF HNCO row sits near the chi2-rescale switch · 2026-11-20 · done
+- T-12 · chi2-rescale fragility count: 1 of 36 base / offsets rows (HF HNCO offsets); tightening side inert at the floor · 2026-11-20 · done
 
 ## Edges
 - C:quantum-prior --depends-on--> C:joint-optimizer · 2026-11-20
@@ -90,3 +91,6 @@ the decisions record; tasks before T-01 live in git history only.
 - D-45 --governs--> C:bond-offsets · 2026-11-20
 - T-11 --touched--> C:benchmark · 2026-11-20
 - T-11 --taught--> L-10 · 2026-11-20
+- T-12 --decided--> D-46 · 2026-11-20
+- T-12 --touched--> C:benchmark · 2026-11-20
+- T-12 --taught--> L-10 · 2026-11-20

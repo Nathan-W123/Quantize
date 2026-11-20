@@ -115,6 +115,7 @@ Sessions: 0 · Last consolidated: never
 - Adjustment: when briefing a verifier on a claimed mechanism, state the claim as an experiment it can run (hold X fixed, vary Y, reproduce the rows), not as a conclusion to review.
 - Scope: workflow
 - Status: provisional
+- Outcomes: +2026-11-20 (T-12: "move the threshold to 3 and 5" gave the exact flip point, 3.468, and the floor as the reason the low side is inert)
 
 ## Retired
 ## Changelog
