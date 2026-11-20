@@ -425,3 +425,23 @@
 - Source: recommended and approved ("Yes, replace them").
 - Revisit if: the original paper's table can be read directly (the SI is a
   secondary transcription; 791's B and C lack the source footnote).
+
+### D-33 · Per-bond prior widths are not adopted (2026-11-20)
+- Decision: keep the quantum prior's single sigma_x (the RMS that
+  prior_sigma_for_molecule builds); do not widen the prior only along
+  uncalibrated bond classes. The study is kept as
+  scripts/archive/perbond_prior_widths.py.
+- Why: exact per-class widening (added variance / s^2 = 1.0, alpha pinned)
+  fixes CH2ClF with offsets on (17.64 -> 2.44 mA RHF, 11.22 -> 4.76 B3LYP vs
+  Vogt r_e^SE) but makes HNCO worse at both levels (20.01 -> 24.81 mA and
+  angle 1.49 -> 16.47 deg at RHF; 2.03 -> 3.62 at B3LYP, vs SE100 and r_s
+  alike). Bond-only widths cannot cover an angle error (HF's H-N-C); the
+  blended RMS width loosens the angles too. Without offsets it was mixed
+  (CH2ClF worse at RHF, better at B3LYP; water/ozone worse at B3LYP).
+- Alternatives considered: angle-aware widening (a third variant designed
+  after seeing results; not run); calibration molecules for C-Cl, N-H, C-N
+  (the root fix; backlog N16).
+- Source: auto-picked, no answer in 15 min (Q-01, recommended option)
+- Revisit if: calibration molecules cover these classes, or an angle-aware
+  width is tested on molecules outside this set.
+

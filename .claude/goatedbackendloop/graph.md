@@ -46,3 +46,6 @@ the decisions record; tasks before T-01 live in git history only.
 - T-06 --touched--> C:bond-offsets · 2026-11-20
 - T-06 --taught--> L-06 · 2026-11-20
 - T-06 --taught--> L-P04 · 2026-11-20
+- T-06 --decided--> D-33 · 2026-11-20
+- D-33 --governs--> C:quantum-prior · 2026-11-20
+- D-33 --governs--> C:bond-offsets · 2026-11-20

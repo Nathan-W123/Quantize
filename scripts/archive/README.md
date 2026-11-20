@@ -9,7 +9,8 @@ They are not covered by the test suite and may have drifted from the current
 API. They still find the repository root from this directory and run from the
 repository root, e.g. `python scripts/archive/run_water_endtoend.py`.
 
-Moved here on 2026-11-19 by the bloat audit.
+Moved here on 2026-11-19 by the bloat audit; later one-off studies are added
+here directly.
 
 | Script | Question it answered | Last changed |
 |---|---|---|
@@ -21,5 +22,6 @@ Moved here on 2026-11-19 by the bloat audit.
 | `fluorobenzene_three_way.py` | Fluorobenzene: theory alone vs experiment alone vs hybrid. | 7216d87 2026-08-14 |
 | `g_tensor_validation.py` | Validate the rotational g-tensor against every measured value we could verify. | 2ba7b32 2026-09-25 |
 | `hybrid_sigma_diagnostic.py` | Is the hybrid being dragged off a good prior by a sigma it has not earned? | dcbe358 2026-09-19 |
+| `perbond_prior_widths.py` | Would widening the prior only on uncalibrated bond classes fix the underdetermined split? (No: CH2ClF better, HNCO worse; D-33.) | 2026-11-20 |
 | `reference_structure_sensitivity.py` | How much of the reported error is the engine, and how much is the ruler? | ffb2160 2026-10-07 |
 | `run_water_endtoend.py` | Drive a real end-to-end water run on the analytic PES. | 7216d87 2026-08-14 |

@@ -89,6 +89,12 @@ CH2ClF and vinyl fluoride against their r_e^SE, water and ozone against r_e.
   the tight calibrated width and the angle stays near theory. Bond-only
   widths cannot cover an angle error. Verdict: not adoptable (helps CH2ClF,
   hurts HNCO at both levels).
+- Q-01 (what next) had no answer by 01:14 UTC: auto-picked option 1. D-33
+  recorded; the study is scripts/archive/perbond_prior_widths.py (archive
+  rather than dev/, the repo's place for one-off studies), checked to
+  reproduce the prototype rows exactly (offsets: water 0.65/0.14, CH2ClF
+  17.64/2.44, HNCO 20.01/24.81; base: CH2ClF 10.80/12.42, archived primary
+  13.3838 matched).
 
 ## Observations
 - 2026-11-19: I estimated N17's saving ("2 wasted refits") without
@@ -140,9 +146,5 @@ CH2ClF and vinyl fluoride against their r_e^SE, water and ozone against r_e.
   right test; run a remedy on every molecule it changes before calling it.
 
 ## Pending question
-- Q-01 · what's next after the per-bond test · options: 1 record "not
-  adopted" (D-33) + save perbond2/3.py to dev/ (Recommended); 2 angle-aware
-  variant (diagnostic); 3 add C-Cl / N-H molecules (root fix); 4 done for
-  now · deadline 01:14 UTC 2026-11-20 · wake-up trig_01GZuWE7ciWPzd2Xf6P5tweC
 
 ## Handoff
