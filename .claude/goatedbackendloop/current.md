@@ -25,8 +25,8 @@ entries is a separate gate (D-41, auto-picked at Q-09).
 - N3 · gate · Q-10: measure, add, or stop? · after: N2 · done · handoff: D-42 (auto-picked): measure first
 - N4 · verify · offsets fits, 9 molecules x 2 levels x 3 pools (current, +CH2Cl2, +CHF2Cl) · after: N3 · done · handoff: RHF mean 5.38 -> 5.66 / 5.70; B3LYP 4.13 -> 4.10 / 3.91
 - N4v · verify · fresh agent checks pools.py recipe and both result files · after: N4 · done · handoff: recipe and all 54 rows reproduce bit-exactly; candidates entered once per atom, not per unique bond
-- N4b · build · rerun N4 with one entry per unique bond (pools2_{hf,b3lyp}.json) · after: N4v · running · handoff: -
-- N5 · gate · Q-11: add which, if any? · after: N4b · pending · handoff: -
+- N4b · build · rerun N4 with one entry per unique bond (pools2_{hf,b3lyp}.json) · after: N4v · done · handoff: RHF 5.38 -> 5.57 / 5.70; B3LYP 4.13 -> 4.11 / 3.91; matches the verifier's 4 corrected refits
+- N5 · gate · Q-11: add which, if any? · after: N4b · asked 12:43 UTC · handoff: -
 
 ## Progress
 - NQCC pages (fetched 2026-11-20): CH2Cl2 r_e^SE (Vogt 2014) C-Cl
@@ -94,10 +94,27 @@ entries is a separate gate (D-41, auto-picked at Q-09).
   6.64 and HNCO 9.05 -> 8.73; signs unchanged. Full rerun started 10:58
   UTC (pools2_*.log; the 76 Hessians the verifier computed were copied
   into the t07 cache, no overwrite).
+- Corrected rerun done 12:42 UTC (pools2_*.json), current -> +CH2Cl2 ->
+  +CHF2Cl, hybrid (vs r_e). RHF: CH2ClF 5.42 (2.91) -> 6.64 (3.52) ->
+  7.59 (4.49); HNCO 8.14 -> 8.73 -> 9.11; FF 7.15 -> 7.07 -> 6.92; FE
+  7.22 -> 7.21 -> 7.13; AF 7.27 -> 7.26 -> 7.28; FA 4.36 -> 4.37 -> 4.43;
+  VF 6.37 -> 6.35 -> 6.32; water 0.64 all; ozone 1.80 -> 1.82 -> 1.83.
+  Mean 5.376 -> 5.565 -> 5.695. B3LYP: CH2ClF 8.18 (6.00) -> 8.08 (5.88)
+  -> 6.43 (4.27), bonds vs r_e +CH2Cl2 C-Cl +7.2 / C-F -7.1, +CHF2Cl +4.9
+  / -5.3; HNCO 3.71 -> 3.70 -> 3.72; FF 3.34 -> 3.35 -> 3.27; AF 6.45 ->
+  6.42 -> 6.34; others within 0.05. Mean 4.129 -> 4.111 -> 3.912. The
+  verifier's independent corrected refits (CH2ClF RHF 6.641 / 7.595,
+  B3LYP 8.077 / 6.428; HNCO RHF 8.730) agree to 0.001.
+- Net (corrected): CH2Cl2 +0.19 RHF / -0.02 B3LYP; CHF2Cl +0.32 RHF /
+  -0.22 B3LYP and breaks D-35. Neither improves both levels.
 
 ## Observations
 - 2026-11-20 · cl.py built candidate offsets one per atom, with a comment claiming it followed leave_one_out_offsets; I had read the consumer, not measure_offsets (the producer it stood in for). The fresh verifier caught it; N2's RHF miss table was wrong by up to 6 mA.
 
 ## Pending question
+- Q-11 (asked 12:43 UTC, deadline 12:58 UTC; send_later trig_01FMoLGqSetN9yEuFREktwBc): add
+  which second C-Cl reference, if any? 1 add nothing, record the finding
+  (Recommended; auto-pick at deadline) · 2 add CHF2Cl (bends D-35, needs
+  the user's say-so, never auto-picked) · 3 add CH2Cl2 · 4 Done for now.
 
 ## Handoff
