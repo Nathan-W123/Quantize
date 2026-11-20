@@ -77,11 +77,17 @@ fits that reproduce those rows exactly, scored against Vogt's structure.
 
 > **Provenance.** Every bond-offset row (`offsets`, `offsets+bob`,
 > `offsets+defect`, `offsets+cd`, `offsets+track`, `offsets+torsion`) is at code
-> vintage c8904da (2026-11-20), with the calibration pool above. The other rows
-> are at 5cfc5d4 (2026-11-17), except vinyl fluoride's, rerun at 676eb0d
-> (2026-11-19) after its rotational constants were replaced by Hayashi &
-> Inagusa's 1989 measurements -- the only change since 5cfc5d4 that affects
-> them. Not run: the `elec` and `all` configurations (they
+> vintage c8904da (2026-11-20), with the calibration pool above, except one
+> noted below. The other rows are at 5cfc5d4 (2026-11-17), except vinyl
+> fluoride's, rerun at 676eb0d (2026-11-19) after its rotational constants were
+> replaced by Hayashi & Inagusa's 1989 measurements. Three RHF fluoroacetylene
+> rows -- `track`, `offsets+track` and `track_quadratic` -- are at 2eb9b6c
+> (2026-11-20), after the harmonic alpha term stopped dividing by a nearly
+> linear molecule's axial moment (19.16 -> 13.64, 4.96 -> 4.36 and 19.17 ->
+> 13.64 mÅ). The change reaches only geometries treated as linear, so no other
+> molecule; fluoroacetylene's other rows, rerun at both levels (torsion rows
+> aside: it has no rotor), are bit-identical. Not run: the `elec` and `all`
+> configurations (they
 > need `pyscf.prop`, not installed here), and at B3LYP the `torsion` and
 > `offsets+torsion` rows of fluoroethane and acetyl fluoride (a single scan
 > outlasts the 2-hour job limit), so those two molecules' B3LYP best-of is over
