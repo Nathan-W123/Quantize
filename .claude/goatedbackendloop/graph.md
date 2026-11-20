@@ -20,8 +20,8 @@ the decisions record; tasks before T-01 live in git history only.
 - T-04 · bloat audit and cleanup (dead code, five modules, ten scripts archived) · 2026-11-19 · done
 - T-05 · CSV correction tables reach the engine · 2026-11-19 · done
 - T-06 · per-bond prior prototype (diagnostic): rejected, CH2ClF +, HNCO - · 2026-11-20 · done
-- T-08 · why CH2ClF is worse at B3LYP: C-Cl and C-F offset misses along a direction two isotopologues cannot see · 2026-11-20 · done
 - T-07 · calibration molecules for uncovered bond classes: CH3Cl, HCN, H2O2 as calibration-only, default pool, offsets rows rerun · 2026-11-20 · done
+- T-08 · why CH2ClF is worse at B3LYP: C-Cl and C-F offset misses along a direction two isotopologues cannot see · 2026-11-20 · done
 
 ## Edges
 - C:quantum-prior --depends-on--> C:joint-optimizer · 2026-11-20
