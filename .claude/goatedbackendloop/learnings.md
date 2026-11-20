@@ -1,127 +1,76 @@
 # goatedbackendloop learning reference
-Sessions: 0 · Last consolidated: never
+Sessions: 0 · Last consolidated: 2026-11-20
 ## Stated preferences
 - Accuracy and efficiency are both hard goals; anything trading one for the other is flagged, not implemented · scope: all projects · stated 2026-11-11
 - Use AskUserQuestion for choices; keep the loop running until told to stop · scope: all projects · stated 2026-11-11
 ## Workflow lessons
 ### L-01 · Size multi-agent workflows to the machine
 - Observation: 7 parallel verifiers ran 2 at a time on a 4-CPU container; 3.6 h wall, user asked why.
-- Evidence: 2026-11-12 · wf_e5e2e0fe-c99, nproc=4, cap = CPUs-2 = 2; verifiers 29-79 min each, 75-170 tool calls.
-- Adjustment: run `nproc` before designing a fan-out; on <=4 CPUs scope each agent narrowly and expect serial rounds; state the expected wall time to the user up front.
-- Scope: workflow
-- Status: provisional
-- Outcomes:
+- Evidence: 2026-11-12 · wf_e5e2e0fe-c99, nproc=4, cap = CPUs-2 = 2.
+- Adjustment: run `nproc` before designing a fan-out; on <=4 CPUs scope each agent narrowly and expect serial rounds; state the expected wall time up front.
+- Scope: workflow · Status: provisional
+
 ### L-02 · A number is not reported until its seed, threads and code hash are
-- Observation: commit b71a261 quoted FF clouds from seeds 11 and 23 without
-  saying so; the verifiers ran seed 7 and could not reproduce them, and the
-  rto draws turned out not to be reproducible across BLAS thread counts even
-  at one seed.
-- Evidence: 2026-11-13 · wf_3a613cec-119 F2; repro_draws.py (OMP 1 vs 4:
-  xi differs by 1.1-2.0x its size).
-- Adjustment: put seed, thread count and commit hash next to every measured
-  number in commit messages and docstrings; make random draws a function of
-  the seed alone (no factorisation-dependent draws).
-- Scope: workflow
-- Status: provisional
-- Outcomes: +2026-11-16 helped (rounds 3-6 reproduced the quoted numbers); -2026-11-16 one CLI ratio (72ece8a) quoted without its seed
+- Observation: quoted FF clouds (seeds 11, 23) could not be reproduced at seed 7, and rto draws differed across BLAS thread counts at one seed.
+- Evidence: 2026-11-13 · wf_3a613cec-119 F2; OMP 1 vs 4 moved xi by 1.1-2.0x its size.
+- Adjustment: put seed, thread count and commit hash next to every measured number; make random draws a function of the seed alone.
+- Scope: workflow · Status: provisional
+- Outcomes: +2026-11-16 (rounds 3-6 reproduced the numbers) -2026-11-16 (one CLI ratio without its seed)
+
 ### L-03 · When a check keeps needing new thresholds, measure the thing it predicts
-- Observation: three verification rounds tuned a predictor (split coupling,
-  then a null response with a tolerance) of whether the split posterior
-  describes the split estimator; each threshold refused good cases and
-  passed bad ones. The bootstrap measures that directly.
-- Evidence: 2026-11-13/16 · fa9a145, 33f8d01, 867e925 refuted by
-  wf_d6294e4a, wf_588822aa, wf_4fb65e30 (forced clouds on target at |K|
-  0.058, 1.4x off at 0.018); 55c7472 let the bootstrap run and flag.
-- Adjustment: when a gate on a proxy needs a second retuning, ask whether
-  the quantity it predicts can be measured cheaply instead, and gate or
-  report on the measurement.
-- Scope: workflow
-- Status: provisional
-- Outcomes:
+- Observation: three rounds retuned a proxy gate for "does the split posterior describe the split estimator"; each refused good cases and passed bad ones; the bootstrap measures it directly.
+- Evidence: 2026-11-13/16 · fa9a145, 33f8d01, 867e925 refuted; 55c7472 let the bootstrap run and flag.
+- Adjustment: when a proxy gate needs a second retuning, ask whether the predicted quantity can be measured cheaply, and gate or report on the measurement.
+- Scope: workflow · Status: provisional
+
 ### L-04 · Measure fixes through the user's entry point, with every mode a script covers
-- Observation: my after-measurements ran the API on analytic water and
-  looked clean; the CLI config path (internal mode, multistart, corrections)
-  showed 14/40 usable refits and a reduction chosen from corrected targets.
-- Evidence: 2026-11-13/16 · 55c7472 (API 200/200 vs CLI 14/40); e927d67
-  unit test passed, CLI 150-degree start still S (wf_706bb93b F0).
-- Adjustment: for every fix, run one before/after through the CLI on a real
-  config as well as the API check, and re-run every mode the reproduction
-  script covers, not only the one fixed.
-- Scope: workflow
-- Status: provisional
-- Outcomes: +2026-11-17 (round 10: all 19 findings reproduced through validate/build/CLI before fixing; one, the replaced stated value, only showed after the fit's Hessian corrections, not at construction)
+- Observation: API checks on analytic water looked clean; the CLI config path showed 14/40 usable refits.
+- Evidence: 2026-11-13/16 · 55c7472 (API 200/200 vs CLI 14/40); e927d67 (unit test green, CLI start still wrong).
+- Adjustment: for every fix, run a before/after through the CLI on a real config as well as the API, and every mode the reproduction script covers.
+- Scope: workflow · Status: provisional · Outcomes: +2026-11-17 (round 10: 19 findings reproduced through the CLI first)
+
 ### L-05 · Before fixing to a reference, check what the reference changes
-- Observation: twice in one day a "the fit is not converged" verdict came
-  from a comparison that changed more than one thing: round 8's reference
-  was a terminus reached from another start (the procedure has several),
-  and N6's restart was a fresh optimizer, i.e. also a fresh Hessian, which
-  changed the model being fitted.
-- Evidence: 2026-11-16 · Quantize round 8 (two fixes tuned to the wrong
-  reference, one doubled the "far" count) and N6 (same-object restart
-  <= 0.0003 mA vs fresh restart 97 mA on one molecule).
-- Adjustment: when a check says "not at the optimum", rerun it changing one
-  thing at a time (same object / same start / same model) and ask what the
-  reference procedure does from the point being judged before changing code.
-- Scope: workflow
-- Status: provisional
-- Outcomes: +2026-11-16 (N6: one 4-minute run named the cause)
+- Observation: two "not converged" verdicts came from comparisons that changed more than one thing (another start; a fresh optimizer, i.e. a fresh Hessian).
+- Evidence: 2026-11-16 · round 8 (two fixes tuned to the wrong reference); N6 (same-object restart <= 0.0003 mA vs fresh 97 mA).
+- Adjustment: rerun the check changing one thing at a time (same object / start / model) before changing code.
+- Scope: workflow · Status: provisional · Outcomes: +2026-11-16 (N6: one run named the cause)
+
 ### L-06 · Instrument the failure before hypothesising about it
-- Observation: a library call failed ("CCSD did not converge"); three guessed
-  causes (cycles, DIIS space, start geometry) were each tested and wrong.
-  Logging the call's inputs found it in one run: the optimiser's unbounded
-  first step had stretched the bonds 1.23 -> 2.22 A.
+- Observation: three guessed causes of a CCSD non-convergence were wrong; logging the call's inputs found an unbounded first step (1.23 -> 2.22 A).
 - Evidence: 2026-11-10 · Quantize (was project lesson L-P05).
-- Adjustment: when a failure surfaces from inside a library call, log the
-  inputs to that call across the failing sequence before forming a theory
-  about the library's settings. The same holds for a runtime patch: log what
-  the engine's own call receives before trusting the patch's inputs.
-- Scope: workflow
-- Status: provisional
-- Outcomes: +2026-11-19 (a monkeypatched prior gave wrong numbers; logging
-  what _calibrated_alpha_q received showed the fit reads a rigid-projected
-  Hessian, not the raw one the patch changed -- one probe, cause found)
+- Adjustment: when a failure surfaces inside a library call, or a runtime patch gives odd numbers, log what that call receives across the failing sequence before theorising.
+- Scope: workflow · Status: provisional · Outcomes: +2026-11-19 (a patched prior: the fit read a rigid-projected Hessian, found in one probe)
+
 ### L-07 · Classify a tool's findings before quoting its count
-- Observation: a dead-code report quoted a raw tool count to the user; most of
-  it was intentional on inspection.
-- Evidence: 2026-11-19 · pyflakes' "79 unused imports" was 67 backend
-  registrations + 9 re-exports / noqa lines; 7 were real. Vulture's whole-repo
-  list likewise mixed decorators, dataclass fields and library callbacks in.
-- Adjustment: before reporting how much of something a static tool found,
-  sort its hits into real / intentional / false positive and quote the real
-  number; say what the tool cannot see (registries, string dispatch, fixtures).
+- Observation: pyflakes' "79 unused imports" was 67 registrations + 9 re-exports; 7 were real.
+- Evidence: 2026-11-19 · Quantize dead-code audit.
+- Adjustment: sort a static tool's hits into real / intentional / false positive and quote the real number; say what the tool cannot see.
 - Scope: workflow · Status: provisional
 
 ### L-08 · A `cd` or variable at the head of a backgrounded chain reaches only its first job
-- Observation: `cd X && (job A) & (job B) & wait` and `SP=... && (A) & (B) &`
-  ran job B in the wrong directory / with SP empty; B failed at once.
-- Evidence: 2026-11-20 · twice in one session (the B3LYP prototype run never
-  started; a reproduction check read /n13/wt/... instead of the scratchpad).
-- Adjustment: in a parallel bash line, put the `cd` and the variables inside
-  each job's own parentheses, or export them on a separate line first.
-- Scope: stack: bash
-- Status: provisional
-- Outcomes:
+- Observation: `cd X && (A) & (B) & wait` ran B in the wrong directory / with SP empty.
+- Evidence: 2026-11-20 · twice in one session.
+- Adjustment: put the `cd` and variables inside each job's parentheses, or export them on a separate line first.
+- Scope: stack: bash · Status: provisional · Outcomes: +2026-11-20 (T-13: per-job `export` in a loop; both halves ran)
+
 ### L-09 · Ending a turn on background work: say what runs, how far, how long
-- Observation: the user twice asked why the loop had stopped while a long benchmark chain ran in the background.
-- Evidence: 2026-11-20 · "why did the loop stop" (twice, Quantize T-07); each time the turn had ended waiting on a background job with only a one-line status.
-- Adjustment: when a turn ends to wait on background work, the last message says what is running, its progress (n of N), a rough ETA, and that the loop resumes on its own when it finishes.
-- Scope: workflow
-- Status: provisional
-- Outcomes: +2026-11-20 (T-10: three waits, each with run, progress and ETA; no "why did it stop" since)
+- Observation: the user twice asked why the loop had stopped while a benchmark ran in the background.
+- Evidence: 2026-11-20 · "why did the loop stop" (Quantize T-07).
+- Adjustment: when a turn ends to wait on background work, say what is running, its progress (n of N), a rough ETA, and that the loop resumes on its own.
+- Scope: workflow · Status: provisional · Outcomes: +2026-11-20 (T-10, T-13: no "why did it stop" since)
 
 ### L-10 · Give a verifier an experiment that settles the question, not your reading
-- Observation: asked "is this row a function of sigma_x alone? force it and reproduce", the verifier ran the sweep and found a chi2-rescale switch behind a 1.8 -> 9.9 deg jump that my reading had put down to the width itself.
+- Observation: asked to force sigma_x and reproduce, a verifier found a chi2-rescale switch my reading had put down to the width itself.
 - Evidence: 2026-11-20 · Quantize T-11 (t11/verify/fine_hf.json).
-- Adjustment: when briefing a verifier on a claimed mechanism, state the claim as an experiment it can run (hold X fixed, vary Y, reproduce the rows), not as a conclusion to review.
-- Scope: workflow
-- Status: provisional
-- Outcomes: +2026-11-20 (T-12: "move the threshold to 3 and 5" gave the exact flip point, 3.468, and the floor as the reason the low side is inert)
+- Adjustment: state the claim as an experiment the verifier can run (hold X fixed, vary Y, reproduce the rows, by a different mechanism than yours), not as a conclusion to review.
+- Scope: workflow · Status: provisional · Outcomes: +2026-11-20 (T-12: "move the threshold to 3 and 5" gave the flip point and the floor)
 
 ## Retired
 ## Changelog
 - 2026-11-12 created; L-01 added.
 - 2026-11-13 L-02 added (reproducible numbers).
-- 2026-11-16 L-03 (measure instead of tuning a proxy) and L-04 (CLI entry point) added after step 8; L-02 outcome +2026-11-16 (seeds quoted in every later commit; a verifier still caught one CLI number without its seed).
-- 2026-11-17 L-06 moved here from the project's lessons (workflow scope); lessons.md consolidated 219 -> ~110 lines (L-10 into L-14, L-P01 and L-13 into L-15); L-04 outcome +2026-11-17.
+- 2026-11-16 L-03 and L-04 added; L-02 outcome +.
+- 2026-11-17 L-06 moved here from the project's lessons; lessons.md consolidated 219 -> ~110 lines; L-04 outcome +.
 - 2026-11-20 L-09 outcome +; project L-P04 extended (hand-built stand-ins for a library function's output).
 - 2026-11-20 L-10 added (verifiers get experiments, not readings).
+- 2026-11-20 consolidated: learnings.md 127 -> ~75 lines (observations and evidence compressed, no lesson dropped); lessons.md 161 -> ~80 (L-08 into L-07, validated lessons compressed); L-08 outcome + (T-13).
