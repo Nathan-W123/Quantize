@@ -166,6 +166,7 @@ from backend.spectral.harmonic_alpha import (  # noqa: E402
     self_consistent_correction_table,
 )
 from dev.monofluoro_references import (  # noqa: E402
+    CALIBRATION_ONLY,
     ISOCYANIC_ACID,
     MOLECULES,
     MOLECULES_SET2,
@@ -205,6 +206,11 @@ WANT_CONFIGS: list[str] = []
 RESULTS_DIR = None
 HESSIAN_CACHE = True
 RUN_DIAGNOSTICS = True
+#: calibration=extended adds the calibration-only references
+#: (dev.monofluoro_references.CALIBRATION_ONLY) to the bond-offsets pool. They
+#: are measured, never fitted or scored. Off by default, so the archived tables
+#: stay reproducible; its rows go to a separate results file (see main()).
+EXTENDED_CALIBRATION = False
 _args: list[str] = []
 for _tok in sys.argv[1:]:
     if _tok.startswith("method="):
@@ -225,6 +231,11 @@ for _tok in sys.argv[1:]:
         RUN_DIAGNOSTICS = False
     elif _tok == "no_hessian_cache":
         HESSIAN_CACHE = False
+    elif _tok.startswith("calibration="):
+        _cal = _tok.split("=", 1)[1]
+        if _cal not in ("default", "extended"):
+            raise SystemExit(f"calibration= must be default or extended, got {_cal!r}")
+        EXTENDED_CALIBRATION = _cal == "extended"
     elif _tok.startswith("configs="):
         WANT_CONFIGS = _tok.split("=", 1)[1].split(",")
     elif _tok.startswith("results="):
@@ -728,6 +739,17 @@ def theory_geometries(pool):
     return cache
 
 
+def offsets_pool(theory: dict, keys) -> dict:
+    """Per-molecule bond offsets for exactly ``keys``, from the theory cache.
+
+    The cache is shared between runs and can hold molecules a run does not
+    use (calibration-only entries from a calibration=extended run), so the
+    pool is chosen by key, never by whatever the cache happens to contain.
+    """
+    return {k: {c: [float(x) for x in v] for c, v in theory[k]["offsets"].items()}
+            for k in keys}
+
+
 def main() -> None:
     global VINTAGE
     VINTAGE = code_vintage()
@@ -738,7 +760,10 @@ def main() -> None:
                if c in CONFIGS]
 
     tag = f"{METHOD}_{BASIS}".replace("/", "-").replace("(", "").replace(")", "")
-    out_path = _ROOT / "output" / f"accuracy_upgrades_{tag}.json"
+    # Rows fitted against a different offsets pool must never share a file
+    # with the default pool's rows: nothing in a row records which it used.
+    cal_tag = "_calext" if EXTENDED_CALIBRATION else ""
+    out_path = _ROOT / "output" / f"accuracy_upgrades_{tag}{cal_tag}.json"
 
     # ONE RUN PER RESULTS FILE. Every run loads the whole file at startup, adds
     # rows and writes the whole thing back after each molecule. Two runs on the
@@ -787,10 +812,13 @@ def main() -> None:
         print(f"  corrections level: {CORR_METHOD or METHOD}/{CORR_BASIS or BASIS}")
     print()
 
-    theory = theory_geometries(pool)
-    per_molecule_offsets = {k: {c: [x / 1.0 for x in v]
-                                for c, v in rec["offsets"].items()}
-                            for k, rec in theory.items()}
+    calibration = list(CALIBRATION_ONLY) if EXTENDED_CALIBRATION else []
+    if calibration:
+        print(f"  offsets pool adds (calibration only): "
+              f"{', '.join(m.key for m in calibration)}")
+    theory = theory_geometries(pool + calibration)
+    per_molecule_offsets = offsets_pool(
+        theory, [m.key for m in pool + calibration])
 
     for mol in pool:
         if mol.key not in wanted:

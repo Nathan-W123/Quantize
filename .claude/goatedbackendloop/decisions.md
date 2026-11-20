@@ -469,3 +469,18 @@
 - Revisit if: the user wants new molecules scored as well, or no N-H source
   meeting the rule turns up.
 
+### D-36 · Add CH3Cl, HCN, H2O2 as calibration-only references behind calibration=extended (2026-11-20)
+- Decision: dev.monofluoro_references.CALIBRATION_ONLY holds methyl chloride
+  (Melosso 2025 r_e^SE), hydrogen cyanide (Carter, Mills & Handy 1992 r_e)
+  and hydrogen peroxide (Baraban 2018 r_e^SE). The benchmark adds them to the
+  offsets pool only with calibration=extended, writes those rows to a
+  separate results file (_calext), and chooses the pool by key
+  (offsets_pool). Default runs are unchanged.
+- Why: measure what the extra calibration does before changing the archived
+  tables; a flag keeps the README reproducible from the default code.
+- Alternatives considered: add without HCN (C#N pooled with N=C); search
+  more for N-H first; stop.
+- Source: auto-picked, no answer in 15 min (Q-04, recommended option)
+- Revisit if: the measurement says the extended pool helps, at the next gate
+  (make it the default and rerun the tables), or it hurts (drop it).
+

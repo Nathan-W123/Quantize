@@ -1,6 +1,6 @@
 # Current task
 Task: T-07
-Status: clarifying
+Status: verifying
 Request: calibration molecules for the uncovered bond classes (backlog N16's
 root fix), literature first, no engine change (D-34, auto-picked at Q-02).
 
@@ -17,9 +17,9 @@ root fix), literature first, no engine change (D-34, auto-picked at Q-02).
 ## Graph
 - N1 · plan · design choices Q-03 (entry type, classes, reference rule) · after: none · done · handoff: D-35 (auto-picked)
 - N2 · explore · literature search for candidates per class · after: none · done · handoff: C-Cl, C-N, O-O/O-H found; N-H none meeting the rule
-- N3 · gate · Q-04: add CH3Cl, HCN, H2O2 and measure offsets? · after: N1, N2 · running · handoff: pending answer
-- N4 · build · calibration-only entries + theory geometries + pool · after: N3 · pending · handoff: -
-- N5 · verify · offsets shifts per molecule; offsets fits for CH2ClF, HNCO, water, ozone vs r_e · after: N4 · pending · handoff: -
+- N3 · gate · Q-04: add CH3Cl, HCN, H2O2 and measure offsets? · after: N1, N2 · done · handoff: D-36 (auto-picked)
+- N4 · build · calibration-only entries + theory geometries + pool · after: N3 · done · handoff: refs + calibration=extended + offsets_pool; 10 tests, 3 mutations caught
+- N5 · verify · offsets shifts per molecule; offsets fits for CH2ClF, HNCO, water, ozone vs r_e · after: N4 · running · handoff: scratchpad calib/calib_{hf,b3}.log
 - N6 · gate · rerun the full offsets rows and README tables · after: N5 · pending · handoff: -
 
 ## Progress
@@ -41,6 +41,12 @@ root fix), literature first, no engine change (D-34, auto-picked at Q-02).
     HOOH 113.5(2) deg -- as tabulated in Herberth, Giesen & Yamada, JMS 362,
     37 (2019) (arXiv 2105.09186, Table 5), whose own fit agrees: 1.4518(6),
     0.962(1), 100.0(1), 113.7(2). Baraban's paper itself not read.
+- Built (D-36): dev/monofluoro_references.py METHYL_CHLORIDE,
+  HYDROGEN_CYANIDE, HYDROGEN_PEROXIDE, CALIBRATION_ONLY (species=[],
+  structure_type r_e); scripts/accuracy_upgrades_benchmark.py
+  calibration=extended (rows to *_calext.json) and offsets_pool(theory, keys).
+  dev/tests/test_calibration_references.py: 10 tests; breaking the CH3Cl
+  builder, the H2O2 dihedral, or offsets_pool's key filter each fails one.
 - N-H: nothing readable meets the rule. NH3 r_e 1.0110 A / 106.70 deg
   (Demaison, Margules & Boggs, Chem. Phys. 260, 65-81, 2000, "The
   equilibrium N-H bond length"), no uncertainty on the secondary page
@@ -53,10 +59,5 @@ root fix), literature first, no engine change (D-34, auto-picked at Q-02).
 ## Observations
 
 ## Pending question
-- Q-04 · gate: 1 add CH3Cl, HCN, H2O2 as calibration-only entries, measure
-  the offsets shifts and rerun the offsets fits for CH2ClF, HNCO, water,
-  ozone only (Recommended); 2 same without HCN; 3 search more for N-H
-  first; 4 stop, keep the candidates in the backlog · deadline 02:07 UTC
-  2026-11-20 · wake-up trig_01WAvUVmyb1miXvuwPTSvHGa
 
 ## Handoff

@@ -1318,3 +1318,127 @@ ISOCYANIC_ACID = ReferenceMolecule(
 
 #: Third set: different failure modes rather than different chemistry.
 MOLECULES_SET3 = [OZONE, ETHYLENE_OXIDE, ISOCYANIC_ACID]
+
+
+# ── Calibration-only references ──────────────────────────────────────────────
+#
+# Molecules that give an otherwise single-member bond class a second member in
+# the bond-offsets pool (backend.spectral.bond_offsets). Leave-one-out cannot
+# calibrate a class seen in one molecule, which left chlorofluoromethane's C-Cl,
+# isocyanic acid's C-N, water's O-H and ozone's O-O uncorrected (backlog N16,
+# decisions D-33 to D-36).
+#
+# They carry an equilibrium structure and nothing else: no isotopologue
+# constants, so they are never fitted or scored. They are only measured --
+# theory minus reference, bond by bond -- by bond_offsets.measure_offsets. Each
+# reference is r_e or r_e^SE with a stated uncertainty inside
+# RE_REFERENCE_MAX_UNCERTAINTY_MA, so the offsets they contribute are the
+# level of theory's error, not the yardstick's. (Most of the scored molecules'
+# own references are r_s / effective; that mixed yardstick is backlog N3.)
+#
+# N-H has no member here: no N-H equilibrium structure with a readable stated
+# uncertainty was found (2026-11-20; ammonia's 1.0110 A, Demaison, Margules &
+# Boggs, Chem. Phys. 260, 65 (2000), is quoted without one where readable).
+
+
+def _ch3cl_geometry(r_ccl, r_ch, a_clch_deg):
+    """C3v CH3Cl: C at the origin, Cl on +z, three H at Cl-C-H from the axis."""
+    t = np.radians(a_clch_deg)
+    out = [np.zeros(3), np.array([0.0, 0.0, r_ccl])]
+    for phi in (0.0, 120.0, 240.0):
+        p = np.radians(phi)
+        out.append(r_ch * np.array([np.sin(t) * np.cos(p), np.sin(t) * np.sin(p), np.cos(t)]))
+    return np.array(out)
+
+
+def _hcn_geometry(r_ch, r_cn):
+    """Linear H-C-N along z."""
+    return np.array([[0.0, 0.0, -r_ch], [0.0, 0.0, 0.0], [0.0, 0.0, r_cn]])
+
+
+def _h2o2_geometry(r_oo, r_oh, a_ooh_deg, tau_deg):
+    """C2 H2O2: O1 at the origin, O2 on +z, H-O-O-H dihedral tau."""
+    t, p = np.radians(a_ooh_deg), np.radians(tau_deg)
+    o1, o2 = np.zeros(3), np.array([0.0, 0.0, r_oo])
+    h1 = o1 + r_oh * np.array([np.sin(t), 0.0, np.cos(t)])
+    h2 = o2 + r_oh * np.array([np.sin(t) * np.cos(p), np.sin(t) * np.sin(p), -np.cos(t)])
+    return np.array([o1, o2, h1, h2])
+
+
+METHYL_CHLORIDE = ReferenceMolecule(
+    key="methyl_chloride",
+    name="Methyl chloride",
+    formula="CH3Cl",
+    elems=["C", "Cl", "H", "H", "H"],
+    geometry=_ch3cl_geometry(1.777716, 1.083484, 108.3723),
+    masses=np.array([M_C12, M_CL35, M_H, M_H, M_H]),
+    species=[],
+    structure_source=(
+        "r_e^SE, Melosso et al., Molecules 30, 1604 (2025), "
+        "doi:10.3390/molecules30071604, Table 5 (CCSD(T)/VQZ-V(Q+d)Z "
+        "vibrational corrections, 14 isotopologues): r(C-Cl) = 1.777716(10) A, "
+        "r(C-H) = 1.083484(17) A, Cl-C-H = 108.3723(18) deg, 95% confidence "
+        "intervals. Agrees with Pietropolli Charmet et al., JQSRT 305, 108624 "
+        "(2023) (1.777725(11), 1.083450(17), 108.3740(19)) and a CCSD(T)/CBS "
+        "composite (1.77792, 1.08339, 108.384)."
+    ),
+    structure_type="r_e",
+    #: The paper's 95% intervals: 0.010 mA (C-Cl), 0.017 mA (C-H).
+    geometry_re_uncertainty_ma=0.02,
+    constants_source="none: calibration-only entry, nothing is fitted",
+    bonds={"C-Cl": [(0, 1)], "C-H": [(0, 2), (0, 3), (0, 4)]},
+    angles={"Cl-C-H": [(1, 0, 2), (1, 0, 3), (1, 0, 4)],
+            "H-C-H": [(2, 0, 3), (2, 0, 4), (3, 0, 4)]},
+)
+
+HYDROGEN_CYANIDE = ReferenceMolecule(
+    key="hydrogen_cyanide",
+    name="Hydrogen cyanide",
+    formula="HCN",
+    elems=["H", "C", "N"],
+    geometry=_hcn_geometry(1.06501, 1.15324),
+    masses=np.array([M_H, M_C12, M_N14]),
+    species=[],
+    structure_source=(
+        "r_e, Carter, Mills & Handy, \"The equilibrium structure of HCN\", "
+        "J. Chem. Phys. (1992): r(C-H) = 1.06501(8) A, r(C-N) = 1.15324(2) A, "
+        "from the ground-state constants of eight isotopologues with "
+        "variational B0 - Be. Values as quoted in the abstract; full text not "
+        "read. Its C#N joins isocyanic acid's N=C in the C-N class: "
+        "bond_class ignores bond order by design."
+    ),
+    structure_type="r_e",
+    #: 0.08 mA (C-H), 0.02 mA (C-N), as quoted.
+    geometry_re_uncertainty_ma=0.08,
+    constants_source="none: calibration-only entry, nothing is fitted",
+    bonds={"C-H": [(1, 0)], "C-N": [(1, 2)]},
+    angles={},
+)
+
+HYDROGEN_PEROXIDE = ReferenceMolecule(
+    key="hydrogen_peroxide",
+    name="Hydrogen peroxide",
+    formula="H2O2",
+    elems=["O", "O", "H", "H"],
+    geometry=_h2o2_geometry(1.4523, 0.9618, 99.78, 113.5),
+    masses=np.array([M_O16, M_O16, M_H, M_H]),
+    species=[],
+    structure_source=(
+        "r_e^SE, Baraban, Changala & Stanton, \"The equilibrium structure of "
+        "hydrogen peroxide\", J. Mol. Spectrosc. 343, 92-95 (2018): r(O-O) = "
+        "1.4523(2) A, r(O-H) = 0.9618(2) A, H-O-O = 99.78(4) deg, H-O-O-H = "
+        "113.5(2) deg, as tabulated by Herberth, Giesen & Yamada, J. Mol. "
+        "Spectrosc. 362, 37 (2019) (arXiv:2105.09186, Table 5), whose own fit "
+        "agrees: 1.4518(6), 0.962(1), 100.0(1), 113.7(2). Baraban's paper "
+        "itself not read."
+    ),
+    structure_type="r_e",
+    #: 0.2 mA on both bonds, as quoted.
+    geometry_re_uncertainty_ma=0.2,
+    constants_source="none: calibration-only entry, nothing is fitted",
+    bonds={"O-O": [(0, 1)], "O-H": [(0, 2), (1, 3)]},
+    angles={"O-O-H": [(1, 0, 2), (0, 1, 3)]},
+)
+
+#: Calibration-only entries, in the order they were added.
+CALIBRATION_ONLY = [METHYL_CHLORIDE, HYDROGEN_CYANIDE, HYDROGEN_PEROXIDE]
