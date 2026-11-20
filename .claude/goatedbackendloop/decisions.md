@@ -518,3 +518,16 @@
 - Revisit if: the full offsets-family rerun reverses the offsets-config
   picture, or more O-O / N-H references arrive (bond-order split).
 
+
+### D-39 · Next task: why chlorofluoromethane is worse at B3LYP (2026-11-20)
+- Decision: T-08 diagnoses why CH2ClF's offsets hybrid is worse at B3LYP
+  than at RHF (6.00 vs 2.91 mA vs Vogt r_e^SE; 8.18 vs 5.42 vs its primary
+  reference). Diagnostic only, no engine change.
+- Why: it is the one molecule that does not improve RHF -> B3LYP, an
+  exception the README now states as unexplained; the per-bond pattern from
+  T-07 (B3LYP C-Cl +7.4 / C-F -7.2 mA after offsets) fits backlog N16's
+  mechanism but was not tested.
+- Alternatives considered: an N-H calibration reference search; re-scanning
+  the README's sparse-data sigma rows (N2).
+- Source: auto-picked, no answer in 15 min (Q-07, recommended option)
+- Revisit if: the user picks another option.

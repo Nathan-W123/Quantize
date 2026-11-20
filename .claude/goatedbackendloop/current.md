@@ -1,130 +1,88 @@
 # Current task
-Task: T-07
-Status: done
-Request: calibration molecules for the uncovered bond classes (backlog N16's
-root fix), literature first, no engine change (D-34, auto-picked at Q-02).
+Task: T-08
+Status: verifying
+Request: why chlorofluoromethane's offsets hybrid is worse at B3LYP than at
+RHF (6.00 vs 2.91 mA vs Vogt r_e^SE); diagnostic only, no engine change
+(D-39, auto-picked at Q-07).
 
 ## Brief
-- Outcome: candidate molecules, with sources, that would give C-Cl, N-H and
-  C-N (and possibly O-H, O-O) a second member in the offsets pool.
-- What a calibration entry needs (bond_offsets.measure_offsets): a reference
-  geometry (mol.geometry) and a theory geometry per level; no constants or
-  fits. Adding one also adds its C-H etc. to the shared pool, so every
-  molecule's offsets move and the offsets rows need rerunning (gate).
-- Known limit: the existing pool measures against each molecule's primary
-  reference, mostly r_s / effective (+/-5 mA), not r_e (N3).
+- Outcome: the gap attributed, with numbers, to (a) the prior centre (how
+  well each class's leave-one-out offset transfers to CH2ClF at each level),
+  (b) the fit (what two Cl isotopologues, rank 5/9, can and cannot place,
+  and what the vibrational corrections do), or both.
+- Approach: reproduce the offsets row at both levels from the frozen caches
+  (t07/wt2, c8904da), then per bond vs Vogt r_e^SE at each stage: raw
+  theory, offset-corrected centre, mixed estimation, hybrid. Then two
+  counterfactual fits: centre with CH2ClF's own C-Cl error removed, and
+  centre = r_e itself (how far the data + corrections pull the fit off the
+  truth at each level).
+- Hypothesis to test, not assume: B3LYP's C-Cl error transfers worse from
+  CH3Cl (+25.4 mA) to CH2ClF than HF's does (+85.6), and the 2-isotopologue
+  data spread the residual into C-F (N16 mechanism).
+- Success: each stage reproduces the archived RMS (2.91 / 6.00 vs r_e,
+  5.42 / 8.18 vs primary) and the attribution sums to the gap.
+- Trade-off: none in code; the cost is one fit per counterfactual, Hessians
+  cached.
 
 ## Graph
-- N1 · plan · design choices Q-03 (entry type, classes, reference rule) · after: none · done · handoff: D-35 (auto-picked)
-- N2 · explore · literature search for candidates per class · after: none · done · handoff: C-Cl, C-N, O-O/O-H found; N-H none meeting the rule
-- N3 · gate · Q-04: add CH3Cl, HCN, H2O2 and measure offsets? · after: N1, N2 · done · handoff: D-36 (auto-picked)
-- N4 · build · calibration-only entries + theory geometries + pool · after: N3 · done · handoff: refs + calibration=extended + offsets_pool; 10 tests, 3 mutations caught
-- N5 · verify · offsets shifts per molecule; offsets fits for CH2ClF, HNCO, water, ozone vs r_e · after: N4 · done · handoff: CH2ClF big gain both levels; HNCO bonds better, angles worse; ozone worse at B3LYP (O-O bond order); others' sigma_x wider
-- N6 · gate · Q-05: rerun offsets config for all 9 with calibration=extended? · after: N5 · done · handoff: D-37 (auto-picked)
-- N7 · verify · offsets config, 9 molecules x 2 levels, default vs extended pool · after: N6 · done · handoff: means 8.56 -> 5.37 (RHF), 4.96 -> 4.13 (B3LYP); ozone vs r_e worse at B3LYP
-- N8 · gate · Q-06: make extended the default and rerun the offsets-family rows + README? · after: N7 · done · handoff: D-38 (auto-picked)
-- N9 · build · flip the default (calibration=scored for the old pool), record offsets_pool per row · after: N8 · done · handoff: tests updated, 3 mutations caught
-- N10 · verify · rerun offsets-family rows, both levels (HF 54, B3LYP 43) · after: N9 · done · handoff: 97 rows, all exit 0; scratchpad t07/fam_{hf,b3lyp}.log
-- N11 · build · merge into reports/, regenerate tables, README + docstring · after: N10 · done · handoff: best-of RHF 10.39/9.85/5.34, B3LYP 5.31/4.05/3.78; base unchanged
+- N1 · explore · per-bond breakdown at each stage, both levels · after: none · running · handoff: done; visibility (t08/vis.py) both levels done
+- N2 · explore · transferability: pool offset vs CH2ClF's own error per class · after: none · done · handoff: C-Cl misses 12.4 (HF, over) / 12.8 (B3LYP, under); C-F 2.2 / 5.7
+- N3 · explore · counterfactual fits (C-Cl oracle centre, r_e centre) · after: N1 · done · handoff: B3LYP oracle 6.00 -> 2.95, HF oracle 2.91 -> 4.16; r_e centre stays <= 0.44 at both
+- N4 · verify · fresh agent re-derives the attribution from the script and data · after: N1, N2, N3 · running · handoff: -
+- N5 · build · README sentence + backlog N16 note · after: N4 · pending · handoff: -
 
 ## Progress
-- Candidates meeting the rule (r_e / r_e^SE, stated sd <= 0.5 mA):
-  - C-Cl: CH3Cl r_e^SE, Melosso et al., Molecules 30, 1604 (2025),
-    doi 10.3390/molecules30071604, Table 5 (CCSD(T) vib. corrections, 14
-    isotopologues, 95% CI): C-Cl 1.777716(10), C-H 1.083484(17) A,
-    Cl-C-H 108.3723(18) deg. Agrees with ref. 61 (Pietropolli Charmet et al.,
-    JQSRT 305, 108624, 2023: 1.777725(11), 1.083450(17), 108.3740(19)) and
-    CCSD(T)/CBS composite 1.77792 / 1.08339 / 108.384. Read from the open
-    PDF (extracted locally; scratchpad dl_ch3cl/).
-  - C-N: HCN r_e, Carter, Mills & Handy, J. Chem. Phys. (1992), "The
-    equilibrium structure of HCN": C-H 1.06501(8), C-N 1.15324(2) A (8
-    isotopologues, variational B0 - Be). From the abstract (search result);
-    full text not read. C-N class would pool C#N with HNCO's N=C (bond
-    order ignored by design, bond_class).
-  - O-O, O-H: H2O2 r_e^SE, Baraban, Changala & Stanton, J. Mol. Spectrosc.
-    343, 92-95 (2018): O-O 1.4523(2), O-H 0.9618(2) A, HOO 99.78(4),
-    HOOH 113.5(2) deg -- as tabulated in Herberth, Giesen & Yamada, JMS 362,
-    37 (2019) (arXiv 2105.09186, Table 5), whose own fit agrees: 1.4518(6),
-    0.962(1), 100.0(1), 113.7(2). Baraban's paper itself not read.
-- Built (D-36): dev/monofluoro_references.py METHYL_CHLORIDE,
-  HYDROGEN_CYANIDE, HYDROGEN_PEROXIDE, CALIBRATION_ONLY (species=[],
-  structure_type r_e); scripts/accuracy_upgrades_benchmark.py
-  calibration=extended (rows to *_calext.json) and offsets_pool(theory, keys).
-  dev/tests/test_calibration_references.py: 10 tests; breaking the CH3Cl
-  builder, the H2O2 dihedral, or offsets_pool's key filter each fails one.
-- Measurement (scratchpad calib/calib.py; offsets configuration as the
-  benchmark runs it; default rows reproduce the archive to 4 decimals):
-  theory offsets of the new entries, RHF / B3LYP (mA): CH3Cl C-Cl +85.6 /
-  +25.4, C-H -9.9 / +6.8; HCN C-H -12.3 / +5.2, C-N -9.1 / +3.8; H2O2 O-O
-  +10.0 / +3.3, O-H -7.4 / +12.0 (water's own O-H error: -8.1 / +10.9;
-  ozone's O-O: -22.1 / -8.7, opposite sign to H2O2's: single vs 1.5-order).
-  B3LYP fits, default -> extended, bond RMS vs r_e (HNCO vs SE100):
-  CH2ClF 11.22 -> 6.00 (C-Cl +14.1 -> +7.4, C-F -13.3 -> -7.2); HNCO 2.03
-  -> 1.74 (angle 0.68 -> 0.78); water 0.69 -> 0.46 (angle 0.13 -> 0.03);
-  ozone 0.37 -> 1.02 (angle 0.060 -> 0.027). Other five: sigma_x 3.9-4.8 ->
-  4.2-4.8 mA, C-H offsets move <= 0.3 mA.
-  RHF first pass invalid for H2O2 (see review): CH2ClF 17.64 -> 2.94, HNCO
-  20.01 -> 7.28 (angle 1.49 -> 2.79), water 0.65 -> 0.02, ozone 2.86 ->
-  6.22; other five sigma_x 5.1-6.3 -> 7.0-7.6.
-  RHF rerun with the guard (calib_hf2.log): H2O2 left out (0.274 A);
-  CH2ClF 17.64 -> 2.91 (C-Cl +23.2 -> +1.0, C-F -18.5 -> +2.9, angle 0.67
-  -> 0.89); HNCO 20.01 -> 7.14 (N-H +33 -> +8), angle 1.49 -> 2.78 deg;
-  water 0.65 -> 0.64; ozone 2.86 -> 2.86; other five sigma_x 5.1-6.3 ->
-  6.1-6.9 (not refitted).
-- Independent review (fresh agent, brief + criteria + diff): default path
-  and never-scored PASS. Found: HF/6-31G optimises H2O2 trans-planar
-  (179.8 deg; B3LYP 117.25, r_e 113.5) -- confirmed; per-results-file lock
-  let default + extended runs race on the shared theory cache; --table
-  ignored the flag; archived hybrid_sigma_diagnostic.py pooled the whole
-  cache; tests too weak (8 mutants survived). All fixed in 565d69e:
-  conformer guard (aligned RMSD <= 0.10 A; ordinary 0.004-0.034, HF H2O2
-  0.274), per-level lock, calext table, key-filtered archived script,
-  stronger tests incl. main() end to end -- 8 / 8 mutations caught.
-  Suite before the fixes: 1606 passed, 22 skipped.
-- N-H: nothing readable meets the rule. NH3 r_e 1.0110 A / 106.70 deg
-  (Demaison, Margules & Boggs, Chem. Phys. 260, 65-81, 2000, "The
-  equilibrium N-H bond length"), no uncertainty on the secondary page
-  (NQCC); paper paywalled. Formamide (Demaison et al. 2007, "reBO") and
-  methanimine (Margules et al., SE) likewise without a readable sd.
-- Not tried: HNCS r_e^SE (McGuire et al. 2016, values only in a figure /
-  SI).
-- Rerun (D-38, frozen worktree at c8904da, one row per invocation): HF 54
-  rows in 12 min, B3LYP 43 rows in ~2 h (offsets+track is the slow one; the
-  4 B3LYP torsion rows that never ran still don't). Merged into
-  reports/accuracy_upgrades (every replaced row checked for vintage c8904da
-  and for the calibration keys in its offsets_pool) and archived.
-  Per-config hybrid means vs primary refs, old -> new: RHF offsets 8.56 ->
-  5.38 (+bob/+cd the same, +defect 5.37, +torsion 5.63, +track 5.43);
-  B3LYP offsets 4.96 -> 4.13 (+bob/+defect the same, +torsion over 7
-  4.35 -> 3.29, +track 4.87 -> 4.24).
-  Best-of table: RHF 15.29/12.92/7.76 -> 10.39/9.85/5.34, B3LYP
-  8.12/4.98/4.20 -> 5.31/4.05/3.78 (theory/ME/hybrid). The offsets help all
-  three legs, so at RHF the hybrid's win counts fell (best of three 6 -> 4,
-  beats ME 8 -> 6: CH2ClF and formyl fluoride by 0.08 mA); RHF -> B3LYP
-  improves on 8 of 9 (CH2ClF 5.42 -> 8.18, unexplained). Base table
-  unchanged (diffed). CH2ClF offsets rows now carry r_e scores: hybrid 2.91
-  (RHF) / 6.00 (B3LYP) mA vs ME 4.26 / 6.71, theory 7.69 / 8.12. Ozone
-  B3LYP offsets vs r_e 0.37 -> 1.02 (vs r_s 1.00 -> 0.04). README +
-  docstring updated; offsets+cd still equals offsets exactly.
-
+- Script: scratchpad t08/diag.py <hf|b3lyp> <out.json> (frozen caches t07/wt2,
+  repo code; engine unchanged since c8904da).
+- RHF (t08/hf.json): reproduces the archived offsets row exactly (hybrid
+  5.4233 vs primary, 2.9080 vs r_e; ME 4.2636 vs r_e). Per bond vs Vogt
+  r_e^SE (mA), C-Cl / C-F / C-H:
+  theory +73.2 / +25.9 / -15.0; pool offsets +85.6 (CH3Cl) / +28.1 / -10.6;
+  centre -12.4 / -2.2 / -4.4 (C-Cl over-corrected: CH3Cl's HF C-Cl error is
+  12 mA larger than CH2ClF's); ME -5.4 / +1.5 / -4.8; hybrid +1.0 / +2.9 /
+  -4.0. Counterfactuals: C-Cl-oracle centre (2.84) -> hybrid 4.16 (C-Cl
+  +5.4, C-F -1.1) -- worse than the real centre; r_e centre -> hybrid 0.44,
+  ME 0.35 (data + HF corrections are consistent with r_e to <= 0.7 mA per
+  bond). So RHF's 2.91 is partly a cancellation: the fit's pull on C-Cl
+  (about +5 to +13 mA from a centre off in C-F / C-H) meets a centre 12 mA
+  short in C-Cl.
+- B3LYP (t08/b3lyp.json): reproduces the archived row exactly (8.1777 vs
+  primary, 5.9958 vs r_e; ME 6.7127). C-Cl / C-F / C-H vs r_e (mA): theory
+  +38.2 / -1.2 / +6.7; pool offsets +25.4 (CH3Cl) / +4.5 / +5.2; centre
+  +12.8 / -5.7 / +1.4 (C-Cl under-corrected by 12.8 -- the same size of miss
+  as HF's 12.4 over-correction, opposite sign; the B3LYP C-F pool spreads
+  -5.4 to +13.5 against HF's 24.6-30.7); ME +8.3 / -7.9 / +1.8; hybrid
+  +7.4 / -7.2 / +1.4. Counterfactuals: C-Cl-oracle centre (3.40) -> hybrid
+  2.95 (C-Cl +3.0, C-F -3.7); r_e centre -> hybrid 0.39, ME 0.22.
+  So the hypothesis "B3LYP's C-Cl transfers worse" is wrong: both levels
+  miss by ~12-13 mA. Removing the C-Cl centre error halves B3LYP's error
+  (6.00 -> 2.95); most of the rest is C-F's offset (centre -5.7).
+- Visibility, RHF (t08/vis_hf.json; data chi2 over the 6 corrected
+  targets, 2 isotopologues x A,B,C, the fit's sigmas): r_e 3.70, theory
+  10121, centre 1598, ME 0.02, hybrid 0.29. Line r_e -> centre: 3.7, 128,
+  433, 921, 1598. Single-class +10 / -10 mA from r_e: C-Cl 139 / 248, C-F
+  63 / 133, C-H 7 / 12. Centre's bond errors alone on r_e: 464.
+- Visibility, B3LYP (t08/vis_b3lyp.json): r_e 2.39, theory 2688, centre
+  232, ME 0.06, hybrid 0.11. Line r_e -> centre: 2.4, 7.1, 47, 122, 232.
+  Single-class +10 / -10 mA: C-Cl 136 / 220, C-F 63 / 115, C-H 7 / 9 (the
+  same per-bond sensitivity as RHF). Centre's bond errors alone on r_e: 110.
+- Reading: both fits end below r_e's own chi2 (0.29 / 0.11 vs 3.70 / 2.39),
+  so the 2-isotopologue data have a valley of structures they fit equally
+  well, several mA wide, and the fit keeps whatever part of the centre's
+  error lies along it. Quadratic check from the single-class costs: RHF's
+  centre bond error (all three short) predicts ~390 if independent and
+  scores 464 (the errors add in the moments: across the valley, removed);
+  B3LYP's (C-Cl long, C-F short) predicts ~260 and scores 110 (they cancel:
+  along the valley, kept). Not a worse level: B3LYP's raw structure is 22.4
+  mA from r_e against HF's 45.7. RHF's 2.91 is partly luck -- from a better
+  centre (C-Cl oracle) it gets 4.16.
+- Remedies (flag, not implement): (a) more data -- Vogt's r_e^SE used more
+  isotopologues than the benchmark's two Cl species (unchecked how many,
+  and whether their constants are published); (b) a second C-Cl
+  calibration molecule so the C-Cl offset is a mean, not one molecule's.
 
 ## Observations
-- 2026-11-20: the independent verifier found the H2O2 conformer flip by
-  running one HF optimisation; my own run had the trans geometry on disk
-  and I never looked at its shape, only its bond lengths. Check a
-  calibration geometry's shape (dihedrals), not just the bonds measured.
-- 2026-11-20: 8 of my 10 first tests let real breaks through (verifier's
-  mutants); L-15 again -- the main() wiring was untested.
-
-- 2026-11-20: regenerating the old table from git HEAD before writing found two README claims the new rows break ("improves RHF -> B3LYP on all nine", HNCO factor 7) and that water was already an ME win, not a new one.
-- 2026-11-20: the independent fact-check of the README text found 4 errors in prose I had checked by eye (mixed best-of and per-row before-figures; credited theory with a win ME took; one stale selection-effect figure); the tables were right because they were diffed.
-- 2026-11-20: the user asked a second time why the loop stopped while I was waiting on the B3LYP chain. Ending a turn on background work looks like a stop unless the message says what is running, how far it is and roughly when it ends.
 
 ## Pending question
-- Q-07 · what's next after T-07 · asked 2026-11-20 06:11 UTC · deadline 06:27 UTC · wake-up trig_01Damr9aJQNpedwnmBLCt2qu
-  1. Diagnose chlorofluoromethane at B3LYP (Recommended): why its offsets hybrid is worse at B3LYP than RHF (6.00 vs 2.91 mA vs Vogt r_e^SE); per-bond breakdown, no engine change
-  2. Look for an N-H calibration reference (NH3, formamide, methanimine r_e with a stated sd <= 0.5 mA)
-  3. N2: re-scan the README's sparse-data sigma rows (fluorobenzene, monofluoro parent-only)
-  4. Done for now
 
 ## Handoff
