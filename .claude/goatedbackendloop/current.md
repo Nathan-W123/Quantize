@@ -24,8 +24,9 @@ entries is a separate gate (D-41, auto-picked at Q-09).
 - N2 · explore · theory geometries + offsets for candidates, both levels; C-Cl miss for CH2ClF with each pool · after: N1 · running · handoff: done; only CHF2Cl helps both levels (miss 3.1 / 5.4 from 12.4 / 12.8)
 - N3 · gate · Q-10: measure, add, or stop? · after: N2 · done · handoff: D-42 (auto-picked): measure first
 - N4 · verify · offsets fits, 9 molecules x 2 levels x 3 pools (current, +CH2Cl2, +CHF2Cl) · after: N3 · done · handoff: RHF mean 5.38 -> 5.66 / 5.70; B3LYP 4.13 -> 4.10 / 3.91
-- N4v · verify · fresh agent checks pools.py recipe and both result files · after: N4 · running · handoff: -
-- N5 · gate · Q-11: add which, if any? · after: N4 · pending · handoff: -
+- N4v · verify · fresh agent checks pools.py recipe and both result files · after: N4 · done · handoff: recipe and all 54 rows reproduce bit-exactly; candidates entered once per atom, not per unique bond
+- N4b · build · rerun N4 with one entry per unique bond (pools2_{hf,b3lyp}.json) · after: N4v · running · handoff: -
+- N5 · gate · Q-11: add which, if any? · after: N4b · pending · handoff: -
 
 ## Progress
 - NQCC pages (fetched 2026-11-20): CH2Cl2 r_e^SE (Vogt 2014) C-Cl
@@ -79,8 +80,23 @@ entries is a separate gate (D-41, auto-picked at Q-09).
   at RHF, -0.22 at B3LYP, and breaks D-35's sd rule. Neither improves
   both levels; the RHF losses come from CH2ClF (its old cancellation) and
   HNCO (uncorrected_class_bias coupling, not chemistry).
+- N4v (fresh agent, 10:50 UTC): fit_offsets matches the benchmark recipe
+  line by line; all 18 current rows reproduce the archived rows
+  bit-exactly; all 36 candidate rows reproduce from pools.py. Problem:
+  measure_offsets pools one value per symmetry-unique bond (CH3Cl's three
+  C-H are one entry), but cl.py lists one per atom, so CH2Cl2 entered with
+  C-Cl x2 / C-H x2 and CHF2Cl with C-F x2. Fixed in pools.py (class mean,
+  one entry). Corrected N2 miss table (CH2ClF C-Cl, own - offset): RHF
+  CH3Cl -12.37, +CH2Cl2 -3.19, +CHCl3 +0.11, +CHF2Cl +3.08, +CH2Cl2+CHCl3
+  +2.07, all four +6.18; B3LYP +12.78, +12.30, +11.54, +5.35, +11.63,
+  +8.20. The N2 conclusion holds (only CHF2Cl narrows B3LYP's miss). The
+  verifier's partial refits (4 molecules) move RHF +CH2Cl2 CH2ClF 7.15 ->
+  6.64 and HNCO 9.05 -> 8.73; signs unchanged. Full rerun started 10:58
+  UTC (pools2_*.log; the 76 Hessians the verifier computed were copied
+  into the t07 cache, no overwrite).
 
 ## Observations
+- 2026-11-20 · cl.py built candidate offsets one per atom, with a comment claiming it followed leave_one_out_offsets; I had read the consumer, not measure_offsets (the producer it stood in for). The fresh verifier caught it; N2's RHF miss table was wrong by up to 6 mA.
 
 ## Pending question
 
