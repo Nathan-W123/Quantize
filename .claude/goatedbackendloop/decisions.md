@@ -589,3 +589,15 @@
 - Source: auto-picked, no answer in 15 min (Q-11, recommended option)
 - Revisit if: a fluorinated chloride with an r_e sd <= 0.5 mA appears, or
   uncalibrated-class widths stop depending on every class mean (N16).
+
+### D-44 · Next task: decoupled widths for uncalibrated bond classes (2026-11-20)
+- Decision: measure, in scratch only, a fallback width for uncalibrated
+  classes that does not move with unrelated calibration members, on every
+  molecule it reaches at both levels; no engine change without the user.
+- Why: T-10 found HNCO's RHF row moves 8.14 -> 8.73 from a C-Cl member
+  alone, because uncorrected_class_bias is the RMS of all class means and
+  C-Cl's (~80 mA at HF) dominates it.
+- Alternatives considered: correlated (GLS) weighting study (F14); r_e^SE
+  references for the five r_s molecules (N3).
+- Source: auto-picked, no answer in 15 min (Q-12, recommended option)
+- Revisit if: the user picks another option.
