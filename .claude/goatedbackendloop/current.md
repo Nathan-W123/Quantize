@@ -20,8 +20,8 @@ configurations (D-47, auto-picked at Q-15); measurement only.
   independent check of the flips.
 
 ## Graph
-- N1 · build · T=4 run, both levels · after: none · HF done; B3LYP 41/81 rows, resumed in two halves · handoff: HF 99/99 rows reproduce
-- N2 · build · T=3 and T=5 runs · after: N1 · HF done; B3LYP only rows with first-pass chi2 > 2.5 (none in the first 42) · handoff: HF: 4 rows flip at T=3, none at T=5
+- N1 · build · T=4 run, both levels · after: none · done · handoff: HF 99/99, B3LYP 81/81 rows reproduce
+- N2 · build · T=3 and T=5 runs · after: N1 · HF done; B3LYP 8 low-band rows at T=3 / T=5 running · handoff: HF: 4 rows flip at T=3, none at T=5
 - N3 · verify · fresh agent recomputes the flips and checks best-of impact · after: N2 · HF half running (own HEAD copy, threshold set by source edit); B3LYP half after N1 · handoff: -
 
 ## Progress
@@ -53,13 +53,28 @@ configurations (D-47, auto-picked at Q-15); measurement only.
   README RHF best-of hybrid mean 5.34 -> ~5.93; still below theory (22.10)
   and ME (48.17) for HNCO, so no win count changes. Nothing at T=5.
 - B3LYP: first-pass chi2 of the 42 rows logged so far is <= 0.8 (scan.py).
-- 17:40 UTC: chi2run2.py takes molecule keys; B3LYP T=4 resumed
+- 17:36 UTC: chi2run2.py takes molecule keys; B3LYP T=4 resumed
   as two processes (OMP_NUM_THREADS=2 each): wt4 fluoroacetylene +
   chlorofluoromethane -> t4_b3lyp_p3.json; wt5 (wt4's cache merged in)
   water + ozone + isocyanic_acid -> t4_b3lyp_p3b.json. Task b8ihmpgy9.
+- 17:52 UTC: both halves done in ~16 min (cache hits). B3LYP T=4: 81 / 81
+  rows reproduce the archive (42 bit-exact, worst 1.4e-4 mA,
+  fluoroacetylene track_quadratic); merged copy t13/b3lyp_t4_merged.json.
+- B3LYP checks (every pass, not only the first): max 0.763; none in [3, 5].
+  But 8 rows have checks in [0.2, 1/3]: water lam / bob / defect / track /
+  track_direct / track_quadratic (0.2174) and ozone offsets+bob /
+  offsets+defect (0.2260). They tighten at T=4 (lo 0.25) and T=3 (lo 0.333)
+  and not at T=5 (lo 0.2), and a second pass ran at T=4 (the floor did not
+  hold every row). The scale factor is clip(sqrt(chi2), 1/4, 4), not a
+  function of T, and no B3LYP check lies in [0.25, 1/3] or [3, 4], so T=3
+  takes T=4's path exactly. HF had no check in either band.
+- My D-47 cut (B3LYP T=3/5 only for first-pass chi2 > 2.5) missed the low
+  side; corrected: those 8 rows rerun at T=3 and T=5 (wt3, wt5; wt5's T=4
+  file moved to output/_aside), task bsp1pbh2a.
 
 ## Observations
 - 2026-11-20 · fluoroacetylene's tracked hybrid fits (HF, track and offsets+track alike) start at reduced chi2 16.00 with dof 6.0 = n_obs (no data leverage), then 1.000 after the x4 widening; the first fit in the same row has 0.05 / dof 4.3. The rows get worse with tracking (13.59 -> 19.16, 4.36 -> 4.96). I guessed a sigma state leak between tracked fits; the engine copies each isotopologue dict, so that guess is wrong. Cause unknown -- backlog, not this task.
+- 2026-11-20 · my plan's B3LYP cut (rerun only rows with first-pass chi2 > 2.5) looked at one side of a two-sided test; scanning every check against both bands (lo = 1/T) found 8 rows the cut would have skipped. Scan the whole decision rule, not the side the last finding was on.
 
 ## Pending question
 
