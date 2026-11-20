@@ -126,3 +126,15 @@ only here.
   ratio to a cause, print it per species and per component; check whether the
   outliers share a property (precision, source, substitution site).
 - Scope: project · Status: provisional
+
+### L-17 · Run a remedy on every molecule it changes before calling it a fix
+- Observation: per-bond prior widths looked like a fix on CH2ClF (17.64 ->
+  2.44 mA) and broke the only other molecule they touch (HNCO, worse at both
+  levels, angle 1.49 -> 16.47 deg).
+- Evidence: 2026-11-20 · the user's over-fitting worry was the right test;
+  reporting CH2ClF alone would have proposed an engine change.
+- Adjustment: list every molecule a change can move (here: those with an
+  uncovered bond class) and run all of them, on every yardstick available,
+  before reporting a gain; say n when it is small.
+- Scope: project · Status: provisional
+

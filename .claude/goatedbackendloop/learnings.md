@@ -91,6 +91,16 @@ Sessions: 0 · Last consolidated: never
   number; say what the tool cannot see (registries, string dispatch, fixtures).
 - Scope: workflow · Status: provisional
 
+### L-08 · A `cd` or variable at the head of a backgrounded chain reaches only its first job
+- Observation: `cd X && (job A) & (job B) & wait` and `SP=... && (A) & (B) &`
+  ran job B in the wrong directory / with SP empty; B failed at once.
+- Evidence: 2026-11-20 · twice in one session (the B3LYP prototype run never
+  started; a reproduction check read /n13/wt/... instead of the scratchpad).
+- Adjustment: in a parallel bash line, put the `cd` and the variables inside
+  each job's own parentheses, or export them on a separate line first.
+- Scope: stack: bash
+- Status: provisional
+- Outcomes:
 ## Retired
 ## Changelog
 - 2026-11-12 created; L-01 added.
