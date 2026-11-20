@@ -21,7 +21,7 @@ entries is a separate gate (D-41, auto-picked at Q-09).
 
 ## Graph
 - N1 · explore · NQCC CHF2Cl / CH2Cl2 / CHCl3 pages: r_e^SE and sources · after: none · done · handoff: CH2Cl2 meets D-35; CHCl3 C-H 0.6; CHF2Cl C-Cl 0.9 / C-H 1.1
-- N2 · explore · theory geometries + offsets for candidates, both levels; C-Cl miss for CH2ClF with each pool · after: N1 · running · handoff: RHF done; B3LYP running
+- N2 · explore · theory geometries + offsets for candidates, both levels; C-Cl miss for CH2ClF with each pool · after: N1 · running · handoff: done; only CHF2Cl helps both levels (miss 3.1 / 5.4 from 12.4 / 12.8)
 - N3 · gate · Q-10: add which entries? · after: N2 · pending · handoff: -
 
 ## Progress
@@ -39,9 +39,23 @@ entries is a separate gate (D-41, auto-picked at Q-09).
   CH2ClF's C-Cl miss by pool: CH3Cl -12.37; +CH2Cl2 -0.13; +CHCl3 +6.34;
   +CHF2Cl +3.08; +CH2Cl2+CHCl3 +6.23; all four +7.98 (class mean per
   bond, so CHCl3's three bonds weigh three).
+- B3LYP (cl_b3lyp.json): C-Cl CH3Cl +25.4, CH2Cl2 +26.3, CHCl3 +27.9,
+  CH2ClF +38.2, CHF2Cl +40.2 (C-H +6.1 / +3.9 / +5.7; CHF2Cl C-F +4.9).
+  A fluorine on the carbon adds ~13-15 mA to B3LYP's C-Cl error; chlorine
+  substitution barely moves it. CH2ClF's C-Cl miss by pool: CH3Cl +12.78;
+  +CH2Cl2 +12.13; +CHCl3 +10.91; +CHF2Cl +5.35; +CH2Cl2+CHCl3 +11.21; all
+  four +9.31. Only CHF2Cl helps at both levels (RHF +3.08) and it breaks
+  D-35's rule (C-Cl sd 0.9, C-H 1.1). Its C-F (+4.9 at B3LYP vs CH2ClF's
+  own -1.2) would not help C-F. A better C-Cl centre is not a better fit by
+  itself: T-08's RHF C-Cl oracle made the fit worse (2.91 -> 4.16).
 
 ## Observations
 
 ## Pending question
+- Q-10 · C-Cl calibration: measure, add, or stop? · asked 2026-11-20 07:49 UTC · deadline 08:05 UTC · wake-up trig_01XeeJj6evTpztH7mg4Mc8tT
+  1. Measure the offsets fits for all nine molecules at both levels with +CH2Cl2 and with +CHF2Cl, separately, before adding anything (Recommended)
+  2. Add CH2Cl2 only (meets the rule) and rerun the offsets family -- fixes RHF's miss, not B3LYP's
+  3. Stop: record that B3LYP's C-Cl error tracks fluorine substitution, so a class offset cannot transfer; add nothing
+  4. Done for now
 
 ## Handoff
