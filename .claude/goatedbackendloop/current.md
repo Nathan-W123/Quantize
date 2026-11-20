@@ -1,6 +1,6 @@
 # Current task
 Task: T-14
-Status: verifying
+Status: done
 Request: diagnose fluoroacetylene's tracked fits (backlog N19 b; D-49,
 auto-picked at Q-16); diagnosis first, any fix proposed before it is made.
 
@@ -98,18 +98,21 @@ auto-picked at Q-16); diagnosis first, any fix proposed before it is made.
   HEAD copy at exactly that assertion, passes on 3.11 and on 3.12 (venv from
   requirements.txt, as CI). 182 related alpha / correction tests pass.
   Commit 2eb9b6c.
-- 19:4x UTC: clean worktree at 2eb9b6c (removed after), archived HF file
+- 19:32 UTC: clean worktree at 2eb9b6c (removed after), archived HF file
   minus FA's 3 rows, rerun -> vintage 2eb9b6c, 13.6402 / 4.3627 / 13.6391
   (= prototype and verifier); the other 132 rows byte-identical in the
   archive. --table unchanged (10.39 / 9.85 / 5.34; 5.31 / 4.05 / 3.78; win
   counts 4/9 6/9 7/9, 5/9 5/9 7/9). README provenance names the vintage;
   test_benchmark_summary_table + test_calibration_references pass. Commit
   aace5d0. Full CI suite running (task b0766romz).
+- 19:33 UTC: full CI suite (not slow / network / orca) at 2eb9b6c: 1610
+  passed, 15 skipped, 0 failed (2 min 33 s). Done.
 
 ## Observations
 - 2026-11-20 · my first guess (the degenerate bend pair passing the 1 cm^-2 Coriolis guard) was wrong; logging each term at the three points named the harmonic term in one run (L-06 applied).
 - 2026-11-20 · my prototype took argmin over an array whose 'absent' entry is encoded as inf, and zeroed the wrong axis on exactly linear geometries; the verifier's independent edit disagreed on one row and exposed it. Check how the input encodes the missing case before selecting from it (L-P04 extension candidate).
 
 ## Pending question
+- Q-18 (asked 2026-11-20 19:34 UTC, deadline 19:49 UTC; wake-up trig_013VbNAgnfXRWWNPSrv9BX8C): what's next after T-14. Options: 1. measure rotation projection in the tracking slope's off-stationary Hessians (N19 b-i) (Recommended); 2. F14 GLS study (correlated weights); 3. N2: re-scan the README's sparse-data sigma rows; 4. Done for now. Auto-pick: 1.
 
 ## Handoff
