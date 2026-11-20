@@ -24,8 +24,8 @@ change proposed before it is made.
 - N2 · build · all rows at both levels · after: N1 · RHF done; B3LYP 12/99 done, rest running in two halves (t15/inst_proj: HNCO, AF, FE, FF; t15/b3b: FA, CH2ClF, water, ozone) · handoff: RHF table below
 - N2b · build · the 4 RHF torsion rows with the torsion applied (AF, FE) · after: N2 · pending · handoff: -
 - N2c · diagnose · why HNCO offsets moves 20 mA · after: N2 · done · handoff: see Progress 22:xx
-- N3 · verify · fresh agent: continuity scan of HNCO alpha theory -> offset geometry with its own Hessians and projector; own edit reproducing the row · after: N2c · running · handoff: -
-- N4 · gate · propose (or not) an engine change · after: N3 · pending · handoff: -
+- N3 · verify · fresh agent: continuity scan of HNCO alpha theory -> offset geometry with its own Hessians and projector; own edit reproducing the row · after: N2c · done · handoff: t15/verify (scripts/scan.py, run_bench.py, variants.sh; results/)
+- N4 · gate · propose (or not) an engine change · after: N3 · asked (Q-19) · handoff: -
 
 ## Progress
 - 19:52 UTC: t15/proj from HEAD (129ca37 code = 2eb9b6c engine), caches
@@ -71,12 +71,37 @@ change proposed before it is made.
   archive's): hybrid mean 5.34 -> 6.44 (HNCO 8.14 -> 18.04, its best row
   now track_direct), ME 9.85 -> 9.86, theory unchanged; win counts 4/9,
   6/9, 7/9 unchanged.
+- 22:12 UTC: verifier (own pyscf Hessians, own projector, own patch)
+  confirms every number: alpha_B parent -26.17 -> -125.80 raw / -28.13
+  projected, DNCO -143.15 / -27.04; the move is all in the a^{ab}/I_a
+  piece of the inertia-derivative term (bend's |a^{ab}| 0.840 raw = 0.271
+  vibrational + 0.570 from a 0.71% rigid c-rotation); row 8.1373 ->
+  28.5553 reproduced to 1e-9, chi2 3.468 / 1.853, one pass each.
+  Refuted my brief's prediction: the raw error is not proportional to the
+  gradient (superlinear, a spurious rotation at 48 -> 99 cm-1 climbing
+  toward a softening bend; sign-odd linear part, +5.8 MHz at lambda -0.5).
+  Found: the corrected row is recipe-dependent -- every rotation-free
+  recipe gives 23.2-28.65 mA (mass-weighted projection 28.56; unweighted
+  Cartesian 23.20; alpha from the stationary geometry 23.36), because the
+  HNC bend force constant is not unique off a stationary point (334 ->
+  279 cm-1 with the mass-weighted / valence offset-force surfaces, 324-336
+  with the others). The raw 8.14 has no defensible recipe behind it. The
+  mass-weighted projection is the Watson/Eckart-consistent one and agrees
+  with the valence-coordinate offset-force surface (tiltA) to 0.12 MHz.
+- B3LYP at 22:11: 14 rows in the two halves in 16 min (the benchmark runs
+  molecules in its own order; HNCO is last in half A).
 
 ## Observations
 - 2026-11-20 · the stationary-point sanity check caught my projector removing a real bend on a near-linear molecule before any long run -- the same linearity trap as T-14, a second time in one day (L-P04 applied; candidate lesson: every new rigid/linear treatment goes through rigid_mode_count, never its own threshold).
 - 2026-11-20 · the "no-op at stationary points" framing hid where the projection matters: the offsets configs evaluate alpha off-stationary by design; my ETA (15-20 min) missed that projected modes move every cubic displacement off the cache.
+- 2026-11-20 · L-10 again: told to use its own projector and its own surfaces, the verifier refuted my proportional-to-gradient prediction and showed the corrected value spans 23.2-28.65 mA by recipe -- a range I would have reported as one number.
 - 2026-11-20 · a fit that T-13 found threshold-fragile turned out to sit on a ~100 MHz alpha error -- a row that flips under a small perturbation deserved a look at its inputs, not just its switch.
 
 ## Pending question
+- Q-19 (asked 22:13 UTC, deadline 22:28 UTC; wake-up scheduled): adopt the
+  rotation projection in the engine? 1 (Recommended) engine change + test +
+  rerun affected rows from the commit + README; 2 same plus offsets configs
+  take alpha at the stationary geometry; 3 leave the engine, document it;
+  Done for now. Auto-pick at the deadline: option 1 (reversible code change).
 
 ## Handoff
