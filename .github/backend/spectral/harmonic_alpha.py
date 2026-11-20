@@ -316,6 +316,55 @@ def coriolis_resonant_pairs(omega_cm, zeta, resonance_cm: float,
     return pairs
 
 
+def _project_rigid_mw(hess_bohr, coords_ang, masses_amu):
+    """The Hessian with translations and rotations projected out (mass-weighted).
+
+    The alpha normal-mode analyses run at geometries that are not stationary
+    points: the benchmark's offsets configurations build their table at the
+    offset-shifted geometry, and tracking evaluates it at fitted geometries and
+    at the slope's +-step/2 points. There the gradient makes the raw Hessian's
+    rotational block non-zero, and the rotation leaks into the vibrational
+    eigenvectors. A leaked rigid rotation spins the inertia tensor, which the
+    Watson inertia-derivative term reads as an off-diagonal a^{xi eta} and
+    divides by the small moment: for isocyanic acid (HF/6-31G, I_a 0.14 amu
+    A^2) at its offset geometry, a 0.7% c-rotation in the H-N-C bend took
+    alpha_B from -28.1 MHz (projected; -26.2 at the stationary point) to
+    -125.8 (decisions D-52). The quadratic potential of the Watson
+    Hamiltonian's Eckart coordinates is exactly P F_mw P with this projector.
+
+    Translations are sqrt(m)-scaled; rotations are about the principal axes,
+    and a geometry that rigid_mode_count calls linear has no rotation about
+    its axis however bent it is numerically -- keeping that column (norm ~1e-5
+    of the others at I_a 6e-9) would project out part of a real bend (seen
+    while prototyping: fluoroacetylene lost a 441 cm^-1 component). At a
+    stationary point the projection only removes the rigid modes' numerical
+    residue; benchmark rows there moved <= 2e-3 mA.
+    """
+    m = np.asarray(masses_amu, dtype=float)
+    x = np.asarray(coords_ang, dtype=float)
+    n = m.size
+    r = x - (m[:, None] * x).sum(0) / m.sum()
+    sm = np.sqrt(m)
+    cols = []
+    for a in range(3):
+        v = np.zeros((n, 3)); v[:, a] = sm
+        cols.append(v.ravel())
+    evals, V = np.linalg.eigh(np.einsum("i,ia,ib->ab", m, r, r) * -1.0
+                              + np.eye(3) * float(np.einsum("i,ia,ia->", m, r, r)))
+    axes = [V[:, k] for k in np.argsort(evals)]
+    if _rigid_mode_count(x, m) == 5:
+        axes = axes[1:]
+    for w in axes:
+        cols.append((np.cross(np.tile(w, (n, 1)), r) * sm[:, None]).ravel())
+    Q, _ = np.linalg.qr(np.column_stack(cols))
+    P = np.eye(3 * n) - Q @ Q.T
+    isq, sq = np.repeat(1.0 / sm, 3), np.repeat(sm, 3)
+    F = np.asarray(hess_bohr, dtype=float) * isq[:, None] * isq[None, :]
+    F = P @ F @ P
+    F = 0.5 * (F + F.T)
+    return F * sq[:, None] * sq[None, :]
+
+
 def compute_harmonic_alpha(
     hess_bohr: np.ndarray,
     coords_ang: np.ndarray,
@@ -414,7 +463,8 @@ def compute_harmonic_alpha(
     B_e_cm = B_e_mhz * _MHZ_TO_CM
 
     omega_cm, L_mw = _normal_modes(
-        hess_bohr, masses, n_rigid=_rigid_mode_count(coords, masses)
+        _project_rigid_mw(hess_bohr, coords, masses), masses,
+        n_rigid=_rigid_mode_count(coords, masses)
     )
     # Frequency scaling, applied before the cutoff so the cutoff means the same
     # thing in scaled units. Only omega moves: the mode vectors are invariant
@@ -976,7 +1026,8 @@ def normal_mode_hessian_derivatives(
     coords = np.asarray(coords_ang, dtype=float)
     masses = np.asarray(masses_ref, dtype=float)
     omega_cm, L_mw = _normal_modes(
-        hess_bohr, masses, n_rigid=_rigid_mode_count(coords, masses)
+        _project_rigid_mw(hess_bohr, coords, masses), masses,
+        n_rigid=_rigid_mode_count(coords, masses)
     )
     keep = omega_cm >= min_freq_cm
     omega_cm, L_mw = omega_cm[keep], L_mw[:, keep]

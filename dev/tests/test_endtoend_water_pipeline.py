@@ -89,17 +89,40 @@ def test_corrections_reach_the_pipeline(tmp_path):
 
 def test_full_chain_improves_the_bond_length_end_to_end(tmp_path):
     """Fitting raw B_0 conflates structure with zero-point motion; correcting to
-    B_e should pull the recovered bond length toward r_e.
+    B_e should pull the corrected targets, and the recovered bond length,
+    toward the equilibrium structure.
 
-    Measured: 2.99 mA raw, 1.65 mA with the full chain (0.55x). The ratio was
-    0.34x while the rule library silently replaced this config's stated prior
-    widths (0.12 A / 5 deg) with its own 0.015 / 2; honouring them costs the
-    bond 0.6 mA and buys the angle 0.95 deg (+1.83 -> +0.88 deg).
+    The corrections are built at the fit's current geometry, which on this
+    detuned surface is far from its minimum, so they used to see the molecule
+    rotate (decisions D-52). Measured 2026-11-20 with the rotation projected
+    out: bond 2.99 mA raw, 2.42 mA with the full chain (0.81x); B's target
+    253 MHz from B_e(r_e) against B_0's 1724, C's 382 against 7110. Before
+    the projection B's target was 2028 MHz off -- worse than B_0 -- and the
+    bond read 0.61 mA: a rotation-contaminated B offsetting A, which this
+    surface (no bend anharmonicity) gets wrong either way (target 17.7 GHz
+    from B_e(r_e) projected, 15.0 before, B_0 14.7). Bounds: 0.9 on the bond
+    ratio (measured 0.81); 0.25 and 0.10 of B_0's miss on B and C (measured
+    0.15 and 0.054; the old B, 1.18, fails by 4.7x).
     """
+    from backend.spectral.centrifugal_distortion import rotational_constants_mhz
+
     r_raw, _ = _structure(_run(tmp_path / "a", False, False)["best"]["coords"])
-    r_full, _ = _structure(_run(tmp_path / "b", True, True)["best"]["coords"])
-    assert abs(r_full - R_E) < 0.65 * abs(r_raw - R_E)
+    full = _run(tmp_path / "b", True, True)
+    r_full, _ = _structure(full["best"]["coords"])
+    assert abs(r_full - R_E) < 0.9 * abs(r_raw - R_E)
     assert abs(r_full - R_E) < 0.010
+
+    th = np.radians(THETA_E)
+    x_e = np.array([[0.0, 0.0, 0.0],
+                    [0.0, R_E * np.sin(th / 2), R_E * np.cos(th / 2)],
+                    [0.0, -R_E * np.sin(th / 2), R_E * np.cos(th / 2)]])
+    masses = np.array([15.99491461956, 1.00782503207, 1.00782503207])
+    b_e = np.sort(rotational_constants_mhz(x_e, masses))[::-1]          # A, B, C
+    b_0 = np.array([835840.29, 435351.72, 278138.70])
+    target = np.asarray(full["best"]["spectral_isotopologues_snapshot"][0]["obs_constants"],
+                        dtype=float)
+    assert abs(target[1] - b_e[1]) < 0.25 * abs(b_0[1] - b_e[1])
+    assert abs(target[2] - b_e[2]) < 0.10 * abs(b_0[2] - b_e[2])
 
 
 def test_hybrid_beats_both_theory_and_experiment_alone():
