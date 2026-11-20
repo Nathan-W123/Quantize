@@ -62,5 +62,9 @@ rescale switch (N19; D-46, auto-picked at Q-14); measurement only.
 ## Observations
 
 ## Pending question
+- Q-15 (asked 14:31 UTC, deadline 14:46 UTC; send_later trig_01Sa669HbR21Ng6fjEMiF4UQ): what's next?
+  1 the same threshold check on the other ten configurations (Recommended;
+  auto-pick) · 2 F14 correlated (GLS) weighting study · 3 N3 r_e^SE
+  references · 4 Done for now.
 
 ## Handoff
