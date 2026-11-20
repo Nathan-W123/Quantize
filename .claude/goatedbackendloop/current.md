@@ -21,8 +21,8 @@ configurations (D-47, auto-picked at Q-15); measurement only.
 
 ## Graph
 - N1 · build · T=4 run, both levels · after: none · done · handoff: HF 99/99, B3LYP 81/81 rows reproduce
-- N2 · build · T=3 and T=5 runs · after: N1 · HF done; B3LYP 8 low-band rows at T=3 / T=5 running · handoff: HF: 4 rows flip at T=3, none at T=5
-- N3 · verify · fresh agent recomputes the flips and checks best-of impact · after: N2 · HF half running (own HEAD copy, threshold set by source edit); B3LYP half after N1 · handoff: -
+- N2 · build · T=3 and T=5 runs · after: N1 · done · handoff: HF: 4 rows flip at T=3, none at T=5; B3LYP: none moves >= 1e-5 mA
+- N3 · verify · fresh agent recomputes the flips and checks best-of impact · after: N2 · running, RHF then B3LYP (own HEAD copy, threshold set by source edit) · handoff: -
 
 ## Progress
 - 14:52 UTC: t13/wt3, wt4, wt5 copied from t12/wt (code = HEAD; only
@@ -71,6 +71,16 @@ configurations (D-47, auto-picked at Q-15); measurement only.
 - My D-47 cut (B3LYP T=3/5 only for first-pass chi2 > 2.5) missed the low
   side; corrected: those 8 rows rerun at T=3 and T=5 (wt3, wt5; wt5's T=4
   file moved to output/_aside), task bsp1pbh2a.
+- 17:54 UTC: the 8 rows at T=3 are bit-identical to T=4 (same path, as
+  predicted: 2 passes each). At T=5 they run 1 pass: water moves <= 1.2e-9
+  mA, ozone offsets+bob / offsets+defect 0.040376 -> 0.040367 (9.6e-6 mA).
+  So no B3LYP row moves by 1e-5 mA at any threshold. Tracked water fits
+  2-3 (0.149-0.156) tighten at every T, as do all checks < 0.2.
+- Count (T-13): over 99 HF + 81 B3LYP rows, threshold-decided = HF HNCO
+  offsets+bob / +defect / +cd / +track (at T=3 only); offsets+torsion is the
+  same fit (inferred, not run). With T-12: 5 of 216 rows run (+1 inferred),
+  all one fit. Torsion rows otherwise not run.
+- B3LYP part sent to the N3 verifier.
 
 ## Observations
 - 2026-11-20 · fluoroacetylene's tracked hybrid fits (HF, track and offsets+track alike) start at reduced chi2 16.00 with dof 6.0 = n_obs (no data leverage), then 1.000 after the x4 widening; the first fit in the same row has 0.05 / dof 4.3. The rows get worse with tracking (13.59 -> 19.16, 4.36 -> 4.96). I guessed a sigma state leak between tracked fits; the engine copies each isotopologue dict, so that guess is wrong. Cause unknown -- backlog, not this task.
