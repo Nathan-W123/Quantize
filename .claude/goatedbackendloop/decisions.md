@@ -646,3 +646,10 @@
 - Alternatives considered: leave the docstring as is (true but incomplete); a README note (the README does not quote 8.14).
 - Source: assumption, unconfirmed (within D-47's measurement-only scope)
 - Revisit if: the rescale becomes smooth (N19 a) or the rows are rerun.
+
+### D-49 · Next task: diagnose fluoroacetylene's tracked fits (2026-11-20)
+- Decision: find why fluoroacetylene's 2nd and 3rd tracked hybrid fits (HF track / offsets+track / track_quadratic) start at reduced chi2 16.00 with dof = n_obs, and why tracking makes the row worse (13.59 -> 19.16 mA); diagnosis first, any fix proposed before it is made.
+- Why: an exact 16.00 (= the x4 clamp squared) on three configurations points at a mechanism, possibly a defect, in a configuration the README's best-of table uses.
+- Alternatives considered: F14 GLS study; B3LYP torsion rows for T-13's count.
+- Source: auto-picked, no answer in 15 min (Q-16, recommended option)
+- Revisit if: the user picks another option.

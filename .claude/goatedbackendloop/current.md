@@ -1,106 +1,61 @@
 # Current task
-Task: T-13
-Status: done
-Request: the T-12 chi2-threshold check on the benchmark's other
-configurations (D-47, auto-picked at Q-15); measurement only.
+Task: T-14
+Status: building
+Request: diagnose fluoroacetylene's tracked fits (backlog N19 b; D-49,
+auto-picked at Q-16); diagnosis first, any fix proposed before it is made.
 
 ## Brief
-- Outcome: per (molecule, configuration, level) row, the first-pass
-  reduced chi2 of every hybrid fit (tracking rows run several), and
-  hybrid_rms_ma at thresholds 3 / 4 / 5; the list of rows that move by
-  more than 0.01 mA, and whether any of them is a best-of entry in the
-  README table.
-- How: t13/chi2run2.py (t12's logger plus THRESH= and a CONFIGS lookup tag
-  for the configuration), in three copies of the t12 worktree (wt3, wt4,
-  wt5; sources identical to HEAD, merged Hessian cache). HF: 11 configs;
-  B3LYP: 9 (no cd rows were ever run there). The T=4 run must reproduce
-  the archived rows. Torsion / offsets+torsion need relaxed scans (not
-  cached; B3LYP ones outlast 2 h) and come last, HF only if at all.
-- Success: the count over 99 + 81 rows, the archive reproduced, and an
-  independent check of the flips.
+- Outcome: the cause of the 2nd / 3rd tracked fits' reduced chi2 16.00
+  (dof = n_obs) and of the tracked rows being worse (13.59 -> 19.16 mA),
+  and what a fix would move.
+- How: instrument the benchmark's tracking path in a git-archive copy of
+  HEAD (t14/wt, t13 caches), logging slopes, shifts, sigmas, residuals and
+  each alpha call's parts; then a fresh-agent check of the mechanism and a
+  prototype fix in a second copy (t14/fix), every row rerun.
+- Success: a per-number trace from cause to the 16.00, independently
+  reproduced; the list of rows a fix changes.
 
 ## Graph
-- N1 · build · T=4 run, both levels · after: none · done · handoff: HF 99/99, B3LYP 81/81 rows reproduce
-- N2 · build · T=3 and T=5 runs · after: N1 · done · handoff: HF: 4 rows flip at T=3, none at T=5; B3LYP: none moves >= 1e-5 mA
-- N3 · verify · fresh agent recomputes the flips and checks best-of impact · after: N2 · done · handoff: both claims confirmed by running (all 99 + 81 rows at 3 / 5, plus 135 RHF rows at 3.0); 5.93 needs all six HNCO offsets-family rows, not the four named
+- N1 · build · trace the tracked fits · after: none · done · handoff: cause found (below)
+- N2 · verify · fresh agent: continuity scan across the cut + rerun with the cut changed · after: N1 · running · handoff: -
+- N3 · build · prototype fix in t14/fix, all RHF rows + B3LYP fluoroacetylene · after: N1 · running (task b4tjegik3) · handoff: -
+- N4 · gate · propose the fix to the user (engine change, rows move) · after: N2, N3 · pending · handoff: -
 
 ## Progress
-- 14:52 UTC: t13/wt3, wt4, wt5 copied from t12/wt (code = HEAD; only
-  bytecode differs); T=4 run started (t4_{hf,b3lyp}.log / .json).
-- Container restarted ~15:35 UTC; scratch survived. HF T=4 had finished
-  (99 rows, 151 hybrid fits, 31 min); B3LYP had 16 / 81 rows saved (46
-  min -- 102 B3LYP and 143 HF Hessians were not in the cache: the
-  5cfc5d4-vintage rows differ in the 9th decimal, so their tracked
-  geometries miss). Stale lock (pid 198, no logger running) removed;
-  B3LYP T=4 resumed at 15:40 (log part 2: t4_b3lyp_p2.json; part 1 kept),
-  HF T=3 / T=5 started alongside with the new Hessians shared.
-- HF T=4: 79 / 99 rows bit-exact vs archive, the rest <= 4.6e-4 mA (all
-  5cfc5d4 vintage). First-pass chi2 > 2.5 in only: isocyanic_acid
-  offsets+bob / offsets+defect / offsets+cd / offsets+track, all 3.468 (the
-  same fit as its offsets row); and fluoroacetylene track /
-  offsets+track / track_quadratic, whose 2nd and 3rd tracked fits start at
-  16.00 (dof 6.0 = n_obs) and land on 1.000 after a x4 widening -- far
-  from 4, so not threshold-fragile, but odd (see Observations).
-- 17:34 UTC: part 2 hit its 7000 s timeout at 41 / 81 B3LYP rows (25 rows in
-  ~2 h while the HF runs shared the 4 CPUs). HF T=3 / T=5 finished.
-- HF T=3 / T=5 vs T=4 over all 99 rows (hybrid_rms_ma, _deg, _ma_vs_re,
-  tolerance 1e-5): only isocyanic_acid offsets+bob / offsets+defect /
-  offsets+cd / offsets+track move, all at T=3, all 8.1373 -> 13.4838 mA
-  (deg 1.835 -> 2.919) -- the offsets row's T-12 flip. T=5: nothing moves.
-- Best-of impact (RHF): HNCO's best hybrid is 8.14, shared by all six
-  offsets-family rows (offsets+torsion too: torsion_applied False, so the
-  same fit; not rerun, inferred). At T=3 it would read 13.48, moving the
-  README RHF best-of hybrid mean 5.34 -> ~5.93; still below theory (22.10)
-  and ME (48.17) for HNCO, so no win count changes. Nothing at T=5.
-- B3LYP: first-pass chi2 of the 42 rows logged so far is <= 0.8 (scan.py).
-- 17:36 UTC: chi2run2.py takes molecule keys; B3LYP T=4 resumed
-  as two processes (OMP_NUM_THREADS=2 each): wt4 fluoroacetylene +
-  chlorofluoromethane -> t4_b3lyp_p3.json; wt5 (wt4's cache merged in)
-  water + ozone + isocyanic_acid -> t4_b3lyp_p3b.json. Task b8ihmpgy9.
-- 17:52 UTC: both halves done in ~16 min (cache hits). B3LYP T=4: 81 / 81
-  rows reproduce the archive (42 bit-exact, worst 1.4e-4 mA,
-  fluoroacetylene track_quadratic); merged copy t13/b3lyp_t4_merged.json.
-- B3LYP checks (every pass, not only the first): max 0.763; none in [3, 5].
-  But 8 rows have checks in [0.2, 1/3]: water lam / bob / defect / track /
-  track_direct / track_quadratic (0.2174) and ozone offsets+bob /
-  offsets+defect (0.2260). They tighten at T=4 (lo 0.25) and T=3 (lo 0.333)
-  and not at T=5 (lo 0.2), and a second pass ran at T=4 (the floor did not
-  hold every row). The scale factor is clip(sqrt(chi2), 1/4, 4), not a
-  function of T, and no B3LYP check lies in [0.25, 1/3] or [3, 4], so T=3
-  takes T=4's path exactly. HF had no check in either band.
-- My D-47 cut (B3LYP T=3/5 only for first-pass chi2 > 2.5) missed the low
-  side; corrected: those 8 rows rerun at T=3 and T=5 (wt3, wt5; wt5's T=4
-  file moved to output/_aside), task bsp1pbh2a.
-- 17:54 UTC: the 8 rows at T=3 are bit-identical to T=4 (same path, as
-  predicted: 2 passes each). At T=5 they run 1 pass: water moves <= 1.2e-9
-  mA, ozone offsets+bob / offsets+defect 0.040376 -> 0.040367 (9.6e-6 mA).
-  So no B3LYP row moves by 1e-5 mA at any threshold. Tracked water fits
-  2-3 (0.149-0.156) tighten at every T, as do all checks < 0.2.
-- Count (T-13): over 99 HF + 81 B3LYP rows, threshold-decided = HF HNCO
-  offsets+bob / +defect / +cd / +track (at T=3 only); offsets+torsion is the
-  same fit (inferred, not run). With T-12: 5 of 216 rows run (+1 inferred),
-  all one fit. Torsion rows otherwise not run.
-- B3LYP part sent to the N3 verifier.
-- 18:20 UTC N3 report (fresh copies of HEAD, threshold set by editing the
-  default in quantize.py, CLI unmodified): RHF 99 rows at 3.0 / 5.0 and
-  B3LYP 81 rows at 3.0 / 4.0 / 5.0 bit-identical to my wt3 / wt4 / wt5 rows.
-  It ran all 15 RHF configs at 3.0 (135 rows): HNCO offsets and
-  offsets+torsion flip too (13.483828), --table gives 10.39 / 9.85 / 5.93,
-  win counts 4/9, 6/9, 7/9 unchanged; torsion rows otherwise match (~1e-10).
-  Correction to my brief: the four rows alone leave the mean at 5.34 (the
-  best-of takes the min, and offsets / offsets+torsion are outside the 99).
-  Near miss: HF fluoroethane offsets+torsion (best-of row, 7.10) first chi2
-  0.368, 10% above 1/3; does not move. Archive drift at 5cfc5d4 vintage
-  (<= 4.6e-4 HF, 1.4e-4 B3LYP) is the same at every threshold.
-- 18:23 UTC: benchmark docstring caveat extended to the T-13 count (D-48);
-  N19 updated, fluoroacetylene anomaly merged into it as (b); L-20 added;
-  L-10 outcome +. Done.
+- 18:45 UTC: t14/trace.py (+ trace2 / trace3, more probes). HF
+  fluoroacetylene, configs track and track_direct; rows reproduce the
+  archive (19.1634, 13.6626).
+- The `track` scheme extrapolates the stationary-point table along
+  d(alpha)/ds from a central difference at coords +/- step/2 (step 0.01554
+  A, under the 0.020 gate). Slopes came out at 4.6e8 - 8.2e8 MHz/A, so the
+  shifts were 7.1e6 - 1.3e7 MHz on alphas of 30 - 41 MHz; the extrapolated
+  B targets were 3.7e6 - 6.4e6 MHz (observed ~9700), with sigma = 0.25 x
+  |half the shift|.
+- Fits 2 and 3: every weighted residual exactly 4.0 (= 1/0.25), chi2 16.00,
+  dof 6.000; the x4 widening gives 1.000. The data have no leverage, the
+  fit returns to the prior (3e-5 A away) -> row 19.16 = theory.
+- Per-term breakdown (compute_harmonic_alpha): Coriolis and anharmonic
+  parts are normal at all three points; the Watson harmonic ("centrifugal")
+  term is -7.47e6 MHz at the minus point only. Same frequencies, same skip
+  count, is_linear True at all three.
+- Cause: that term keeps 1/I for I > 1e-8 amu A^2 (absolute). I_A: centre
+  6.1e-9, plus 1.5e-9, minus 1.37e-8. The module's linearity test
+  (is_linear, I_min / I_max < 1e-6, i.e. I_A < ~5e-5 here) says linear at
+  all three, so the minus point is "linear" for its modes but divides by
+  its axial moment in the harmonic term. The theory geometry itself sits
+  at 6.1e-9, a factor 1.6 under the cut.
+- track_direct is unaffected (its tables are built at fitted geometries
+  whose I_A stays under the cut); B3LYP fluoroacetylene's tracked fits had
+  chi2 <= 0.8 in T-13 (not affected or gated).
+- Prototype (t14/fix, scratch copy only): in the Watson term, zero the
+  axial inverse moment when _rigid_mode_count says linear, the same
+  decision the normal modes and the Coriolis pair use. Running: all 9
+  molecules x 13 configs at RHF, and fluoroacetylene x 11 configs at
+  B3LYP, to list every row it moves.
 
 ## Observations
-- 2026-11-20 · fluoroacetylene's tracked hybrid fits (HF, track and offsets+track alike) start at reduced chi2 16.00 with dof 6.0 = n_obs (no data leverage), then 1.000 after the x4 widening; the first fit in the same row has 0.05 / dof 4.3. The rows get worse with tracking (13.59 -> 19.16, 4.36 -> 4.96). I guessed a sigma state leak between tracked fits; the engine copies each isotopologue dict, so that guess is wrong. Cause unknown -- backlog, not this task.
-- 2026-11-20 · my plan's B3LYP cut (rerun only rows with first-pass chi2 > 2.5) looked at one side of a two-sided test; scanning every check against both bands (lo = 1/T) found 8 rows the cut would have skipped. Scan the whole decision rule, not the side the last finding was on.
+- 2026-11-20 · my first guess (the degenerate bend pair passing the 1 cm^-2 Coriolis guard) was wrong; logging each term at the three points named the harmonic term in one run (L-06 applied).
 
 ## Pending question
-- Q-16 (asked 2026-11-20 18:23 UTC, deadline 18:38 UTC; wake-up trig_01XLw6MsX9JojeFjJoxaoY8q at 18:39): what's next after T-13. Options: 1. diagnose fluoroacetylene's tracked fits, N19 (b) (Recommended); 2. F14 GLS study (correlated weights); 3. torsion rows at B3LYP for T-13's count (14 rows, relaxed scans, long); 4. Done for now. Auto-pick: 1.
 
 ## Handoff
