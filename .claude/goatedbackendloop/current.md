@@ -21,8 +21,8 @@ root fix), literature first, no engine change (D-34, auto-picked at Q-02).
 - N4 · build · calibration-only entries + theory geometries + pool · after: N3 · done · handoff: refs + calibration=extended + offsets_pool; 10 tests, 3 mutations caught
 - N5 · verify · offsets shifts per molecule; offsets fits for CH2ClF, HNCO, water, ozone vs r_e · after: N4 · done · handoff: CH2ClF big gain both levels; HNCO bonds better, angles worse; ozone worse at B3LYP (O-O bond order); others' sigma_x wider
 - N6 · gate · Q-05: rerun offsets config for all 9 with calibration=extended? · after: N5 · done · handoff: D-37 (auto-picked)
-- N7 · verify · offsets config, 9 molecules x 2 levels, default vs extended pool · after: N6 · running · handoff: scratchpad t07/{hf,b3lyp}.log
-- N8 · gate · make extended the default and rerun the tables? · after: N7 · pending · handoff: -
+- N7 · verify · offsets config, 9 molecules x 2 levels, default vs extended pool · after: N6 · done · handoff: means 8.56 -> 5.37 (RHF), 4.96 -> 4.13 (B3LYP); ozone vs r_e worse at B3LYP
+- N8 · gate · Q-06: make extended the default and rerun the offsets-family rows + README? · after: N7 · running · handoff: pending answer
 
 ## Progress
 - Candidates meeting the rule (r_e / r_e^SE, stated sd <= 0.5 mA):
@@ -96,6 +96,14 @@ root fix), literature first, no engine change (D-34, auto-picked at Q-02).
   mutants); L-15 again -- the main() wiring was untested.
 
 ## Pending question
+- Q-06 · make the extended calibration the default? 1 yes: default flips
+  (calibration=default keeps the old pool), rerun every offsets-family
+  configuration at both levels (hours; B3LYP track/torsion may not finish,
+  flagged as before), archive, regenerate tables, README + docstring
+  (Recommended); 2 keep it opt-in, add the nine-molecule comparison to the
+  README as a note (~15 min); 3 first drop H2O2's O-O (bond order vs
+  ozone), re-measure (~30 min; chosen after seeing results) · deadline
+  04:03 UTC 2026-11-20 · wake-up trig_01Ch8KXFj5J7PepxCXNwWfbp
 
 ## Handoff
 - Nine-molecule rerun, RHF (t07/compare.py hf_6-31g): default pool
@@ -106,6 +114,15 @@ root fix), literature first, no engine change (D-34, auto-picked at Q-02).
   17.64 -> 2.91), water 0.65 -> 0.64, ozone 1.80 -> 1.80, HNCO 21.62 ->
   8.14; mean 8.56 -> 5.37. Angles: CH2ClF 0.68 -> 0.88, HNCO 1.58 -> 1.84,
   others within 0.01 deg. sigma_x of the five: 5.1-6.3 -> 6.1-6.9.
+- B3LYP (same comparison): default reproduces all nine archived rows.
+  Extended, vs primary: VF 5.24 -> 5.24 (r_e 1.03 -> 1.00), acetyl fluoride
+  6.53 -> 6.45, fluoroethane 7.64 -> 7.66, formyl fluoride 3.31 -> 3.34,
+  fluoroacetylene 2.20 -> 2.09, CH2ClF 13.36 -> 8.18 (r_e 11.22 -> 6.00),
+  water 0.69 -> 0.46 (angle 0.132 -> 0.033), ozone 1.43 -> 0.04 vs r_s but
+  0.37 -> 1.02 vs r_e (the finer yardstick: worse), HNCO 4.23 -> 3.71
+  (angle 0.49 -> 0.33); mean 4.96 -> 4.13. Mean over the four with r_e:
+  RHF 6.00 -> 2.30, B3LYP 3.33 -> 2.12. Chains finished 03:2x UTC, all
+  invocations exit 0.
 Runs (started 02:47 UTC): scratchpad t07/chain.sh <hf|b3lyp>, worktree
 t07/wt (41f13eb, copies of n13/wt/output theory geometries and Hessian
 cache), one molecule per invocation, default pool then extended, rows in
