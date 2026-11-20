@@ -98,6 +98,14 @@ root fix), literature first, no engine change (D-34, auto-picked at Q-02).
 ## Pending question
 
 ## Handoff
+- Nine-molecule rerun, RHF (t07/compare.py hf_6-31g): default pool
+  reproduces all nine archived offsets rows exactly. Extended, hybrid bond
+  RMS vs primary reference (mA): VF 6.39 -> 6.37 (vs r_e 2.84 -> 2.80),
+  acetyl fluoride 7.46 -> 7.27, fluoroethane 7.21 -> 7.22, formyl fluoride
+  7.33 -> 7.15, fluoroacetylene 4.47 -> 4.36, CH2ClF 20.14 -> 5.42 (vs r_e
+  17.64 -> 2.91), water 0.65 -> 0.64, ozone 1.80 -> 1.80, HNCO 21.62 ->
+  8.14; mean 8.56 -> 5.37. Angles: CH2ClF 0.68 -> 0.88, HNCO 1.58 -> 1.84,
+  others within 0.01 deg. sigma_x of the five: 5.1-6.3 -> 6.1-6.9.
 Runs (started 02:47 UTC): scratchpad t07/chain.sh <hf|b3lyp>, worktree
 t07/wt (41f13eb, copies of n13/wt/output theory geometries and Hessian
 cache), one molecule per invocation, default pool then extended, rows in
