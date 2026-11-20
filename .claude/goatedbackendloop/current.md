@@ -1,6 +1,6 @@
 # Current task
 Task: T-07
-Status: verifying
+Status: done
 Request: calibration molecules for the uncovered bond classes (backlog N16's
 root fix), literature first, no engine change (D-34, auto-picked at Q-02).
 
@@ -117,43 +117,14 @@ root fix), literature first, no engine change (D-34, auto-picked at Q-02).
   mutants); L-15 again -- the main() wiring was untested.
 
 - 2026-11-20: regenerating the old table from git HEAD before writing found two README claims the new rows break ("improves RHF -> B3LYP on all nine", HNCO factor 7) and that water was already an ME win, not a new one.
+- 2026-11-20: the independent fact-check of the README text found 4 errors in prose I had checked by eye (mixed best-of and per-row before-figures; credited theory with a win ME took; one stale selection-effect figure); the tables were right because they were diffed.
 - 2026-11-20: the user asked a second time why the loop stopped while I was waiting on the B3LYP chain. Ending a turn on background work looks like a stop unless the message says what is running, how far it is and roughly when it ends.
 
 ## Pending question
+- Q-07 · what's next after T-07 · asked 2026-11-20 06:11 UTC · deadline 06:27 UTC · wake-up trig_01Damr9aJQNpedwnmBLCt2qu
+  1. Diagnose chlorofluoromethane at B3LYP (Recommended): why its offsets hybrid is worse at B3LYP than RHF (6.00 vs 2.91 mA vs Vogt r_e^SE); per-bond breakdown, no engine change
+  2. Look for an N-H calibration reference (NH3, formamide, methanimine r_e with a stated sd <= 0.5 mA)
+  3. N2: re-scan the README's sparse-data sigma rows (fluorobenzene, monofluoro parent-only)
+  4. Done for now
 
 ## Handoff
-- Nine-molecule rerun, RHF (t07/compare.py hf_6-31g): default pool
-  reproduces all nine archived offsets rows exactly. Extended, hybrid bond
-  RMS vs primary reference (mA): VF 6.39 -> 6.37 (vs r_e 2.84 -> 2.80),
-  acetyl fluoride 7.46 -> 7.27, fluoroethane 7.21 -> 7.22, formyl fluoride
-  7.33 -> 7.15, fluoroacetylene 4.47 -> 4.36, CH2ClF 20.14 -> 5.42 (vs r_e
-  17.64 -> 2.91), water 0.65 -> 0.64, ozone 1.80 -> 1.80, HNCO 21.62 ->
-  8.14; mean 8.56 -> 5.37. Angles: CH2ClF 0.68 -> 0.88, HNCO 1.58 -> 1.84,
-  others within 0.01 deg. sigma_x of the five: 5.1-6.3 -> 6.1-6.9.
-- B3LYP (same comparison): default reproduces all nine archived rows.
-  Extended, vs primary: VF 5.24 -> 5.24 (r_e 1.03 -> 1.00), acetyl fluoride
-  6.53 -> 6.45, fluoroethane 7.64 -> 7.66, formyl fluoride 3.31 -> 3.34,
-  fluoroacetylene 2.20 -> 2.09, CH2ClF 13.36 -> 8.18 (r_e 11.22 -> 6.00),
-  water 0.69 -> 0.46 (angle 0.132 -> 0.033), ozone 1.43 -> 0.04 vs r_s but
-  0.37 -> 1.02 vs r_e (the finer yardstick: worse), HNCO 4.23 -> 3.71
-  (angle 0.49 -> 0.33); mean 4.96 -> 4.13. Mean over the four with r_e:
-  RHF 6.00 -> 2.30, B3LYP 3.33 -> 2.12. Chains finished 03:2x UTC, all
-  invocations exit 0.
-Runs (started 02:47 UTC): scratchpad t07/chain.sh <hf|b3lyp>, worktree
-t07/wt (41f13eb, copies of n13/wt/output theory geometries and Hessian
-cache), one molecule per invocation, default pool then extended, rows in
-t07/wt/output/accuracy_upgrades_<tag>[_calext].json (finished molecules are
-skipped on rerun). If a chain dies: check `grep "=== exit" t07/<level>.log`,
-delete a stale t07/wt/output/*.lock, relaunch chain.sh <level> (it resumes).
-Offsets-family rerun (started 04:2x UTC): scratchpad t07/fam.sh <hf|b3lyp>,
-worktree t07/wt2 at c8904da (caches copied from t07/wt/output, calibration
-theory geometries included), one (config, molecule) per invocation; rows in
-t07/wt2/output/accuracy_upgrades_<tag>.json. HF: offsets, +bob, +defect,
-+cd, +track, +torsion (54 rows); B3LYP: same minus +cd, and +torsion skipped
-for acetyl fluoride and fluoroethane (never run; >3 h scans) -- 43 rows. If
-a chain dies: grep "=== exit" t07/fam_<level>.log, delete a stale
-t07/wt2/output/*.lock, relaunch fam.sh <level> (resumes). Then: merge these
-rows over the offsets-family rows in reports/accuracy_upgrades/*.json, run
---table results=reports/accuracy_upgrades (and configs=base), update README
-results + docstring, vintages c8904da (offsets family) / 5cfc5d4 / 676eb0d.
-

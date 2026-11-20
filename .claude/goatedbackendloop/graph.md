@@ -67,3 +67,4 @@ the decisions record; tasks before T-01 live in git history only.
 - D-38 --governs--> C:bond-offsets · 2026-11-20
 - T-07 --touched--> C:readme · 2026-11-20
 - T-07 --taught--> L-17 · 2026-11-20
+- T-07 --taught--> L-18 · 2026-11-20

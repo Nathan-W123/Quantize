@@ -139,3 +139,8 @@ only here.
 - Scope: project · Status: provisional
 - Outcomes: +2026-11-20 helped (T-07: running all nine molecules on both yardsticks caught ozone worse vs r_e at B3LYP and HF's trans H2O2 before the default flipped)
 
+### L-18 · In results prose, name the row each number comes from
+- Observation: the README/docstring text for the calibration rerun mixed best-of figures with per-config row figures in "before -> after" pairs (ozone 1.00 vs the offsets row's 1.43; CH2ClF 13.38 vs 20.14) and credited corrected theory with wins mixed estimation took.
+- Evidence: 2026-11-20 · fresh-agent fact-check of 622b573 found 4 errors; the diffed tables had none.
+- Adjustment: write each quoted figure with its config and yardstick (best-of / offsets row; vs primary / vs r_e) and generate the before/after pairs from the JSON with a script, not from memory; have the prose fact-checked against the data.
+- Scope: project · Status: provisional

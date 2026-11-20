@@ -101,6 +101,13 @@ Sessions: 0 · Last consolidated: never
 - Scope: stack: bash
 - Status: provisional
 - Outcomes:
+### L-09 · Ending a turn on background work: say what runs, how far, how long
+- Observation: the user twice asked why the loop had stopped while a long benchmark chain ran in the background.
+- Evidence: 2026-11-20 · "why did the loop stop" (twice, Quantize T-07); each time the turn had ended waiting on a background job with only a one-line status.
+- Adjustment: when a turn ends to wait on background work, the last message says what is running, its progress (n of N), a rough ETA, and that the loop resumes on its own when it finishes.
+- Scope: workflow
+- Status: provisional
+
 ## Retired
 ## Changelog
 - 2026-11-12 created; L-01 added.
