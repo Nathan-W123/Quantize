@@ -44,9 +44,10 @@ auto-picked at Q-16); diagnosis first, any fix proposed before it is made.
   all three, so the minus point is "linear" for its modes but divides by
   its axial moment in the harmonic term. The theory geometry itself sits
   at 6.1e-9, a factor 1.6 under the cut.
-- track_direct is unaffected (its tables are built at fitted geometries
-  whose I_A stays under the cut); B3LYP fluoroacetylene's tracked fits had
-  chi2 <= 0.8 in T-13 (not affected or gated).
+- (Superseded by the prototype below: track_direct IS affected, mildly,
+  at both levels -- a direct table built at a fitted geometry can cross the
+  cut without a catastrophic alpha. My reading "unaffected" came from the
+  sane chi2, not from a run.)
 - Prototype (t14/fix, scratch copy only): in the Watson term, zero the
   axial inverse moment when _rigid_mode_count says linear, the same
   decision the normal modes and the Coriolis pair use. Running: all 9
