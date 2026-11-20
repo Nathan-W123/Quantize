@@ -98,6 +98,8 @@ root fix), literature first, no engine change (D-34, auto-picked at Q-02).
 - 2026-11-20: 8 of my 10 first tests let real breaks through (verifier's
   mutants); L-15 again -- the main() wiring was untested.
 
+- 2026-11-20: the user asked a second time why the loop stopped while I was waiting on the B3LYP chain. Ending a turn on background work looks like a stop unless the message says what is running, how far it is and roughly when it ends.
+
 ## Pending question
 
 ## Handoff
