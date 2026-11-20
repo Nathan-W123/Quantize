@@ -1,6 +1,6 @@
 # Current task
 Task: T-11
-Status: building
+Status: done
 Request: measure a width for uncalibrated bond classes that does not move
 with unrelated calibration members (N16 D-03 flag; D-44, auto-picked at
 Q-12); scratch only, no engine change.
@@ -27,7 +27,7 @@ Q-12); scratch only, no engine change.
 ## Graph
 - N1 · build · t11/fallback.py: robust-rule fits, affected molecules x 3 pools x 2 levels · after: none · done · handoff: decouples water/ozone/HNCO-B3LYP; HNCO HF 8.14 -> 11.18, angle 1.84 -> 9.92 deg, still pool-sensitive
 - N2 · verify · fresh agent checks the patch reaches the fit and recomputes the table · after: N1 · done · handoff: patch sound, rows bit-exact; HF HNCO row = f(sigma_x) alone, with a chi2-rescale switch at 17.3 mA
-- N3 · gate · Q-13: adopt, flag, or drop? · after: N2 · asked 13:38 UTC · handoff: -
+- N3 · gate · Q-13: adopt, flag, or drop? · after: N2 · done · handoff: D-45 (auto-picked): drop; docstring caveat; backlog N19
 
 ## Progress
 - Fallback widths (mA), pool current / +CH2Cl2 / +CHF2Cl. HF: excl HNCO
@@ -74,9 +74,5 @@ Q-12); scratch only, no engine change.
 - 2026-11-20 · asking the verifier an experiment ("is the row a function of sigma_x alone? reproduce by forcing it") instead of my reading found the chi2-rescale switch, which my reading had missed.
 
 ## Pending question
-- Q-13 (asked 13:38 UTC, deadline 13:54 UTC; send_later trig_018HE6yGUF33bk8C8JJe4u1z): 1 drop the
-  rule; one README sentence on HNCO's RHF figure and the chi2 switch;
-  backlog item for the switch (Recommended; auto-pick) · 2 drop the rule,
-  backlog only · 3 Done for now.
 
 ## Handoff

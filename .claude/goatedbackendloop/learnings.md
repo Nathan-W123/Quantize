@@ -109,6 +109,13 @@ Sessions: 0 · Last consolidated: never
 - Status: provisional
 - Outcomes: +2026-11-20 (T-10: three waits, each with run, progress and ETA; no "why did it stop" since)
 
+### L-10 · Give a verifier an experiment that settles the question, not your reading
+- Observation: asked "is this row a function of sigma_x alone? force it and reproduce", the verifier ran the sweep and found a chi2-rescale switch behind a 1.8 -> 9.9 deg jump that my reading had put down to the width itself.
+- Evidence: 2026-11-20 · Quantize T-11 (t11/verify/fine_hf.json).
+- Adjustment: when briefing a verifier on a claimed mechanism, state the claim as an experiment it can run (hold X fixed, vary Y, reproduce the rows), not as a conclusion to review.
+- Scope: workflow
+- Status: provisional
+
 ## Retired
 ## Changelog
 - 2026-11-12 created; L-01 added.
@@ -116,3 +123,4 @@ Sessions: 0 · Last consolidated: never
 - 2026-11-16 L-03 (measure instead of tuning a proxy) and L-04 (CLI entry point) added after step 8; L-02 outcome +2026-11-16 (seeds quoted in every later commit; a verifier still caught one CLI number without its seed).
 - 2026-11-17 L-06 moved here from the project's lessons (workflow scope); lessons.md consolidated 219 -> ~110 lines (L-10 into L-14, L-P01 and L-13 into L-15); L-04 outcome +2026-11-17.
 - 2026-11-20 L-09 outcome +; project L-P04 extended (hand-built stand-ins for a library function's output).
+- 2026-11-20 L-10 added (verifiers get experiments, not readings).

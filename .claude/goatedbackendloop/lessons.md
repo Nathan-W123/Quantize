@@ -151,7 +151,7 @@ only here.
 - Evidence: 2026-11-20 · fresh-agent fact-check of 622b573 found 4 errors; the diffed tables had none.
 - Adjustment: write each quoted figure with its config and yardstick (best-of / offsets row; vs primary / vs r_e) and generate the before/after pairs from the JSON with a script, not from memory; have the prose fact-checked against the data.
 - Scope: project · Status: provisional
-- Outcomes: +2026-11-20 (T-10: every before/after pair printed from the JSON; the verifier's recomputed means matched to 4 places) -2026-11-20 partly (T-08: the prose numbers were scripted, but one derived figure -- the ~390 / ~260 quadratic estimate -- was hand-computed and wrong; the verifier caught it)
+- Outcomes: +2026-11-20 (T-10: every before/after pair printed from the JSON; the verifier's recomputed means matched to 4 places) -2026-11-20 (T-11: I told the user the README states HNCO's 8.14 at line 84; a grep over two files had mixed them, and it is the benchmark docstring -- name the file, not just the line) -2026-11-20 partly (T-08: the prose numbers were scripted, but one derived figure -- the ~390 / ~260 quadratic estimate -- was hand-computed and wrong; the verifier caught it)
 
 ### L-19 · A negative result through the engine is conditional on its configuration
 - Observation: "a 13C species would not fix CH2ClF" held only because the fit weights the targets as independent; with correlated weights the same species could matter.

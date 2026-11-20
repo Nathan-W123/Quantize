@@ -601,3 +601,18 @@
   references for the five r_s molecules (N3).
 - Source: auto-picked, no answer in 15 min (Q-12, recommended option)
 - Revisit if: the user picks another option.
+
+### D-45 · Drop the robust fallback width; flag the chi2-rescale edge (2026-11-20)
+- Decision: keep uncorrected_class_bias as the RMS of class means (no
+  engine change); state in the benchmark docstring that isocyanic acid's
+  RHF offsets figure (8.14) sits 1.9 mA of sigma_x above the chi2-rescale
+  switch; backlog N19 for the switch.
+- Why: T-11 (verified): the robust rule (1.4826 x median |class mean|)
+  decouples only rows that barely moved (<= 0.13 mA) and costs HF HNCO 3
+  mA without decoupling it; HF HNCO's row is a function of sigma_x alone,
+  with a jump at ~17.3 mA where the first fit's reduced chi2 passes 4.0.
+- Alternatives considered: backlog only (no docstring sentence).
+- Source: auto-picked, no answer in 15 min (Q-13, recommended option).
+  Option 1 said "README sentence"; the figure is stated in the benchmark
+  docstring, not the README, so the sentence went there.
+- Revisit if: N19 changes how the rescale fires.
