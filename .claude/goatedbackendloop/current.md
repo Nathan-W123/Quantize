@@ -47,6 +47,31 @@ root fix), literature first, no engine change (D-34, auto-picked at Q-02).
   calibration=extended (rows to *_calext.json) and offsets_pool(theory, keys).
   dev/tests/test_calibration_references.py: 10 tests; breaking the CH3Cl
   builder, the H2O2 dihedral, or offsets_pool's key filter each fails one.
+- Measurement (scratchpad calib/calib.py; offsets configuration as the
+  benchmark runs it; default rows reproduce the archive to 4 decimals):
+  theory offsets of the new entries, RHF / B3LYP (mA): CH3Cl C-Cl +85.6 /
+  +25.4, C-H -9.9 / +6.8; HCN C-H -12.3 / +5.2, C-N -9.1 / +3.8; H2O2 O-O
+  +10.0 / +3.3, O-H -7.4 / +12.0 (water's own O-H error: -8.1 / +10.9;
+  ozone's O-O: -22.1 / -8.7, opposite sign to H2O2's: single vs 1.5-order).
+  B3LYP fits, default -> extended, bond RMS vs r_e (HNCO vs SE100):
+  CH2ClF 11.22 -> 6.00 (C-Cl +14.1 -> +7.4, C-F -13.3 -> -7.2); HNCO 2.03
+  -> 1.74 (angle 0.68 -> 0.78); water 0.69 -> 0.46 (angle 0.13 -> 0.03);
+  ozone 0.37 -> 1.02 (angle 0.060 -> 0.027). Other five: sigma_x 3.9-4.8 ->
+  4.2-4.8 mA, C-H offsets move <= 0.3 mA.
+  RHF first pass invalid for H2O2 (see review): CH2ClF 17.64 -> 2.94, HNCO
+  20.01 -> 7.28 (angle 1.49 -> 2.79), water 0.65 -> 0.02, ozone 2.86 ->
+  6.22; other five sigma_x 5.1-6.3 -> 7.0-7.6. Rerun with the guard:
+  calib/calib_hf2.log.
+- Independent review (fresh agent, brief + criteria + diff): default path
+  and never-scored PASS. Found: HF/6-31G optimises H2O2 trans-planar
+  (179.8 deg; B3LYP 117.25, r_e 113.5) -- confirmed; per-results-file lock
+  let default + extended runs race on the shared theory cache; --table
+  ignored the flag; archived hybrid_sigma_diagnostic.py pooled the whole
+  cache; tests too weak (8 mutants survived). All fixed in 565d69e:
+  conformer guard (aligned RMSD <= 0.10 A; ordinary 0.004-0.034, HF H2O2
+  0.274), per-level lock, calext table, key-filtered archived script,
+  stronger tests incl. main() end to end -- 8 / 8 mutations caught.
+  Suite before the fixes: 1606 passed, 22 skipped.
 - N-H: nothing readable meets the rule. NH3 r_e 1.0110 A / 106.70 deg
   (Demaison, Margules & Boggs, Chem. Phys. 260, 65-81, 2000, "The
   equilibrium N-H bond length"), no uncertainty on the secondary page
@@ -57,6 +82,12 @@ root fix), literature first, no engine change (D-34, auto-picked at Q-02).
 
 
 ## Observations
+- 2026-11-20: the independent verifier found the H2O2 conformer flip by
+  running one HF optimisation; my own run had the trans geometry on disk
+  and I never looked at its shape, only its bond lengths. Check a
+  calibration geometry's shape (dihedrals), not just the bonds measured.
+- 2026-11-20: 8 of my 10 first tests let real breaks through (verifier's
+  mutants); L-15 again -- the main() wiring was untested.
 
 ## Pending question
 
