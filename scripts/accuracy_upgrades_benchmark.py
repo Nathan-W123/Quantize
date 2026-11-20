@@ -48,7 +48,7 @@ the rows above it.
 Scoring each leg independently matters. Picking one row per molecule -- the
 configuration where the hybrid happens to do best -- lets the hybrid choose the
 settings the other two are then scored under, and that alone moves the
-mixed-estimation mean at RHF from 12.41 to 15.30 mA (at 5cfc5d4). The margins below are the
+mixed-estimation mean at RHF from 9.85 to 11.28 mA. The margins below are the
 ones that survive giving every method its best case.
 
 Regenerated 2026-11-20 from reports/accuracy_upgrades. Every bond-offset row
@@ -76,12 +76,12 @@ estimation on 6/9 and 5/9 and theory alone on 7/9 and 7/9, and improves from
 RHF to B3LYP on eight of nine molecules -- by a factor of 11 on water -- the
 exception being chlorofluoromethane (5.42 -> 8.18, not yet explained). The
 calibration pool (2026-11-20) moved the offset rows: chlorofluoromethane's C-Cl
-and isocyanic acid's C-N now get a correction, which took their RHF hybrid from
-13.38 and 21.62 to 5.42 and 8.14, but corrected theory and mixed estimation
-gain too, which is why the hybrid's win counts at RHF fell from 6/9 and 8/9.
-At B3LYP, ozone's offsets fit moves toward its r_s reference (1.00 -> 0.04)
-and away from its r_e (0.37 -> 1.02): the O-O offset comes from hydrogen
-peroxide's single bond. With the base configuration alone (`configs=base`) the means are
+and isocyanic acid's C-N now get a correction, which took their RHF offsets
+hybrid from 20.14 and 21.62 to 5.42 and 8.14, but mixed estimation gains too
+and takes chlorofluoromethane and formyl fluoride from the hybrid, which is why
+its win counts at RHF fell from 6/9 and 8/9. At B3LYP, ozone's offsets row
+moves toward its r_s reference (1.43 -> 0.04) and away from its r_e (0.37 ->
+1.02): the O-O offset comes from hydrogen peroxide's single bond. With the base configuration alone (`configs=base`) the means are
 21.47 / 17.35 / 11.03 at RHF and 9.19 / 5.42 / 4.63 at B3LYP.
 
 Where theory alone still wins -- vinyl fluoride at both levels, acetyl

@@ -39,9 +39,8 @@ theory alone on 7/9 and 7/9, and improves from RHF to B3LYP on eight of nine
 The best-of rows owe most of their margin over the base rows to the bond-class
 offsets: theory corrected by the error each bond class shows in the other
 molecules (leave-one-out). That correction helps all three methods, so at RHF
-corrected theory or mixed estimation now edges out the hybrid on
-chlorofluoromethane and formyl fluoride (by 0.08 mÅ), as mixed estimation
-already did on water. A class seen in
+mixed estimation now beats the hybrid on chlorofluoromethane (4.26 against
+5.42) and formyl fluoride (by 0.08 mÅ), as it already did on water. A class seen in
 only one molecule cannot be calibrated that way, so the pool also takes three
 equilibrium structures that are measured for their offsets and never fitted or
 scored -- methyl chloride, hydrogen cyanide and hydrogen peroxide
