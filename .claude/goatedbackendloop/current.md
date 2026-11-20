@@ -26,8 +26,8 @@ change proposed before it is made.
 - N2c · diagnose · why HNCO offsets moves 20 mA · after: N2 · done · handoff: see Progress 22:xx
 - N3 · verify · fresh agent: continuity scan of HNCO alpha theory -> offset geometry with its own Hessians and projector; own edit reproducing the row · after: N2c · done · handoff: t15/verify (scripts/scan.py, run_bench.py, variants.sh; results/)
 - N4 · gate · propose (or not) an engine change · after: N3 · done: option 1 auto-picked (D-52) · handoff: -
-- N5 · build · engine projector + test (fails on the old code) + full suite on 3.12 · after: N4 · running · handoff: -
-- N6 · build · rerun every row at both levels from the commit (worktrees, warm cache, chi2 logged) · after: N5 · pending · handoff: -
+- N5 · build · engine projector + test (fails on the old code) + full suite on 3.12 · after: N4 · done (b29cec3) · handoff: -
+- N6 · build · rerun every row at both levels from the commit (worktrees, warm cache, chi2 logged) · after: N5 · running (task bj1fbkb66; worktrees t15/wta: HF 135 + B3LYP VF/AF/HNCO/water; t15/wtb: B3LYP FE/FF/FA/CH2ClF/ozone; logs t15/logs) · handoff: -
 - N7 · verify · fresh agent: the committed rows and README against the JSON · after: N6 · pending · handoff: -
 - N8 · build · README table/provenance + benchmark docstring (rescale caveat) · after: N6 · pending · handoff: -
 
@@ -94,10 +94,27 @@ change proposed before it is made.
   with the valence-coordinate offset-force surface (tiltA) to 0.12 MHz.
 - B3LYP at 22:11: 14 rows in the two halves in 16 min (the benchmark runs
   molecules in its own order; HNCO is last in half A).
+- 22:45 UTC: engine change b29cec3 (prototype arithmetic exactly; module
+  differs from the prototype only in comments). New test (analytic bent
+  H-N-C stretched 0.015 A; reference = the surface tilted by its own
+  gradient): unprojected 23.5 MHz off, projected 0.92; fails with an
+  identity projector; the linear test fails if the axial rotation is kept
+  (n_vib 3). Full suite: 2 failures. (1) water end-to-end: the bond bound
+  (0.65x) had come from contaminated corrections -- B's target 2028 MHz
+  from B_e(r_e), worse than B_0's 1724; projected 253 (C 458 -> 382; A
+  wrong either way, no bend anharmonicity on that surface); bond 0.61 ->
+  2.42 mA vs raw 2.99. Test now checks B, C against B_e(r_e) (old engine
+  fails it) and the bond at 0.9x (measured 0.81). (2) test_prior_target
+  moved_ang == 0.0 reads 6.97e-11 -- identical on clean trees at HEAD and
+  2eb9b6c, with or without the change: pre-existing here, backlog N20.
+  Rerun: 1611 passed + N20.
+- Prototype B3LYP runs stopped (VF 11 + AF 8 + FA 11 + CH2ClF 1 rows done,
+  their Hessians cached); every row now reruns from b29cec3.
 
 ## Observations
 - 2026-11-20 · the stationary-point sanity check caught my projector removing a real bend on a near-linear molecule before any long run -- the same linearity trap as T-14, a second time in one day (L-P04 applied; candidate lesson: every new rigid/linear treatment goes through rigid_mode_count, never its own threshold).
 - 2026-11-20 · the "no-op at stationary points" framing hid where the projection matters: the offsets configs evaluate alpha off-stationary by design; my ETA (15-20 min) missed that projected modes move every cubic displacement off the cache.
+- 2026-11-20 · a test bound set by measurement (water e2e 0.65x) had measured the defect: when a fix makes a test fail, check the test's quantity against an exact reference (B_e(r_e)) before calling either side wrong.
 - 2026-11-20 · L-10 again: told to use its own projector and its own surfaces, the verifier refuted my proportional-to-gradient prediction and showed the corrected value spans 23.2-28.65 mA by recipe -- a range I would have reported as one number.
 - 2026-11-20 · a fit that T-13 found threshold-fragile turned out to sit on a ~100 MHz alpha error -- a row that flips under a small perturbation deserved a look at its inputs, not just its switch.
 
