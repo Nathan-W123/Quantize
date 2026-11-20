@@ -1,4 +1,5 @@
 # Current task
+Task: T-06
 Status: done
 Request: per-bond prior prototype (diagnostic, no engine change) -- loosen the
 quantum prior only on bond classes the calibration does not cover, score
@@ -20,6 +21,11 @@ CH2ClF and vinyl fluoride against their r_e^SE, water and ozone against r_e.
   quantum_prior_weight) must show added variance / s^2 = 1 on each widened
   bond, ~0 elsewhere.
 - Tradeoff: diagnostic only; s is estimated from the other bond classes.
+
+## Graph
+- N1 · build · per-bond widening on the base recipe (perbond2.py) · after: none · done · handoff: mechanism exact; mixed result
+- N2 · build · same with offsets on (perbond3.py) · after: N1 · done · handoff: CH2ClF fixed at both levels, water/ozone flat
+- N3 · verify · HNCO, the only other molecule it changes · after: N2 · done · handoff: worse at both levels; verdict not adoptable
 
 ## Progress
 - First version (perbond.py) widened the raw Hessian and rescaled alpha by
@@ -71,6 +77,18 @@ CH2ClF and vinyl fluoride against their r_e^SE, water and ozone against r_e.
   has only r_s / SE100-unstated references; this was the second variant
   tried (named in backlog N16 before the run). Offsets themselves are
   benchmark-only (bond_offsets is not on the CLI/config path).
+- HNCO (user chose it as the second test), uncovered C-N and N-H, scored
+  vs SE100 (trans-bent, matches r_s to 4 mA) and r_s: offsets -> per-bond
+  [tight]: RHF 20.01 -> 24.81 [27.02] mA (r_s 21.62 -> 23.08), H-N-C/N-C-O
+  angle RMS 1.49 -> 16.47 deg [20.05]; B3LYP 2.03 -> 3.62 [1.62] (r_s 4.23
+  -> 4.91), angle 0.68 -> 1.29. Offsets rows reproduce the archive (21.6184,
+  4.2259); added var / s^2 = 1.0 on N-H, N-C.
+- Why: HF/6-31G gets HNCO's H-N-C angle ~30 deg wrong. The as-is offsets
+  width (27 mA RMS, blending the uncovered bonds in) loosens the angles too,
+  so the data fix the angle (1.49 deg); the per-bond prior keeps angles at
+  the tight calibrated width and the angle stays near theory. Bond-only
+  widths cannot cover an angle error. Verdict: not adoptable (helps CH2ClF,
+  hurts HNCO at both levels).
 
 ## Observations
 - 2026-11-19: I estimated N17's saving ("2 wasted refits") without
@@ -116,5 +134,15 @@ CH2ClF and vinyl fluoride against their r_e^SE, water and ozone against r_e.
 - 2026-11-19: I told the user water and ozone would be unchanged before
   checking which classes are singletons (O-H, O-O are); corrected in the
   brief before running. Check the data a claim rests on before making it.
+
+- 2026-11-20: CH2ClF alone said "fixed" (17.64 -> 2.44); the second molecule
+  (HNCO) reversed it at both levels. The user's over-fitting worry was the
+  right test; run a remedy on every molecule it changes before calling it.
+
+## Pending question
+- Q-01 · what's next after the per-bond test · options: 1 record "not
+  adopted" (D-33) + save perbond2/3.py to dev/ (Recommended); 2 angle-aware
+  variant (diagnostic); 3 add C-Cl / N-H molecules (root fix); 4 done for
+  now · deadline 01:14 UTC 2026-11-20 · wake-up trig_01GZuWE7ciWPzd2Xf6P5tweC
 
 ## Handoff
