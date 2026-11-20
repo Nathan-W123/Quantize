@@ -26,8 +26,8 @@ Q-12); scratch only, no engine change.
 
 ## Graph
 - N1 · build · t11/fallback.py: robust-rule fits, affected molecules x 3 pools x 2 levels · after: none · done · handoff: decouples water/ozone/HNCO-B3LYP; HNCO HF 8.14 -> 11.18, angle 1.84 -> 9.92 deg, still pool-sensitive
-- N2 · verify · fresh agent checks the patch reaches the fit and recomputes the table · after: N1 · running · handoff: -
-- N3 · gate · Q-13: adopt, flag, or drop? · after: N2 · pending · handoff: -
+- N2 · verify · fresh agent checks the patch reaches the fit and recomputes the table · after: N1 · done · handoff: patch sound, rows bit-exact; HF HNCO row = f(sigma_x) alone, with a chi2-rescale switch at 17.3 mA
+- N3 · gate · Q-13: adopt, flag, or drop? · after: N2 · asked 13:38 UTC · handoff: -
 
 ## Progress
 - Fallback widths (mA), pool current / +CH2Cl2 / +CHF2Cl. HF: excl HNCO
@@ -49,9 +49,34 @@ Q-12); scratch only, no engine change.
 - Reading: HF HNCO's row tracks its sigma_x (8.14 at 19.2 mA, 11.2 at
   10.8), whichever rule sets it -- consistent with N16 (HF's H-N-C angle
   error needs a wide bond prior). To be checked by N2, not assumed.
+- N2 (fresh agent, 13:40 UTC): patch reaches all 12 ME and hybrid calls and
+  is undone; reruns byte-identical; rule reaches exactly HF water / ozone /
+  HNCO and B3LYP HNCO. HF HNCO: centre bitwise equal in all pools, and the
+  current pool with sigma_x forced to each of the six values reproduces all
+  six rows bit-exactly -- the row is a function of sigma_x alone (B3LYP
+  too). Sweep (hybrid mA / deg): 8 18.04/14.9, 10 12.95/11.3, 12 9.66/8.2,
+  15 10.99/5.2, 17 12.68/3.9, 18 9.04/1.87, 20 7.60/1.82, 25 5.52/1.80,
+  30 6.35/1.83, 40 10.41/1.91. The step at ~17.3 mA is the chi2 rescale
+  (benchmark hybrid_fit: chi2_rescale=True, 3 passes; threshold 4.0):
+  reduced chi2 after the first fit crosses 4.0 there (17.2: 4.02, refit,
+  12.80 / 3.77; 17.4: 3.96, one pass, 9.50 / 1.90). The archived 8.14 sits
+  at 19.2 (chi2 3.5-3.8). Without the rescale the robust row is 13.25 /
+  2.85 deg, not 11.18 / 9.92. The rows are non-monotonic in sigma_x even
+  without it (minimum ~5.5 near 25 mA). B3LYP's sweep is smooth and
+  monotone (3.51 at 4 mA -> 3.96 at 30).
+- Conclusion: the robust rule does not decouple HF HNCO (its C-N / C-O
+  width is the pooled within-class spread) and costs it 3 mA; elsewhere
+  it changes rows by <= 0.13 mA. Drop it. Separate finding: the README's
+  HNCO RHF offsets figure (8.14) is 1.9 mA of sigma_x above a chi2-rescale
+  switch; below it the same fit reads ~12.8.
 
 ## Observations
+- 2026-11-20 · asking the verifier an experiment ("is the row a function of sigma_x alone? reproduce by forcing it") instead of my reading found the chi2-rescale switch, which my reading had missed.
 
 ## Pending question
+- Q-13 (asked 13:38 UTC, deadline 13:54 UTC; send_later trig_018HE6yGUF33bk8C8JJe4u1z): 1 drop the
+  rule; one README sentence on HNCO's RHF figure and the chi2 switch;
+  backlog item for the switch (Recommended; auto-pick) · 2 drop the rule,
+  backlog only · 3 Done for now.
 
 ## Handoff
