@@ -56,6 +56,17 @@ entries is a separate gate (D-41, auto-picked at Q-09).
   background (logs t10/pools_{hf,b3lyp}.log). First RHF +CH2Cl2 refits
   (C-H offsets move <= 0.35 mA): VF 6.375 -> 6.337 (vs r_e 2.796 ->
   2.811), AF 7.274 -> 7.269, FE 7.217 -> 7.211, FF 7.154 -> 7.032.
+- RHF done (pools_hf.json), hybrid vs primary (/ vs r_e), current ->
+  +CH2Cl2 -> +CHF2Cl: CH2ClF 5.42/2.91 -> 7.15/4.02 -> 7.52/4.42 (C-Cl
+  +5.3 / +6.1 vs r_e: the over-correction that cancelled the fit's pull is
+  gone, as T-08 predicted); HNCO 8.14 -> 9.05 -> 9.14; FF 7.15 -> 7.03 ->
+  6.98; FE 7.22 -> 7.21 -> 7.08; AF 7.27 -> 7.27 -> 7.33; FA 4.36 -> 4.39
+  -> 4.46; VF 6.37/2.80 -> 6.34/2.81 -> 6.33/2.84; water 0.64 all; ozone
+  1.80 -> 1.82 -> 1.83. Mean 5.376 -> 5.656 -> 5.701. HNCO, water, ozone
+  move with no class change: at RHF their N-H / O-H / O-O are uncalibrated
+  (H2O2 excluded), so their sigma_x is uncorrected_class_bias = RMS of all
+  class means, and a C-Cl member lowers the C-Cl mean (85.6 -> ~70),
+  narrowing them (HNCO 19.2 -> 18.0 / 17.9 mA).
 
 ## Observations
 
