@@ -146,5 +146,9 @@ CH2ClF and vinyl fluoride against their r_e^SE, water and ozone against r_e.
   right test; run a remedy on every molecule it changes before calling it.
 
 ## Pending question
+- Q-02 · what's next after T-06 · options: 1 calibration molecules for
+  C-Cl / N-H / C-N, literature first (Recommended); 2 F13 auto systematic
+  sigma magnitudes; 3 N2 re-scan the README's sparse-data sigma rows; 4 done
+  for now · deadline 01:33 UTC 2026-11-20 · wake-up trig_01SG56h456Y1i7ryWhAtZ9zS
 
 ## Handoff
