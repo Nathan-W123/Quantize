@@ -45,6 +45,33 @@ CH2ClF and vinyl fluoride against their r_e^SE, water and ozone against r_e.
   whose class is calibrated but not corrected here (base recipe, no
   offsets): loosening C-Cl hands the split to a biased C-F prior.
 
+- 2026-11-20, user chose "retry with offsets on": perbond3.py. Prior
+  centre = offset-corrected geometry (leave-one-out), table built there, as
+  the benchmark's `offsets` config. Fits: (a) offsets as is (sigma_x = the
+  RMS of per-bond widths, prior_sigma_for_molecule); (b) tight = sigma_x at
+  the calibrated spread (residual_sigma_after_offsets); (c) per-bond = (b)
+  plus s^2 on the uncalibrated classes only -- the per-bond prior the RMS
+  collapses. Water RHF: (a) reproduces the archived offsets row (0.6461 mA
+  primary); (c) 0.65 -> 0.14 mA, angle 0.278 -> 0.130 vs r_e; added var /
+  s^2 = 1.0. Full runs: perbond/off_{hf,b3}.log.
+- Results, bond RMS vs r_e (mA), offsets as is -> offsets + per-bond
+  [tight, unwidened]: RHF water 0.65 -> 0.14 [0.54]; ozone 2.86 -> 2.88
+  [6.41] (angle 0.068 -> 0.162 deg); CH2ClF 17.64 -> 2.44 [18.03] (C-Cl
+  +23.2 -> +0.3, C-F -18.5 -> +2.0, C-H -7.3 -> -3.7); vinyl fluoride 2.84
+  (nothing widened). B3LYP water 0.69 -> 0.81 [1.04]; ozone 0.37 -> 0.40
+  [0.66] (angle 0.060 -> 0.007); CH2ClF 11.22 -> 4.76 [11.28] (C-Cl +14.1
+  -> +5.4, C-F -13.3 -> -5.9); vinyl fluoride 1.03. Every offsets row
+  reproduces its archived primary-reference value to 4 decimals; added
+  var / s^2 = 1.0 on every widened bond.
+- Reading: with the calibrated classes corrected, widening only the
+  uncovered class fixes CH2ClF at both levels (best of every variant: base
+  10.80 / 9.24, data only 8.56 / 3.48) and leaves water / ozone within
+  0.5 mA. Limits: one molecule carries the evidence; 5 of 9 have no
+  uncovered class (unchanged by construction); HNCO (C-N, N-H uncovered)
+  has only r_s / SE100-unstated references; this was the second variant
+  tried (named in backlog N16 before the run). Offsets themselves are
+  benchmark-only (bond_offsets is not on the CLI/config path).
+
 ## Observations
 - 2026-11-19: I estimated N17's saving ("2 wasted refits") without
   measuring; measured, it was ~0.2 s and no QC calls. Measure cost before
