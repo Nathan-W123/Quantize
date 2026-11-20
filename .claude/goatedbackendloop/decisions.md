@@ -455,3 +455,17 @@
 - Source: auto-picked, no answer in 15 min (Q-02, recommended option)
 - Revisit if: the user picks another next step.
 
+### D-35 · Calibration molecules: calibration-only, five classes, the 0.5 mA rule (2026-11-20)
+- Decision: new molecules enter the bond-offsets pool as calibration-only
+  entries (reference structure + theory geometry; not fitted or scored);
+  they are sought for C-Cl, N-H, C-N, O-H and O-O; a reference must be r_e
+  or r_e^SE with a stated uncertainty of 0.5 mA or better.
+- Why: the offsets need only a reference and a theory geometry; scoring new
+  molecules would change the 9-molecule comparison; O-H and O-O are
+  singletons too (water, ozone); the rule keeps the yardstick independent.
+- Alternatives considered: full benchmark molecules; only the three classes
+  first named; accepting r_s / effective references.
+- Source: auto-picked, no answer in 15 min (Q-03, recommended options)
+- Revisit if: the user wants new molecules scored as well, or no N-H source
+  meeting the rule turns up.
+

@@ -15,9 +15,12 @@ root fix), literature first, no engine change (D-34, auto-picked at Q-02).
   reference, mostly r_s / effective (+/-5 mA), not r_e (N3).
 
 ## Graph
-- N1 · plan · design choices Q-03 (entry type, classes, reference rule) · after: none · running · handoff: pending answer
+- N1 · plan · design choices Q-03 (entry type, classes, reference rule) · after: none · done · handoff: D-35 (auto-picked)
 - N2 · explore · literature search for candidates per class · after: none · done · handoff: C-Cl, C-N, O-O/O-H found; N-H none meeting the rule
-- N3 · gate · report candidates; approval before adding molecules / rerunning offsets rows · after: N1, N2 · pending · handoff: -
+- N3 · gate · Q-04: add CH3Cl, HCN, H2O2 and measure offsets? · after: N1, N2 · running · handoff: pending answer
+- N4 · build · calibration-only entries + theory geometries + pool · after: N3 · pending · handoff: -
+- N5 · verify · offsets shifts per molecule; offsets fits for CH2ClF, HNCO, water, ozone vs r_e · after: N4 · pending · handoff: -
+- N6 · gate · rerun the full offsets rows and README tables · after: N5 · pending · handoff: -
 
 ## Progress
 - Candidates meeting the rule (r_e / r_e^SE, stated sd <= 0.5 mA):
@@ -50,10 +53,10 @@ root fix), literature first, no engine change (D-34, auto-picked at Q-02).
 ## Observations
 
 ## Pending question
-- Q-03 · Q1 entry type: 1 calibration-only (Recommended), 2 full benchmark
-  molecule; Q2 classes: 1 C-Cl, N-H, C-N + O-H, O-O (Recommended), 2 only the
-  three; Q3 references: 1 r_e / r_e^SE with stated sd <= 0.5 mA
-  (Recommended), 2 also r_s / effective · deadline 01:51 UTC 2026-11-20 ·
-  wake-up trig_014JWXTTmSnEhnzQ71J3SxJz
+- Q-04 · gate: 1 add CH3Cl, HCN, H2O2 as calibration-only entries, measure
+  the offsets shifts and rerun the offsets fits for CH2ClF, HNCO, water,
+  ozone only (Recommended); 2 same without HCN; 3 search more for N-H
+  first; 4 stop, keep the candidates in the backlog · deadline 02:07 UTC
+  2026-11-20 · wake-up trig_01WAvUVmyb1miXvuwPTSvHGa
 
 ## Handoff
