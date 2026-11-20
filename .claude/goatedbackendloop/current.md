@@ -21,8 +21,10 @@ change proposed before it is made.
 
 ## Graph
 - N1 · build · prototype projector + stationary-point sanity check · after: none · done · handoff: corrected once (see Progress)
-- N2 · build · all rows at both levels · after: N1 · running (task b0ok7z9ar) · handoff: -
-- N3 · verify · fresh agent on whatever moves · after: N2 · pending · handoff: -
+- N2 · build · all rows at both levels · after: N1 · RHF done; B3LYP 12/99 done, rest running in two halves (t15/inst_proj: HNCO, AF, FE, FF; t15/b3b: FA, CH2ClF, water, ozone) · handoff: RHF table below
+- N2b · build · the 4 RHF torsion rows with the torsion applied (AF, FE) · after: N2 · pending · handoff: -
+- N2c · diagnose · why HNCO offsets moves 20 mA · after: N2 · done · handoff: see Progress 22:xx
+- N3 · verify · fresh agent: continuity scan of HNCO alpha theory -> offset geometry with its own Hessians and projector; own edit reproducing the row · after: N2c · running · handoff: -
 - N4 · gate · propose (or not) an engine change · after: N3 · pending · handoff: -
 
 ## Progress
@@ -42,8 +44,38 @@ change proposed before it is made.
   13.6399 (HEAD 13.6402). Water unchanged (0.5593).
 - 19:55 UTC: full run started: HF 9 x 13 configs, B3LYP 9 x 11 configs.
 
+- 21:00 UTC: RHF 117/117 rows done (65 min, not the 15-20 I said: every
+  cubic-term displacement follows the projected modes, so every displaced
+  Hessian is a cache miss -- 745 new HF, 242 new B3LYP). B3LYP hit its
+  6800 s timeout at 12/99 rows (VF all, AF base): moves <= 3e-3 mA on VF,
+  1e-4 on AF base.
+- RHF per row vs t14/fix (same environment, HEAD engine): stationary-point
+  rows (base family) move <= 2e-3 mA; offsets families <= 0.04 mA except
+  HNCO; track_direct rows 0.003-0.02 mA except HNCO; HNCO offsets family
+  8.137 -> 28.555 mA (6 rows), HNCO track_direct 22.130 -> 18.044.
+- Side finding: archived reports rows for AF, FE and ozone (vintage
+  5cfc5d4) differ from today's HEAD-engine run by 1e-5 to 4.6e-4 mA;
+  below every README figure, but a reason to compare runs only with runs.
+- HNCO diagnosed (logged, L-06): one rescale pass each, chi2 3.47 (HEAD)
+  vs 1.85 (proj), both under 4 -- not the rescale. The offsets table is
+  built at offset_coords, a non-stationary point. There the raw mass-
+  weighted Hessian's rotation block reads -187 / 63 / 77 cm^-1 (2-6 at the
+  theory geometry); the kept modes stay the right six, but the Watson
+  inertia-derivative ("centrifugal") term for B goes -31.7 (theory geom)
+  -> -131.1 MHz (offset geom, raw) vs -33.5 projected; alpha_B parent
+  -26.2 -> -125.8 raw / -28.1 projected (DNCO -25.3 -> -143.2 / -27.0).
+  So HEAD's 8.14 mA came from a table ~100 MHz off in alpha_B; the
+  projection removes it. Probe: t15/probe/{capture,analyze,terms2}.py.
+- RHF table with the projection (torsion rows whose torsion is not applied
+  take their twin's projected row; AF/FE applied torsion rows still the
+  archive's): hybrid mean 5.34 -> 6.44 (HNCO 8.14 -> 18.04, its best row
+  now track_direct), ME 9.85 -> 9.86, theory unchanged; win counts 4/9,
+  6/9, 7/9 unchanged.
+
 ## Observations
 - 2026-11-20 · the stationary-point sanity check caught my projector removing a real bend on a near-linear molecule before any long run -- the same linearity trap as T-14, a second time in one day (L-P04 applied; candidate lesson: every new rigid/linear treatment goes through rigid_mode_count, never its own threshold).
+- 2026-11-20 · the "no-op at stationary points" framing hid where the projection matters: the offsets configs evaluate alpha off-stationary by design; my ETA (15-20 min) missed that projected modes move every cubic displacement off the cache.
+- 2026-11-20 · a fit that T-13 found threshold-fragile turned out to sit on a ~100 MHz alpha error -- a row that flips under a small perturbation deserved a look at its inputs, not just its switch.
 
 ## Pending question
 
