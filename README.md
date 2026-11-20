@@ -24,16 +24,34 @@ Against published structures for nine molecules
 
 | Level of theory | Theory alone | Mixed estimation | Quantize hybrid |
 |-----------------|-------------:|-----------------:|----------------:|
-| RHF/6-31G, best configuration per method | 15.29 | 12.92 | **7.76** |
+| RHF/6-31G, best configuration per method | 10.39 | 9.85 | **5.34** |
 | RHF/6-31G, base configuration            | 21.47 | 17.35 | **11.03** |
-| B3LYP/6-31G(d), best configuration per method | 8.12 | 4.98 | **4.20** |
+| B3LYP/6-31G(d), best configuration per method | 5.31 | 4.05 | **3.78** |
 | B3LYP/6-31G(d), base configuration            | 9.19 | 5.42 | **4.63** |
 
 "Best configuration" gives each method its own best of the 15 (RHF) or 13
 (B3LYP) settings per molecule, which flatters all three; "base" is one setting
-for everything. On the best-of rows the hybrid is the best of the three on 6 of 9
-molecules at RHF and 5 of 9 at B3LYP, beats mixed estimation on 8/9 and 5/9 and
-theory alone on 7/9 and 7/9, and improves from RHF to B3LYP on all nine.
+for everything. On the best-of rows the hybrid is the best of the three on 4 of 9
+molecules at RHF and 5 of 9 at B3LYP, beats mixed estimation on 6/9 and 5/9 and
+theory alone on 7/9 and 7/9, and improves from RHF to B3LYP on eight of nine
+(chlorofluoromethane goes 5.42 -> 8.18, not yet explained).
+
+The best-of rows owe most of their margin over the base rows to the bond-class
+offsets: theory corrected by the error each bond class shows in the other
+molecules (leave-one-out). That correction helps all three methods, so at RHF
+corrected theory or mixed estimation now edges out the hybrid on
+chlorofluoromethane and formyl fluoride (by 0.08 mÅ), as mixed estimation
+already did on water. A class seen in
+only one molecule cannot be calibrated that way, so the pool also takes three
+equilibrium structures that are measured for their offsets and never fitted or
+scored -- methyl chloride, hydrogen cyanide and hydrogen peroxide
+(`CALIBRATION_ONLY` in [`dev/monofluoro_references.py`](dev/monofluoro_references.py))
+-- which give C–Cl, C–N, O–H and O–O a second member. N–H still has none.
+HF/6-31G puts hydrogen peroxide trans-planar, another conformer, so it is left
+out at RHF. One known cost: its O–O is a single bond and ozone's is not, so at
+B3LYP the `offsets` fit of ozone moves toward its r_s reference (0.04 mÅ in
+the best-of table) but away from its r_e (0.37 -> 1.02 mÅ). `calibration=scored`
+reproduces the earlier pool.
 
 Most of these references are r_s or effective structures, which sit several mÅ
 from equilibrium (vinyl fluoride's is 5.7 mÅ from its r_e), so they cannot rank
@@ -52,10 +70,13 @@ three on all four at B3LYP; at RHF mixed estimation is ahead on three.
 *Chlorofluoromethane's benchmark rows predate its r_e, so its numbers come from
 fits that reproduce those rows exactly, scored against Vogt's structure.
 
-> **Provenance.** Code vintage 5cfc5d4 (2026-11-17) for every row except vinyl
-> fluoride's, rerun at 676eb0d (2026-11-19) after its rotational constants were
-> replaced by Hayashi & Inagusa's 1989 measurements -- the only change since
-> 5cfc5d4 that affects it. Not run: the `elec` and `all` configurations (they
+> **Provenance.** Every bond-offset row (`offsets`, `offsets+bob`,
+> `offsets+defect`, `offsets+cd`, `offsets+track`, `offsets+torsion`) is at code
+> vintage c8904da (2026-11-20), with the calibration pool above. The other rows
+> are at 5cfc5d4 (2026-11-17), except vinyl fluoride's, rerun at 676eb0d
+> (2026-11-19) after its rotational constants were replaced by Hayashi &
+> Inagusa's 1989 measurements -- the only change since 5cfc5d4 that affects
+> them. Not run: the `elec` and `all` configurations (they
 > need `pyscf.prop`, not installed here), and at B3LYP the `torsion` and
 > `offsets+torsion` rows of fluoroethane and acetyl fluoride (a single scan
 > outlasts the 2-hour job limit), so those two molecules' B3LYP best-of is over

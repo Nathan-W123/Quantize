@@ -29,8 +29,9 @@
       "track_quadratic": 9
     },
     "code_vintages": {
-      "5cfc5d4": 120,
-      "676eb0d": 15
+      "5cfc5d4": 72,
+      "676eb0d": 9,
+      "c8904da": 54
     },
     "mixed_vintage": true
   },
@@ -62,8 +63,9 @@
       "track_quadratic": 9
     },
     "code_vintages": {
-      "5cfc5d4": 100,
-      "676eb0d": 13
+      "5cfc5d4": 62,
+      "676eb0d": 8,
+      "c8904da": 43
     },
     "mixed_vintage": true
   }

@@ -49,19 +49,19 @@
       "loo_offsets_ma": null
     },
     "offsets": {
-      "code_vintage": "676eb0d",
-      "theory_rms_ma": 5.478832940786252,
-      "me_rms_ma": 4.951402819019391,
-      "hybrid_rms_ma": 5.235223295413377,
-      "theory_rms_deg": 2.202366597322534,
-      "me_rms_deg": 2.1096353188220185,
-      "hybrid_rms_deg": 2.017936489124958,
+      "code_vintage": "c8904da",
+      "theory_rms_ma": 5.494701240532749,
+      "me_rms_ma": 4.948107808193284,
+      "hybrid_rms_ma": 5.2413500704618246,
+      "theory_rms_deg": 2.202366597320658,
+      "me_rms_deg": 2.1093229652972485,
+      "hybrid_rms_deg": 2.01824447015888,
       "force_field_suspect": false,
       "force_field_diagnostics": {
         "multireference": {
-          "max_t2": 0.08938909148862736,
-          "homo_lumo_ev": 15.037515625277639,
-          "e_corr_fraction": 0.002599523285394999,
+          "max_t2": 0.08938909148862717,
+          "homo_lumo_ev": 15.037515625277445,
+          "e_corr_fraction": 0.0025995232853949913,
           "flagged": false,
           "basis": "cc-pvdz",
           "reason": "max|t2| = 0.0894, within the single-reference range for this set"
@@ -69,15 +69,15 @@
       },
       "reference_type": "effective",
       "reference_rms_sigma": 0.9981871725995859,
-      "hybrid_rms_sigma": 0.9847073706497729,
+      "hybrid_rms_sigma": 0.9843547557663985,
       "reference_is_equilibrium": false,
-      "hybrid_rms_ma_vs_re": 1.0300514498778353,
-      "me_rms_ma_vs_re": 2.2723793660405995,
-      "theory_rms_ma_vs_re": 0.9049491781697071,
-      "hybrid_rms_deg_vs_re": 0.4283971204643205,
+      "hybrid_rms_ma_vs_re": 0.9995748915715876,
+      "me_rms_ma_vs_re": 2.24354182754765,
+      "theory_rms_ma_vs_re": 0.8685768822760102,
+      "hybrid_rms_deg_vs_re": 0.42702883603560055,
       "re_source": "r_e^SE, Piccardo et al., J. Phys. Chem. A 119, 2058 (2015), doi 10.1021/jp511432m, Table 1 (CCSD(T) corrections); checked against Hayashi & Inagusa's constants plus B3LYP/6-31G(d) corrections to 0.06%",
       "n_species": 8,
-      "sigma_x_ang": 0.004544896194945493,
+      "sigma_x_ang": 0.004602549529459144,
       "track_distances_ang": null,
       "track_scheme": null,
       "fit_cd": false,
@@ -98,13 +98,27 @@
         "C-C": 3.99,
         "C-O": 7.85,
         "C-F": 4.37,
-        "C-H": 5.73,
-        "C-Cl": 43.25,
-        "H-O": 10.89,
-        "O-O": -7.59,
+        "C-H": 5.78,
+        "C-Cl": 34.31,
+        "H-O": 11.43,
+        "O-O": -2.14,
         "H-N": 5.91,
-        "C-N": 4.99
-      }
+        "C-N": 4.38
+      },
+      "offsets_pool": [
+        "acetyl_fluoride",
+        "chlorofluoromethane",
+        "fluoroacetylene",
+        "fluoroethane",
+        "formyl_fluoride",
+        "hydrogen_cyanide",
+        "hydrogen_peroxide",
+        "isocyanic_acid",
+        "methyl_chloride",
+        "ozone",
+        "vinyl_fluoride",
+        "water"
+      ]
     },
     "lam": {
       "code_vintage": "676eb0d",
@@ -203,19 +217,19 @@
       "loo_offsets_ma": null
     },
     "offsets+bob": {
-      "code_vintage": "676eb0d",
-      "theory_rms_ma": 5.478832940786252,
-      "me_rms_ma": 4.941954393612019,
-      "hybrid_rms_ma": 5.235223295413377,
-      "theory_rms_deg": 2.202366597322534,
-      "me_rms_deg": 2.1095467910587518,
-      "hybrid_rms_deg": 2.017936489124958,
+      "code_vintage": "c8904da",
+      "theory_rms_ma": 5.494701240532749,
+      "me_rms_ma": 4.938676288673816,
+      "hybrid_rms_ma": 5.2413500704618246,
+      "theory_rms_deg": 2.202366597320658,
+      "me_rms_deg": 2.109232280420245,
+      "hybrid_rms_deg": 2.01824447015888,
       "force_field_suspect": false,
       "force_field_diagnostics": {
         "multireference": {
-          "max_t2": 0.08938909148862736,
-          "homo_lumo_ev": 15.037515625277639,
-          "e_corr_fraction": 0.002599523285394999,
+          "max_t2": 0.08938909148862648,
+          "homo_lumo_ev": 15.03751562527754,
+          "e_corr_fraction": 0.002599523285395008,
           "flagged": false,
           "basis": "cc-pvdz",
           "reason": "max|t2| = 0.0894, within the single-reference range for this set"
@@ -223,15 +237,15 @@
       },
       "reference_type": "effective",
       "reference_rms_sigma": 0.9981871725995859,
-      "hybrid_rms_sigma": 0.9847073706497729,
+      "hybrid_rms_sigma": 0.9843547557663985,
       "reference_is_equilibrium": false,
-      "hybrid_rms_ma_vs_re": 1.0300514498778353,
-      "me_rms_ma_vs_re": 2.2710439478715343,
-      "theory_rms_ma_vs_re": 0.9049491781697071,
-      "hybrid_rms_deg_vs_re": 0.4283971204643205,
+      "hybrid_rms_ma_vs_re": 0.9995748915715876,
+      "me_rms_ma_vs_re": 2.2422000756677423,
+      "theory_rms_ma_vs_re": 0.8685768822760102,
+      "hybrid_rms_deg_vs_re": 0.42702883603560055,
       "re_source": "r_e^SE, Piccardo et al., J. Phys. Chem. A 119, 2058 (2015), doi 10.1021/jp511432m, Table 1 (CCSD(T) corrections); checked against Hayashi & Inagusa's constants plus B3LYP/6-31G(d) corrections to 0.06%",
       "n_species": 8,
-      "sigma_x_ang": 0.004544896194945493,
+      "sigma_x_ang": 0.004602549529459144,
       "track_distances_ang": null,
       "track_scheme": null,
       "fit_cd": false,
@@ -252,13 +266,27 @@
         "C-C": 3.99,
         "C-O": 7.85,
         "C-F": 4.37,
-        "C-H": 5.73,
-        "C-Cl": 43.25,
-        "H-O": 10.89,
-        "O-O": -7.59,
+        "C-H": 5.78,
+        "C-Cl": 34.31,
+        "H-O": 11.43,
+        "O-O": -2.14,
         "H-N": 5.91,
-        "C-N": 4.99
-      }
+        "C-N": 4.38
+      },
+      "offsets_pool": [
+        "acetyl_fluoride",
+        "chlorofluoromethane",
+        "fluoroacetylene",
+        "fluoroethane",
+        "formyl_fluoride",
+        "hydrogen_cyanide",
+        "hydrogen_peroxide",
+        "isocyanic_acid",
+        "methyl_chloride",
+        "ozone",
+        "vinyl_fluoride",
+        "water"
+      ]
     },
     "defect": {
       "code_vintage": "676eb0d",
@@ -309,19 +337,19 @@
       "loo_offsets_ma": null
     },
     "offsets+defect": {
-      "code_vintage": "676eb0d",
-      "theory_rms_ma": 5.478832940786252,
-      "me_rms_ma": 4.951402819019391,
-      "hybrid_rms_ma": 5.235223295413377,
-      "theory_rms_deg": 2.202366597322534,
-      "me_rms_deg": 2.1096353188220185,
-      "hybrid_rms_deg": 2.017936489124958,
+      "code_vintage": "c8904da",
+      "theory_rms_ma": 5.494701240532749,
+      "me_rms_ma": 4.948107808193284,
+      "hybrid_rms_ma": 5.2413500704618246,
+      "theory_rms_deg": 2.202366597320658,
+      "me_rms_deg": 2.1093229652972485,
+      "hybrid_rms_deg": 2.01824447015888,
       "force_field_suspect": false,
       "force_field_diagnostics": {
         "multireference": {
-          "max_t2": 0.08938909148862736,
-          "homo_lumo_ev": 15.037515625277639,
-          "e_corr_fraction": 0.002599523285394999,
+          "max_t2": 0.08938909148862653,
+          "homo_lumo_ev": 15.037515625277493,
+          "e_corr_fraction": 0.0025995232853950074,
           "flagged": false,
           "basis": "cc-pvdz",
           "reason": "max|t2| = 0.0894, within the single-reference range for this set"
@@ -329,15 +357,15 @@
       },
       "reference_type": "effective",
       "reference_rms_sigma": 0.9981871725995859,
-      "hybrid_rms_sigma": 0.9847073706497729,
+      "hybrid_rms_sigma": 0.9843547557663985,
       "reference_is_equilibrium": false,
-      "hybrid_rms_ma_vs_re": 1.0300514498778353,
-      "me_rms_ma_vs_re": 2.2723793660405995,
-      "theory_rms_ma_vs_re": 0.9049491781697071,
-      "hybrid_rms_deg_vs_re": 0.4283971204643205,
+      "hybrid_rms_ma_vs_re": 0.9995748915715876,
+      "me_rms_ma_vs_re": 2.24354182754765,
+      "theory_rms_ma_vs_re": 0.8685768822760102,
+      "hybrid_rms_deg_vs_re": 0.42702883603560055,
       "re_source": "r_e^SE, Piccardo et al., J. Phys. Chem. A 119, 2058 (2015), doi 10.1021/jp511432m, Table 1 (CCSD(T) corrections); checked against Hayashi & Inagusa's constants plus B3LYP/6-31G(d) corrections to 0.06%",
       "n_species": 8,
-      "sigma_x_ang": 0.004544896194945493,
+      "sigma_x_ang": 0.004602549529459144,
       "track_distances_ang": null,
       "track_scheme": null,
       "fit_cd": false,
@@ -358,13 +386,27 @@
         "C-C": 3.99,
         "C-O": 7.85,
         "C-F": 4.37,
-        "C-H": 5.73,
-        "C-Cl": 43.25,
-        "H-O": 10.89,
-        "O-O": -7.59,
+        "C-H": 5.78,
+        "C-Cl": 34.31,
+        "H-O": 11.43,
+        "O-O": -2.14,
         "H-N": 5.91,
-        "C-N": 4.99
-      }
+        "C-N": 4.38
+      },
+      "offsets_pool": [
+        "acetyl_fluoride",
+        "chlorofluoromethane",
+        "fluoroacetylene",
+        "fluoroethane",
+        "formyl_fluoride",
+        "hydrogen_cyanide",
+        "hydrogen_peroxide",
+        "isocyanic_acid",
+        "methyl_chloride",
+        "ozone",
+        "vinyl_fluoride",
+        "water"
+      ]
     },
     "track": {
       "code_vintage": "676eb0d",
@@ -418,19 +460,19 @@
       "loo_offsets_ma": null
     },
     "offsets+track": {
-      "code_vintage": "676eb0d",
-      "theory_rms_ma": 5.478832940786252,
-      "me_rms_ma": 4.951402819019391,
-      "hybrid_rms_ma": 5.2412300025764775,
-      "theory_rms_deg": 2.202366597322534,
-      "me_rms_deg": 2.1096353188220185,
-      "hybrid_rms_deg": 2.0173266113807125,
+      "code_vintage": "c8904da",
+      "theory_rms_ma": 5.494701240532749,
+      "me_rms_ma": 4.948107808193284,
+      "hybrid_rms_ma": 5.247578530145373,
+      "theory_rms_deg": 2.202366597320658,
+      "me_rms_deg": 2.1093229652972485,
+      "hybrid_rms_deg": 2.0176340417463505,
       "force_field_suspect": false,
       "force_field_diagnostics": {
         "multireference": {
-          "max_t2": 0.08938909148862804,
-          "homo_lumo_ev": 15.037515625277349,
-          "e_corr_fraction": 0.00259952328539498,
+          "max_t2": 0.08938909148862778,
+          "homo_lumo_ev": 15.037515625277445,
+          "e_corr_fraction": 0.0025995232853949905,
           "flagged": false,
           "basis": "cc-pvdz",
           "reason": "max|t2| = 0.0894, within the single-reference range for this set"
@@ -438,18 +480,18 @@
       },
       "reference_type": "effective",
       "reference_rms_sigma": 0.9981871725995859,
-      "hybrid_rms_sigma": 0.9880036827949715,
+      "hybrid_rms_sigma": 0.9877258586848247,
       "reference_is_equilibrium": false,
-      "hybrid_rms_ma_vs_re": 1.0261942255948326,
-      "me_rms_ma_vs_re": 2.2723793660405995,
-      "theory_rms_ma_vs_re": 0.9049491781697071,
-      "hybrid_rms_deg_vs_re": 0.4300235997705677,
+      "hybrid_rms_ma_vs_re": 0.995374464466504,
+      "me_rms_ma_vs_re": 2.24354182754765,
+      "theory_rms_ma_vs_re": 0.8685768822760102,
+      "hybrid_rms_deg_vs_re": 0.4287013085031804,
       "re_source": "r_e^SE, Piccardo et al., J. Phys. Chem. A 119, 2058 (2015), doi 10.1021/jp511432m, Table 1 (CCSD(T) corrections); checked against Hayashi & Inagusa's constants plus B3LYP/6-31G(d) corrections to 0.06%",
       "n_species": 8,
-      "sigma_x_ang": 0.004544896194945493,
+      "sigma_x_ang": 0.004602549529459144,
       "track_distances_ang": [
-        0.014635052488754456,
-        0.014691259126457369
+        0.014636257846938842,
+        0.014692235450899453
       ],
       "track_scheme": "linear",
       "fit_cd": false,
@@ -470,13 +512,27 @@
         "C-C": 3.99,
         "C-O": 7.85,
         "C-F": 4.37,
-        "C-H": 5.73,
-        "C-Cl": 43.25,
-        "H-O": 10.89,
-        "O-O": -7.59,
+        "C-H": 5.78,
+        "C-Cl": 34.31,
+        "H-O": 11.43,
+        "O-O": -2.14,
         "H-N": 5.91,
-        "C-N": 4.99
-      }
+        "C-N": 4.38
+      },
+      "offsets_pool": [
+        "acetyl_fluoride",
+        "chlorofluoromethane",
+        "fluoroacetylene",
+        "fluoroethane",
+        "formyl_fluoride",
+        "hydrogen_cyanide",
+        "hydrogen_peroxide",
+        "isocyanic_acid",
+        "methyl_chloride",
+        "ozone",
+        "vinyl_fluoride",
+        "water"
+      ]
     },
     "track_direct": {
       "code_vintage": "676eb0d",
@@ -631,19 +687,19 @@
       "loo_offsets_ma": null
     },
     "offsets+torsion": {
-      "code_vintage": "676eb0d",
-      "theory_rms_ma": 5.478832940786252,
-      "me_rms_ma": 4.951402819019391,
-      "hybrid_rms_ma": 5.235223295413377,
-      "theory_rms_deg": 2.202366597322534,
-      "me_rms_deg": 2.1096353188220185,
-      "hybrid_rms_deg": 2.017936489124958,
+      "code_vintage": "c8904da",
+      "theory_rms_ma": 5.494701240532749,
+      "me_rms_ma": 4.948107808193284,
+      "hybrid_rms_ma": 5.2413500704618246,
+      "theory_rms_deg": 2.202366597320658,
+      "me_rms_deg": 2.1093229652972485,
+      "hybrid_rms_deg": 2.01824447015888,
       "force_field_suspect": false,
       "force_field_diagnostics": {
         "multireference": {
-          "max_t2": 0.08938909148862804,
-          "homo_lumo_ev": 15.037515625277349,
-          "e_corr_fraction": 0.00259952328539498,
+          "max_t2": 0.0893890914886245,
+          "homo_lumo_ev": 15.03751562527747,
+          "e_corr_fraction": 0.0025995232853949853,
           "flagged": false,
           "basis": "cc-pvdz",
           "reason": "max|t2| = 0.0894, within the single-reference range for this set"
@@ -651,15 +707,15 @@
       },
       "reference_type": "effective",
       "reference_rms_sigma": 0.9981871725995859,
-      "hybrid_rms_sigma": 0.9847073706497729,
+      "hybrid_rms_sigma": 0.9843547557663985,
       "reference_is_equilibrium": false,
-      "hybrid_rms_ma_vs_re": 1.0300514498778353,
-      "me_rms_ma_vs_re": 2.2723793660405995,
-      "theory_rms_ma_vs_re": 0.9049491781697071,
-      "hybrid_rms_deg_vs_re": 0.4283971204643205,
+      "hybrid_rms_ma_vs_re": 0.9995748915715876,
+      "me_rms_ma_vs_re": 2.24354182754765,
+      "theory_rms_ma_vs_re": 0.8685768822760102,
+      "hybrid_rms_deg_vs_re": 0.42702883603560055,
       "re_source": "r_e^SE, Piccardo et al., J. Phys. Chem. A 119, 2058 (2015), doi 10.1021/jp511432m, Table 1 (CCSD(T) corrections); checked against Hayashi & Inagusa's constants plus B3LYP/6-31G(d) corrections to 0.06%",
       "n_species": 8,
-      "sigma_x_ang": 0.004544896194945493,
+      "sigma_x_ang": 0.004602549529459144,
       "track_distances_ang": null,
       "track_scheme": null,
       "fit_cd": false,
@@ -682,13 +738,27 @@
         "C-C": 3.99,
         "C-O": 7.85,
         "C-F": 4.37,
-        "C-H": 5.73,
-        "C-Cl": 43.25,
-        "H-O": 10.89,
-        "O-O": -7.59,
+        "C-H": 5.78,
+        "C-Cl": 34.31,
+        "H-O": 11.43,
+        "O-O": -2.14,
         "H-N": 5.91,
-        "C-N": 4.99
-      }
+        "C-N": 4.38
+      },
+      "offsets_pool": [
+        "acetyl_fluoride",
+        "chlorofluoromethane",
+        "fluoroacetylene",
+        "fluoroethane",
+        "formyl_fluoride",
+        "hydrogen_cyanide",
+        "hydrogen_peroxide",
+        "isocyanic_acid",
+        "methyl_chloride",
+        "ozone",
+        "vinyl_fluoride",
+        "water"
+      ]
     }
   },
   "acetyl_fluoride": {
@@ -736,19 +806,19 @@
       "loo_offsets_ma": null
     },
     "offsets": {
-      "code_vintage": "5cfc5d4",
-      "theory_rms_ma": 6.846386704209615,
-      "me_rms_ma": 5.589094696513841,
-      "hybrid_rms_ma": 6.526463793066017,
-      "theory_rms_deg": 0.5818296580528175,
-      "me_rms_deg": 0.6890320639386638,
-      "hybrid_rms_deg": 0.7558683357611462,
+      "code_vintage": "c8904da",
+      "theory_rms_ma": 6.762999590768661,
+      "me_rms_ma": 5.516786584937377,
+      "hybrid_rms_ma": 6.445019777749856,
+      "theory_rms_deg": 0.5818296580769745,
+      "me_rms_deg": 0.6922094148877848,
+      "hybrid_rms_deg": 0.7642941208743234,
       "force_field_suspect": false,
       "force_field_diagnostics": {
         "multireference": {
-          "max_t2": 0.0642215905499148,
-          "homo_lumo_ev": 17.434835653944624,
-          "e_corr_fraction": 0.0025721744828129905,
+          "max_t2": 0.06422159054992689,
+          "homo_lumo_ev": 17.434835653944962,
+          "e_corr_fraction": 0.0025721744828129797,
           "flagged": false,
           "basis": "cc-pvdz",
           "reason": "max|t2| = 0.0642, within the single-reference range for this set"
@@ -756,10 +826,10 @@
       },
       "reference_type": "effective",
       "reference_rms_sigma": 0.37207005272294935,
-      "hybrid_rms_sigma": 1.1226291999340945,
+      "hybrid_rms_sigma": 1.1246033057295197,
       "reference_is_equilibrium": false,
       "n_species": 10,
-      "sigma_x_ang": 0.004137150315110246,
+      "sigma_x_ang": 0.0043640546420651875,
       "track_distances_ang": null,
       "track_scheme": null,
       "fit_cd": false,
@@ -779,14 +849,28 @@
       "loo_offsets_ma": {
         "C-C": 3.47,
         "C-F": 1.63,
-        "C-H": 4.19,
+        "C-H": 4.52,
         "C-O": 6.89,
-        "C-Cl": 43.25,
-        "H-O": 10.89,
-        "O-O": -7.59,
+        "C-Cl": 34.31,
+        "H-O": 11.43,
+        "O-O": -2.14,
         "H-N": 5.91,
-        "C-N": 4.99
-      }
+        "C-N": 4.38
+      },
+      "offsets_pool": [
+        "acetyl_fluoride",
+        "chlorofluoromethane",
+        "fluoroacetylene",
+        "fluoroethane",
+        "formyl_fluoride",
+        "hydrogen_cyanide",
+        "hydrogen_peroxide",
+        "isocyanic_acid",
+        "methyl_chloride",
+        "ozone",
+        "vinyl_fluoride",
+        "water"
+      ]
     },
     "lam": {
       "code_vintage": "5cfc5d4",
@@ -883,19 +967,19 @@
       "loo_offsets_ma": null
     },
     "offsets+bob": {
-      "code_vintage": "5cfc5d4",
-      "theory_rms_ma": 6.846386704209615,
-      "me_rms_ma": 5.584519572049338,
-      "hybrid_rms_ma": 6.526463793066017,
-      "theory_rms_deg": 0.5818296580528175,
-      "me_rms_deg": 0.6893320690716661,
-      "hybrid_rms_deg": 0.7558683357611462,
+      "code_vintage": "c8904da",
+      "theory_rms_ma": 6.762999590768661,
+      "me_rms_ma": 5.512199349038511,
+      "hybrid_rms_ma": 6.445019777749856,
+      "theory_rms_deg": 0.5818296580769745,
+      "me_rms_deg": 0.6925455201528646,
+      "hybrid_rms_deg": 0.7642941208743234,
       "force_field_suspect": false,
       "force_field_diagnostics": {
         "multireference": {
-          "max_t2": 0.0642215905499148,
-          "homo_lumo_ev": 17.434835653944624,
-          "e_corr_fraction": 0.0025721744828129905,
+          "max_t2": 0.06422159054991222,
+          "homo_lumo_ev": 17.43483565394501,
+          "e_corr_fraction": 0.0025721744828129884,
           "flagged": false,
           "basis": "cc-pvdz",
           "reason": "max|t2| = 0.0642, within the single-reference range for this set"
@@ -903,10 +987,10 @@
       },
       "reference_type": "effective",
       "reference_rms_sigma": 0.37207005272294935,
-      "hybrid_rms_sigma": 1.1226291999340945,
+      "hybrid_rms_sigma": 1.1246033057295197,
       "reference_is_equilibrium": false,
       "n_species": 10,
-      "sigma_x_ang": 0.004137150315110246,
+      "sigma_x_ang": 0.0043640546420651875,
       "track_distances_ang": null,
       "track_scheme": null,
       "fit_cd": false,
@@ -926,14 +1010,28 @@
       "loo_offsets_ma": {
         "C-C": 3.47,
         "C-F": 1.63,
-        "C-H": 4.19,
+        "C-H": 4.52,
         "C-O": 6.89,
-        "C-Cl": 43.25,
-        "H-O": 10.89,
-        "O-O": -7.59,
+        "C-Cl": 34.31,
+        "H-O": 11.43,
+        "O-O": -2.14,
         "H-N": 5.91,
-        "C-N": 4.99
-      }
+        "C-N": 4.38
+      },
+      "offsets_pool": [
+        "acetyl_fluoride",
+        "chlorofluoromethane",
+        "fluoroacetylene",
+        "fluoroethane",
+        "formyl_fluoride",
+        "hydrogen_cyanide",
+        "hydrogen_peroxide",
+        "isocyanic_acid",
+        "methyl_chloride",
+        "ozone",
+        "vinyl_fluoride",
+        "water"
+      ]
     },
     "defect": {
       "code_vintage": "5cfc5d4",
@@ -979,19 +1077,19 @@
       "loo_offsets_ma": null
     },
     "offsets+defect": {
-      "code_vintage": "5cfc5d4",
-      "theory_rms_ma": 6.846386704209615,
-      "me_rms_ma": 5.589094696513841,
-      "hybrid_rms_ma": 6.526463793066017,
-      "theory_rms_deg": 0.5818296580528175,
-      "me_rms_deg": 0.6890320639386638,
-      "hybrid_rms_deg": 0.7558683357611462,
+      "code_vintage": "c8904da",
+      "theory_rms_ma": 6.762999590768661,
+      "me_rms_ma": 5.516786584937377,
+      "hybrid_rms_ma": 6.445019777749856,
+      "theory_rms_deg": 0.5818296580769745,
+      "me_rms_deg": 0.6922094148877848,
+      "hybrid_rms_deg": 0.7642941208743234,
       "force_field_suspect": false,
       "force_field_diagnostics": {
         "multireference": {
-          "max_t2": 0.0642215905499148,
-          "homo_lumo_ev": 17.434835653944624,
-          "e_corr_fraction": 0.0025721744828129905,
+          "max_t2": 0.06422159054991648,
+          "homo_lumo_ev": 17.43483565394477,
+          "e_corr_fraction": 0.0025721744828129654,
           "flagged": false,
           "basis": "cc-pvdz",
           "reason": "max|t2| = 0.0642, within the single-reference range for this set"
@@ -999,10 +1097,10 @@
       },
       "reference_type": "effective",
       "reference_rms_sigma": 0.37207005272294935,
-      "hybrid_rms_sigma": 1.1226291999340945,
+      "hybrid_rms_sigma": 1.1246033057295197,
       "reference_is_equilibrium": false,
       "n_species": 10,
-      "sigma_x_ang": 0.004137150315110246,
+      "sigma_x_ang": 0.0043640546420651875,
       "track_distances_ang": null,
       "track_scheme": null,
       "fit_cd": false,
@@ -1022,14 +1120,28 @@
       "loo_offsets_ma": {
         "C-C": 3.47,
         "C-F": 1.63,
-        "C-H": 4.19,
+        "C-H": 4.52,
         "C-O": 6.89,
-        "C-Cl": 43.25,
-        "H-O": 10.89,
-        "O-O": -7.59,
+        "C-Cl": 34.31,
+        "H-O": 11.43,
+        "O-O": -2.14,
         "H-N": 5.91,
-        "C-N": 4.99
-      }
+        "C-N": 4.38
+      },
+      "offsets_pool": [
+        "acetyl_fluoride",
+        "chlorofluoromethane",
+        "fluoroacetylene",
+        "fluoroethane",
+        "formyl_fluoride",
+        "hydrogen_cyanide",
+        "hydrogen_peroxide",
+        "isocyanic_acid",
+        "methyl_chloride",
+        "ozone",
+        "vinyl_fluoride",
+        "water"
+      ]
     },
     "track": {
       "code_vintage": "5cfc5d4",
@@ -1077,19 +1189,19 @@
       "loo_offsets_ma": null
     },
     "offsets+track": {
-      "code_vintage": "5cfc5d4",
-      "theory_rms_ma": 6.846386704209615,
-      "me_rms_ma": 5.589094696513841,
-      "hybrid_rms_ma": 6.526463793066017,
-      "theory_rms_deg": 0.5818296580528175,
-      "me_rms_deg": 0.6890320639386638,
-      "hybrid_rms_deg": 0.7558683357611462,
+      "code_vintage": "c8904da",
+      "theory_rms_ma": 6.762999590768661,
+      "me_rms_ma": 5.516786584937377,
+      "hybrid_rms_ma": 6.445019777749856,
+      "theory_rms_deg": 0.5818296580769745,
+      "me_rms_deg": 0.6922094148877848,
+      "hybrid_rms_deg": 0.7642941208743234,
       "force_field_suspect": false,
       "force_field_diagnostics": {
         "multireference": {
-          "max_t2": 0.06422159054992424,
-          "homo_lumo_ev": 17.43483565394494,
-          "e_corr_fraction": 0.0025721744828129905,
+          "max_t2": 0.06422159054991777,
+          "homo_lumo_ev": 17.43483565394489,
+          "e_corr_fraction": 0.0025721744828129875,
           "flagged": false,
           "basis": "cc-pvdz",
           "reason": "max|t2| = 0.0642, within the single-reference range for this set"
@@ -1097,13 +1209,13 @@
       },
       "reference_type": "effective",
       "reference_rms_sigma": 0.37207005272294935,
-      "hybrid_rms_sigma": 1.1226291999340945,
+      "hybrid_rms_sigma": 1.1246033057295197,
       "reference_is_equilibrium": false,
       "n_species": 10,
-      "sigma_x_ang": 0.004137150315110246,
+      "sigma_x_ang": 0.0043640546420651875,
       "track_distances_ang": [
-        0.014400846854314451,
-        0.02081121854460568
+        0.014596848607306515,
+        0.022098550244224597
       ],
       "track_scheme": "linear",
       "fit_cd": false,
@@ -1111,7 +1223,7 @@
       "torsion_applied": false,
       "torsion_info": null,
       "cd_weight": 0.0,
-      "track_skipped_beyond_ang": 0.02081121854460568,
+      "track_skipped_beyond_ang": 0.022098550244224597,
       "track_unstable_modes": null,
       "corr_level": "b3lyp/6-31g(d)",
       "bob": false,
@@ -1123,14 +1235,28 @@
       "loo_offsets_ma": {
         "C-C": 3.47,
         "C-F": 1.63,
-        "C-H": 4.19,
+        "C-H": 4.52,
         "C-O": 6.89,
-        "C-Cl": 43.25,
-        "H-O": 10.89,
-        "O-O": -7.59,
+        "C-Cl": 34.31,
+        "H-O": 11.43,
+        "O-O": -2.14,
         "H-N": 5.91,
-        "C-N": 4.99
-      }
+        "C-N": 4.38
+      },
+      "offsets_pool": [
+        "acetyl_fluoride",
+        "chlorofluoromethane",
+        "fluoroacetylene",
+        "fluoroethane",
+        "formyl_fluoride",
+        "hydrogen_cyanide",
+        "hydrogen_peroxide",
+        "isocyanic_acid",
+        "methyl_chloride",
+        "ozone",
+        "vinyl_fluoride",
+        "water"
+      ]
     },
     "track_direct": {
       "code_vintage": "5cfc5d4",
@@ -1271,19 +1397,19 @@
       "loo_offsets_ma": null
     },
     "offsets": {
-      "code_vintage": "5cfc5d4",
-      "theory_rms_ma": 7.56034117532006,
-      "me_rms_ma": 7.911247996594386,
-      "hybrid_rms_ma": 7.644448966397334,
-      "theory_rms_deg": 1.0780565012484684,
-      "me_rms_deg": 1.0732843592360608,
-      "hybrid_rms_deg": 1.0921248465291256,
+      "code_vintage": "c8904da",
+      "theory_rms_ma": 7.573319968355753,
+      "me_rms_ma": 7.933232468899878,
+      "hybrid_rms_ma": 7.656261586369564,
+      "theory_rms_deg": 1.078056501240905,
+      "me_rms_deg": 1.0732509812907385,
+      "hybrid_rms_deg": 1.0916249041093173,
       "force_field_suspect": false,
       "force_field_diagnostics": {
         "multireference": {
-          "max_t2": 0.02243537465402376,
-          "homo_lumo_ev": 18.38195128796749,
-          "e_corr_fraction": 0.0027141186521576293,
+          "max_t2": 0.02243537465401663,
+          "homo_lumo_ev": 18.38195128796522,
+          "e_corr_fraction": 0.00271411865215762,
           "flagged": false,
           "basis": "cc-pvdz",
           "reason": "max|t2| = 0.0224, within the single-reference range for this set"
@@ -1291,10 +1417,10 @@
       },
       "reference_type": "effective",
       "reference_rms_sigma": 0.7523067336385013,
-      "hybrid_rms_sigma": 1.5645677580248893,
+      "hybrid_rms_sigma": 1.5703303093423684,
       "reference_is_equilibrium": false,
       "n_species": 6,
-      "sigma_x_ang": 0.0039261138660512665,
+      "sigma_x_ang": 0.00421565746534045,
       "track_distances_ang": null,
       "track_scheme": null,
       "fit_cd": false,
@@ -1314,14 +1440,28 @@
       "loo_offsets_ma": {
         "C-C": -1.15,
         "C-F": 5.4,
-        "C-H": 5.3,
+        "C-H": 5.44,
         "C-O": 7.85,
-        "C-Cl": 43.25,
-        "H-O": 10.89,
-        "O-O": -7.59,
+        "C-Cl": 34.31,
+        "H-O": 11.43,
+        "O-O": -2.14,
         "H-N": 5.91,
-        "C-N": 4.99
-      }
+        "C-N": 4.38
+      },
+      "offsets_pool": [
+        "acetyl_fluoride",
+        "chlorofluoromethane",
+        "fluoroacetylene",
+        "fluoroethane",
+        "formyl_fluoride",
+        "hydrogen_cyanide",
+        "hydrogen_peroxide",
+        "isocyanic_acid",
+        "methyl_chloride",
+        "ozone",
+        "vinyl_fluoride",
+        "water"
+      ]
     },
     "lam": {
       "code_vintage": "5cfc5d4",
@@ -1416,19 +1556,19 @@
       "loo_offsets_ma": null
     },
     "offsets+bob": {
-      "code_vintage": "5cfc5d4",
-      "theory_rms_ma": 7.56034117532006,
-      "me_rms_ma": 7.905831198438389,
-      "hybrid_rms_ma": 7.644448966397334,
-      "theory_rms_deg": 1.0780565012484684,
-      "me_rms_deg": 1.0732976068111248,
-      "hybrid_rms_deg": 1.0921248465291256,
+      "code_vintage": "c8904da",
+      "theory_rms_ma": 7.573319968355753,
+      "me_rms_ma": 7.927449946186731,
+      "hybrid_rms_ma": 7.656261586369564,
+      "theory_rms_deg": 1.078056501240905,
+      "me_rms_deg": 1.0732671269614016,
+      "hybrid_rms_deg": 1.0916249041093173,
       "force_field_suspect": false,
       "force_field_diagnostics": {
         "multireference": {
-          "max_t2": 0.02243537465402376,
-          "homo_lumo_ev": 18.38195128796749,
-          "e_corr_fraction": 0.0027141186521576293,
+          "max_t2": 0.02243537465402887,
+          "homo_lumo_ev": 18.38195128796592,
+          "e_corr_fraction": 0.0027141186521576254,
           "flagged": false,
           "basis": "cc-pvdz",
           "reason": "max|t2| = 0.0224, within the single-reference range for this set"
@@ -1436,10 +1576,10 @@
       },
       "reference_type": "effective",
       "reference_rms_sigma": 0.7523067336385013,
-      "hybrid_rms_sigma": 1.5645677580248893,
+      "hybrid_rms_sigma": 1.5703303093423684,
       "reference_is_equilibrium": false,
       "n_species": 6,
-      "sigma_x_ang": 0.0039261138660512665,
+      "sigma_x_ang": 0.00421565746534045,
       "track_distances_ang": null,
       "track_scheme": null,
       "fit_cd": false,
@@ -1459,14 +1599,28 @@
       "loo_offsets_ma": {
         "C-C": -1.15,
         "C-F": 5.4,
-        "C-H": 5.3,
+        "C-H": 5.44,
         "C-O": 7.85,
-        "C-Cl": 43.25,
-        "H-O": 10.89,
-        "O-O": -7.59,
+        "C-Cl": 34.31,
+        "H-O": 11.43,
+        "O-O": -2.14,
         "H-N": 5.91,
-        "C-N": 4.99
-      }
+        "C-N": 4.38
+      },
+      "offsets_pool": [
+        "acetyl_fluoride",
+        "chlorofluoromethane",
+        "fluoroacetylene",
+        "fluoroethane",
+        "formyl_fluoride",
+        "hydrogen_cyanide",
+        "hydrogen_peroxide",
+        "isocyanic_acid",
+        "methyl_chloride",
+        "ozone",
+        "vinyl_fluoride",
+        "water"
+      ]
     },
     "defect": {
       "code_vintage": "5cfc5d4",
@@ -1512,19 +1666,19 @@
       "loo_offsets_ma": null
     },
     "offsets+defect": {
-      "code_vintage": "5cfc5d4",
-      "theory_rms_ma": 7.56034117532006,
-      "me_rms_ma": 7.911247996594386,
-      "hybrid_rms_ma": 7.644448966397334,
-      "theory_rms_deg": 1.0780565012484684,
-      "me_rms_deg": 1.0732843592360608,
-      "hybrid_rms_deg": 1.0921248465291256,
+      "code_vintage": "c8904da",
+      "theory_rms_ma": 7.573319968355753,
+      "me_rms_ma": 7.933232468899878,
+      "hybrid_rms_ma": 7.656261586369564,
+      "theory_rms_deg": 1.078056501240905,
+      "me_rms_deg": 1.0732509812907385,
+      "hybrid_rms_deg": 1.0916249041093173,
       "force_field_suspect": false,
       "force_field_diagnostics": {
         "multireference": {
-          "max_t2": 0.02243537465402376,
-          "homo_lumo_ev": 18.38195128796749,
-          "e_corr_fraction": 0.0027141186521576293,
+          "max_t2": 0.022435374654026275,
+          "homo_lumo_ev": 18.381951287966523,
+          "e_corr_fraction": 0.002714118652157635,
           "flagged": false,
           "basis": "cc-pvdz",
           "reason": "max|t2| = 0.0224, within the single-reference range for this set"
@@ -1532,10 +1686,10 @@
       },
       "reference_type": "effective",
       "reference_rms_sigma": 0.7523067336385013,
-      "hybrid_rms_sigma": 1.5645677580248893,
+      "hybrid_rms_sigma": 1.5703303093423684,
       "reference_is_equilibrium": false,
       "n_species": 6,
-      "sigma_x_ang": 0.0039261138660512665,
+      "sigma_x_ang": 0.00421565746534045,
       "track_distances_ang": null,
       "track_scheme": null,
       "fit_cd": false,
@@ -1555,14 +1709,28 @@
       "loo_offsets_ma": {
         "C-C": -1.15,
         "C-F": 5.4,
-        "C-H": 5.3,
+        "C-H": 5.44,
         "C-O": 7.85,
-        "C-Cl": 43.25,
-        "H-O": 10.89,
-        "O-O": -7.59,
+        "C-Cl": 34.31,
+        "H-O": 11.43,
+        "O-O": -2.14,
         "H-N": 5.91,
-        "C-N": 4.99
-      }
+        "C-N": 4.38
+      },
+      "offsets_pool": [
+        "acetyl_fluoride",
+        "chlorofluoromethane",
+        "fluoroacetylene",
+        "fluoroethane",
+        "formyl_fluoride",
+        "hydrogen_cyanide",
+        "hydrogen_peroxide",
+        "isocyanic_acid",
+        "methyl_chloride",
+        "ozone",
+        "vinyl_fluoride",
+        "water"
+      ]
     },
     "track": {
       "code_vintage": "5cfc5d4",
@@ -1611,19 +1779,19 @@
       "loo_offsets_ma": null
     },
     "offsets+track": {
-      "code_vintage": "5cfc5d4",
-      "theory_rms_ma": 7.56034117532006,
-      "me_rms_ma": 7.911247996594386,
-      "hybrid_rms_ma": 7.628656752150447,
-      "theory_rms_deg": 1.0780565012484684,
-      "me_rms_deg": 1.0732843592360608,
-      "hybrid_rms_deg": 1.0925999238312973,
+      "code_vintage": "c8904da",
+      "theory_rms_ma": 7.573319968355753,
+      "me_rms_ma": 7.933232468899878,
+      "hybrid_rms_ma": 7.640382450009098,
+      "theory_rms_deg": 1.078056501240905,
+      "me_rms_deg": 1.0732509812907385,
+      "hybrid_rms_deg": 1.0921835852892423,
       "force_field_suspect": false,
       "force_field_diagnostics": {
         "multireference": {
-          "max_t2": 0.022435374654026827,
-          "homo_lumo_ev": 18.381951287966547,
-          "e_corr_fraction": 0.002714118652157625,
+          "max_t2": 0.022435374654021137,
+          "homo_lumo_ev": 18.38195128796534,
+          "e_corr_fraction": 0.002714118652157641,
           "flagged": false,
           "basis": "cc-pvdz",
           "reason": "max|t2| = 0.0224, within the single-reference range for this set"
@@ -1631,13 +1799,13 @@
       },
       "reference_type": "effective",
       "reference_rms_sigma": 0.7523067336385013,
-      "hybrid_rms_sigma": 1.560948167820961,
+      "hybrid_rms_sigma": 1.566709088709897,
       "reference_is_equilibrium": false,
       "n_species": 6,
-      "sigma_x_ang": 0.0039261138660512665,
+      "sigma_x_ang": 0.00421565746534045,
       "track_distances_ang": [
-        0.012345251755940184,
-        0.012359911054008707
+        0.012358649973435845,
+        0.012373550004532783
       ],
       "track_scheme": "linear",
       "fit_cd": false,
@@ -1657,14 +1825,28 @@
       "loo_offsets_ma": {
         "C-C": -1.15,
         "C-F": 5.4,
-        "C-H": 5.3,
+        "C-H": 5.44,
         "C-O": 7.85,
-        "C-Cl": 43.25,
-        "H-O": 10.89,
-        "O-O": -7.59,
+        "C-Cl": 34.31,
+        "H-O": 11.43,
+        "O-O": -2.14,
         "H-N": 5.91,
-        "C-N": 4.99
-      }
+        "C-N": 4.38
+      },
+      "offsets_pool": [
+        "acetyl_fluoride",
+        "chlorofluoromethane",
+        "fluoroacetylene",
+        "fluoroethane",
+        "formyl_fluoride",
+        "hydrogen_cyanide",
+        "hydrogen_peroxide",
+        "isocyanic_acid",
+        "methyl_chloride",
+        "ozone",
+        "vinyl_fluoride",
+        "water"
+      ]
     },
     "track_direct": {
       "code_vintage": "5cfc5d4",
@@ -1804,19 +1986,19 @@
       "loo_offsets_ma": null
     },
     "offsets": {
-      "code_vintage": "5cfc5d4",
-      "theory_rms_ma": 3.834300749224113,
-      "me_rms_ma": 3.069959217594466,
-      "hybrid_rms_ma": 3.307782563676686,
-      "theory_rms_deg": 0.45289907386143224,
-      "me_rms_deg": 0.3373898171288046,
-      "hybrid_rms_deg": 0.3369282048412246,
+      "code_vintage": "c8904da",
+      "theory_rms_ma": 3.8636132349887102,
+      "me_rms_ma": 3.076274826764864,
+      "hybrid_rms_ma": 3.3359740001807725,
+      "theory_rms_deg": 0.4528990738561058,
+      "me_rms_deg": 0.33727106391894013,
+      "hybrid_rms_deg": 0.33689080402124927,
       "force_field_suspect": false,
       "force_field_diagnostics": {
         "multireference": {
-          "max_t2": 0.08059238710730621,
-          "homo_lumo_ev": 17.69915202317027,
-          "e_corr_fraction": 0.00237668388836159,
+          "max_t2": 0.0805923871073035,
+          "homo_lumo_ev": 17.6991520231701,
+          "e_corr_fraction": 0.0023766838883615975,
           "flagged": false,
           "basis": "cc-pvdz",
           "reason": "max|t2| = 0.0806, within the single-reference range for this set"
@@ -1824,10 +2006,10 @@
       },
       "reference_type": "effective",
       "reference_rms_sigma": 0.6924488678475339,
-      "hybrid_rms_sigma": 0.9852859019702755,
+      "hybrid_rms_sigma": 0.9851603969119569,
       "reference_is_equilibrium": false,
       "n_species": 4,
-      "sigma_x_ang": 0.004795888440076875,
+      "sigma_x_ang": 0.00477125164414927,
       "track_distances_ang": null,
       "track_scheme": null,
       "fit_cd": false,
@@ -1847,14 +2029,28 @@
       "loo_offsets_ma": {
         "C-C": 2.03,
         "C-F": 2.81,
-        "C-H": 5.24,
+        "C-H": 5.37,
         "C-O": 9.13,
-        "C-Cl": 43.25,
-        "H-O": 10.89,
-        "O-O": -7.59,
+        "C-Cl": 34.31,
+        "H-O": 11.43,
+        "O-O": -2.14,
         "H-N": 5.91,
-        "C-N": 4.99
-      }
+        "C-N": 4.38
+      },
+      "offsets_pool": [
+        "acetyl_fluoride",
+        "chlorofluoromethane",
+        "fluoroacetylene",
+        "fluoroethane",
+        "formyl_fluoride",
+        "hydrogen_cyanide",
+        "hydrogen_peroxide",
+        "isocyanic_acid",
+        "methyl_chloride",
+        "ozone",
+        "vinyl_fluoride",
+        "water"
+      ]
     },
     "lam": {
       "code_vintage": "5cfc5d4",
@@ -1943,19 +2139,19 @@
       "loo_offsets_ma": null
     },
     "offsets+bob": {
-      "code_vintage": "5cfc5d4",
-      "theory_rms_ma": 3.834300749224113,
-      "me_rms_ma": 3.068849278889322,
-      "hybrid_rms_ma": 3.307782563676686,
-      "theory_rms_deg": 0.45289907386143224,
-      "me_rms_deg": 0.3374184889730214,
-      "hybrid_rms_deg": 0.3369282048412246,
+      "code_vintage": "c8904da",
+      "theory_rms_ma": 3.8636132349887102,
+      "me_rms_ma": 3.0751955907808695,
+      "hybrid_rms_ma": 3.3359740001807725,
+      "theory_rms_deg": 0.4528990738561058,
+      "me_rms_deg": 0.33729953487871456,
+      "hybrid_rms_deg": 0.33689080402124927,
       "force_field_suspect": false,
       "force_field_diagnostics": {
         "multireference": {
-          "max_t2": 0.08059238710730621,
-          "homo_lumo_ev": 17.69915202317027,
-          "e_corr_fraction": 0.00237668388836159,
+          "max_t2": 0.08059238710730558,
+          "homo_lumo_ev": 17.699152023169955,
+          "e_corr_fraction": 0.0023766838883616,
           "flagged": false,
           "basis": "cc-pvdz",
           "reason": "max|t2| = 0.0806, within the single-reference range for this set"
@@ -1963,10 +2159,10 @@
       },
       "reference_type": "effective",
       "reference_rms_sigma": 0.6924488678475339,
-      "hybrid_rms_sigma": 0.9852859019702755,
+      "hybrid_rms_sigma": 0.9851603969119569,
       "reference_is_equilibrium": false,
       "n_species": 4,
-      "sigma_x_ang": 0.004795888440076875,
+      "sigma_x_ang": 0.00477125164414927,
       "track_distances_ang": null,
       "track_scheme": null,
       "fit_cd": false,
@@ -1986,14 +2182,28 @@
       "loo_offsets_ma": {
         "C-C": 2.03,
         "C-F": 2.81,
-        "C-H": 5.24,
+        "C-H": 5.37,
         "C-O": 9.13,
-        "C-Cl": 43.25,
-        "H-O": 10.89,
-        "O-O": -7.59,
+        "C-Cl": 34.31,
+        "H-O": 11.43,
+        "O-O": -2.14,
         "H-N": 5.91,
-        "C-N": 4.99
-      }
+        "C-N": 4.38
+      },
+      "offsets_pool": [
+        "acetyl_fluoride",
+        "chlorofluoromethane",
+        "fluoroacetylene",
+        "fluoroethane",
+        "formyl_fluoride",
+        "hydrogen_cyanide",
+        "hydrogen_peroxide",
+        "isocyanic_acid",
+        "methyl_chloride",
+        "ozone",
+        "vinyl_fluoride",
+        "water"
+      ]
     },
     "defect": {
       "code_vintage": "5cfc5d4",
@@ -2039,19 +2249,19 @@
       "loo_offsets_ma": null
     },
     "offsets+defect": {
-      "code_vintage": "5cfc5d4",
-      "theory_rms_ma": 3.834300749224113,
-      "me_rms_ma": 3.069959217594466,
-      "hybrid_rms_ma": 3.307782563676686,
-      "theory_rms_deg": 0.45289907386143224,
-      "me_rms_deg": 0.3373898171288046,
-      "hybrid_rms_deg": 0.3369282048412246,
+      "code_vintage": "c8904da",
+      "theory_rms_ma": 3.8636132349887102,
+      "me_rms_ma": 3.076274826764864,
+      "hybrid_rms_ma": 3.3359740001807725,
+      "theory_rms_deg": 0.4528990738561058,
+      "me_rms_deg": 0.33727106391894013,
+      "hybrid_rms_deg": 0.33689080402124927,
       "force_field_suspect": false,
       "force_field_diagnostics": {
         "multireference": {
-          "max_t2": 0.08059238710730621,
-          "homo_lumo_ev": 17.69915202317027,
-          "e_corr_fraction": 0.00237668388836159,
+          "max_t2": 0.08059238710730525,
+          "homo_lumo_ev": 17.699152023170075,
+          "e_corr_fraction": 0.002376683888361582,
           "flagged": false,
           "basis": "cc-pvdz",
           "reason": "max|t2| = 0.0806, within the single-reference range for this set"
@@ -2059,10 +2269,10 @@
       },
       "reference_type": "effective",
       "reference_rms_sigma": 0.6924488678475339,
-      "hybrid_rms_sigma": 0.9852859019702755,
+      "hybrid_rms_sigma": 0.9851603969119569,
       "reference_is_equilibrium": false,
       "n_species": 4,
-      "sigma_x_ang": 0.004795888440076875,
+      "sigma_x_ang": 0.00477125164414927,
       "track_distances_ang": null,
       "track_scheme": null,
       "fit_cd": false,
@@ -2082,14 +2292,28 @@
       "loo_offsets_ma": {
         "C-C": 2.03,
         "C-F": 2.81,
-        "C-H": 5.24,
+        "C-H": 5.37,
         "C-O": 9.13,
-        "C-Cl": 43.25,
-        "H-O": 10.89,
-        "O-O": -7.59,
+        "C-Cl": 34.31,
+        "H-O": 11.43,
+        "O-O": -2.14,
         "H-N": 5.91,
-        "C-N": 4.99
-      }
+        "C-N": 4.38
+      },
+      "offsets_pool": [
+        "acetyl_fluoride",
+        "chlorofluoromethane",
+        "fluoroacetylene",
+        "fluoroethane",
+        "formyl_fluoride",
+        "hydrogen_cyanide",
+        "hydrogen_peroxide",
+        "isocyanic_acid",
+        "methyl_chloride",
+        "ozone",
+        "vinyl_fluoride",
+        "water"
+      ]
     },
     "track": {
       "code_vintage": "5cfc5d4",
@@ -2138,19 +2362,19 @@
       "loo_offsets_ma": null
     },
     "offsets+track": {
-      "code_vintage": "5cfc5d4",
-      "theory_rms_ma": 3.834300749224113,
-      "me_rms_ma": 3.069959217594466,
-      "hybrid_rms_ma": 3.3104089720184633,
-      "theory_rms_deg": 0.45289907386143224,
-      "me_rms_deg": 0.3373898171288046,
-      "hybrid_rms_deg": 0.3352571436537514,
+      "code_vintage": "c8904da",
+      "theory_rms_ma": 3.8636132349887102,
+      "me_rms_ma": 3.076274826764864,
+      "hybrid_rms_ma": 3.3386484746622873,
+      "theory_rms_deg": 0.4528990738561058,
+      "me_rms_deg": 0.33727106391894013,
+      "hybrid_rms_deg": 0.3351933167939022,
       "force_field_suspect": false,
       "force_field_diagnostics": {
         "multireference": {
-          "max_t2": 0.08059238710730751,
-          "homo_lumo_ev": 17.6991520231701,
-          "e_corr_fraction": 0.0023766838883615927,
+          "max_t2": 0.08059238710730414,
+          "homo_lumo_ev": 17.69915202317003,
+          "e_corr_fraction": 0.0023766838883615992,
           "flagged": false,
           "basis": "cc-pvdz",
           "reason": "max|t2| = 0.0806, within the single-reference range for this set"
@@ -2158,13 +2382,13 @@
       },
       "reference_type": "effective",
       "reference_rms_sigma": 0.6924488678475339,
-      "hybrid_rms_sigma": 0.9758621055398625,
+      "hybrid_rms_sigma": 0.9758093285881515,
       "reference_is_equilibrium": false,
       "n_species": 4,
-      "sigma_x_ang": 0.004795888440076875,
+      "sigma_x_ang": 0.00477125164414927,
       "track_distances_ang": [
-        0.007715556334759496,
-        0.007612131501118648
+        0.0077423297479416,
+        0.007638547914024109
       ],
       "track_scheme": "linear",
       "fit_cd": false,
@@ -2184,14 +2408,28 @@
       "loo_offsets_ma": {
         "C-C": 2.03,
         "C-F": 2.81,
-        "C-H": 5.24,
+        "C-H": 5.37,
         "C-O": 9.13,
-        "C-Cl": 43.25,
-        "H-O": 10.89,
-        "O-O": -7.59,
+        "C-Cl": 34.31,
+        "H-O": 11.43,
+        "O-O": -2.14,
         "H-N": 5.91,
-        "C-N": 4.99
-      }
+        "C-N": 4.38
+      },
+      "offsets_pool": [
+        "acetyl_fluoride",
+        "chlorofluoromethane",
+        "fluoroacetylene",
+        "fluoroethane",
+        "formyl_fluoride",
+        "hydrogen_cyanide",
+        "hydrogen_peroxide",
+        "isocyanic_acid",
+        "methyl_chloride",
+        "ozone",
+        "vinyl_fluoride",
+        "water"
+      ]
     },
     "track_direct": {
       "code_vintage": "5cfc5d4",
@@ -2331,19 +2569,19 @@
       "loo_offsets_ma": null
     },
     "offsets+torsion": {
-      "code_vintage": "5cfc5d4",
-      "theory_rms_ma": 3.834300749224113,
-      "me_rms_ma": 3.069959217594466,
-      "hybrid_rms_ma": 3.307782563676686,
-      "theory_rms_deg": 0.45289907386143224,
-      "me_rms_deg": 0.3373898171288046,
-      "hybrid_rms_deg": 0.3369282048412246,
+      "code_vintage": "c8904da",
+      "theory_rms_ma": 3.8636132349887102,
+      "me_rms_ma": 3.076274826764864,
+      "hybrid_rms_ma": 3.3359740001807725,
+      "theory_rms_deg": 0.4528990738561058,
+      "me_rms_deg": 0.33727106391894013,
+      "hybrid_rms_deg": 0.33689080402124927,
       "force_field_suspect": false,
       "force_field_diagnostics": {
         "multireference": {
-          "max_t2": 0.08059238710730751,
-          "homo_lumo_ev": 17.6991520231701,
-          "e_corr_fraction": 0.0023766838883615927,
+          "max_t2": 0.08059238710730719,
+          "homo_lumo_ev": 17.699152023169884,
+          "e_corr_fraction": 0.002376683888361599,
           "flagged": false,
           "basis": "cc-pvdz",
           "reason": "max|t2| = 0.0806, within the single-reference range for this set"
@@ -2351,10 +2589,10 @@
       },
       "reference_type": "effective",
       "reference_rms_sigma": 0.6924488678475339,
-      "hybrid_rms_sigma": 0.9852859019702755,
+      "hybrid_rms_sigma": 0.9851603969119569,
       "reference_is_equilibrium": false,
       "n_species": 4,
-      "sigma_x_ang": 0.004795888440076875,
+      "sigma_x_ang": 0.00477125164414927,
       "track_distances_ang": null,
       "track_scheme": null,
       "fit_cd": false,
@@ -2376,14 +2614,28 @@
       "loo_offsets_ma": {
         "C-C": 2.03,
         "C-F": 2.81,
-        "C-H": 5.24,
+        "C-H": 5.37,
         "C-O": 9.13,
-        "C-Cl": 43.25,
-        "H-O": 10.89,
-        "O-O": -7.59,
+        "C-Cl": 34.31,
+        "H-O": 11.43,
+        "O-O": -2.14,
         "H-N": 5.91,
-        "C-N": 4.99
-      }
+        "C-N": 4.38
+      },
+      "offsets_pool": [
+        "acetyl_fluoride",
+        "chlorofluoromethane",
+        "fluoroacetylene",
+        "fluoroethane",
+        "formyl_fluoride",
+        "hydrogen_cyanide",
+        "hydrogen_peroxide",
+        "isocyanic_acid",
+        "methyl_chloride",
+        "ozone",
+        "vinyl_fluoride",
+        "water"
+      ]
     }
   },
   "fluoroacetylene": {
@@ -2431,19 +2683,19 @@
       "loo_offsets_ma": null
     },
     "offsets": {
-      "code_vintage": "5cfc5d4",
-      "theory_rms_ma": 3.4281084325346955,
-      "me_rms_ma": 3.4776287823449286,
-      "hybrid_rms_ma": 2.195589003731669,
-      "theory_rms_deg": 0.0017897333790699577,
-      "me_rms_deg": 0.0038910936957847753,
+      "code_vintage": "c8904da",
+      "theory_rms_ma": 3.3320471762287287,
+      "me_rms_ma": 3.379416597486488,
+      "hybrid_rms_ma": 2.087283014981584,
+      "theory_rms_deg": 0.0017897561868096545,
+      "me_rms_deg": 0.004002595116190832,
       "hybrid_rms_deg": 0.0,
       "force_field_suspect": false,
       "force_field_diagnostics": {
         "multireference": {
-          "max_t2": 0.07461722122163139,
-          "homo_lumo_ev": 16.577496214312262,
-          "e_corr_fraction": 0.0025261382926229313,
+          "max_t2": 0.07461726493785739,
+          "homo_lumo_ev": 16.577496214311996,
+          "e_corr_fraction": 0.0025261382926229383,
           "flagged": false,
           "basis": "cc-pvdz",
           "reason": "max|t2| = 0.0746, within the single-reference range for this set"
@@ -2451,10 +2703,10 @@
       },
       "reference_type": "effective",
       "reference_rms_sigma": 0.09798174886197175,
-      "hybrid_rms_sigma": 0.2802071119270542,
+      "hybrid_rms_sigma": 0.2782005892213616,
       "reference_is_equilibrium": false,
       "n_species": 6,
-      "sigma_x_ang": 0.004816114188296785,
+      "sigma_x_ang": 0.004792635687391056,
       "track_distances_ang": null,
       "track_scheme": null,
       "fit_cd": false,
@@ -2474,14 +2726,28 @@
       "loo_offsets_ma": {
         "C-C": 1.82,
         "C-F": 2.94,
-        "C-H": 4.61,
+        "C-H": 4.84,
         "C-O": 7.85,
-        "C-Cl": 43.25,
-        "H-O": 10.89,
-        "O-O": -7.59,
+        "C-Cl": 34.31,
+        "H-O": 11.43,
+        "O-O": -2.14,
         "H-N": 5.91,
-        "C-N": 4.99
-      }
+        "C-N": 4.38
+      },
+      "offsets_pool": [
+        "acetyl_fluoride",
+        "chlorofluoromethane",
+        "fluoroacetylene",
+        "fluoroethane",
+        "formyl_fluoride",
+        "hydrogen_cyanide",
+        "hydrogen_peroxide",
+        "isocyanic_acid",
+        "methyl_chloride",
+        "ozone",
+        "vinyl_fluoride",
+        "water"
+      ]
     },
     "lam": {
       "code_vintage": "5cfc5d4",
@@ -2570,19 +2836,19 @@
       "loo_offsets_ma": null
     },
     "offsets+bob": {
-      "code_vintage": "5cfc5d4",
-      "theory_rms_ma": 3.4281084325346955,
-      "me_rms_ma": 3.4768313851092807,
-      "hybrid_rms_ma": 2.195589003731669,
-      "theory_rms_deg": 0.0017897333790699577,
-      "me_rms_deg": 0.003860625277695817,
+      "code_vintage": "c8904da",
+      "theory_rms_ma": 3.3320471762287287,
+      "me_rms_ma": 3.3786943093389015,
+      "hybrid_rms_ma": 2.087283014981584,
+      "theory_rms_deg": 0.0017897561868096545,
+      "me_rms_deg": 0.003972345369817276,
       "hybrid_rms_deg": 0.0,
       "force_field_suspect": false,
       "force_field_diagnostics": {
         "multireference": {
-          "max_t2": 0.07461722122163139,
-          "homo_lumo_ev": 16.577496214312262,
-          "e_corr_fraction": 0.0025261382926229313,
+          "max_t2": 0.07461730962439692,
+          "homo_lumo_ev": 16.577496214313374,
+          "e_corr_fraction": 0.002526138292622935,
           "flagged": false,
           "basis": "cc-pvdz",
           "reason": "max|t2| = 0.0746, within the single-reference range for this set"
@@ -2590,10 +2856,10 @@
       },
       "reference_type": "effective",
       "reference_rms_sigma": 0.09798174886197175,
-      "hybrid_rms_sigma": 0.2802071119270542,
+      "hybrid_rms_sigma": 0.2782005892213616,
       "reference_is_equilibrium": false,
       "n_species": 6,
-      "sigma_x_ang": 0.004816114188296785,
+      "sigma_x_ang": 0.004792635687391056,
       "track_distances_ang": null,
       "track_scheme": null,
       "fit_cd": false,
@@ -2613,14 +2879,28 @@
       "loo_offsets_ma": {
         "C-C": 1.82,
         "C-F": 2.94,
-        "C-H": 4.61,
+        "C-H": 4.84,
         "C-O": 7.85,
-        "C-Cl": 43.25,
-        "H-O": 10.89,
-        "O-O": -7.59,
+        "C-Cl": 34.31,
+        "H-O": 11.43,
+        "O-O": -2.14,
         "H-N": 5.91,
-        "C-N": 4.99
-      }
+        "C-N": 4.38
+      },
+      "offsets_pool": [
+        "acetyl_fluoride",
+        "chlorofluoromethane",
+        "fluoroacetylene",
+        "fluoroethane",
+        "formyl_fluoride",
+        "hydrogen_cyanide",
+        "hydrogen_peroxide",
+        "isocyanic_acid",
+        "methyl_chloride",
+        "ozone",
+        "vinyl_fluoride",
+        "water"
+      ]
     },
     "defect": {
       "code_vintage": "5cfc5d4",
@@ -2666,19 +2946,19 @@
       "loo_offsets_ma": null
     },
     "offsets+defect": {
-      "code_vintage": "5cfc5d4",
-      "theory_rms_ma": 3.4281084325346955,
-      "me_rms_ma": 3.4776287823449286,
-      "hybrid_rms_ma": 2.195589003731669,
-      "theory_rms_deg": 0.0017897333790699577,
-      "me_rms_deg": 0.0038910936957847753,
+      "code_vintage": "c8904da",
+      "theory_rms_ma": 3.3320471762287287,
+      "me_rms_ma": 3.379416597486488,
+      "hybrid_rms_ma": 2.087283014981584,
+      "theory_rms_deg": 0.0017897561868096545,
+      "me_rms_deg": 0.004002595116190832,
       "hybrid_rms_deg": 0.0,
       "force_field_suspect": false,
       "force_field_diagnostics": {
         "multireference": {
-          "max_t2": 0.07461722122163139,
-          "homo_lumo_ev": 16.577496214312262,
-          "e_corr_fraction": 0.0025261382926229313,
+          "max_t2": 0.07461737582601885,
+          "homo_lumo_ev": 16.57749621430928,
+          "e_corr_fraction": 0.002526138292622926,
           "flagged": false,
           "basis": "cc-pvdz",
           "reason": "max|t2| = 0.0746, within the single-reference range for this set"
@@ -2686,10 +2966,10 @@
       },
       "reference_type": "effective",
       "reference_rms_sigma": 0.09798174886197175,
-      "hybrid_rms_sigma": 0.2802071119270542,
+      "hybrid_rms_sigma": 0.2782005892213616,
       "reference_is_equilibrium": false,
       "n_species": 6,
-      "sigma_x_ang": 0.004816114188296785,
+      "sigma_x_ang": 0.004792635687391056,
       "track_distances_ang": null,
       "track_scheme": null,
       "fit_cd": false,
@@ -2709,14 +2989,28 @@
       "loo_offsets_ma": {
         "C-C": 1.82,
         "C-F": 2.94,
-        "C-H": 4.61,
+        "C-H": 4.84,
         "C-O": 7.85,
-        "C-Cl": 43.25,
-        "H-O": 10.89,
-        "O-O": -7.59,
+        "C-Cl": 34.31,
+        "H-O": 11.43,
+        "O-O": -2.14,
         "H-N": 5.91,
-        "C-N": 4.99
-      }
+        "C-N": 4.38
+      },
+      "offsets_pool": [
+        "acetyl_fluoride",
+        "chlorofluoromethane",
+        "fluoroacetylene",
+        "fluoroethane",
+        "formyl_fluoride",
+        "hydrogen_cyanide",
+        "hydrogen_peroxide",
+        "isocyanic_acid",
+        "methyl_chloride",
+        "ozone",
+        "vinyl_fluoride",
+        "water"
+      ]
     },
     "track": {
       "code_vintage": "5cfc5d4",
@@ -2765,19 +3059,19 @@
       "loo_offsets_ma": null
     },
     "offsets+track": {
-      "code_vintage": "5cfc5d4",
-      "theory_rms_ma": 3.4281084325346955,
-      "me_rms_ma": 3.4776287823449286,
-      "hybrid_rms_ma": 2.157988487945324,
-      "theory_rms_deg": 0.0017897333790699577,
-      "me_rms_deg": 0.0038910936957847753,
-      "hybrid_rms_deg": 1.2074182791366184e-06,
+      "code_vintage": "c8904da",
+      "theory_rms_ma": 3.3320471762287287,
+      "me_rms_ma": 3.379416597486488,
+      "hybrid_rms_ma": 2.048019139457934,
+      "theory_rms_deg": 0.0017897561868096545,
+      "me_rms_deg": 0.004002595116190832,
+      "hybrid_rms_deg": 0.0,
       "force_field_suspect": false,
       "force_field_diagnostics": {
         "multireference": {
-          "max_t2": 0.07461714199641602,
-          "homo_lumo_ev": 16.577496214310685,
-          "e_corr_fraction": 0.0025261382926229353,
+          "max_t2": 0.07461735293466976,
+          "homo_lumo_ev": 16.577496214310468,
+          "e_corr_fraction": 0.00252613829262294,
           "flagged": false,
           "basis": "cc-pvdz",
           "reason": "max|t2| = 0.0746, within the single-reference range for this set"
@@ -2785,13 +3079,13 @@
       },
       "reference_type": "effective",
       "reference_rms_sigma": 0.09798174886197175,
-      "hybrid_rms_sigma": 0.2277073101955159,
+      "hybrid_rms_sigma": 0.22771384405598116,
       "reference_is_equilibrium": false,
       "n_species": 6,
-      "sigma_x_ang": 0.004816114188296785,
+      "sigma_x_ang": 0.004792635687391056,
       "track_distances_ang": [
-        0.006949497606520184,
-        0.007085667274672508
+        0.006926229820291422,
+        0.006831894580587477
       ],
       "track_scheme": "linear",
       "fit_cd": false,
@@ -2811,14 +3105,28 @@
       "loo_offsets_ma": {
         "C-C": 1.82,
         "C-F": 2.94,
-        "C-H": 4.61,
+        "C-H": 4.84,
         "C-O": 7.85,
-        "C-Cl": 43.25,
-        "H-O": 10.89,
-        "O-O": -7.59,
+        "C-Cl": 34.31,
+        "H-O": 11.43,
+        "O-O": -2.14,
         "H-N": 5.91,
-        "C-N": 4.99
-      }
+        "C-N": 4.38
+      },
+      "offsets_pool": [
+        "acetyl_fluoride",
+        "chlorofluoromethane",
+        "fluoroacetylene",
+        "fluoroethane",
+        "formyl_fluoride",
+        "hydrogen_cyanide",
+        "hydrogen_peroxide",
+        "isocyanic_acid",
+        "methyl_chloride",
+        "ozone",
+        "vinyl_fluoride",
+        "water"
+      ]
     },
     "track_direct": {
       "code_vintage": "5cfc5d4",
@@ -2958,19 +3266,19 @@
       "loo_offsets_ma": null
     },
     "offsets+torsion": {
-      "code_vintage": "5cfc5d4",
-      "theory_rms_ma": 3.4281084325346955,
-      "me_rms_ma": 3.4776287823449286,
-      "hybrid_rms_ma": 2.195589003731669,
-      "theory_rms_deg": 0.0017897333790699577,
-      "me_rms_deg": 0.0038910936957847753,
+      "code_vintage": "c8904da",
+      "theory_rms_ma": 3.3320471762287287,
+      "me_rms_ma": 3.379416597486488,
+      "hybrid_rms_ma": 2.087283014981584,
+      "theory_rms_deg": 0.0017897561868096545,
+      "me_rms_deg": 0.004002595116190832,
       "hybrid_rms_deg": 0.0,
       "force_field_suspect": false,
       "force_field_diagnostics": {
         "multireference": {
-          "max_t2": 0.07461714199641602,
-          "homo_lumo_ev": 16.577496214310685,
-          "e_corr_fraction": 0.0025261382926229353,
+          "max_t2": 0.07461739295747323,
+          "homo_lumo_ev": 16.57749621431095,
+          "e_corr_fraction": 0.0025261382926229196,
           "flagged": false,
           "basis": "cc-pvdz",
           "reason": "max|t2| = 0.0746, within the single-reference range for this set"
@@ -2978,10 +3286,10 @@
       },
       "reference_type": "effective",
       "reference_rms_sigma": 0.09798174886197175,
-      "hybrid_rms_sigma": 0.2802071119270542,
+      "hybrid_rms_sigma": 0.2782005892213616,
       "reference_is_equilibrium": false,
       "n_species": 6,
-      "sigma_x_ang": 0.004816114188296785,
+      "sigma_x_ang": 0.004792635687391056,
       "track_distances_ang": null,
       "track_scheme": null,
       "fit_cd": false,
@@ -3003,14 +3311,28 @@
       "loo_offsets_ma": {
         "C-C": 1.82,
         "C-F": 2.94,
-        "C-H": 4.61,
+        "C-H": 4.84,
         "C-O": 7.85,
-        "C-Cl": 43.25,
-        "H-O": 10.89,
-        "O-O": -7.59,
+        "C-Cl": 34.31,
+        "H-O": 11.43,
+        "O-O": -2.14,
         "H-N": 5.91,
-        "C-N": 4.99
-      }
+        "C-N": 4.38
+      },
+      "offsets_pool": [
+        "acetyl_fluoride",
+        "chlorofluoromethane",
+        "fluoroacetylene",
+        "fluoroethane",
+        "formyl_fluoride",
+        "hydrogen_cyanide",
+        "hydrogen_peroxide",
+        "isocyanic_acid",
+        "methyl_chloride",
+        "ozone",
+        "vinyl_fluoride",
+        "water"
+      ]
     }
   },
   "chlorofluoromethane": {
@@ -3058,19 +3380,19 @@
       "loo_offsets_ma": null
     },
     "offsets": {
-      "code_vintage": "5cfc5d4",
-      "theory_rms_ma": 25.155291286720182,
-      "me_rms_ma": 18.211911377787303,
-      "hybrid_rms_ma": 13.357431901654476,
-      "theory_rms_deg": 0.6180824124495968,
-      "me_rms_deg": 0.8346973872231931,
-      "hybrid_rms_deg": 0.6310150303260341,
+      "code_vintage": "c8904da",
+      "theory_rms_ma": 10.762924394112595,
+      "me_rms_ma": 8.855864824753597,
+      "hybrid_rms_ma": 8.17771388337131,
+      "theory_rms_deg": 0.618082411205132,
+      "me_rms_deg": 0.6389488624247491,
+      "hybrid_rms_deg": 0.6080705325654554,
       "force_field_suspect": false,
       "force_field_diagnostics": {
         "multireference": {
-          "max_t2": 0.03423132855959493,
-          "homo_lumo_ev": 16.724819108448663,
-          "e_corr_fraction": 0.0007917257127745579,
+          "max_t2": 0.03423132855960441,
+          "homo_lumo_ev": 16.724819108448955,
+          "e_corr_fraction": 0.0007917257127745524,
           "flagged": false,
           "basis": "cc-pvdz",
           "reason": "max|t2| = 0.0342, within the single-reference range for this set"
@@ -3078,10 +3400,15 @@
       },
       "reference_type": "effective",
       "reference_rms_sigma": 1.5172160605913627,
-      "hybrid_rms_sigma": 0.9048982369117818,
+      "hybrid_rms_sigma": 0.9377953307865746,
       "reference_is_equilibrium": false,
+      "hybrid_rms_ma_vs_re": 5.995768790147898,
+      "me_rms_ma_vs_re": 6.712662339184764,
+      "theory_rms_ma_vs_re": 8.12332526759471,
+      "hybrid_rms_deg_vs_re": 0.4679853697657233,
+      "re_source": "r_e^SE, Vogt, Demaison & Rudolph, Mol. Phys. 112, 2873 (2014), doi 10.1080/00268976.2014.915067, as tabulated in Bailey's NQCC compilation (CH2FCl, Table 3); checked against this file's B0 plus B3LYP/6-31G(d) corrections to 0.06%",
       "n_species": 2,
-      "sigma_x_ang": 0.0054288980946748605,
+      "sigma_x_ang": 0.004313316450752137,
       "track_distances_ang": null,
       "track_scheme": null,
       "fit_cd": false,
@@ -3101,13 +3428,28 @@
       "loo_offsets_ma": {
         "C-C": 2.03,
         "C-F": 4.47,
-        "C-H": 5.07,
+        "C-H": 5.22,
         "C-O": 7.85,
-        "H-O": 10.89,
-        "O-O": -7.59,
+        "H-O": 11.43,
+        "O-O": -2.14,
         "H-N": 5.91,
-        "C-N": 4.99
-      }
+        "C-N": 4.38,
+        "C-Cl": 25.37
+      },
+      "offsets_pool": [
+        "acetyl_fluoride",
+        "chlorofluoromethane",
+        "fluoroacetylene",
+        "fluoroethane",
+        "formyl_fluoride",
+        "hydrogen_cyanide",
+        "hydrogen_peroxide",
+        "isocyanic_acid",
+        "methyl_chloride",
+        "ozone",
+        "vinyl_fluoride",
+        "water"
+      ]
     },
     "lam": {
       "code_vintage": "5cfc5d4",
@@ -3196,19 +3538,19 @@
       "loo_offsets_ma": null
     },
     "offsets+bob": {
-      "code_vintage": "5cfc5d4",
-      "theory_rms_ma": 25.155291286720182,
-      "me_rms_ma": 18.215031594778473,
-      "hybrid_rms_ma": 13.357431901654476,
-      "theory_rms_deg": 0.6180824124495968,
-      "me_rms_deg": 0.8344662210167961,
-      "hybrid_rms_deg": 0.6310150303260341,
+      "code_vintage": "c8904da",
+      "theory_rms_ma": 10.762924394112595,
+      "me_rms_ma": 8.858442253554697,
+      "hybrid_rms_ma": 8.17771388337131,
+      "theory_rms_deg": 0.618082411205132,
+      "me_rms_deg": 0.6389225940765154,
+      "hybrid_rms_deg": 0.6080705325654554,
       "force_field_suspect": false,
       "force_field_diagnostics": {
         "multireference": {
-          "max_t2": 0.03423132855959493,
-          "homo_lumo_ev": 16.724819108448663,
-          "e_corr_fraction": 0.0007917257127745579,
+          "max_t2": 0.03423132855961096,
+          "homo_lumo_ev": 16.7248191084491,
+          "e_corr_fraction": 0.0007917257127745553,
           "flagged": false,
           "basis": "cc-pvdz",
           "reason": "max|t2| = 0.0342, within the single-reference range for this set"
@@ -3216,10 +3558,15 @@
       },
       "reference_type": "effective",
       "reference_rms_sigma": 1.5172160605913627,
-      "hybrid_rms_sigma": 0.9048982369117818,
+      "hybrid_rms_sigma": 0.9377953307865746,
       "reference_is_equilibrium": false,
+      "hybrid_rms_ma_vs_re": 5.995768790147898,
+      "me_rms_ma_vs_re": 6.713474946008738,
+      "theory_rms_ma_vs_re": 8.12332526759471,
+      "hybrid_rms_deg_vs_re": 0.4679853697657233,
+      "re_source": "r_e^SE, Vogt, Demaison & Rudolph, Mol. Phys. 112, 2873 (2014), doi 10.1080/00268976.2014.915067, as tabulated in Bailey's NQCC compilation (CH2FCl, Table 3); checked against this file's B0 plus B3LYP/6-31G(d) corrections to 0.06%",
       "n_species": 2,
-      "sigma_x_ang": 0.0054288980946748605,
+      "sigma_x_ang": 0.004313316450752137,
       "track_distances_ang": null,
       "track_scheme": null,
       "fit_cd": false,
@@ -3239,13 +3586,28 @@
       "loo_offsets_ma": {
         "C-C": 2.03,
         "C-F": 4.47,
-        "C-H": 5.07,
+        "C-H": 5.22,
         "C-O": 7.85,
-        "H-O": 10.89,
-        "O-O": -7.59,
+        "H-O": 11.43,
+        "O-O": -2.14,
         "H-N": 5.91,
-        "C-N": 4.99
-      }
+        "C-N": 4.38,
+        "C-Cl": 25.37
+      },
+      "offsets_pool": [
+        "acetyl_fluoride",
+        "chlorofluoromethane",
+        "fluoroacetylene",
+        "fluoroethane",
+        "formyl_fluoride",
+        "hydrogen_cyanide",
+        "hydrogen_peroxide",
+        "isocyanic_acid",
+        "methyl_chloride",
+        "ozone",
+        "vinyl_fluoride",
+        "water"
+      ]
     },
     "defect": {
       "code_vintage": "5cfc5d4",
@@ -3291,19 +3653,19 @@
       "loo_offsets_ma": null
     },
     "offsets+defect": {
-      "code_vintage": "5cfc5d4",
-      "theory_rms_ma": 25.155291286720182,
-      "me_rms_ma": 18.211911377787303,
-      "hybrid_rms_ma": 13.357431901654476,
-      "theory_rms_deg": 0.6180824124495968,
-      "me_rms_deg": 0.8346973872231931,
-      "hybrid_rms_deg": 0.6310150303260341,
+      "code_vintage": "c8904da",
+      "theory_rms_ma": 10.762924394112595,
+      "me_rms_ma": 8.855864824753597,
+      "hybrid_rms_ma": 8.17771388337131,
+      "theory_rms_deg": 0.618082411205132,
+      "me_rms_deg": 0.6389488624247491,
+      "hybrid_rms_deg": 0.6080705325654554,
       "force_field_suspect": false,
       "force_field_diagnostics": {
         "multireference": {
-          "max_t2": 0.03423132855959493,
-          "homo_lumo_ev": 16.724819108448663,
-          "e_corr_fraction": 0.0007917257127745579,
+          "max_t2": 0.034231328559581914,
+          "homo_lumo_ev": 16.724819108450742,
+          "e_corr_fraction": 0.0007917257127745543,
           "flagged": false,
           "basis": "cc-pvdz",
           "reason": "max|t2| = 0.0342, within the single-reference range for this set"
@@ -3311,10 +3673,15 @@
       },
       "reference_type": "effective",
       "reference_rms_sigma": 1.5172160605913627,
-      "hybrid_rms_sigma": 0.9048982369117818,
+      "hybrid_rms_sigma": 0.9377953307865746,
       "reference_is_equilibrium": false,
+      "hybrid_rms_ma_vs_re": 5.995768790147898,
+      "me_rms_ma_vs_re": 6.712662339184764,
+      "theory_rms_ma_vs_re": 8.12332526759471,
+      "hybrid_rms_deg_vs_re": 0.4679853697657233,
+      "re_source": "r_e^SE, Vogt, Demaison & Rudolph, Mol. Phys. 112, 2873 (2014), doi 10.1080/00268976.2014.915067, as tabulated in Bailey's NQCC compilation (CH2FCl, Table 3); checked against this file's B0 plus B3LYP/6-31G(d) corrections to 0.06%",
       "n_species": 2,
-      "sigma_x_ang": 0.0054288980946748605,
+      "sigma_x_ang": 0.004313316450752137,
       "track_distances_ang": null,
       "track_scheme": null,
       "fit_cd": false,
@@ -3334,13 +3701,28 @@
       "loo_offsets_ma": {
         "C-C": 2.03,
         "C-F": 4.47,
-        "C-H": 5.07,
+        "C-H": 5.22,
         "C-O": 7.85,
-        "H-O": 10.89,
-        "O-O": -7.59,
+        "H-O": 11.43,
+        "O-O": -2.14,
         "H-N": 5.91,
-        "C-N": 4.99
-      }
+        "C-N": 4.38,
+        "C-Cl": 25.37
+      },
+      "offsets_pool": [
+        "acetyl_fluoride",
+        "chlorofluoromethane",
+        "fluoroacetylene",
+        "fluoroethane",
+        "formyl_fluoride",
+        "hydrogen_cyanide",
+        "hydrogen_peroxide",
+        "isocyanic_acid",
+        "methyl_chloride",
+        "ozone",
+        "vinyl_fluoride",
+        "water"
+      ]
     },
     "track": {
       "code_vintage": "5cfc5d4",
@@ -3388,19 +3770,19 @@
       "loo_offsets_ma": null
     },
     "offsets+track": {
-      "code_vintage": "5cfc5d4",
-      "theory_rms_ma": 25.155291286720182,
-      "me_rms_ma": 18.211911377787303,
-      "hybrid_rms_ma": 13.357431901654476,
-      "theory_rms_deg": 0.6180824124495968,
-      "me_rms_deg": 0.8346973872231931,
-      "hybrid_rms_deg": 0.6310150303260341,
+      "code_vintage": "c8904da",
+      "theory_rms_ma": 10.762924394112595,
+      "me_rms_ma": 8.855864824753597,
+      "hybrid_rms_ma": 8.210493695809177,
+      "theory_rms_deg": 0.618082411205132,
+      "me_rms_deg": 0.6389488624247491,
+      "hybrid_rms_deg": 0.607506475027499,
       "force_field_suspect": false,
       "force_field_diagnostics": {
         "multireference": {
-          "max_t2": 0.03423132855959818,
-          "homo_lumo_ev": 16.724819108450017,
-          "e_corr_fraction": 0.0007917257127745504,
+          "max_t2": 0.0342313285596133,
+          "homo_lumo_ev": 16.72481910844922,
+          "e_corr_fraction": 0.000791725712774556,
           "flagged": false,
           "basis": "cc-pvdz",
           "reason": "max|t2| = 0.0342, within the single-reference range for this set"
@@ -3408,12 +3790,18 @@
       },
       "reference_type": "effective",
       "reference_rms_sigma": 1.5172160605913627,
-      "hybrid_rms_sigma": 0.9048982369117818,
+      "hybrid_rms_sigma": 0.9253629490010069,
       "reference_is_equilibrium": false,
+      "hybrid_rms_ma_vs_re": 6.017983659789037,
+      "me_rms_ma_vs_re": 6.712662339184764,
+      "theory_rms_ma_vs_re": 8.12332526759471,
+      "hybrid_rms_deg_vs_re": 0.4676228933795832,
+      "re_source": "r_e^SE, Vogt, Demaison & Rudolph, Mol. Phys. 112, 2873 (2014), doi 10.1080/00268976.2014.915067, as tabulated in Bailey's NQCC compilation (CH2FCl, Table 3); checked against this file's B0 plus B3LYP/6-31G(d) corrections to 0.06%",
       "n_species": 2,
-      "sigma_x_ang": 0.0054288980946748605,
+      "sigma_x_ang": 0.004313316450752137,
       "track_distances_ang": [
-        0.026909739189018806
+        0.009071951671119221,
+        0.008971891217053407
       ],
       "track_scheme": "linear",
       "fit_cd": false,
@@ -3421,7 +3809,7 @@
       "torsion_applied": false,
       "torsion_info": null,
       "cd_weight": 0.0,
-      "track_skipped_beyond_ang": 0.026909739189018806,
+      "track_skipped_beyond_ang": null,
       "track_unstable_modes": null,
       "corr_level": "b3lyp/6-31g(d)",
       "bob": false,
@@ -3433,13 +3821,28 @@
       "loo_offsets_ma": {
         "C-C": 2.03,
         "C-F": 4.47,
-        "C-H": 5.07,
+        "C-H": 5.22,
         "C-O": 7.85,
-        "H-O": 10.89,
-        "O-O": -7.59,
+        "H-O": 11.43,
+        "O-O": -2.14,
         "H-N": 5.91,
-        "C-N": 4.99
-      }
+        "C-N": 4.38,
+        "C-Cl": 25.37
+      },
+      "offsets_pool": [
+        "acetyl_fluoride",
+        "chlorofluoromethane",
+        "fluoroacetylene",
+        "fluoroethane",
+        "formyl_fluoride",
+        "hydrogen_cyanide",
+        "hydrogen_peroxide",
+        "isocyanic_acid",
+        "methyl_chloride",
+        "ozone",
+        "vinyl_fluoride",
+        "water"
+      ]
     },
     "track_direct": {
       "code_vintage": "5cfc5d4",
@@ -3578,19 +3981,19 @@
       "loo_offsets_ma": null
     },
     "offsets+torsion": {
-      "code_vintage": "5cfc5d4",
-      "theory_rms_ma": 25.155291286720182,
-      "me_rms_ma": 18.211911377787303,
-      "hybrid_rms_ma": 13.357431901654476,
-      "theory_rms_deg": 0.6180824124495968,
-      "me_rms_deg": 0.8346973872231931,
-      "hybrid_rms_deg": 0.6310150303260341,
+      "code_vintage": "c8904da",
+      "theory_rms_ma": 10.762924394112595,
+      "me_rms_ma": 8.855864824753597,
+      "hybrid_rms_ma": 8.17771388337131,
+      "theory_rms_deg": 0.618082411205132,
+      "me_rms_deg": 0.6389488624247491,
+      "hybrid_rms_deg": 0.6080705325654554,
       "force_field_suspect": false,
       "force_field_diagnostics": {
         "multireference": {
-          "max_t2": 0.03423132855959818,
-          "homo_lumo_ev": 16.724819108450017,
-          "e_corr_fraction": 0.0007917257127745504,
+          "max_t2": 0.03423132855958387,
+          "homo_lumo_ev": 16.724819108450212,
+          "e_corr_fraction": 0.0007917257127745509,
           "flagged": false,
           "basis": "cc-pvdz",
           "reason": "max|t2| = 0.0342, within the single-reference range for this set"
@@ -3598,10 +4001,15 @@
       },
       "reference_type": "effective",
       "reference_rms_sigma": 1.5172160605913627,
-      "hybrid_rms_sigma": 0.9048982369117818,
+      "hybrid_rms_sigma": 0.9377953307865746,
       "reference_is_equilibrium": false,
+      "hybrid_rms_ma_vs_re": 5.995768790147898,
+      "me_rms_ma_vs_re": 6.712662339184764,
+      "theory_rms_ma_vs_re": 8.12332526759471,
+      "hybrid_rms_deg_vs_re": 0.4679853697657233,
+      "re_source": "r_e^SE, Vogt, Demaison & Rudolph, Mol. Phys. 112, 2873 (2014), doi 10.1080/00268976.2014.915067, as tabulated in Bailey's NQCC compilation (CH2FCl, Table 3); checked against this file's B0 plus B3LYP/6-31G(d) corrections to 0.06%",
       "n_species": 2,
-      "sigma_x_ang": 0.0054288980946748605,
+      "sigma_x_ang": 0.004313316450752137,
       "track_distances_ang": null,
       "track_scheme": null,
       "fit_cd": false,
@@ -3623,13 +4031,28 @@
       "loo_offsets_ma": {
         "C-C": 2.03,
         "C-F": 4.47,
-        "C-H": 5.07,
+        "C-H": 5.22,
         "C-O": 7.85,
-        "H-O": 10.89,
-        "O-O": -7.59,
+        "H-O": 11.43,
+        "O-O": -2.14,
         "H-N": 5.91,
-        "C-N": 4.99
-      }
+        "C-N": 4.38,
+        "C-Cl": 25.37
+      },
+      "offsets_pool": [
+        "acetyl_fluoride",
+        "chlorofluoromethane",
+        "fluoroacetylene",
+        "fluoroethane",
+        "formyl_fluoride",
+        "hydrogen_cyanide",
+        "hydrogen_peroxide",
+        "isocyanic_acid",
+        "methyl_chloride",
+        "ozone",
+        "vinyl_fluoride",
+        "water"
+      ]
     }
   },
   "water": {
@@ -3682,19 +4105,19 @@
       "loo_offsets_ma": null
     },
     "offsets": {
-      "code_vintage": "5cfc5d4",
-      "theory_rms_ma": 10.888644443341144,
-      "me_rms_ma": 1.2024244347959012,
-      "hybrid_rms_ma": 0.689368682636804,
-      "theory_rms_deg": 0.6146139829943849,
-      "me_rms_deg": 0.484829908974973,
-      "hybrid_rms_deg": 0.13192354462766787,
+      "code_vintage": "c8904da",
+      "theory_rms_ma": 1.085224939579632,
+      "me_rms_ma": 0.7971156893238351,
+      "hybrid_rms_ma": 0.46385794249514944,
+      "theory_rms_deg": 0.6146139951516432,
+      "me_rms_deg": 0.6063304007370647,
+      "hybrid_rms_deg": 0.03296323333123041,
       "force_field_suspect": false,
       "force_field_diagnostics": {
         "multireference": {
-          "max_t2": 0.047228093143507885,
-          "homo_lumo_ev": 18.397309022110818,
-          "e_corr_fraction": 0.0026940695300523287,
+          "max_t2": 0.047228093143507933,
+          "homo_lumo_ev": 18.397309022110843,
+          "e_corr_fraction": 0.0026940695300523227,
           "flagged": false,
           "basis": "cc-pvdz",
           "reason": "max|t2| = 0.0472, within the single-reference range for this set"
@@ -3702,15 +4125,15 @@
       },
       "reference_type": "r_e",
       "reference_rms_sigma": 0.6261164474154134,
-      "hybrid_rms_sigma": 0.6009656605993459,
+      "hybrid_rms_sigma": 0.6255332800097575,
       "reference_is_equilibrium": true,
-      "hybrid_rms_ma_vs_re": 0.689368682636804,
-      "me_rms_ma_vs_re": 1.2024244347959012,
-      "theory_rms_ma_vs_re": 10.888644443341144,
-      "hybrid_rms_deg_vs_re": 0.13192354462766787,
+      "hybrid_rms_ma_vs_re": 0.46385794249514944,
+      "me_rms_ma_vs_re": 0.7971156893238351,
+      "theory_rms_ma_vs_re": 1.085224939579632,
+      "hybrid_rms_deg_vs_re": 0.03296323333123041,
       "re_source": "Equilibrium structure r_e = 0.95777 A, 104.48 deg (Csaszar et al., J. Chem. Phys. 122, 214305 (2005); consistent with Hoy & Bunker via NIST CCCBDB)",
       "n_species": 2,
-      "sigma_x_ang": 0.01617115865412407,
+      "sigma_x_ang": 0.0048109900684057995,
       "track_distances_ang": null,
       "track_scheme": null,
       "fit_cd": false,
@@ -3730,13 +4153,28 @@
       "loo_offsets_ma": {
         "C-C": 2.03,
         "C-F": 3.61,
-        "C-H": 5.0,
+        "C-H": 5.16,
         "C-O": 7.85,
-        "C-Cl": 43.25,
-        "O-O": -7.59,
+        "C-Cl": 34.31,
+        "O-O": -2.14,
         "H-N": 5.91,
-        "C-N": 4.99
-      }
+        "C-N": 4.38,
+        "H-O": 11.97
+      },
+      "offsets_pool": [
+        "acetyl_fluoride",
+        "chlorofluoromethane",
+        "fluoroacetylene",
+        "fluoroethane",
+        "formyl_fluoride",
+        "hydrogen_cyanide",
+        "hydrogen_peroxide",
+        "isocyanic_acid",
+        "methyl_chloride",
+        "ozone",
+        "vinyl_fluoride",
+        "water"
+      ]
     },
     "lam": {
       "code_vintage": "5cfc5d4",
@@ -3835,19 +4273,19 @@
       "loo_offsets_ma": null
     },
     "offsets+bob": {
-      "code_vintage": "5cfc5d4",
-      "theory_rms_ma": 10.888644443341144,
-      "me_rms_ma": 1.1974560471094131,
-      "hybrid_rms_ma": 0.689368682636804,
-      "theory_rms_deg": 0.6146139829943849,
-      "me_rms_deg": 0.48516854068979853,
-      "hybrid_rms_deg": 0.13192354462766787,
+      "code_vintage": "c8904da",
+      "theory_rms_ma": 1.085224939579632,
+      "me_rms_ma": 0.792274806812987,
+      "hybrid_rms_ma": 0.46385794249514944,
+      "theory_rms_deg": 0.6146139951516432,
+      "me_rms_deg": 0.6063808201001848,
+      "hybrid_rms_deg": 0.03296323333123041,
       "force_field_suspect": false,
       "force_field_diagnostics": {
         "multireference": {
-          "max_t2": 0.047228093143507885,
-          "homo_lumo_ev": 18.397309022110818,
-          "e_corr_fraction": 0.0026940695300523287,
+          "max_t2": 0.04722809314350789,
+          "homo_lumo_ev": 18.397309022110804,
+          "e_corr_fraction": 0.002694069530052322,
           "flagged": false,
           "basis": "cc-pvdz",
           "reason": "max|t2| = 0.0472, within the single-reference range for this set"
@@ -3855,15 +4293,15 @@
       },
       "reference_type": "r_e",
       "reference_rms_sigma": 0.6261164474154134,
-      "hybrid_rms_sigma": 0.6009656605993459,
+      "hybrid_rms_sigma": 0.6255332800097575,
       "reference_is_equilibrium": true,
-      "hybrid_rms_ma_vs_re": 0.689368682636804,
-      "me_rms_ma_vs_re": 1.1974560471094131,
-      "theory_rms_ma_vs_re": 10.888644443341144,
-      "hybrid_rms_deg_vs_re": 0.13192354462766787,
+      "hybrid_rms_ma_vs_re": 0.46385794249514944,
+      "me_rms_ma_vs_re": 0.792274806812987,
+      "theory_rms_ma_vs_re": 1.085224939579632,
+      "hybrid_rms_deg_vs_re": 0.03296323333123041,
       "re_source": "Equilibrium structure r_e = 0.95777 A, 104.48 deg (Csaszar et al., J. Chem. Phys. 122, 214305 (2005); consistent with Hoy & Bunker via NIST CCCBDB)",
       "n_species": 2,
-      "sigma_x_ang": 0.01617115865412407,
+      "sigma_x_ang": 0.0048109900684057995,
       "track_distances_ang": null,
       "track_scheme": null,
       "fit_cd": false,
@@ -3883,13 +4321,28 @@
       "loo_offsets_ma": {
         "C-C": 2.03,
         "C-F": 3.61,
-        "C-H": 5.0,
+        "C-H": 5.16,
         "C-O": 7.85,
-        "C-Cl": 43.25,
-        "O-O": -7.59,
+        "C-Cl": 34.31,
+        "O-O": -2.14,
         "H-N": 5.91,
-        "C-N": 4.99
-      }
+        "C-N": 4.38,
+        "H-O": 11.97
+      },
+      "offsets_pool": [
+        "acetyl_fluoride",
+        "chlorofluoromethane",
+        "fluoroacetylene",
+        "fluoroethane",
+        "formyl_fluoride",
+        "hydrogen_cyanide",
+        "hydrogen_peroxide",
+        "isocyanic_acid",
+        "methyl_chloride",
+        "ozone",
+        "vinyl_fluoride",
+        "water"
+      ]
     },
     "defect": {
       "code_vintage": "5cfc5d4",
@@ -3940,19 +4393,19 @@
       "loo_offsets_ma": null
     },
     "offsets+defect": {
-      "code_vintage": "5cfc5d4",
-      "theory_rms_ma": 10.888644443341144,
-      "me_rms_ma": 1.2024244347959012,
-      "hybrid_rms_ma": 0.689368682636804,
-      "theory_rms_deg": 0.6146139829943849,
-      "me_rms_deg": 0.484829908974973,
-      "hybrid_rms_deg": 0.13192354462766787,
+      "code_vintage": "c8904da",
+      "theory_rms_ma": 1.085224939579632,
+      "me_rms_ma": 0.7971156893238351,
+      "hybrid_rms_ma": 0.46385794249514944,
+      "theory_rms_deg": 0.6146139951516432,
+      "me_rms_deg": 0.6063304007370647,
+      "hybrid_rms_deg": 0.03296323333123041,
       "force_field_suspect": false,
       "force_field_diagnostics": {
         "multireference": {
-          "max_t2": 0.047228093143507885,
+          "max_t2": 0.04722809314350788,
           "homo_lumo_ev": 18.397309022110818,
-          "e_corr_fraction": 0.0026940695300523287,
+          "e_corr_fraction": 0.0026940695300523214,
           "flagged": false,
           "basis": "cc-pvdz",
           "reason": "max|t2| = 0.0472, within the single-reference range for this set"
@@ -3960,15 +4413,15 @@
       },
       "reference_type": "r_e",
       "reference_rms_sigma": 0.6261164474154134,
-      "hybrid_rms_sigma": 0.6009656605993459,
+      "hybrid_rms_sigma": 0.6255332800097575,
       "reference_is_equilibrium": true,
-      "hybrid_rms_ma_vs_re": 0.689368682636804,
-      "me_rms_ma_vs_re": 1.2024244347959012,
-      "theory_rms_ma_vs_re": 10.888644443341144,
-      "hybrid_rms_deg_vs_re": 0.13192354462766787,
+      "hybrid_rms_ma_vs_re": 0.46385794249514944,
+      "me_rms_ma_vs_re": 0.7971156893238351,
+      "theory_rms_ma_vs_re": 1.085224939579632,
+      "hybrid_rms_deg_vs_re": 0.03296323333123041,
       "re_source": "Equilibrium structure r_e = 0.95777 A, 104.48 deg (Csaszar et al., J. Chem. Phys. 122, 214305 (2005); consistent with Hoy & Bunker via NIST CCCBDB)",
       "n_species": 2,
-      "sigma_x_ang": 0.01617115865412407,
+      "sigma_x_ang": 0.0048109900684057995,
       "track_distances_ang": null,
       "track_scheme": null,
       "fit_cd": false,
@@ -3988,13 +4441,28 @@
       "loo_offsets_ma": {
         "C-C": 2.03,
         "C-F": 3.61,
-        "C-H": 5.0,
+        "C-H": 5.16,
         "C-O": 7.85,
-        "C-Cl": 43.25,
-        "O-O": -7.59,
+        "C-Cl": 34.31,
+        "O-O": -2.14,
         "H-N": 5.91,
-        "C-N": 4.99
-      }
+        "C-N": 4.38,
+        "H-O": 11.97
+      },
+      "offsets_pool": [
+        "acetyl_fluoride",
+        "chlorofluoromethane",
+        "fluoroacetylene",
+        "fluoroethane",
+        "formyl_fluoride",
+        "hydrogen_cyanide",
+        "hydrogen_peroxide",
+        "isocyanic_acid",
+        "methyl_chloride",
+        "ozone",
+        "vinyl_fluoride",
+        "water"
+      ]
     },
     "track": {
       "code_vintage": "5cfc5d4",
@@ -4048,19 +4516,19 @@
       "loo_offsets_ma": null
     },
     "offsets+track": {
-      "code_vintage": "5cfc5d4",
-      "theory_rms_ma": 10.888644443341144,
-      "me_rms_ma": 1.2024244347959012,
-      "hybrid_rms_ma": 0.13352135692101808,
-      "theory_rms_deg": 0.6146139829943849,
-      "me_rms_deg": 0.484829908974973,
-      "hybrid_rms_deg": 0.03593935237449841,
+      "code_vintage": "c8904da",
+      "theory_rms_ma": 1.085224939579632,
+      "me_rms_ma": 0.7971156893238351,
+      "hybrid_rms_ma": 0.41624313474986074,
+      "theory_rms_deg": 0.6146139951516432,
+      "me_rms_deg": 0.6063304007370647,
+      "hybrid_rms_deg": 0.008374686586122948,
       "force_field_suspect": false,
       "force_field_diagnostics": {
         "multireference": {
-          "max_t2": 0.04722809314350785,
-          "homo_lumo_ev": 18.39730902211089,
-          "e_corr_fraction": 0.002694069530052325,
+          "max_t2": 0.047228093143507725,
+          "homo_lumo_ev": 18.397309022110818,
+          "e_corr_fraction": 0.0026940695300523188,
           "flagged": false,
           "basis": "cc-pvdz",
           "reason": "max|t2| = 0.0472, within the single-reference range for this set"
@@ -4068,18 +4536,18 @@
       },
       "reference_type": "r_e",
       "reference_rms_sigma": 0.6261164474154134,
-      "hybrid_rms_sigma": 0.6163507217822375,
+      "hybrid_rms_sigma": 0.6386148896107398,
       "reference_is_equilibrium": true,
-      "hybrid_rms_ma_vs_re": 0.13352135692101808,
-      "me_rms_ma_vs_re": 1.2024244347959012,
-      "theory_rms_ma_vs_re": 10.888644443341144,
-      "hybrid_rms_deg_vs_re": 0.03593935237449841,
+      "hybrid_rms_ma_vs_re": 0.41624313474986074,
+      "me_rms_ma_vs_re": 0.7971156893238351,
+      "theory_rms_ma_vs_re": 1.085224939579632,
+      "hybrid_rms_deg_vs_re": 0.008374686586122948,
       "re_source": "Equilibrium structure r_e = 0.95777 A, 104.48 deg (Csaszar et al., J. Chem. Phys. 122, 214305 (2005); consistent with Hoy & Bunker via NIST CCCBDB)",
       "n_species": 2,
-      "sigma_x_ang": 0.01617115865412407,
+      "sigma_x_ang": 0.0048109900684057995,
       "track_distances_ang": [
-        0.012363834110642787,
-        0.011756813932916603
+        0.006256159921377826,
+        0.0058995419530565585
       ],
       "track_scheme": "linear",
       "fit_cd": false,
@@ -4099,13 +4567,28 @@
       "loo_offsets_ma": {
         "C-C": 2.03,
         "C-F": 3.61,
-        "C-H": 5.0,
+        "C-H": 5.16,
         "C-O": 7.85,
-        "C-Cl": 43.25,
-        "O-O": -7.59,
+        "C-Cl": 34.31,
+        "O-O": -2.14,
         "H-N": 5.91,
-        "C-N": 4.99
-      }
+        "C-N": 4.38,
+        "H-O": 11.97
+      },
+      "offsets_pool": [
+        "acetyl_fluoride",
+        "chlorofluoromethane",
+        "fluoroacetylene",
+        "fluoroethane",
+        "formyl_fluoride",
+        "hydrogen_cyanide",
+        "hydrogen_peroxide",
+        "isocyanic_acid",
+        "methyl_chloride",
+        "ozone",
+        "vinyl_fluoride",
+        "water"
+      ]
     },
     "track_direct": {
       "code_vintage": "5cfc5d4",
@@ -4260,19 +4743,19 @@
       "loo_offsets_ma": null
     },
     "offsets+torsion": {
-      "code_vintage": "5cfc5d4",
-      "theory_rms_ma": 10.888644443341144,
-      "me_rms_ma": 1.2024244347959012,
-      "hybrid_rms_ma": 0.689368682636804,
-      "theory_rms_deg": 0.6146139829943849,
-      "me_rms_deg": 0.484829908974973,
-      "hybrid_rms_deg": 0.13192354462766787,
+      "code_vintage": "c8904da",
+      "theory_rms_ma": 1.085224939579632,
+      "me_rms_ma": 0.7971156893238351,
+      "hybrid_rms_ma": 0.46385794249514944,
+      "theory_rms_deg": 0.6146139951516432,
+      "me_rms_deg": 0.6063304007370647,
+      "hybrid_rms_deg": 0.03296323333123041,
       "force_field_suspect": false,
       "force_field_diagnostics": {
         "multireference": {
-          "max_t2": 0.04722809314350785,
-          "homo_lumo_ev": 18.39730902211089,
-          "e_corr_fraction": 0.002694069530052325,
+          "max_t2": 0.04722809314350805,
+          "homo_lumo_ev": 18.39730902211106,
+          "e_corr_fraction": 0.002694069530052327,
           "flagged": false,
           "basis": "cc-pvdz",
           "reason": "max|t2| = 0.0472, within the single-reference range for this set"
@@ -4280,15 +4763,15 @@
       },
       "reference_type": "r_e",
       "reference_rms_sigma": 0.6261164474154134,
-      "hybrid_rms_sigma": 0.6009656605993459,
+      "hybrid_rms_sigma": 0.6255332800097575,
       "reference_is_equilibrium": true,
-      "hybrid_rms_ma_vs_re": 0.689368682636804,
-      "me_rms_ma_vs_re": 1.2024244347959012,
-      "theory_rms_ma_vs_re": 10.888644443341144,
-      "hybrid_rms_deg_vs_re": 0.13192354462766787,
+      "hybrid_rms_ma_vs_re": 0.46385794249514944,
+      "me_rms_ma_vs_re": 0.7971156893238351,
+      "theory_rms_ma_vs_re": 1.085224939579632,
+      "hybrid_rms_deg_vs_re": 0.03296323333123041,
       "re_source": "Equilibrium structure r_e = 0.95777 A, 104.48 deg (Csaszar et al., J. Chem. Phys. 122, 214305 (2005); consistent with Hoy & Bunker via NIST CCCBDB)",
       "n_species": 2,
-      "sigma_x_ang": 0.01617115865412407,
+      "sigma_x_ang": 0.0048109900684057995,
       "track_distances_ang": null,
       "track_scheme": null,
       "fit_cd": false,
@@ -4310,13 +4793,28 @@
       "loo_offsets_ma": {
         "C-C": 2.03,
         "C-F": 3.61,
-        "C-H": 5.0,
+        "C-H": 5.16,
         "C-O": 7.85,
-        "C-Cl": 43.25,
-        "O-O": -7.59,
+        "C-Cl": 34.31,
+        "O-O": -2.14,
         "H-N": 5.91,
-        "C-N": 4.99
-      }
+        "C-N": 4.38,
+        "H-O": 11.97
+      },
+      "offsets_pool": [
+        "acetyl_fluoride",
+        "chlorofluoromethane",
+        "fluoroacetylene",
+        "fluoroethane",
+        "formyl_fluoride",
+        "hydrogen_cyanide",
+        "hydrogen_peroxide",
+        "isocyanic_acid",
+        "methyl_chloride",
+        "ozone",
+        "vinyl_fluoride",
+        "water"
+      ]
     }
   },
   "ozone": {
@@ -4369,19 +4867,19 @@
       "loo_offsets_ma": null
     },
     "offsets": {
-      "code_vintage": "5cfc5d4",
-      "theory_rms_ma": 7.585578375186586,
-      "me_rms_ma": 1.463498807364072,
-      "hybrid_rms_ma": 1.4336081664143574,
-      "theory_rms_deg": 0.9942684309114611,
-      "me_rms_deg": 0.08823654948132287,
-      "hybrid_rms_deg": 0.08545237166610775,
+      "code_vintage": "c8904da",
+      "theory_rms_ma": 10.897281945430715,
+      "me_rms_ma": 0.8727781868458351,
+      "hybrid_rms_ma": 0.04037637702403174,
+      "theory_rms_deg": 0.9942684291558237,
+      "me_rms_deg": 0.02919512788953682,
+      "hybrid_rms_deg": 0.0016092037552652982,
       "force_field_suspect": true,
       "force_field_diagnostics": {
         "multireference": {
-          "max_t2": 0.18366651315486862,
-          "homo_lumo_ev": 12.139965875387835,
-          "e_corr_fraction": 0.002840027682094359,
+          "max_t2": 0.18366651315486185,
+          "homo_lumo_ev": 12.139965875388077,
+          "e_corr_fraction": 0.002840027682094335,
           "flagged": true,
           "basis": "cc-pvdz",
           "reason": "max|t2| = 0.1837 exceeds 0.12: this molecule has substantial multireference character, so a single-reference force field -- MP2 especially -- may be badly wrong. Measured precedent: ozone sits at 0.18 and its MP2 antisymmetric stretch is 101% high, which made its corrected result 4.6x worse than a cheaper level."
@@ -4389,15 +4887,15 @@
       },
       "reference_type": "r_s",
       "reference_rms_sigma": 1.511499117074815,
-      "hybrid_rms_sigma": 1.2752954355388175,
+      "hybrid_rms_sigma": 1.4988735622452387,
       "reference_is_equilibrium": false,
-      "hybrid_rms_ma_vs_re": 0.37360816641451855,
-      "me_rms_ma_vs_re": 0.40349880736423316,
-      "theory_rms_ma_vs_re": 8.645578375186425,
-      "hybrid_rms_deg_vs_re": 0.05965237166610393,
+      "hybrid_rms_ma_vs_re": 1.019623622975807,
+      "me_rms_ma_vs_re": 0.18722181315400377,
+      "theory_rms_ma_vs_re": 11.957281945430553,
+      "hybrid_rms_deg_vs_re": 0.027409203755269118,
       "re_source": "Tyuterev et al., J. Mol. Spectrosc. 198, 57 (1999); r_e = 1.27276(15) A, angle 116.7542(25) deg",
       "n_species": 5,
-      "sigma_x_ang": 0.016405306139562818,
+      "sigma_x_ang": 0.004616118135749854,
       "track_distances_ang": null,
       "track_scheme": null,
       "fit_cd": false,
@@ -4417,13 +4915,28 @@
       "loo_offsets_ma": {
         "C-C": 2.03,
         "C-F": 3.61,
-        "C-H": 5.0,
+        "C-H": 5.16,
         "C-O": 7.85,
-        "C-Cl": 43.25,
-        "H-O": 10.89,
+        "C-Cl": 34.31,
+        "H-O": 11.43,
         "H-N": 5.91,
-        "C-N": 4.99
-      }
+        "C-N": 4.38,
+        "O-O": 3.31
+      },
+      "offsets_pool": [
+        "acetyl_fluoride",
+        "chlorofluoromethane",
+        "fluoroacetylene",
+        "fluoroethane",
+        "formyl_fluoride",
+        "hydrogen_cyanide",
+        "hydrogen_peroxide",
+        "isocyanic_acid",
+        "methyl_chloride",
+        "ozone",
+        "vinyl_fluoride",
+        "water"
+      ]
     },
     "lam": {
       "code_vintage": "5cfc5d4",
@@ -4522,19 +5035,19 @@
       "loo_offsets_ma": null
     },
     "offsets+bob": {
-      "code_vintage": "5cfc5d4",
-      "theory_rms_ma": 7.585578375186586,
-      "me_rms_ma": 1.4635940758929156,
-      "hybrid_rms_ma": 1.4336081664143574,
-      "theory_rms_deg": 0.9942684309114611,
-      "me_rms_deg": 0.08823146461290321,
-      "hybrid_rms_deg": 0.08545237166610775,
+      "code_vintage": "c8904da",
+      "theory_rms_ma": 10.897281945430715,
+      "me_rms_ma": 0.8728707413374615,
+      "hybrid_rms_ma": 0.04037637702403174,
+      "theory_rms_deg": 0.9942684291558237,
+      "me_rms_deg": 0.029199848825172126,
+      "hybrid_rms_deg": 0.0016092037552652982,
       "force_field_suspect": true,
       "force_field_diagnostics": {
         "multireference": {
-          "max_t2": 0.18366651315486862,
-          "homo_lumo_ev": 12.139965875387835,
-          "e_corr_fraction": 0.002840027682094359,
+          "max_t2": 0.18366651315487253,
+          "homo_lumo_ev": 12.139965875387858,
+          "e_corr_fraction": 0.002840027682094362,
           "flagged": true,
           "basis": "cc-pvdz",
           "reason": "max|t2| = 0.1837 exceeds 0.12: this molecule has substantial multireference character, so a single-reference force field -- MP2 especially -- may be badly wrong. Measured precedent: ozone sits at 0.18 and its MP2 antisymmetric stretch is 101% high, which made its corrected result 4.6x worse than a cheaper level."
@@ -4542,15 +5055,15 @@
       },
       "reference_type": "r_s",
       "reference_rms_sigma": 1.511499117074815,
-      "hybrid_rms_sigma": 1.2752954355388175,
+      "hybrid_rms_sigma": 1.4988735622452387,
       "reference_is_equilibrium": false,
-      "hybrid_rms_ma_vs_re": 0.37360816641451855,
-      "me_rms_ma_vs_re": 0.4035940758930767,
-      "theory_rms_ma_vs_re": 8.645578375186425,
-      "hybrid_rms_deg_vs_re": 0.05965237166610393,
+      "hybrid_rms_ma_vs_re": 1.019623622975807,
+      "me_rms_ma_vs_re": 0.1871292586623774,
+      "theory_rms_ma_vs_re": 11.957281945430553,
+      "hybrid_rms_deg_vs_re": 0.027409203755269118,
       "re_source": "Tyuterev et al., J. Mol. Spectrosc. 198, 57 (1999); r_e = 1.27276(15) A, angle 116.7542(25) deg",
       "n_species": 5,
-      "sigma_x_ang": 0.016405306139562818,
+      "sigma_x_ang": 0.004616118135749854,
       "track_distances_ang": null,
       "track_scheme": null,
       "fit_cd": false,
@@ -4570,13 +5083,28 @@
       "loo_offsets_ma": {
         "C-C": 2.03,
         "C-F": 3.61,
-        "C-H": 5.0,
+        "C-H": 5.16,
         "C-O": 7.85,
-        "C-Cl": 43.25,
-        "H-O": 10.89,
+        "C-Cl": 34.31,
+        "H-O": 11.43,
         "H-N": 5.91,
-        "C-N": 4.99
-      }
+        "C-N": 4.38,
+        "O-O": 3.31
+      },
+      "offsets_pool": [
+        "acetyl_fluoride",
+        "chlorofluoromethane",
+        "fluoroacetylene",
+        "fluoroethane",
+        "formyl_fluoride",
+        "hydrogen_cyanide",
+        "hydrogen_peroxide",
+        "isocyanic_acid",
+        "methyl_chloride",
+        "ozone",
+        "vinyl_fluoride",
+        "water"
+      ]
     },
     "defect": {
       "code_vintage": "5cfc5d4",
@@ -4627,19 +5155,19 @@
       "loo_offsets_ma": null
     },
     "offsets+defect": {
-      "code_vintage": "5cfc5d4",
-      "theory_rms_ma": 7.585578375186586,
-      "me_rms_ma": 1.463498807364072,
-      "hybrid_rms_ma": 1.4336081664143574,
-      "theory_rms_deg": 0.9942684309114611,
-      "me_rms_deg": 0.08823654948132287,
-      "hybrid_rms_deg": 0.08545237166610775,
+      "code_vintage": "c8904da",
+      "theory_rms_ma": 10.897281945430715,
+      "me_rms_ma": 0.8727781868458351,
+      "hybrid_rms_ma": 0.04037637702403174,
+      "theory_rms_deg": 0.9942684291558237,
+      "me_rms_deg": 0.02919512788953682,
+      "hybrid_rms_deg": 0.0016092037552652982,
       "force_field_suspect": true,
       "force_field_diagnostics": {
         "multireference": {
-          "max_t2": 0.18366651315486862,
-          "homo_lumo_ev": 12.139965875387835,
-          "e_corr_fraction": 0.002840027682094359,
+          "max_t2": 0.1836665131548628,
+          "homo_lumo_ev": 12.13996587538815,
+          "e_corr_fraction": 0.002840027682094332,
           "flagged": true,
           "basis": "cc-pvdz",
           "reason": "max|t2| = 0.1837 exceeds 0.12: this molecule has substantial multireference character, so a single-reference force field -- MP2 especially -- may be badly wrong. Measured precedent: ozone sits at 0.18 and its MP2 antisymmetric stretch is 101% high, which made its corrected result 4.6x worse than a cheaper level."
@@ -4647,15 +5175,15 @@
       },
       "reference_type": "r_s",
       "reference_rms_sigma": 1.511499117074815,
-      "hybrid_rms_sigma": 1.2752954355388175,
+      "hybrid_rms_sigma": 1.4988735622452387,
       "reference_is_equilibrium": false,
-      "hybrid_rms_ma_vs_re": 0.37360816641451855,
-      "me_rms_ma_vs_re": 0.40349880736423316,
-      "theory_rms_ma_vs_re": 8.645578375186425,
-      "hybrid_rms_deg_vs_re": 0.05965237166610393,
+      "hybrid_rms_ma_vs_re": 1.019623622975807,
+      "me_rms_ma_vs_re": 0.18722181315400377,
+      "theory_rms_ma_vs_re": 11.957281945430553,
+      "hybrid_rms_deg_vs_re": 0.027409203755269118,
       "re_source": "Tyuterev et al., J. Mol. Spectrosc. 198, 57 (1999); r_e = 1.27276(15) A, angle 116.7542(25) deg",
       "n_species": 5,
-      "sigma_x_ang": 0.016405306139562818,
+      "sigma_x_ang": 0.004616118135749854,
       "track_distances_ang": null,
       "track_scheme": null,
       "fit_cd": false,
@@ -4675,13 +5203,28 @@
       "loo_offsets_ma": {
         "C-C": 2.03,
         "C-F": 3.61,
-        "C-H": 5.0,
+        "C-H": 5.16,
         "C-O": 7.85,
-        "C-Cl": 43.25,
-        "H-O": 10.89,
+        "C-Cl": 34.31,
+        "H-O": 11.43,
         "H-N": 5.91,
-        "C-N": 4.99
-      }
+        "C-N": 4.38,
+        "O-O": 3.31
+      },
+      "offsets_pool": [
+        "acetyl_fluoride",
+        "chlorofluoromethane",
+        "fluoroacetylene",
+        "fluoroethane",
+        "formyl_fluoride",
+        "hydrogen_cyanide",
+        "hydrogen_peroxide",
+        "isocyanic_acid",
+        "methyl_chloride",
+        "ozone",
+        "vinyl_fluoride",
+        "water"
+      ]
     },
     "track": {
       "code_vintage": "5cfc5d4",
@@ -4735,19 +5278,19 @@
       "loo_offsets_ma": null
     },
     "offsets+track": {
-      "code_vintage": "5cfc5d4",
-      "theory_rms_ma": 7.585578375186586,
-      "me_rms_ma": 1.463498807364072,
-      "hybrid_rms_ma": 1.2579201465419132,
-      "theory_rms_deg": 0.9942684309114611,
-      "me_rms_deg": 0.08823654948132287,
-      "hybrid_rms_deg": 0.0508773464129888,
+      "code_vintage": "c8904da",
+      "theory_rms_ma": 10.897281945430715,
+      "me_rms_ma": 0.8727781868458351,
+      "hybrid_rms_ma": 1.08971242721978,
+      "theory_rms_deg": 0.9942684291558237,
+      "me_rms_deg": 0.02919512788953682,
+      "hybrid_rms_deg": 0.0380849614579688,
       "force_field_suspect": true,
       "force_field_diagnostics": {
         "multireference": {
-          "max_t2": 0.1836665131548717,
-          "homo_lumo_ev": 12.139965875387858,
-          "e_corr_fraction": 0.002840027682094366,
+          "max_t2": 0.1836665131548649,
+          "homo_lumo_ev": 12.13996587538815,
+          "e_corr_fraction": 0.002840027682094353,
           "flagged": true,
           "basis": "cc-pvdz",
           "reason": "max|t2| = 0.1837 exceeds 0.12: this molecule has substantial multireference character, so a single-reference force field -- MP2 especially -- may be badly wrong. Measured precedent: ozone sits at 0.18 and its MP2 antisymmetric stretch is 101% high, which made its corrected result 4.6x worse than a cheaper level."
@@ -4755,18 +5298,18 @@
       },
       "reference_type": "r_s",
       "reference_rms_sigma": 1.511499117074815,
-      "hybrid_rms_sigma": 1.2634759224756698,
+      "hybrid_rms_sigma": 1.2857905346271967,
       "reference_is_equilibrium": false,
-      "hybrid_rms_ma_vs_re": 0.19792014654207435,
-      "me_rms_ma_vs_re": 0.40349880736423316,
-      "theory_rms_ma_vs_re": 8.645578375186425,
-      "hybrid_rms_deg_vs_re": 0.02507734641298498,
+      "hybrid_rms_ma_vs_re": 0.029712427219941162,
+      "me_rms_ma_vs_re": 0.18722181315400377,
+      "theory_rms_ma_vs_re": 11.957281945430553,
+      "hybrid_rms_deg_vs_re": 0.012284961457964982,
       "re_source": "Tyuterev et al., J. Mol. Spectrosc. 198, 57 (1999); r_e = 1.27276(15) A, angle 116.7542(25) deg",
       "n_species": 5,
-      "sigma_x_ang": 0.016405306139562818,
+      "sigma_x_ang": 0.004616118135749854,
       "track_distances_ang": [
-        0.012449872599445825,
-        0.012004310447049703
+        0.014828751413855753,
+        0.014380846471399462
       ],
       "track_scheme": "linear",
       "fit_cd": false,
@@ -4786,13 +5329,28 @@
       "loo_offsets_ma": {
         "C-C": 2.03,
         "C-F": 3.61,
-        "C-H": 5.0,
+        "C-H": 5.16,
         "C-O": 7.85,
-        "C-Cl": 43.25,
-        "H-O": 10.89,
+        "C-Cl": 34.31,
+        "H-O": 11.43,
         "H-N": 5.91,
-        "C-N": 4.99
-      }
+        "C-N": 4.38,
+        "O-O": 3.31
+      },
+      "offsets_pool": [
+        "acetyl_fluoride",
+        "chlorofluoromethane",
+        "fluoroacetylene",
+        "fluoroethane",
+        "formyl_fluoride",
+        "hydrogen_cyanide",
+        "hydrogen_peroxide",
+        "isocyanic_acid",
+        "methyl_chloride",
+        "ozone",
+        "vinyl_fluoride",
+        "water"
+      ]
     },
     "track_direct": {
       "code_vintage": "5cfc5d4",
@@ -4947,19 +5505,19 @@
       "loo_offsets_ma": null
     },
     "offsets+torsion": {
-      "code_vintage": "5cfc5d4",
-      "theory_rms_ma": 7.585578375186586,
-      "me_rms_ma": 1.463498807364072,
-      "hybrid_rms_ma": 1.4336081664143574,
-      "theory_rms_deg": 0.9942684309114611,
-      "me_rms_deg": 0.08823654948132287,
-      "hybrid_rms_deg": 0.08545237166610775,
+      "code_vintage": "c8904da",
+      "theory_rms_ma": 10.897281945430715,
+      "me_rms_ma": 0.8727781868458351,
+      "hybrid_rms_ma": 0.04037637702403174,
+      "theory_rms_deg": 0.9942684291558237,
+      "me_rms_deg": 0.02919512788953682,
+      "hybrid_rms_deg": 0.0016092037552652982,
       "force_field_suspect": true,
       "force_field_diagnostics": {
         "multireference": {
-          "max_t2": 0.1836665131548717,
-          "homo_lumo_ev": 12.139965875387858,
-          "e_corr_fraction": 0.002840027682094366,
+          "max_t2": 0.18366651315487456,
+          "homo_lumo_ev": 12.139965875387787,
+          "e_corr_fraction": 0.002840027682094372,
           "flagged": true,
           "basis": "cc-pvdz",
           "reason": "max|t2| = 0.1837 exceeds 0.12: this molecule has substantial multireference character, so a single-reference force field -- MP2 especially -- may be badly wrong. Measured precedent: ozone sits at 0.18 and its MP2 antisymmetric stretch is 101% high, which made its corrected result 4.6x worse than a cheaper level."
@@ -4967,15 +5525,15 @@
       },
       "reference_type": "r_s",
       "reference_rms_sigma": 1.511499117074815,
-      "hybrid_rms_sigma": 1.2752954355388175,
+      "hybrid_rms_sigma": 1.4988735622452387,
       "reference_is_equilibrium": false,
-      "hybrid_rms_ma_vs_re": 0.37360816641451855,
-      "me_rms_ma_vs_re": 0.40349880736423316,
-      "theory_rms_ma_vs_re": 8.645578375186425,
-      "hybrid_rms_deg_vs_re": 0.05965237166610393,
+      "hybrid_rms_ma_vs_re": 1.019623622975807,
+      "me_rms_ma_vs_re": 0.18722181315400377,
+      "theory_rms_ma_vs_re": 11.957281945430553,
+      "hybrid_rms_deg_vs_re": 0.027409203755269118,
       "re_source": "Tyuterev et al., J. Mol. Spectrosc. 198, 57 (1999); r_e = 1.27276(15) A, angle 116.7542(25) deg",
       "n_species": 5,
-      "sigma_x_ang": 0.016405306139562818,
+      "sigma_x_ang": 0.004616118135749854,
       "track_distances_ang": null,
       "track_scheme": null,
       "fit_cd": false,
@@ -4997,13 +5555,28 @@
       "loo_offsets_ma": {
         "C-C": 2.03,
         "C-F": 3.61,
-        "C-H": 5.0,
+        "C-H": 5.16,
         "C-O": 7.85,
-        "C-Cl": 43.25,
-        "H-O": 10.89,
+        "C-Cl": 34.31,
+        "H-O": 11.43,
         "H-N": 5.91,
-        "C-N": 4.99
-      }
+        "C-N": 4.38,
+        "O-O": 3.31
+      },
+      "offsets_pool": [
+        "acetyl_fluoride",
+        "chlorofluoromethane",
+        "fluoroacetylene",
+        "fluoroethane",
+        "formyl_fluoride",
+        "hydrogen_cyanide",
+        "hydrogen_peroxide",
+        "isocyanic_acid",
+        "methyl_chloride",
+        "ozone",
+        "vinyl_fluoride",
+        "water"
+      ]
     }
   },
   "isocyanic_acid": {
@@ -5051,19 +5624,19 @@
       "loo_offsets_ma": null
     },
     "offsets": {
-      "code_vintage": "5cfc5d4",
-      "theory_rms_ma": 4.502099014655785,
-      "me_rms_ma": 7.636929467452189,
-      "hybrid_rms_ma": 4.225906390392034,
-      "theory_rms_deg": 0.8218227136542664,
-      "me_rms_deg": 0.8903656115793598,
-      "hybrid_rms_deg": 0.48814527113125056,
+      "code_vintage": "c8904da",
+      "theory_rms_ma": 3.53019949026282,
+      "me_rms_ma": 5.669043937056445,
+      "hybrid_rms_ma": 3.712768839923916,
+      "theory_rms_deg": 0.8218227140228926,
+      "me_rms_deg": 0.8503870035648778,
+      "hybrid_rms_deg": 0.32556876855571193,
       "force_field_suspect": false,
       "force_field_diagnostics": {
         "multireference": {
-          "max_t2": 0.07033423156187965,
-          "homo_lumo_ev": 16.48288070302319,
-          "e_corr_fraction": 0.002831374705988788,
+          "max_t2": 0.07033423156187839,
+          "homo_lumo_ev": 16.482880703022804,
+          "e_corr_fraction": 0.0028313747059888045,
           "flagged": false,
           "basis": "cc-pvdz",
           "reason": "max|t2| = 0.0703, within the single-reference range for this set"
@@ -5071,10 +5644,10 @@
       },
       "reference_type": "r_s",
       "reference_rms_sigma": 0.38350714474275194,
-      "hybrid_rms_sigma": 0.6832632632045821,
+      "hybrid_rms_sigma": 0.6688284306704073,
       "reference_is_equilibrium": false,
       "n_species": 2,
-      "sigma_x_ang": 0.01455559456336003,
+      "sigma_x_ang": 0.008682264566711641,
       "track_distances_ang": null,
       "track_scheme": null,
       "fit_cd": false,
@@ -5094,12 +5667,27 @@
       "loo_offsets_ma": {
         "C-C": 2.03,
         "C-F": 3.61,
-        "C-H": 5.0,
+        "C-H": 5.16,
         "C-O": 7.54,
-        "C-Cl": 43.25,
-        "H-O": 10.89,
-        "O-O": -7.59
-      }
+        "C-Cl": 34.31,
+        "H-O": 11.43,
+        "O-O": -2.14,
+        "C-N": 3.76
+      },
+      "offsets_pool": [
+        "acetyl_fluoride",
+        "chlorofluoromethane",
+        "fluoroacetylene",
+        "fluoroethane",
+        "formyl_fluoride",
+        "hydrogen_cyanide",
+        "hydrogen_peroxide",
+        "isocyanic_acid",
+        "methyl_chloride",
+        "ozone",
+        "vinyl_fluoride",
+        "water"
+      ]
     },
     "lam": {
       "code_vintage": "5cfc5d4",
@@ -5188,19 +5776,19 @@
       "loo_offsets_ma": null
     },
     "offsets+bob": {
-      "code_vintage": "5cfc5d4",
-      "theory_rms_ma": 4.502099014655785,
-      "me_rms_ma": 7.624152729209888,
-      "hybrid_rms_ma": 4.225906390392034,
-      "theory_rms_deg": 0.8218227136542664,
-      "me_rms_deg": 0.8905791994803267,
-      "hybrid_rms_deg": 0.48814527113125056,
+      "code_vintage": "c8904da",
+      "theory_rms_ma": 3.53019949026282,
+      "me_rms_ma": 5.662416273404592,
+      "hybrid_rms_ma": 3.712768839923916,
+      "theory_rms_deg": 0.8218227140228926,
+      "me_rms_deg": 0.8505856006812611,
+      "hybrid_rms_deg": 0.32556876855571193,
       "force_field_suspect": false,
       "force_field_diagnostics": {
         "multireference": {
-          "max_t2": 0.07033423156187965,
-          "homo_lumo_ev": 16.48288070302319,
-          "e_corr_fraction": 0.002831374705988788,
+          "max_t2": 0.07033423156187824,
+          "homo_lumo_ev": 16.482880703022612,
+          "e_corr_fraction": 0.002831374705988798,
           "flagged": false,
           "basis": "cc-pvdz",
           "reason": "max|t2| = 0.0703, within the single-reference range for this set"
@@ -5208,10 +5796,10 @@
       },
       "reference_type": "r_s",
       "reference_rms_sigma": 0.38350714474275194,
-      "hybrid_rms_sigma": 0.6832632632045821,
+      "hybrid_rms_sigma": 0.6688284306704073,
       "reference_is_equilibrium": false,
       "n_species": 2,
-      "sigma_x_ang": 0.01455559456336003,
+      "sigma_x_ang": 0.008682264566711641,
       "track_distances_ang": null,
       "track_scheme": null,
       "fit_cd": false,
@@ -5231,12 +5819,27 @@
       "loo_offsets_ma": {
         "C-C": 2.03,
         "C-F": 3.61,
-        "C-H": 5.0,
+        "C-H": 5.16,
         "C-O": 7.54,
-        "C-Cl": 43.25,
-        "H-O": 10.89,
-        "O-O": -7.59
-      }
+        "C-Cl": 34.31,
+        "H-O": 11.43,
+        "O-O": -2.14,
+        "C-N": 3.76
+      },
+      "offsets_pool": [
+        "acetyl_fluoride",
+        "chlorofluoromethane",
+        "fluoroacetylene",
+        "fluoroethane",
+        "formyl_fluoride",
+        "hydrogen_cyanide",
+        "hydrogen_peroxide",
+        "isocyanic_acid",
+        "methyl_chloride",
+        "ozone",
+        "vinyl_fluoride",
+        "water"
+      ]
     },
     "defect": {
       "code_vintage": "5cfc5d4",
@@ -5282,19 +5885,19 @@
       "loo_offsets_ma": null
     },
     "offsets+defect": {
-      "code_vintage": "5cfc5d4",
-      "theory_rms_ma": 4.502099014655785,
-      "me_rms_ma": 7.636929467452189,
-      "hybrid_rms_ma": 4.225906390392034,
-      "theory_rms_deg": 0.8218227136542664,
-      "me_rms_deg": 0.8903656115793598,
-      "hybrid_rms_deg": 0.48814527113125056,
+      "code_vintage": "c8904da",
+      "theory_rms_ma": 3.53019949026282,
+      "me_rms_ma": 5.669043937056445,
+      "hybrid_rms_ma": 3.712768839923916,
+      "theory_rms_deg": 0.8218227140228926,
+      "me_rms_deg": 0.8503870035648778,
+      "hybrid_rms_deg": 0.32556876855571193,
       "force_field_suspect": false,
       "force_field_diagnostics": {
         "multireference": {
-          "max_t2": 0.07033423156187965,
-          "homo_lumo_ev": 16.48288070302319,
-          "e_corr_fraction": 0.002831374705988788,
+          "max_t2": 0.07033423156187824,
+          "homo_lumo_ev": 16.48288070302307,
+          "e_corr_fraction": 0.0028313747059887664,
           "flagged": false,
           "basis": "cc-pvdz",
           "reason": "max|t2| = 0.0703, within the single-reference range for this set"
@@ -5302,10 +5905,10 @@
       },
       "reference_type": "r_s",
       "reference_rms_sigma": 0.38350714474275194,
-      "hybrid_rms_sigma": 0.6832632632045821,
+      "hybrid_rms_sigma": 0.6688284306704073,
       "reference_is_equilibrium": false,
       "n_species": 2,
-      "sigma_x_ang": 0.01455559456336003,
+      "sigma_x_ang": 0.008682264566711641,
       "track_distances_ang": null,
       "track_scheme": null,
       "fit_cd": false,
@@ -5325,12 +5928,27 @@
       "loo_offsets_ma": {
         "C-C": 2.03,
         "C-F": 3.61,
-        "C-H": 5.0,
+        "C-H": 5.16,
         "C-O": 7.54,
-        "C-Cl": 43.25,
-        "H-O": 10.89,
-        "O-O": -7.59
-      }
+        "C-Cl": 34.31,
+        "H-O": 11.43,
+        "O-O": -2.14,
+        "C-N": 3.76
+      },
+      "offsets_pool": [
+        "acetyl_fluoride",
+        "chlorofluoromethane",
+        "fluoroacetylene",
+        "fluoroethane",
+        "formyl_fluoride",
+        "hydrogen_cyanide",
+        "hydrogen_peroxide",
+        "isocyanic_acid",
+        "methyl_chloride",
+        "ozone",
+        "vinyl_fluoride",
+        "water"
+      ]
     },
     "track": {
       "code_vintage": "5cfc5d4",
@@ -5378,19 +5996,19 @@
       "loo_offsets_ma": null
     },
     "offsets+track": {
-      "code_vintage": "5cfc5d4",
-      "theory_rms_ma": 4.502099014655785,
-      "me_rms_ma": 7.636929467452189,
-      "hybrid_rms_ma": 4.225906390392034,
-      "theory_rms_deg": 0.8218227136542664,
-      "me_rms_deg": 0.8903656115793598,
-      "hybrid_rms_deg": 0.48814527113125056,
+      "code_vintage": "c8904da",
+      "theory_rms_ma": 3.53019949026282,
+      "me_rms_ma": 5.669043937056445,
+      "hybrid_rms_ma": 3.712768839923916,
+      "theory_rms_deg": 0.8218227140228926,
+      "me_rms_deg": 0.8503870035648778,
+      "hybrid_rms_deg": 0.32556876855571193,
       "force_field_suspect": false,
       "force_field_diagnostics": {
         "multireference": {
-          "max_t2": 0.07033423156187832,
-          "homo_lumo_ev": 16.482880703022563,
-          "e_corr_fraction": 0.0028313747059887976,
+          "max_t2": 0.07033423156188083,
+          "homo_lumo_ev": 16.48288070302283,
+          "e_corr_fraction": 0.002831374705988783,
           "flagged": false,
           "basis": "cc-pvdz",
           "reason": "max|t2| = 0.0703, within the single-reference range for this set"
@@ -5398,12 +6016,12 @@
       },
       "reference_type": "r_s",
       "reference_rms_sigma": 0.38350714474275194,
-      "hybrid_rms_sigma": 0.6832632632045821,
+      "hybrid_rms_sigma": 0.6688284306704073,
       "reference_is_equilibrium": false,
       "n_species": 2,
-      "sigma_x_ang": 0.01455559456336003,
+      "sigma_x_ang": 0.008682264566711641,
       "track_distances_ang": [
-        0.02510259814404206
+        0.021315901765790762
       ],
       "track_scheme": "linear",
       "fit_cd": false,
@@ -5411,7 +6029,7 @@
       "torsion_applied": false,
       "torsion_info": null,
       "cd_weight": 0.0,
-      "track_skipped_beyond_ang": 0.02510259814404206,
+      "track_skipped_beyond_ang": 0.021315901765790762,
       "track_unstable_modes": null,
       "corr_level": "b3lyp/6-31g(d)",
       "bob": false,
@@ -5423,12 +6041,27 @@
       "loo_offsets_ma": {
         "C-C": 2.03,
         "C-F": 3.61,
-        "C-H": 5.0,
+        "C-H": 5.16,
         "C-O": 7.54,
-        "C-Cl": 43.25,
-        "H-O": 10.89,
-        "O-O": -7.59
-      }
+        "C-Cl": 34.31,
+        "H-O": 11.43,
+        "O-O": -2.14,
+        "C-N": 3.76
+      },
+      "offsets_pool": [
+        "acetyl_fluoride",
+        "chlorofluoromethane",
+        "fluoroacetylene",
+        "fluoroethane",
+        "formyl_fluoride",
+        "hydrogen_cyanide",
+        "hydrogen_peroxide",
+        "isocyanic_acid",
+        "methyl_chloride",
+        "ozone",
+        "vinyl_fluoride",
+        "water"
+      ]
     },
     "track_direct": {
       "code_vintage": "5cfc5d4",
@@ -5567,19 +6200,19 @@
       "loo_offsets_ma": null
     },
     "offsets+torsion": {
-      "code_vintage": "5cfc5d4",
-      "theory_rms_ma": 4.502099014655785,
-      "me_rms_ma": 7.636929467452189,
-      "hybrid_rms_ma": 4.225906390392034,
-      "theory_rms_deg": 0.8218227136542664,
-      "me_rms_deg": 0.8903656115793598,
-      "hybrid_rms_deg": 0.48814527113125056,
+      "code_vintage": "c8904da",
+      "theory_rms_ma": 3.53019949026282,
+      "me_rms_ma": 5.669043937056445,
+      "hybrid_rms_ma": 3.712768839923916,
+      "theory_rms_deg": 0.8218227140228926,
+      "me_rms_deg": 0.8503870035648778,
+      "hybrid_rms_deg": 0.32556876855571193,
       "force_field_suspect": false,
       "force_field_diagnostics": {
         "multireference": {
-          "max_t2": 0.07033423156187832,
-          "homo_lumo_ev": 16.482880703022563,
-          "e_corr_fraction": 0.0028313747059887976,
+          "max_t2": 0.07033423156188073,
+          "homo_lumo_ev": 16.482880703022754,
+          "e_corr_fraction": 0.0028313747059887633,
           "flagged": false,
           "basis": "cc-pvdz",
           "reason": "max|t2| = 0.0703, within the single-reference range for this set"
@@ -5587,10 +6220,10 @@
       },
       "reference_type": "r_s",
       "reference_rms_sigma": 0.38350714474275194,
-      "hybrid_rms_sigma": 0.6832632632045821,
+      "hybrid_rms_sigma": 0.6688284306704073,
       "reference_is_equilibrium": false,
       "n_species": 2,
-      "sigma_x_ang": 0.01455559456336003,
+      "sigma_x_ang": 0.008682264566711641,
       "track_distances_ang": null,
       "track_scheme": null,
       "fit_cd": false,
@@ -5612,12 +6245,27 @@
       "loo_offsets_ma": {
         "C-C": 2.03,
         "C-F": 3.61,
-        "C-H": 5.0,
+        "C-H": 5.16,
         "C-O": 7.54,
-        "C-Cl": 43.25,
-        "H-O": 10.89,
-        "O-O": -7.59
-      }
+        "C-Cl": 34.31,
+        "H-O": 11.43,
+        "O-O": -2.14,
+        "C-N": 3.76
+      },
+      "offsets_pool": [
+        "acetyl_fluoride",
+        "chlorofluoromethane",
+        "fluoroacetylene",
+        "fluoroethane",
+        "formyl_fluoride",
+        "hydrogen_cyanide",
+        "hydrogen_peroxide",
+        "isocyanic_acid",
+        "methyl_chloride",
+        "ozone",
+        "vinyl_fluoride",
+        "water"
+      ]
     }
   }
 }

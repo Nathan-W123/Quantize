@@ -24,8 +24,8 @@ root fix), literature first, no engine change (D-34, auto-picked at Q-02).
 - N7 · verify · offsets config, 9 molecules x 2 levels, default vs extended pool · after: N6 · done · handoff: means 8.56 -> 5.37 (RHF), 4.96 -> 4.13 (B3LYP); ozone vs r_e worse at B3LYP
 - N8 · gate · Q-06: make extended the default and rerun the offsets-family rows + README? · after: N7 · done · handoff: D-38 (auto-picked)
 - N9 · build · flip the default (calibration=scored for the old pool), record offsets_pool per row · after: N8 · done · handoff: tests updated, 3 mutations caught
-- N10 · verify · rerun offsets-family rows, both levels (HF 54, B3LYP 43) · after: N9 · running · handoff: scratchpad t07/fam_{hf,b3lyp}.log
-- N11 · build · merge into reports/, regenerate tables, README + docstring · after: N10 · pending · handoff: -
+- N10 · verify · rerun offsets-family rows, both levels (HF 54, B3LYP 43) · after: N9 · done · handoff: 97 rows, all exit 0; scratchpad t07/fam_{hf,b3lyp}.log
+- N11 · build · merge into reports/, regenerate tables, README + docstring · after: N10 · done · handoff: best-of RHF 10.39/9.85/5.34, B3LYP 5.31/4.05/3.78; base unchanged
 
 ## Progress
 - Candidates meeting the rule (r_e / r_e^SE, stated sd <= 0.5 mA):
@@ -88,6 +88,24 @@ root fix), literature first, no engine change (D-34, auto-picked at Q-02).
   methanimine (Margules et al., SE) likewise without a readable sd.
 - Not tried: HNCS r_e^SE (McGuire et al. 2016, values only in a figure /
   SI).
+- Rerun (D-38, frozen worktree at c8904da, one row per invocation): HF 54
+  rows in 12 min, B3LYP 43 rows in ~2 h (offsets+track is the slow one; the
+  4 B3LYP torsion rows that never ran still don't). Merged into
+  reports/accuracy_upgrades (every replaced row checked for vintage c8904da
+  and for the calibration keys in its offsets_pool) and archived.
+  Per-config hybrid means vs primary refs, old -> new: RHF offsets 8.56 ->
+  5.38 (+bob/+cd the same, +defect 5.37, +torsion 5.63, +track 5.43);
+  B3LYP offsets 4.96 -> 4.13 (+bob/+defect the same, +torsion over 7
+  4.35 -> 3.29, +track 4.87 -> 4.24).
+  Best-of table: RHF 15.29/12.92/7.76 -> 10.39/9.85/5.34, B3LYP
+  8.12/4.98/4.20 -> 5.31/4.05/3.78 (theory/ME/hybrid). The offsets help all
+  three legs, so at RHF the hybrid's win counts fell (best of three 6 -> 4,
+  beats ME 8 -> 6: CH2ClF and formyl fluoride by 0.08 mA); RHF -> B3LYP
+  improves on 8 of 9 (CH2ClF 5.42 -> 8.18, unexplained). Base table
+  unchanged (diffed). CH2ClF offsets rows now carry r_e scores: hybrid 2.91
+  (RHF) / 6.00 (B3LYP) mA vs ME 4.26 / 6.71, theory 7.69 / 8.12. Ozone
+  B3LYP offsets vs r_e 0.37 -> 1.02 (vs r_s 1.00 -> 0.04). README +
+  docstring updated; offsets+cd still equals offsets exactly.
 
 
 ## Observations
@@ -98,6 +116,7 @@ root fix), literature first, no engine change (D-34, auto-picked at Q-02).
 - 2026-11-20: 8 of my 10 first tests let real breaks through (verifier's
   mutants); L-15 again -- the main() wiring was untested.
 
+- 2026-11-20: regenerating the old table from git HEAD before writing found two README claims the new rows break ("improves RHF -> B3LYP on all nine", HNCO factor 7) and that water was already an ME win, not a new one.
 - 2026-11-20: the user asked a second time why the loop stopped while I was waiting on the B3LYP chain. Ending a turn on background work looks like a stop unless the message says what is running, how far it is and roughly when it ends.
 
 ## Pending question

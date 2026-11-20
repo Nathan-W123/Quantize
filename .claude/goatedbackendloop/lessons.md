@@ -137,4 +137,5 @@ only here.
   uncovered bond class) and run all of them, on every yardstick available,
   before reporting a gain; say n when it is small.
 - Scope: project · Status: provisional
+- Outcomes: +2026-11-20 helped (T-07: running all nine molecules on both yardsticks caught ozone worse vs r_e at B3LYP and HF's trans H2O2 before the default flipped)
 
