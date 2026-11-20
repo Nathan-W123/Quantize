@@ -39,7 +39,7 @@ Sessions: 0 · Last consolidated: 2026-11-20
 - Observation: three guessed causes of a CCSD non-convergence were wrong; logging the call's inputs found an unbounded first step (1.23 -> 2.22 A).
 - Evidence: 2026-11-10 · Quantize (was project lesson L-P05).
 - Adjustment: when a failure surfaces inside a library call, or a runtime patch gives odd numbers, log what that call receives across the failing sequence before theorising.
-- Scope: workflow · Status: provisional · Outcomes: +2026-11-19 (a patched prior: the fit read a rigid-projected Hessian, found in one probe)
+- Scope: workflow · Status: provisional · Outcomes: +2026-11-19 (a patched prior: the fit read a rigid-projected Hessian, found in one probe) +2026-11-20 (T-14: a guessed Coriolis cause was wrong; logging each alpha term at the three slope points named the harmonic term in one run)
 
 ### L-07 · Classify a tool's findings before quoting its count
 - Observation: pyflakes' "79 unused imports" was 67 registrations + 9 re-exports; 7 were real.
@@ -63,7 +63,7 @@ Sessions: 0 · Last consolidated: 2026-11-20
 - Observation: asked to force sigma_x and reproduce, a verifier found a chi2-rescale switch my reading had put down to the width itself.
 - Evidence: 2026-11-20 · Quantize T-11 (t11/verify/fine_hf.json).
 - Adjustment: state the claim as an experiment the verifier can run (hold X fixed, vary Y, reproduce the rows, by a different mechanism than yours), not as a conclusion to review.
-- Scope: workflow · Status: provisional · Outcomes: +2026-11-20 (T-12: "move the threshold to 3 and 5" gave the flip point and the floor) +2026-11-20 (T-13: a source edit instead of my monkeypatch reproduced every row bit for bit and showed the 5.93 best-of needs six rows, not the four I named)
+- Scope: workflow · Status: provisional · Outcomes: +2026-11-20 (T-12: "move the threshold to 3 and 5" gave the flip point and the floor) +2026-11-20 (T-13: a source edit instead of my monkeypatch reproduced every row bit for bit and showed the 5.93 best-of needs six rows, not the four I named) +2026-11-20 (T-14: told to make its own edit, the verifier's fix disagreed with my prototype on one row and exposed my prototype's bug)
 
 ## Retired
 ## Changelog
@@ -74,4 +74,5 @@ Sessions: 0 · Last consolidated: 2026-11-20
 - 2026-11-20 L-09 outcome +; project L-P04 extended (hand-built stand-ins for a library function's output).
 - 2026-11-20 L-10 added (verifiers get experiments, not readings).
 - 2026-11-20 L-10 outcome + (T-13).
+- 2026-11-20 L-06, L-10 outcomes + (T-14); project L-P04 extended (sentinel encodings).
 - 2026-11-20 consolidated: learnings.md 127 -> ~75 lines (observations and evidence compressed, no lesson dropped); lessons.md 161 -> ~80 (L-08 into L-07, validated lessons compressed); L-08 outcome + (T-13).

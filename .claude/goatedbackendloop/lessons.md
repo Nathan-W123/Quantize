@@ -15,7 +15,7 @@ once by a container swap).
 
 ### L-P04 · Verify a computed quantity against a value already in the repo
 - Adjustment: before adding a derived quantity -- including a hand-built stand-in for a library function's output -- compute it for a case whose answer is in the repo and compare values, shape and multiplicity; no such case is itself a reason for suspicion.
-- Evidence: 2026-11-10 · a Costain r_s floor gave 852 mA for ozone against the docstring's 4.1. -2026-11-20 (T-10: candidate offsets one per atom vs measure_offsets' one per bond; a verifier caught it). · Scope: project · Status: validated
+- Evidence: 2026-11-10 · a Costain r_s floor gave 852 mA for ozone against the docstring's 4.1. -2026-11-20 (T-10: candidate offsets one per atom vs measure_offsets' one per bond; a verifier caught it). -2026-11-20 (T-14: a prototype took argmin over moments where "absent" is encoded as inf and zeroed the wrong axis on exactly linear geometries; the verifier's own edit disagreed on one row). Extension: before selecting from a library array (argmin / argmax / index), check how it encodes the missing case (inf, 0, NaN). · Scope: project · Status: validated
 
 ### L-P06 · A library module with only a script consumer is misplaced
 - Adjustment: before committing a module under backend/, list its importers; if none are in backend/, wire it in or move it.

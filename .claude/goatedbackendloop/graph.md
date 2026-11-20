@@ -7,7 +7,7 @@ the decisions record; tasks before T-01 live in git history only.
 - C:quantum-prior · calibrated alpha_q = 1/(0.5 lam_bar sigma_x^2) on the rigid-projected Hessian, prior target · quantize.py (_project_quantum_terms, _projected_reference_terms, quantum_prior_weight), SVD.py (_calibrated_alpha_q)
 - C:chi2-rescale · sigma rescaling by reduced chi2, floored at the model-error part · quantize.py run(), SpectralEngine.scale_sigma
 - C:bond-offsets · leave-one-out bond-class offsets and prior widths · .github/backend/spectral/bond_offsets.py, prior_widths.py
-- C:correction-tables · rovibrational corrections (YAML and CSV) · .github/backend/spectral/correction_models.py, rovib_tables.py, harmonic_alpha.py
+- C:correction-tables · rovibrational corrections (YAML and CSV), harmonic alpha and its tracking · .github/backend/spectral/correction_models.py, rovib_tables.py, harmonic_alpha.py
 - C:references · benchmark molecules, constants, r_e / r_e^SE references · dev/monofluoro_references.py
 - C:benchmark · accuracy-upgrades benchmark and archived rows · scripts/accuracy_upgrades_benchmark.py, reports/accuracy_upgrades/, scripts/archive_benchmark_results.py
 - C:cli-config · CLI, config validation and builder · .github/runner/
@@ -27,6 +27,7 @@ the decisions record; tasks before T-01 live in git history only.
 - T-11 · robust fallback width for uncalibrated classes: dropped; HF HNCO row sits near the chi2-rescale switch · 2026-11-20 · done
 - T-12 · chi2-rescale fragility count: 1 of 36 base / offsets rows (HF HNCO offsets); tightening side inert at the floor · 2026-11-20 · done
 - T-13 · chi2-threshold count on the other configurations: of 234 rows run, only HF HNCO's offsets-family fit (6 rows) flips, at 3.0; best-of 5.34 -> 5.93 · 2026-11-20 · done
+- T-14 · fluoroacetylene's tracked fits: Watson-term absolute I_a cut vs the module's linearity test; fixed, 3 RHF rows 19.16 -> 13.64 / 4.96 -> 4.36 / 19.17 -> 13.64 · 2026-11-20 · done
 
 ## Edges
 - C:quantum-prior --depends-on--> C:joint-optimizer · 2026-11-20
@@ -100,3 +101,12 @@ the decisions record; tasks before T-01 live in git history only.
 - T-13 --touched--> C:benchmark · 2026-11-20
 - T-13 --taught--> L-20 · 2026-11-20
 - T-13 --taught--> L-10 · 2026-11-20
+- T-14 --decided--> D-49 · 2026-11-20
+- T-14 --decided--> D-50 · 2026-11-20
+- D-50 --governs--> C:correction-tables · 2026-11-20
+- T-14 --touched--> C:correction-tables · 2026-11-20
+- T-14 --touched--> C:benchmark · 2026-11-20
+- T-14 --touched--> C:readme · 2026-11-20
+- T-14 --taught--> L-P04 · 2026-11-20
+- T-14 --taught--> L-06 · 2026-11-20
+- T-14 --taught--> L-10 · 2026-11-20

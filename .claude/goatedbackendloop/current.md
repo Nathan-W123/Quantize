@@ -1,6 +1,6 @@
 # Current task
 Task: T-14
-Status: building
+Status: verifying
 Request: diagnose fluoroacetylene's tracked fits (backlog N19 b; D-49,
 auto-picked at Q-16); diagnosis first, any fix proposed before it is made.
 
@@ -19,7 +19,7 @@ auto-picked at Q-16); diagnosis first, any fix proposed before it is made.
 - N1 · build · trace the tracked fits · after: none · done · handoff: cause found (below)
 - N2 · verify · fresh agent: continuity scan across the cut + rerun with the cut changed · after: N1 · done · handoff: confirmed; clean-bend step 7-10 MHz, blow-up needs rotation-contaminated off-stationary Hessians; caught my prototype's axis bug
 - N3 · build · prototype fix in t14/fix, all RHF rows + B3LYP fluoroacetylene · after: N1 · done (corrected) · handoff: 3 HF FA rows move (track, offsets+track, track_quadratic); nothing else; best-of unchanged
-- N4 · gate · propose the fix to the user (engine change, rows move) · after: N2, N3 · decided (Q-17 auto-pick, D-50) · handoff: apply fix
+- N4 · gate · propose the fix to the user (engine change, rows move) · after: N2, N3 · decided (Q-17 auto-pick, D-50) · handoff: fix applied
 
 ## Progress
 - 18:45 UTC: t14/trace.py (+ trace2 / trace3, more probes). HF
@@ -88,6 +88,23 @@ auto-picked at Q-16); diagnosis first, any fix proposed before it is made.
 - Test plan if the fix is approved: dev/tests has only CO and water
   analytic surfaces; add a linear-triatomic valence force field and assert
   alpha_sum B is continuous as the bend takes I_A across 1e-8 (fails on HEAD).
+
+- 19:30 UTC (D-50, Q-17 auto-pick): fix in harmonic_alpha.py (inv[0] = 0
+  when _rigid_mode_count says linear; comment with the measurements) and
+  dev/tests/test_linear_axial_moment.py (analytic HCN-like valence field,
+  fresh FD Hessian per geometry, I_a 5e-9 / 2e-8, premises asserted).
+  Measured: fixed -88.76798 / -88.76798 / -88.76800 MHz (2e-5 apart); old
+  code -202.016 above the cut (113 MHz, harmonic term). Test fails on the
+  HEAD copy at exactly that assertion, passes on 3.11 and on 3.12 (venv from
+  requirements.txt, as CI). 182 related alpha / correction tests pass.
+  Commit 2eb9b6c.
+- 19:4x UTC: clean worktree at 2eb9b6c (removed after), archived HF file
+  minus FA's 3 rows, rerun -> vintage 2eb9b6c, 13.6402 / 4.3627 / 13.6391
+  (= prototype and verifier); the other 132 rows byte-identical in the
+  archive. --table unchanged (10.39 / 9.85 / 5.34; 5.31 / 4.05 / 3.78; win
+  counts 4/9 6/9 7/9, 5/9 5/9 7/9). README provenance names the vintage;
+  test_benchmark_summary_table + test_calibration_references pass. Commit
+  aace5d0. Full CI suite running (task b0766romz).
 
 ## Observations
 - 2026-11-20 · my first guess (the degenerate bend pair passing the 1 cm^-2 Coriolis guard) was wrong; logging each term at the three points named the harmonic term in one run (L-06 applied).
