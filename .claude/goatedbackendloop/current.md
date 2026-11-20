@@ -18,7 +18,7 @@ auto-picked at Q-16); diagnosis first, any fix proposed before it is made.
 ## Graph
 - N1 · build · trace the tracked fits · after: none · done · handoff: cause found (below)
 - N2 · verify · fresh agent: continuity scan across the cut + rerun with the cut changed · after: N1 · running · handoff: -
-- N3 · build · prototype fix in t14/fix, all RHF rows + B3LYP fluoroacetylene · after: N1 · running (task b4tjegik3) · handoff: -
+- N3 · build · prototype fix in t14/fix, all RHF rows + B3LYP fluoroacetylene · after: N1 · done · handoff: 5 rows move, all FA tracked; best-of unchanged
 - N4 · gate · propose the fix to the user (engine change, rows move) · after: N2, N3 · pending · handoff: -
 
 ## Progress
@@ -52,6 +52,20 @@ auto-picked at Q-16); diagnosis first, any fix proposed before it is made.
   decision the normal modes and the Coriolis pair use. Running: all 9
   molecules x 13 configs at RHF, and fluoroacetylene x 11 configs at
   B3LYP, to list every row it moves.
+- 18:51 UTC (prototype done, ~15 min): exactly 5 rows move, all FA tracked.
+  HF track 19.1634 -> 13.6402, offsets+track 4.9633 -> 4.3627,
+  track_quadratic 19.1653 -> 13.6391, track_direct 13.6626 -> 13.4793;
+  B3LYP track_direct 3.9776 -> 4.0929 (worse: its direct table at a fitted
+  geometry had crossed the cut too, and the contaminated value was luckier).
+  The other 113 HF + 10 B3LYP rows are bit-identical to the HEAD runs
+  (t13/wt4, t13/b3lyp_t4_merged, t12/run1). README best-of means unchanged
+  (RHF 10.39 / 9.85 / 5.34, B3LYP 5.31 / 4.05 / 3.78; FA's best rows are
+  offsets at RHF and offsets+track at B3LYP, both untouched), so are the win
+  counts and the base table. Fixed tracked rows now sit at or near the
+  untracked ones (13.64 vs base 13.59; 4.36 vs offsets 4.36).
+- Test plan if the fix is approved: dev/tests has only CO and water
+  analytic surfaces; add a linear-triatomic valence force field and assert
+  alpha_sum B is continuous as the bend takes I_A across 1e-8 (fails on HEAD).
 
 ## Observations
 - 2026-11-20 · my first guess (the degenerate bend pair passing the 1 cm^-2 Coriolis guard) was wrong; logging each term at the three points named the harmonic term in one run (L-06 applied).
