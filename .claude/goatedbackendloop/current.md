@@ -74,5 +74,9 @@ Q-12); scratch only, no engine change.
 - 2026-11-20 · asking the verifier an experiment ("is the row a function of sigma_x alone? reproduce by forcing it") instead of my reading found the chi2-rescale switch, which my reading had missed.
 
 ## Pending question
+- Q-14 (asked 13:56 UTC, deadline 14:11 UTC; send_later trig_01ESRyfjLYehdVNfy7Qybuoy): what's next?
+  1 N19: first-pass chi2 of every benchmark row, count near the switch
+  (Recommended; auto-pick) · 2 F14 correlated (GLS) weighting study · 3 N3
+  r_e^SE references · 4 Done for now.
 
 ## Handoff
