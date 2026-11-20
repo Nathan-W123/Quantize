@@ -124,4 +124,15 @@ cache), one molecule per invocation, default pool then extended, rows in
 t07/wt/output/accuracy_upgrades_<tag>[_calext].json (finished molecules are
 skipped on rerun). If a chain dies: check `grep "=== exit" t07/<level>.log`,
 delete a stale t07/wt/output/*.lock, relaunch chain.sh <level> (it resumes).
+Offsets-family rerun (started 04:2x UTC): scratchpad t07/fam.sh <hf|b3lyp>,
+worktree t07/wt2 at c8904da (caches copied from t07/wt/output, calibration
+theory geometries included), one (config, molecule) per invocation; rows in
+t07/wt2/output/accuracy_upgrades_<tag>.json. HF: offsets, +bob, +defect,
++cd, +track, +torsion (54 rows); B3LYP: same minus +cd, and +torsion skipped
+for acetyl fluoride and fluoroethane (never run; >3 h scans) -- 43 rows. If
+a chain dies: grep "=== exit" t07/fam_<level>.log, delete a stale
+t07/wt2/output/*.lock, relaunch fam.sh <level> (resumes). Then: merge these
+rows over the offsets-family rows in reports/accuracy_upgrades/*.json, run
+--table results=reports/accuracy_upgrades (and configs=base), update README
+results + docstring, vintages c8904da (offsets family) / 5cfc5d4 / 676eb0d.
 
