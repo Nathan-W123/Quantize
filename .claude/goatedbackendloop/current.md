@@ -112,5 +112,9 @@ entries is a separate gate (D-41, auto-picked at Q-09).
 - 2026-11-20 · cl.py built candidate offsets one per atom, with a comment claiming it followed leave_one_out_offsets; I had read the consumer, not measure_offsets (the producer it stood in for). The fresh verifier caught it; N2's RHF miss table was wrong by up to 6 mA.
 
 ## Pending question
+- Q-12 (asked 13:02 UTC, deadline 13:17 UTC; send_later trig_01V91Eh6orwN9A8chyrWNrVo): what's next?
+  1 measure decoupled uncalibrated-class widths (N16 D-03 flag), scratch
+  only (Recommended; auto-pick) · 2 correlated (GLS) weighting study on all
+  nine (F14) · 3 r_e^SE references for the five r_s molecules (N3) · 4 Done for now.
 
 ## Handoff
