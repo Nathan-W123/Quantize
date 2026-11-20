@@ -667,3 +667,10 @@
 - Alternatives considered: F14 GLS study; N2 sparse-data sigma re-scan.
 - Source: auto-picked, no answer in 15 min (Q-18, recommended option)
 - Revisit if: the user picks another option.
+
+### D-52 · Project rigid motions out of the alpha Hessian in the engine (2026-11-20)
+- Decision: in harmonic_alpha.py, project translations and rotations (mass-weighted, about the principal axes; the axial rotation left in when _rigid_mode_count says linear) out of the Hessian before both alpha normal-mode analyses (compute_harmonic_alpha and the cubic normal-mode derivative), with the prototype's exact arithmetic so its cached Hessians are reused. Add a test that alpha off a stationary point is rotation-free, rerun every row at both levels from the commit, and update the README and the benchmark docstring.
+- Why: T-15: off a stationary point the raw Hessian's rotation leaks into the vibrational eigenvectors and, through the inertia-derivative term's a^{ab}/I_a piece, moved HNCO's offsets-table alpha_B by ~100 MHz (-125.8 vs -28.1 projected, -26.2 at the stationary point); the README's 8.14 mA RHF HNCO best-of came from it. Verified independently (own Hessians, projector, patch). At stationary points rows move <= 2e-3 mA.
+- Alternatives considered: also take the offsets configs' alpha at the stationary geometry (removes the 23.2-28.65 mA recipe spread for HNCO offsets; changes what the configs measure; left as a backlog item); leave the engine and document.
+- Source: auto-picked, no answer in 15 min (Q-19, recommended option)
+- Revisit if: the user picks another option; or a molecule's row depends on the off-stationary recipe (mass-weighted vs valence vs stationary alpha) by more than its README figure's precision.

@@ -25,7 +25,11 @@ change proposed before it is made.
 - N2b · build · the 4 RHF torsion rows with the torsion applied (AF, FE) · after: N2 · pending · handoff: -
 - N2c · diagnose · why HNCO offsets moves 20 mA · after: N2 · done · handoff: see Progress 22:xx
 - N3 · verify · fresh agent: continuity scan of HNCO alpha theory -> offset geometry with its own Hessians and projector; own edit reproducing the row · after: N2c · done · handoff: t15/verify (scripts/scan.py, run_bench.py, variants.sh; results/)
-- N4 · gate · propose (or not) an engine change · after: N3 · asked (Q-19) · handoff: -
+- N4 · gate · propose (or not) an engine change · after: N3 · done: option 1 auto-picked (D-52) · handoff: -
+- N5 · build · engine projector + test (fails on the old code) + full suite on 3.12 · after: N4 · running · handoff: -
+- N6 · build · rerun every row at both levels from the commit (worktrees, warm cache, chi2 logged) · after: N5 · pending · handoff: -
+- N7 · verify · fresh agent: the committed rows and README against the JSON · after: N6 · pending · handoff: -
+- N8 · build · README table/provenance + benchmark docstring (rescale caveat) · after: N6 · pending · handoff: -
 
 ## Progress
 - 19:52 UTC: t15/proj from HEAD (129ca37 code = 2eb9b6c engine), caches
@@ -98,10 +102,5 @@ change proposed before it is made.
 - 2026-11-20 · a fit that T-13 found threshold-fragile turned out to sit on a ~100 MHz alpha error -- a row that flips under a small perturbation deserved a look at its inputs, not just its switch.
 
 ## Pending question
-- Q-19 (asked 22:13 UTC, deadline 22:28 UTC; wake-up scheduled): adopt the
-  rotation projection in the engine? 1 (Recommended) engine change + test +
-  rerun affected rows from the commit + README; 2 same plus offsets configs
-  take alpha at the stationary geometry; 3 leave the engine, document it;
-  Done for now. Auto-pick at the deadline: option 1 (reversible code change).
 
 ## Handoff
