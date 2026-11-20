@@ -17,9 +17,9 @@ auto-picked at Q-16); diagnosis first, any fix proposed before it is made.
 
 ## Graph
 - N1 · build · trace the tracked fits · after: none · done · handoff: cause found (below)
-- N2 · verify · fresh agent: continuity scan across the cut + rerun with the cut changed · after: N1 · running · handoff: -
-- N3 · build · prototype fix in t14/fix, all RHF rows + B3LYP fluoroacetylene · after: N1 · done · handoff: 5 rows move, all FA tracked; best-of unchanged
-- N4 · gate · propose the fix to the user (engine change, rows move) · after: N2, N3 · pending · handoff: -
+- N2 · verify · fresh agent: continuity scan across the cut + rerun with the cut changed · after: N1 · done · handoff: confirmed; clean-bend step 7-10 MHz, blow-up needs rotation-contaminated off-stationary Hessians; caught my prototype's axis bug
+- N3 · build · prototype fix in t14/fix, all RHF rows + B3LYP fluoroacetylene · after: N1 · done (corrected) · handoff: 3 HF FA rows move (track, offsets+track, track_quadratic); nothing else; best-of unchanged
+- N4 · gate · propose the fix to the user (engine change, rows move) · after: N2, N3 · asked (Q-17) · handoff: -
 
 ## Progress
 - 18:45 UTC: t14/trace.py (+ trace2 / trace3, more probes). HF
@@ -64,13 +64,36 @@ auto-picked at Q-16); diagnosis first, any fix proposed before it is made.
   offsets at RHF and offsets+track at B3LYP, both untouched), so are the win
   counts and the base table. Fixed tracked rows now sit at or near the
   untracked ones (13.64 vs base 13.59; 4.36 vs offsets 4.36).
+- 19:05 UTC N2 report (own HEAD copies; fix `inv[0] = 0` when linear):
+  A. bend scan from an exactly linear HF geometry: the Watson part steps
+  -16.04 -> -23.61 MHz (H end; -26.24 F end) exactly where I_A crosses 1e-8,
+  is_linear True throughout; flat with the fix. A clean bend gives a 7-10
+  MHz step, not a blow-up: the benchmark's 1e6-1e9 needs bends carrying
+  rotation (the +-step/2 points are off-stationary, |grad| 0.012 / 0.068
+  Ha/bohr; rotation eigenvalues +-1.4e-4, bend-rotation overlap 1-18%);
+  projecting rotations out gives -22.96 / -22.66. B. track 19.1634 ->
+  13.6402, offsets+track 4.9633 -> 4.3627, track_quadratic 19.1653 ->
+  13.6391 (its targets were -3.7e6: curvature -1.2e11), track_direct
+  unchanged (its fitted geometries are exactly linear); "= 16" 6x -> 0x.
+  Separate: at the is_linear boundary itself (I_A ~5.3e-5) n_vib 7 -> 6 and
+  alpha_B jumps +24.6 MHz through Coriolis / anharmonic; not touched.
+- My prototype was wrong for track_direct: argmin over finite moments,
+  but rotational_constants_mhz turns a moment <= 1e-10 into inf (A = 0), so
+  on an exactly linear geometry it zeroed B or C. Corrected to inv[0] (A is
+  index 0, A >= B >= C) and FA rerun at both levels: exactly 3 HF rows move
+  (track -5.523, offsets+track -0.601, track_quadratic -5.526 mA); every
+  other FA row at both levels bit-identical to HEAD. Non-FA rows cannot move
+  (branch fires only for a linear geometry; they were bit-identical even
+  under the faulty variant). Best-of tables unchanged.
 - Test plan if the fix is approved: dev/tests has only CO and water
   analytic surfaces; add a linear-triatomic valence force field and assert
   alpha_sum B is continuous as the bend takes I_A across 1e-8 (fails on HEAD).
 
 ## Observations
 - 2026-11-20 · my first guess (the degenerate bend pair passing the 1 cm^-2 Coriolis guard) was wrong; logging each term at the three points named the harmonic term in one run (L-06 applied).
+- 2026-11-20 · my prototype took argmin over an array whose 'absent' entry is encoded as inf, and zeroed the wrong axis on exactly linear geometries; the verifier's independent edit disagreed on one row and exposed it. Check how the input encodes the missing case before selecting from it (L-P04 extension candidate).
 
 ## Pending question
+- Q-17 (asked 2026-11-20 19:12 UTC, deadline 19:27 UTC; wake-up trig_01DJcJ2d3FGuLR6jZPtoNiKz): apply the linear axial-moment fix? Options: 1. apply fix + regression test + rerun / archive the 3 HF rows (Recommended); 2. same, then also study projecting rotations out of off-stationary Hessians in the slope (may move other tracked rows); 3. leave the engine, record the defect only; 4. Done for now. Auto-pick: 1.
 
 ## Handoff
