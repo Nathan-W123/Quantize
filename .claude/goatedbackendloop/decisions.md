@@ -616,3 +616,13 @@
   Option 1 said "README sentence"; the figure is stated in the benchmark
   docstring, not the README, so the sentence went there.
 - Revisit if: N19 changes how the rescale fires.
+
+### D-46 · Next task: how many benchmark rows sit near the chi2-rescale switch (2026-11-20)
+- Decision: run the benchmark's base and offsets configurations at both
+  levels with the optimiser instrumented (first-pass reduced chi2, dof,
+  passes) and count rows near a threshold; measurement only.
+- Why: T-11 found HF HNCO's offsets row 1.9 mA of sigma_x above the switch
+  (N19); whether other published rows are as fragile is unknown.
+- Alternatives considered: F14 GLS study; N3 references.
+- Source: auto-picked, no answer in 15 min (Q-14, recommended option)
+- Revisit if: the user picks another option.
