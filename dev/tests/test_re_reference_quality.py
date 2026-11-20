@@ -47,6 +47,8 @@ ALL_MOLECULES = [
     "VINYL_FLUORIDE", "ACETYL_FLUORIDE", "FLUOROETHANE", "FLUOROBENZENE",
     "FORMYL_FLUORIDE", "FLUOROACETYLENE", "CHLOROFLUOROMETHANE", "WATER",
     "ACETONE", "OZONE", "ETHYLENE_OXIDE", "ISOCYANIC_ACID",
+    # Calibration-only (no constants; measured for the bond offsets only).
+    "METHYL_CHLORIDE", "HYDROGEN_CYANIDE", "HYDROGEN_PEROXIDE",
 ]
 
 
@@ -67,8 +69,12 @@ def test_every_molecule_reports_a_verdict(name):
         "none", "ok", "too_coarse", "unstated"}
 
 
+USABLE = {"WATER", "OZONE", "CHLOROFLUOROMETHANE", "VINYL_FLUORIDE",
+          "METHYL_CHLORIDE", "HYDROGEN_CYANIDE", "HYDROGEN_PEROXIDE"}
+
+
 def test_the_usable_references_pass():
-    for name in ("WATER", "OZONE", "CHLOROFLUOROMETHANE", "VINYL_FLUORIDE"):
+    for name in sorted(USABLE):
         mol = getattr(REF, name)
         assert mol.equilibrium_reference_quality() == "ok", name
         assert mol.equilibrium_geometry is not None
@@ -79,7 +85,7 @@ def test_nothing_else_claims_an_equilibrium_reference():
     """If this starts failing, somebody added one -- check its uncertainty."""
     have = {n for n in ALL_MOLECULES
             if getattr(REF, n).equilibrium_geometry is not None}
-    assert have == {"WATER", "OZONE", "CHLOROFLUOROMETHANE", "VINYL_FLUORIDE"}, have
+    assert have == USABLE, have
 
 
 def test_an_unstated_uncertainty_is_not_treated_as_good():

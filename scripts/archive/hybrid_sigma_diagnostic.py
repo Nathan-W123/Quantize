@@ -116,8 +116,11 @@ def main() -> None:
     geo_path = _ROOT / "output" / f"theory_geometries_{METHOD}_{BASIS}.json"
     theory = json.loads(geo_path.read_text(encoding="utf-8")) \
         if geo_path.exists() else {}
+    # By key: the cache is shared and can also hold calibration-only entries
+    # (accuracy_upgrades_benchmark calibration=extended).
+    keys = {m.key for m in pool}
     per_mol = {k: {c: list(map(float, v)) for c, v in r["offsets"].items()}
-               for k, r in theory.items()}
+               for k, r in theory.items() if k in keys}
 
     out_path = _ROOT / "output" / "hybrid_sigma_diagnostic.json"
     out = json.loads(out_path.read_text(encoding="utf-8")) \

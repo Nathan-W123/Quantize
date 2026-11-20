@@ -739,6 +739,41 @@ def theory_geometries(pool):
     return cache
 
 
+#: A calibration entry counts at a level only if that level's minimum is the
+#: reference's conformer: an offset measured on another conformer is not a
+#: bond-length bias. HF/6-31G optimises H2O2 trans-planar (H-O-O-H 179.8 deg
+#: against r_e 113.5), 0.274 A from the reference after alignment; every
+#: ordinary theory-vs-reference difference on the benchmark set is 0.004 -
+#: 0.034 A (scored molecules too, except HF isocyanic acid's 30-degree angle,
+#: 0.150, which is scored and so not subject to this).
+CALIBRATION_CONFORMER_TOL_ANG = 0.10
+
+
+def aligned_rmsd(a, b) -> float:
+    """RMSD between two structures after the best rigid superposition."""
+    a = np.asarray(a, dtype=float) - np.mean(a, axis=0)
+    b = np.asarray(b, dtype=float) - np.mean(b, axis=0)
+    U, _s, Vt = np.linalg.svd(a.T @ b)
+    d = np.sign(np.linalg.det(U @ Vt))
+    R = U @ np.diag([1.0, 1.0, d]) @ Vt
+    return float(np.sqrt(np.mean(np.sum((a @ R - b) ** 2, axis=1))))
+
+
+def usable_calibration(calibration, theory: dict,
+                       tol_ang: float = CALIBRATION_CONFORMER_TOL_ANG) -> list:
+    """The calibration entries whose theory minimum is the reference's shape."""
+    keep = []
+    for mol in calibration:
+        d = aligned_rmsd(theory[mol.key]["coords"], mol.geometry)
+        if d <= tol_ang:
+            keep.append(mol)
+        else:
+            print(f"  [calibration] {mol.key} left out: its {METHOD}/{BASIS} "
+                  f"minimum is {d:.3f} A from the reference shape "
+                  f"(> {tol_ang:.2f}), a different conformer", flush=True)
+    return keep
+
+
 def offsets_pool(theory: dict, keys) -> dict:
     """Per-molecule bond offsets for exactly ``keys``, from the theory cache.
 
@@ -775,7 +810,10 @@ def main() -> None:
     # Nearly done by hand while an MP2 run was in flight, which is the only
     # reason this guard exists. The lock carries the pid so a stale one left by
     # a killed run can be told from a live one and cleared.
-    lock_path = out_path.with_suffix(".lock")
+    # One lock per level, not per results file: a default and a
+    # calibration=extended run at the same level write different results
+    # files but rewrite the same theory-geometry cache, whole.
+    lock_path = _ROOT / "output" / f"accuracy_upgrades_{tag}.lock"
     if lock_path.exists():
         holder = lock_path.read_text(encoding="utf-8").strip()
         pid = holder.split()[0] if holder else ""
@@ -817,6 +855,7 @@ def main() -> None:
         print(f"  offsets pool adds (calibration only): "
               f"{', '.join(m.key for m in calibration)}")
     theory = theory_geometries(pool + calibration)
+    calibration = usable_calibration(calibration, theory)
     per_molecule_offsets = offsets_pool(
         theory, [m.key for m in pool + calibration])
 
@@ -1237,7 +1276,8 @@ def print_summary_table(configs=None, results_dir=None) -> None:
     root = Path(results_dir) if results_dir is not None else _ROOT / "output"
     tables = {}
     for label, tag in _TABLE_LEVELS:
-        path = root / f"accuracy_upgrades_{tag}.json"
+        cal_tag = "_calext" if EXTENDED_CALIBRATION else ""
+        path = root / f"accuracy_upgrades_{tag}{cal_tag}.json"
         tables[label] = json.loads(path.read_text(encoding="utf-8")) \
             if path.exists() else {}
     summary = summary_rows(tables, configs)
