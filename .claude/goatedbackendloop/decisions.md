@@ -746,3 +746,10 @@
 - Alternatives considered: auto_systematic_sigma magnitudes (F13); implement N22 (user's call); done for now.
 - Source: auto-picked, no answer in 15 min (Q-29)
 - Revisit if: the user picks another option.
+
+### D-63 · The plain fit's stop short of its optimum: flagged, not changed (2026-11-21)
+- Decision: leave `run` (the plain fit) without the at-answer Hessian refresh; document the gap in the README's Running section and refresh_hessian_at_answer's docstring; backlog N23 stays open as a flagged trade-off.
+- Why: T-22: through `cli run` (HF/6-31G, HCOF and CH2ClF, warm and displaced starts) the plain answer is 0.03-0.6 mA rms (1.4 max atom) from its own optimum and its bond RMS moves up to 0.5 mA either way; the refresh reaches the optimum and removes a 0.5 mA thread-count variation for one Hessian (+15-21% wall time). The user's stated preference: accuracy-efficiency trade-offs are flagged, not implemented.
+- Alternatives considered: refresh at the end of every plain run; an opt-in config key (default off); done for now.
+- Source: auto-picked, no answer in 15 min (Q-30; the only option consistent with the stated preference)
+- Revisit if: the user chooses either alternative.

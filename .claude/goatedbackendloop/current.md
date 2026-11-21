@@ -1,6 +1,6 @@
 # Current task
 Task: T-22
-Status: building
+Status: done
 Request: (D-62, auto-picked at Q-29) measure why joint fits from a displaced start stop short of their optimum, on more molecules and starts (backlog N23); measurement first, any change proposed before it is made.
 
 ## Brief
@@ -17,7 +17,7 @@ Request: (D-62, auto-picked at Q-29) measure why joint fits from a displaced sta
 ## Graph
 - N1 · diagnose · stop-short on 9 molecules x {warm, cold} · after: none · done (t22/stopshort.json) · handoff: -
 - N2 · verify · fresh agent, own experiment through the CLI (HCOF, CH2ClF; theory-minimum and displaced starts) · after: N1 · done (t22/verify/results) · handoff: -
-- N3 · gate · propose (or not) · after: N1, N2 · asked (Q-30) · handoff: -
+- N3 · gate · propose (or not) · after: N1, N2 · done: flagged, not changed (D-63, auto-picked at Q-30); README Running note + refresh_hessian_at_answer docstring · handoff: -
 
 ## Progress
 - Code read: refresh_hessian_at_answer exists (one Hessian, re-converge,
@@ -65,8 +65,8 @@ Request: (D-62, auto-picked at Q-29) measure why joint fits from a displaced sta
   "Low acceptance (<20%)".
 
 ## Observations
+- 2026-11-21 · told only to measure through the CLI, the verifier found the multistart's stale-energy ranking (N24) and a thread-count non-determinism -- neither visible in my direct-optimizer measurement. The CLI gap was also smaller than the optimizer-level one (internal coordinates, multistart).
 
 ## Pending question
-- Q-30 (asked 20:01 UTC, deadline 20:17, send_later trig_01DkWovFcrfs9ncKWrGjwXf3): the N23 gate. 1 flag, don't change (recommended; the only auto-pickable one) · 2 refresh at the end of every plain run (+1 Hessian, +15-21%; user's call) · 3 opt-in config key, default off (user's call) · 4 done for now.
 
 ## Handoff

@@ -2260,7 +2260,13 @@ class MolecularOptimizer:
         under 0.8 mA, and made a restart from the answer stationary (about
         0.001 mA against 0.13-0.26 without). It costs one Hessian, so the
         plain fit does not do it; `quantize uncertainty` does, before any
-        width.
+        width. Measured again through `cli run` (HF/6-31G, formyl fluoride
+        and chlorofluoromethane, from their RHF minima and 0.03 A-displaced
+        starts): the plain answer is 0.03-0.6 mA rms (1.4 max) from where
+        one pass lands, which is the fit's own optimum (a restart chain
+        agrees to 1.4e-6 A); the bond RMS moves up to 0.5 mA; the pass adds
+        15-21% to the run. Left out of the plain fit for that cost
+        (decisions D-63).
 
         The first pass always runs. Another runs if re-converging carried the
         geometry past orca_update_thresh from the new Hessian, or -- where

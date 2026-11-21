@@ -517,6 +517,18 @@ input config, and writes `report.md`, `exports/residuals.csv`,
 `exports/final_geometry.csv`, and diagnostic plots under `plots/`.
 `report` rebuilds `report.md`, `report.html`, and plots from an existing run.
 
+`run` reports the fit where it stops, on the Hessian it last computed --
+usually at its start -- and that sits short of the fit's own optimum (where the
+Hessian is at the answer) by 0.8-1.8% of the distance the fit moved. Measured
+through `run` at HF/6-31G on formyl fluoride and chlorofluoromethane, from
+their RHF minima and from 0.03 Å-displaced starts: 0.03-0.6 mÅ RMS (1.4 mÅ for
+one atom), moving the RMS bond error against the reference by up to 0.5 mÅ in
+either direction; one of the four varied by 0.5 mÅ between identical runs on
+four threads. `quantize uncertainty` recomputes the Hessian at the answer and
+re-converges, which reaches the optimum and removes that variation for one
+Hessian (+15-21% of the run here); `run` leaves it out for that cost (backlog
+N23).
+
 Other commands: `lam-scan`, `lam-fit`, `lam-diagnose`, `uncertainty`, `benchmark`.
 Run `python -m cli --help` for the full list.
 

@@ -27,7 +27,7 @@ Sessions: 0 · Last consolidated: 2026-11-20
 - Observation: API checks on analytic water looked clean; the CLI config path showed 14/40 usable refits.
 - Evidence: 2026-11-13/16 · 55c7472 (API 200/200 vs CLI 14/40); e927d67 (unit test green, CLI start still wrong).
 - Adjustment: for every fix, run a before/after through the CLI on a real config as well as the API, and every mode the reproduction script covers.
-- Scope: workflow · Status: provisional · Outcomes: +2026-11-17 (round 10: 19 findings reproduced through the CLI first)
+- Scope: workflow · Status: provisional · Outcomes: +2026-11-17 (round 10: 19 findings reproduced through the CLI first) +2026-11-21 (T-22: through the CLI the verifier found a multistart selection bug and a thread-count non-determinism the direct-optimizer measurement could not see)
 
 ### L-05 · Before fixing to a reference, check what the reference changes
 - Observation: two "not converged" verdicts came from comparisons that changed more than one thing (another start; a fresh optimizer, i.e. a fresh Hessian).
@@ -95,3 +95,4 @@ Sessions: 0 · Last consolidated: 2026-11-20
 - 2026-11-21 L-11 added (time the change itself); L-10 outcome + (T-19); project L-18 outcome -.
 - 2026-11-21 project L-12 / L-15 outcomes + (T-20).
 - 2026-11-21 L-12 added (shallow-clone history); L-10 outcome + (T-21); project L-22 added.
+- 2026-11-21 L-04 outcome + (T-22).
