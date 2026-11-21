@@ -710,3 +710,10 @@
 - Source: auto-picked, no answer in 15 min (Q-24, recommended option)
 - Revisit if: the user picks another option; or a fit's own gradient term turns out to need the grid response too.
 
+
+### D-58 · Next task: measure the grid-response term the fit's gradient leaves out (backlog N22) (2026-11-21)
+- Decision: measure, at every B3LYP/6-31G(d) theory geometry, the difference between pyscf's default RKS gradient (what run_gradient returns) and the grid-response gradient, and what it does to the fit: in the benchmark's target-prior mode (expected nothing: the step replaces the gradient with H(x - x_target)) and in the CLI's no-target mode (the prior's centre is x_ref - H^-1 g, so it moves by H^-1 dg). Gradient cost with and without. Propose before any change.
+- Why: Q-25 option 1 (recommended): D-57 fixed optimise() but left run_gradient on the default gradient, unmeasured.
+- Alternatives considered: more r_e^SE references (N3); offsets alpha at the stationary geometry (N19 b-i); done for now.
+- Source: auto-picked, no answer in 15 min (Q-25)
+- Revisit if: the user picks another option.
