@@ -116,7 +116,9 @@ for _tok in sys.argv[1:]:
         QUANTUM_PRIOR_SIGMA_ANG = float(_tok.split("=", 1)[1])
 
 _ALL_OBJECTIVES = (
-    ("hybrid, split", {}),
+    # Explicit: the engine's default objective is joint, so {} here ran joint
+    # at the calibrated width under the "split" label.
+    ("hybrid, split", {"objective_mode": "split"}),
     ("hybrid, joint prior", {"objective_mode": "joint",
                              "quantum_prior_sigma_ang": QUANTUM_PRIOR_SIGMA_ANG}),
 )

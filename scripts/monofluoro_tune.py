@@ -182,7 +182,10 @@ def main() -> None:
             row, key = [], f"{mol.name} / {label}"
             rec = {}
             for c in SPLIT_CUTOFFS:
-                g = run(mol, isos, starts[mol.key], sv_threshold=float(c))
+                # objective_mode explicit: the engine defaults to joint, where
+                # sv_threshold is not the partition this scan is about.
+                g = run(mol, isos, starts[mol.key], objective_mode="split",
+                        sv_threshold=float(c))
                 e = errors(mol, g)
                 rec[str(c)] = {k: v for k, v in e.items() if k != "internals"}
                 row.append(e["rms_bond_ma"])

@@ -135,7 +135,9 @@ def main() -> None:
           f"{time.time() - t0:>6.0f}s")
 
     objectives = [
-        ("split", dict()),
+        # Explicit: the engine's default objective is joint, so an empty dict
+        # here ran joint at the calibrated width under the "split" label.
+        ("split", dict(objective_mode="split")),
         ("joint prior 0.005A", dict(objective_mode="joint",
                                     quantum_prior_sigma_ang=0.005)),
     ]
