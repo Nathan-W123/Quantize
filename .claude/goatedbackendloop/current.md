@@ -29,8 +29,8 @@ change proposed before it is made.
 - N5 · build · engine projector + test (fails on the old code) + full suite on 3.12 · after: N4 · done (b29cec3) · handoff: -
 - N6 · build · rerun every row at both levels from the commit (worktrees, warm cache, chi2 logged) · after: N5 · done: RHF 135, B3LYP 113, all b29cec3 · handoff: t15/final (merged JSON, figures.txt, tables), reports/accuracy_upgrades
 - N6b · verify · fresh agent: is AF B3LYP's stationary-point alpha shift (0.3-1.3 MHz) removed noise or a projector defect -- own Hessians, orientation and grid tests · after: N6 · done: removed contamination, projector correct (see Progress) · handoff: t15/verify_af
-- N7 · verify · fresh agent: the committed rows and README against the JSON · after: N6 · pending · handoff: -
-- N8 · build · README table/provenance + benchmark docstring (rescale caveat) · after: N6 · done (uncommitted -> next commit) · handoff: -
+- N7 · verify · fresh agent: the committed rows and README against the JSON · after: N6 · running (own code, not figures.py/--table; t15/verify_n7) · handoff: -
+- N8 · build · README table/provenance + benchmark docstring (rescale caveat) · after: N6 · done (ebb41e0) · handoff: -
 
 ## Progress
 - 19:52 UTC: t15/proj from HEAD (129ca37 code = 2eb9b6c engine), caches
