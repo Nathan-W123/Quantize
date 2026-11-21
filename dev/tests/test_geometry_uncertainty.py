@@ -240,15 +240,33 @@ def test_symmetry_equivalent_bonds_get_equal_uncertainties():
 
 
 def test_rigid_modes_do_not_leak_into_the_widths():
-    """Translations and rotations are null in both blocks.
+    """Translations and rotations are null in both blocks, so the posterior
+    covariance must carry none of its variance along them.
 
-    Left in, they make the covariance singular and the propagated widths blow
-    up. A finite answer here is the evidence they were removed.
+    Checked on the covariance itself, against a rigid basis built here: its
+    share along the six rigid directions is 4e-17 (measured). This used to
+    assert only that every width was under 1.0 -- with the rigid directions
+    let into physical_basis the covariance is all rigid (share 1.0) and the
+    bonds widen 42x, 2.8e-4 -> 1.2e-2 Angstrom, which still passed it.
     """
-    unc = _run(_opt())
-    assert all(s < 1.0 for s in unc.values()), (
-        f"implausibly large widths suggest the rigid subspace was not removed: {unc}"
-    )
+    opt = _opt()
+    unc = _run(opt)
+    cov, _ = opt.laplace_approximation()
+    x = np.asarray(opt.coords, dtype=float)
+    c = x - x.mean(axis=0)
+    cols = []
+    for k in range(3):
+        t = np.zeros_like(x); t[:, k] = 1.0
+        cols.append(t.ravel())
+        e = np.zeros(3); e[k] = 1.0
+        cols.append(np.cross(np.tile(e, (len(x), 1)), c).ravel())
+    q, sv, _ = np.linalg.svd(np.column_stack(cols), full_matrices=False)
+    q = q[:, sv > 1e-8 * sv.max()]
+    cov = np.asarray(cov, dtype=float)
+    share = np.linalg.norm(q.T @ cov @ q) / np.linalg.norm(cov)
+    assert share < 1e-10, f"rigid share of the covariance {share:.2e}"
+    # Measured 2.8e-4 Angstrom on both bonds (1.2e-2 with the rigid leak).
+    assert unc["O1-H2"] < 1e-3 and unc["O1-H3"] < 1e-3, unc
 
 
 def test_class_floor_widens_only_its_own_class():

@@ -1,4 +1,4 @@
-﻿"""Analytic vs finite-difference rotational-constant Jacobian (spectral.py)."""
+"""Analytic vs finite-difference rotational-constant Jacobian (spectral.py)."""
 
 import numpy as np
 

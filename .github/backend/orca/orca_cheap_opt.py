@@ -1,4 +1,4 @@
-﻿"""
+"""
 Single-point ORCA **geometry optimization** using a lightweight method/basis.
 
 Intended only for **cheap initial guesses** before expensive hybrid inversion. Not

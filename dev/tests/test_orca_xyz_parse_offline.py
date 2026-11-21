@@ -1,4 +1,4 @@
-﻿"""Offline parsers for cheap-opt xyz output (no ORCA binary needed)."""
+"""Offline parsers for cheap-opt xyz output (no ORCA binary needed)."""
 
 from __future__ import annotations
 

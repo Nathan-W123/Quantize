@@ -1,4 +1,4 @@
-﻿"""
+"""
 Geometric computation of RAM-lite torsion parameters F and rho.
 
 Provides functions to derive the internal-rotation kinetic constant F

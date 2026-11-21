@@ -1,4 +1,4 @@
-﻿"""
+"""
 Bayesian optimization for Quantize geometry workflows.
 
 Two common uses:

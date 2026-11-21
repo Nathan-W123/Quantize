@@ -1,4 +1,4 @@
-﻿"""
+"""
 Quantum engine: Wilson B-matrix and ORCA gradient/Hessian parser.
 
 Primitive coordinate derivative code adapted from geomeTRIC

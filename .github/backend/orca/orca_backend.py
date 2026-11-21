@@ -1,4 +1,4 @@
-﻿"""
+"""
 ORCA quantum chemistry backend.
 
 Encapsulates all ORCA subprocess management, input-file generation, output

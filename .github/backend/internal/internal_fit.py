@@ -1,4 +1,4 @@
-﻿"""
+"""
 Internal-coordinate data structures and transformations.
 
 Phase 1 — InternalCoordinate, InternalCoordinateSet:

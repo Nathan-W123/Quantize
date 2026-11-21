@@ -1,4 +1,4 @@
-﻿"""Tests for backend/torsion_lam_integration.py (Phase 10: LAM correction integration)."""
+"""Tests for backend/torsion_lam_integration.py (Phase 10: LAM correction integration)."""
 
 from __future__ import annotations
 

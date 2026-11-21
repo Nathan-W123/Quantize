@@ -1,4 +1,4 @@
-﻿"""Tests for backend.rovib_tables.load_rovib_correction_table."""
+"""Tests for backend.rovib_tables.load_rovib_correction_table."""
 
 from __future__ import annotations
 

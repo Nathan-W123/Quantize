@@ -1,4 +1,4 @@
-﻿"""
+"""
 Loader for user-supplied rovibrational correction tables.
 
 Two CSV layouts are supported, distinguished by their column names:

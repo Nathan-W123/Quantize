@@ -1,4 +1,4 @@
-﻿"""
+"""
 Line intensities and nuclear-spin statistical weights for the RAM torsion model.
 
 Implements:

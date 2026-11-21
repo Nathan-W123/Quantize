@@ -1,4 +1,4 @@
-﻿"""
+"""
 Geometry seeds used in behavioural tests flow through::
 
     coarse guess (bond graph / PubChem) → :func:`backend.orca_cheap_opt.minimize_geometry_cheap_orca`

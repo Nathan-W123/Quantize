@@ -1,4 +1,4 @@
-﻿"""Tests for backend/torsion_geometry.py (Phase 7: geometry coupling)."""
+"""Tests for backend/torsion_geometry.py (Phase 7: geometry coupling)."""
 
 from __future__ import annotations
 

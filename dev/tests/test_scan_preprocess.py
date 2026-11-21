@@ -1,4 +1,4 @@
-﻿"""Tests for backend/scan_preprocess.py (Phase 3: scan preprocessing)."""
+"""Tests for backend/scan_preprocess.py (Phase 3: scan preprocessing)."""
 
 from __future__ import annotations
 

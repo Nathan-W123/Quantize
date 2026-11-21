@@ -803,3 +803,11 @@
 - Alternatives considered: bundle only; configurable thresholds; done for now.
 - Source: auto-picked, no answer in 15 min (Q-37)
 - Revisit if: the flag fires on cases where the starts are not genuinely undecided.
+
+### D-71 · Next task: F3 hygiene (BOMs, scripts package, rigid-mode test) (2026-11-21)
+- Decision: confirm and fix three F3 items: the UTF-8 BOMs, `scripts/` as a namespace package, and the `all(s < 1.0)` proxy in test_rigid_modes_do_not_leak_into_the_widths.
+- Why: Q-38 option 1 (recommended).
+- Outcome (T-27): BOMs were in 57 tracked .py files (F3 named two, quantize.py and spectral.py, which had them too); every one failed ast.parse on utf-8-decoded text; stripped (first line only), all 243 parse. `scripts/` as a namespace package lost to a regular `scripts` package placed later on sys.path (measured: ImportError on scripts.uncertainty_plots, which cli.py imports); `scripts/__init__.py` added, after which ours wins. The test now asserts the covariance's rigid share < 1e-10 (measured 4e-17) and bond widths < 1e-3 A (measured 2.8e-4); with the rigid directions let into physical_basis it fails (share 1.0, widths 1.2e-2 A), where the old assertion passed.
+- Alternatives considered: N19 chi-square rescale switch; model_error.auto as default, N22, N23 (user's call); done for now.
+- Source: auto-picked, no answer in 15 min (Q-38)
+- Revisit if: -

@@ -1,4 +1,4 @@
-﻿"""Cheap ORCA-relaxed seeds (skipped when ORCA is missing).
+"""Cheap ORCA-relaxed seeds (skipped when ORCA is missing).
 
 The alias parity cell below stays graph-only — it does **not** call ORCA.
 """

@@ -1,4 +1,4 @@
-﻿"""
+"""
 RAM-lite reliability scoring for torsion-rotation Hamiltonians.
 
 Provides assess_ram_lite_reliability() which evaluates a TorsionHamiltonianSpec

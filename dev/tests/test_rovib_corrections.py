@@ -1,4 +1,4 @@
-﻿"""
+"""
 Tests for rovibrational correction pipeline (M1-M4 + electronic/BOB).
 
 Acceptance criteria from the plan:

@@ -1,4 +1,4 @@
-﻿"""
+"""
 Master optimizer — ties SpectralEngine, QuantumEngine, and SubspaceOptimizer together.
 
 Workflow

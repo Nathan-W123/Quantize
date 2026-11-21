@@ -1,4 +1,4 @@
-﻿"""Tests for backend/torsion_intensities.py (Phase 3: line intensities)."""
+"""Tests for backend/torsion_intensities.py (Phase 3: line intensities)."""
 
 from __future__ import annotations
 

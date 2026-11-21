@@ -1,4 +1,4 @@
-﻿"""
+"""
 Uncertainty utilities for torsion Hamiltonian parameters.
 
 This module is intentionally independent of external QC dependencies and operates

@@ -1,4 +1,4 @@
-﻿"""SDF parsing tests (no HTTP)."""
+"""SDF parsing tests (no HTTP)."""
 
 from __future__ import annotations
 

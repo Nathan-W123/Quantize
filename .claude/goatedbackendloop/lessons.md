@@ -27,7 +27,7 @@ once by a container swap).
 
 ### L-09 · Bound tests by a measured scale, never by a round number
 - Adjustment: print the quantity and its scale before writing a tolerance; set the bound from the measurement with stated headroom.
-- Evidence: 2026-11-10 · atol=1e-18 on a norm-3.1e4 projector. +2026-11-20 (T-15: a bound set by measurement -- water e2e 0.65x -- had measured the defect; when a fix makes such a test fail, check its quantity against an exact reference, here B_e(r_e), before calling either side wrong). +2026-11-21 (T-16: an exact-zero assertion on a re-converged geometry broke under a numpy upgrade; bounded by the measured restart scale, with the defect's own move measured on the other side). -2026-11-21 (T-17: I wrote a new test's bounds and "measured" comments before measuring; two of three failed on first run -- measure, then write the bound). -T-18 (the same slip again in the convergence tests' comments, caught before commit). · Scope: project · Status: validated
+- Evidence: 2026-11-10 · atol=1e-18 on a norm-3.1e4 projector. +2026-11-20 (T-15: a bound set by measurement -- water e2e 0.65x -- had measured the defect; when a fix makes such a test fail, check its quantity against an exact reference, here B_e(r_e), before calling either side wrong). +2026-11-21 (T-16: an exact-zero assertion on a re-converged geometry broke under a numpy upgrade; bounded by the measured restart scale, with the defect's own move measured on the other side). -2026-11-21 (T-17: I wrote a new test's bounds and "measured" comments before measuring; two of three failed on first run -- measure, then write the bound). -T-18 (the same slip again in the convergence tests' comments, caught before commit). +T-27 (the rigid-mode test's 1.0 bound passed a leak that widened the bonds 42x; replaced with the measured share 4e-17 and width 2.8e-4 A; F3's own "2 BOM files" was unmeasured -- 57). · Scope: project · Status: validated
 
 ### L-11 · A fix in one objective mode can break another
 - Adjustment: when a fix touches the step, the certificate or the bootstrap, rerun every reproduction script the verifiers left, on both versions, for every objective mode they cover.
@@ -43,7 +43,7 @@ once by a container swap).
 
 ### L-15 · A green test must be shown to fail, for every branch it claims
 - Adjustment: break the guarded property in the code and see the test fail, once per branch its docstring names, with a fixture that exercises it; assert work skipped (call counts), not speed ratios; compare against an inlined old formula, never the function's wrapper; assert the fixture's premise in the test.
-- Evidence: 2026-11-17 · round 10 A-4 / A-5 (a residual-only file passing, a sampler compared with itself); +2026-11-19 (a rescale test that widened, not tightened). +2026-11-21 (T-20: each new branch removed in turn failed exactly its own test). · Scope: project · Status: validated
+- Evidence: 2026-11-17 · round 10 A-4 / A-5 (a residual-only file passing, a sampler compared with itself); +2026-11-19 (a rescale test that widened, not tightened). +2026-11-21 (T-20: each new branch removed in turn failed exactly its own test). +T-27 (leaky physical_basis monkeypatch: the old assertion passed, the new one fails). · Scope: project · Status: validated
 
 ### L-16 · Break an aggregate diagnostic down by row before naming its cause
 - Adjustment: before attributing a failed check or ratio to a cause, print it per species and component and check whether the outliers share a property (precision, source, site).

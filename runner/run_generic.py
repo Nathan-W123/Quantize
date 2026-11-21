@@ -1,4 +1,4 @@
-﻿"""
+"""
 Generic molecule runner — consumes a fully-specified YAML input file.
 
 Called by runner/run_from_config.py when the YAML contains an `elements` key.

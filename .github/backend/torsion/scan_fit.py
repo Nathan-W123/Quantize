@@ -1,4 +1,4 @@
-﻿"""
+"""
 Torsion scan Fourier potential fitting and coverage diagnostics.
 
 Potential convention (TorsionFourierPotential / direct Fourier form):

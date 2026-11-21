@@ -1,4 +1,4 @@
-﻿"""
+"""
 Report generation and CSV/JSON exports for rovibrational corrections.
 
 These functions consume the same isotopologue dictionaries used by

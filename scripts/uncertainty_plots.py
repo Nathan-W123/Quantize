@@ -1,4 +1,4 @@
-﻿import os
+import os
 import numpy as np
 import matplotlib.pyplot as plt
 from backend.internal.internal_fit import InternalCoordinateSet

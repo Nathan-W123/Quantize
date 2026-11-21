@@ -1,4 +1,4 @@
-﻿"""Tests for backend/torsion_fitter.py (Phase 6: parameter fitting)."""
+"""Tests for backend/torsion_fitter.py (Phase 6: parameter fitting)."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-﻿import numpy as np
+import numpy as np
 from scipy import constants
 from backend.conformers.conformer_mixture import ConformerMixture
 #: Relative floor on every observation sigma, as a fraction of the constant.

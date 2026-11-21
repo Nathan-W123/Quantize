@@ -1,4 +1,4 @@
-﻿"""
+"""
 File-based cache for ORCA rovib (VPT2) corrections.
 
 A cache key is the SHA-256 hash of the geometry, isotopologue masses, method,

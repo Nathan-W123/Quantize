@@ -1,4 +1,4 @@
-﻿"""
+"""
 Symmetry blocks and tunneling splitting for the RAM torsion-rotation Hamiltonian.
 
 Implements:

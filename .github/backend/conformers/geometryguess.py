@@ -1,4 +1,4 @@
-﻿"""
+"""
 Initial geometry guess utilities.
 
 These helpers provide deterministic, template-based starting geometries so

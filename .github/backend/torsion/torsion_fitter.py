@@ -1,4 +1,4 @@
-﻿"""
+"""
 Iterative least-squares fitting of RAM-lite torsion Hamiltonian parameters.
 
 Implements a damped Gauss-Newton loop using the finite-difference Jacobian

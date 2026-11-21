@@ -1,4 +1,4 @@
-﻿"""
+"""
 First-pass torsional averaging for effective rotational constants.
 
 This module computes effective motion-averaged A/B/C constants from a supplied

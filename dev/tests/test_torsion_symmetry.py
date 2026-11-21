@@ -1,4 +1,4 @@
-﻿"""Tests for backend/torsion_symmetry.py (Phase 9: symmetry and tunneling)."""
+"""Tests for backend/torsion_symmetry.py (Phase 9: symmetry and tunneling)."""
 
 from __future__ import annotations
 

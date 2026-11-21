@@ -1,4 +1,4 @@
-﻿"""
+"""
 Full torsion-rotation Hamiltonian extending RAM-lite.
 
 Implements a coupled torsion-rotation Hamiltonian in the direct-product

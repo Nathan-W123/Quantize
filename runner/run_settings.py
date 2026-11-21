@@ -1,4 +1,4 @@
-﻿import os
+import os
 from copy import deepcopy
 
 from backend.spectral.spectral_model import normalize_spectral_model

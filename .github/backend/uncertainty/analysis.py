@@ -1,4 +1,4 @@
-﻿import numpy as np
+import numpy as np
 from scipy.stats import skew, kurtosis, gaussian_kde
 from scipy.signal import find_peaks
 from backend.spectral.spectral import SpectralEngine

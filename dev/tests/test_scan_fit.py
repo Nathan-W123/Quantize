@@ -1,4 +1,4 @@
-﻿"""
+"""
 Tests for backend.scan_fit.
 
 Covers:

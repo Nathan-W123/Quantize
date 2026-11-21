@@ -1,4 +1,4 @@
-﻿"""
+"""
 Phase 4: Acetaldehyde benchmark and RAM-lite reliability scoring.
 
 Validates the torsion pipeline against acetaldehyde (CH3CHO) literature parameters:

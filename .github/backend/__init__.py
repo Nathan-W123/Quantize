@@ -1,4 +1,4 @@
-﻿# Backend package for optimization engine modules.
+# Backend package for optimization engine modules.
 #
 # Importing the backend modules below triggers their @register_backend decorators
 # so that get_backend("orca") / get_backend("psi4") work anywhere in the codebase.

@@ -1,4 +1,4 @@
-﻿"""Tests for backend/torsion_rot_hamiltonian.py (Phase 8: full torsion-rotation Hamiltonian)."""
+"""Tests for backend/torsion_rot_hamiltonian.py (Phase 8: full torsion-rotation Hamiltonian)."""
 
 from __future__ import annotations
 

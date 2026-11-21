@@ -1,4 +1,4 @@
-﻿"""
+"""
 Psi4 quantum chemistry backend.
 
 Thin wrapper around the existing :class:`~backend.Psi4.Psi4Engine` that

@@ -1,4 +1,4 @@
-﻿"""
+"""
 Phase 11: LAM Benchmarks and Validation.
 
 Validates the RAM-lite torsion-rotation implementation against:
