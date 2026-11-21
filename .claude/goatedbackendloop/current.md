@@ -46,5 +46,6 @@ Request: (D-64, auto-picked at Q-31) the multistart ranks its starts on a stale 
 - 2026-11-21 · N24's premise ("picked the wrong start") was true but immaterial: measuring the true energy at every answer showed every misrank was a near-tie (<= 1.4e-6 Ha). Measuring what the bug changes, not only that it exists, turned a planned fix into a note.
 
 ## Pending question
+- Q-33 (asked 21:04 UTC, deadline 21:20, send_later trig_01VFww96HDqEVGntNzWhzuVP): what's next. 1 auto_systematic_sigma magnitudes (F13, recommended) · 2 more r_e^SE references (N3) · 3 implement a flagged trade-off, N22 or N23 (user's call; never auto-picked) · 4 done for now.
 
 ## Handoff
