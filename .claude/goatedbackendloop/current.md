@@ -44,5 +44,6 @@ Request: (D-66, auto-picked at Q-33) auto_systematic_sigma's magnitudes (backlog
 - 2026-11-21 · five water tests had been tuned to the old estimate's water numbers (43x / 62x, 7.9-71 GHz, anti-monotonic); one of them was the stated reason the option is off by default, and it no longer holds. Measured each value before re-pinning it (L-09).
 
 ## Pending question
+- Q-35 (asked 22:03 UTC, deadline 22:19): what's next. 1 the other two defect-based corrections, defect_bias_floor / defect_bias_scale (recommended) · 2 make model_error.auto the default (user's call) · 3 implement N22 or N23 (user's call) · 4 done for now.
 
 ## Handoff
