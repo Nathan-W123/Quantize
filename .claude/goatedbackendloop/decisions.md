@@ -696,3 +696,10 @@
 - Source: auto-picked, no answer in 15 min (Q-22, recommended option)
 - Revisit if: the user picks another option; a backend's Hessian breaks the rotational rule in a way the projection does not cover; or the B3LYP theory geometries are re-converged (N3 found HCOF 2.6e-4 A from its tight minimum, as large an alpha effect).
 
+### D-56 · Next task: measure how far the theory geometries sit from tight minima (backlog N21) (2026-11-21)
+- Decision: measure, per molecule at both levels (the nine scored plus the calibration-only ones), the distance from the cached theory geometry to a tight minimum of the same surface -- a Newton step on the cached (sum-rule-repaired) Hessian, checked against real tight optimisations -- and the bond-length changes; then, only if they matter, what they do to the rows. Propose before any engine or benchmark change.
+- Why: Q-23 option 1 (recommended): the T-17 grid verifier found formyl fluoride's B3LYP theory geometry 2.6e-4 A from its tight minimum (optimiser gtol 2e-5 Ha/A on the largest component), moving A_e 17 MHz and alpha_A 0.42 MHz -- as large as the Hessian fix.
+- Alternatives considered: more r_e^SE references (N3); offsets alpha at the stationary geometry (N19 b-i); done for now.
+- Source: auto-picked, no answer in 15 min (Q-23)
+- Revisit if: the user picks another option.
+
