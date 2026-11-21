@@ -1,6 +1,6 @@
 # Current task
 Task: T-18
-Status: building
+Status: done
 Request: (now D-57, a change) measure how far the theory geometries sit from tight minima of their own surface (backlog N21; D-56, auto-picked at Q-23); measurement only, any change proposed before it is made.
 
 ## Brief
@@ -25,7 +25,7 @@ Request: (now D-57, a change) measure how far the theory geometries sit from tig
 - N4 · build · optimise(): grid-response gradient for DFT + convergence check; test failing on the old code; CI selection on 3.12 · after: N3 · done (4614cd0; 1619 passed) · handoff: -
 - N5 · build · regenerate the B3LYP theory geometries, rerun every B3LYP row (113), archive · after: N4 · done 15:20 (113 rows at 4614cd0, archived; RHF stays ba67cfe) · handoff: t18/final
 - N6 · build · README + docstrings · after: N5 · done (31f9c84) · handoff: t18/final/figures.txt, table_best.txt
-- N7 · verify · fresh agent: prose vs JSON, own code · after: N6 · running (t18/verify_n7) · handoff: -
+- N7 · verify · fresh agent: prose vs JSON, own code · after: N6 · done: 3 wrong (the grid-response cost claim, 0.047 that was the tight run's -> 0.052, a stale 5.7 -> 5.85), several misleading (which leg / which reference a move is on, FE's 0.04 margin, ozone's old-pool figures); fixed in d01a856 · handoff: -
 
 ## Progress
 - N1 RHF (12 geometries; t18/newton_hf.json): |g|max 2e-6 to 1.8e-5 Ha/A
@@ -97,6 +97,7 @@ Request: (now D-57, a change) measure how far the theory geometries sit from tig
   side water base family 0.218, ozone offsets family 0.227.
 
 ## Observations
+- 2026-11-21 · the fact-check found a tight-run number (0.047) quoted for the regenerated geometry (0.052) and a cost claim never measured ("twice as much per gradient"; measured: same per gradient, twice the evaluations). Quote the run the shipped artefact came from.
 - 2026-11-21 · the same slip as T-17 within the hour: a test comment said "Measured" before the measurement. Write measured-value comments only after the run that prints them.
 
 ## Pending question
