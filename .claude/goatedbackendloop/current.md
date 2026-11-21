@@ -20,8 +20,8 @@ Request: measure how far the theory geometries sit from tight minima of their ow
 
 ## Graph
 - N1 · diagnose · gradient + Newton step at every theory geometry, both levels · after: none · done (t18/newton_{hf,b3lyp}.json) · handoff: -
-- N2 · verify · tight optimisations vs the Newton estimate · after: N1 · RHF done; B3LYP VF done (see Progress); all 12 B3LYP tight minima of the default-grid energy running (t18/gr_opt.py, gr_a/gr_b logs) · handoff: t18/opt_vinyl_fluoride.json
-- N3 · gate · propose (or not) tighter theory geometries · after: N1, N2 · pending · handoff: -
+- N2 · verify · tight optimisations vs the Newton estimate · after: N1 · done: RHF Newton exact; B3LYP needs grid-response optimisations (all 12 run, t18/gr_*.json) · handoff: t18/gr_a.log, gr_b.log
+- N3 · gate · propose (or not) tighter theory geometries · after: N1, N2 · asked (Q-24) · handoff: -
 
 ## Progress
 - N1 RHF (12 geometries; t18/newton_hf.json): |g|max 2e-6 to 1.8e-5 Ha/A
@@ -56,8 +56,24 @@ Request: measure how far the theory geometries sit from tight minima of their ow
   6e-6, theory bond RMS 4.147 (max bond 0.210). The cached theory geometry
   is 0.21 mA (worst bond) from the true minimum of its own energy.
 
+- N2 all 12 B3LYP (grid-response gradient, gtol 1e-6, from the cached
+  theory geometry): converge to |g| 1.7e-6 to 1.4e-5 Ha/A (start 7.9e-6 to
+  3.2e-4). Largest bond change: FE 0.241, HCOF 0.236, VF 0.208, AF 0.146,
+  CH2ClF 0.059, ozone 0.016, FA 0.014, HNCO 0.008, water 0.003, calibration
+  <= 0.009 mA. B3LYP base theory column: VF 4.220 -> 4.146, AF 9.438 ->
+  9.478, FE 6.630 -> 6.620, HCOF 5.542 -> 5.657, CH2ClF 25.102 -> 25.079,
+  ozone 7.586 -> 7.570, rest <= 0.007; mean 9.193 -> 9.196.
+- Toward the converged grid: against the T-17 verifier's level-9 minima,
+  HCOF bond RMS 0.093 (old theory geometry) -> 0.047 mA (new), ozone 0.010
+  -> 0.006.
+
 ## Observations
 
 ## Pending question
+Q-24 (asked 09:55 UTC, deadline ~10:10 UTC; send_later scheduled): fix the B3LYP theory geometries?
+1. Fix pyscf_backend.optimise (grid-response gradient for DFT + convergence check), regenerate B3LYP theory geometries, rerun every B3LYP row, update docs (Recommended; auto-pick)
+2. Add the convergence check only (warn on an unconverged optimisation); rows unchanged
+3. Leave it; document it as a known B3LYP default-grid limitation
+4. Done for now
 
 ## Handoff
