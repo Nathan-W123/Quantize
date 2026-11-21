@@ -101,5 +101,6 @@ Request: (now D-57, a change) measure how far the theory geometries sit from tig
 - 2026-11-21 · the same slip as T-17 within the hour: a test comment said "Measured" before the measurement. Write measured-value comments only after the run that prints them.
 
 ## Pending question
+- Q-25 (asked 15:16 UTC, deadline 15:32, send_later trig_015WfftBF5Z41pPHGPJkG2Jc): what's next. 1 measure grid response in run_gradient (N22, recommended) · 2 more r_e^SE references (N3) · 3 offsets alpha at the stationary geometry (N19 b-i) · 4 done for now.
 
 ## Handoff
