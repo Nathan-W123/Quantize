@@ -6,7 +6,7 @@ not the derivative of the energy L-BFGS-B is minimising. The line search then
 stops on its energy tolerance wherever the energy stops falling, with the
 gradient still well above gtol: the cached B3LYP/6-31G(d) theory geometries
 were left at |g| up to 3.2e-4 Ha/A against a gtol of 2e-5, bonds up to
-0.25 mA from the energy's minimum (fluoroethane, formyl fluoride, vinyl
+0.24 mA from the energy's minimum (fluoroethane, formyl fluoride, vinyl
 fluoride), and optimise() returned them without a word (decisions D-57). With
 the grid response the same twelve converge (regenerated at the default
 gtol: <= 2.0e-5).

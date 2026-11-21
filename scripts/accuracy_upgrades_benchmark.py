@@ -78,7 +78,7 @@ estimation on 6/9 and 5/9 and theory alone on 7/9 and 8/9, and improves from
 RHF to B3LYP on eight of nine molecules -- by a factor of 11 on water -- the
 exception being chlorofluoromethane (5.43 -> 8.14) -- its bond offsets, not
 the level: at B3LYP the C-Cl offset (methyl chloride's) under-corrects it by
-12.8 mA and the C-F offset over-corrects by 5.7, a combination two Cl
+12.8 mA and the C-F offset over-corrects by 5.85, a combination two Cl
 isotopologues cannot see (scripts/archive/chlorofluoromethane_level_gap.py).
 The
 calibration pool (2026-11-20) moved the offset rows: chlorofluoromethane's C-Cl
@@ -109,7 +109,7 @@ chi-square of the rerun lies between 3 and 5, so no row is decided by the
 threshold; on the low side only two B3LYP fits have checks between 1/5 and
 1/3, water's base family (0.218) and ozone's offsets family (0.227), where the
 extra refit stops at the row's model-error floor and moves it by < 1e-5 mA
-(measured at thresholds 3.0 and 5.0 before D-52, at the same chi-squares;
+(measured at thresholds 3.0 and 5.0 before D-52, at chi-squares within 1e-3;
 the sum rule, D-55, leaves those checks where they were).
 
 The sum rule matters at B3LYP only. pyscf's analytic RKS Hessian has no
@@ -133,16 +133,22 @@ are re-optimised at 4614cd0 (D-57). pyscf's DFT gradient leaves out the
 grid-weight response, so it is not the derivative of the energy the
 optimiser minimises, and L-BFGS-B had stopped where the energy stopped
 falling: up to 16x above its gtol (vinyl fluoride, |g| 3.2e-4 Ha/A), bonds
-up to 0.25 mA from the energy's minimum. On the grid-response gradient all
-twelve converge (|g| <= 2.0e-5), and formyl fluoride's bonds land nearer
-the level-9 grid's minimum (0.093 -> 0.047 mA RMS). The theory column moves
-by up to 0.12 (formyl fluoride 5.54 -> 5.66), mixed estimation by up to 0.35
-(chlorofluoromethane), the hybrid by 0.065 or less; fluoroethane's best-of
-hybrid now beats theory alone (6.58 against 6.62).
+up to 0.24 mA (worst bond) from the energy's minimum. On the grid-response
+gradient all twelve converge (|g| <= 2.0e-5), and formyl fluoride's bonds
+land nearer the level-9 grid's minimum (0.093 -> 0.052 mA RMS). On a row,
+the theory leg moves by up to 0.12 (formyl fluoride's base row, 5.54 ->
+5.66; in the best-of table above at most 0.08, vinyl fluoride 4.22 ->
+4.14), mixed estimation by up to 0.35 (chlorofluoromethane, whose own
+geometry moved < 0.01 mA; the best-of ME column at most 0.28, fluoroethane
+6.44 -> 6.16), the hybrid by 0.065 or less against the primary references
+and 0.068 against r_e (chlorofluoromethane's offsets family, 5.91 -> 5.98).
+Fluoroethane's best-of hybrid now beats theory alone by 0.04 (6.58 against
+6.62; mixed estimation's 6.16 beats both; at the base configuration theory
+still edges it, 6.620 against 6.622), which is the 7/9 -> 8/9.
 
 At B3LYP, ozone's offsets row
-moves toward its r_s reference (1.43 -> 0.03) and away from its r_e (0.37 ->
-1.03): the O-O offset comes from hydrogen peroxide's single bond. With the base configuration alone (`configs=base`) the means are
+moves toward its r_s reference (0.03; 1.43 with the earlier pool, at an older
+vintage) and away from its r_e (1.03; 0.37 then): the O-O offset comes from hydrogen peroxide's single bond. With the base configuration alone (`configs=base`) the means are
 21.47 / 17.35 / 11.03 at RHF and 9.20 / 5.45 / 4.58 at B3LYP.
 
 Where theory alone still beats the hybrid -- vinyl fluoride at both levels,

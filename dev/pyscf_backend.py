@@ -411,11 +411,12 @@ class PySCFBackend(QuantumBackend):
         out by default, and without it L-BFGS-B's line search stops on its
         energy tolerance wherever the energy stops falling: the B3LYP/6-31G(d)
         benchmark geometries were left at |g| up to 3.2e-4 Ha/Ang against a
-        gtol of 2e-5, bonds up to 0.25 mAng from the energy's minimum
+        gtol of 2e-5, bonds up to 0.24 mAng from the energy's minimum
         (decisions D-57); with it all twelve converge (regenerated at the
         default gtol: <= 2.0e-5 Ha/Ang), and formyl fluoride's bonds come
-        out nearer a converged grid's (0.093 -> 0.047 mAng RMS). Each gradient
-        costs about twice as much.
+        out nearer a converged grid's (0.093 -> 0.052 mAng RMS). A gradient
+        costs about the same; an optimisation takes about twice as many
+        (vinyl fluoride: 109 evaluations against 58).
 
         The result's convergence is checked, not assumed: ``last_optimise``
         records the stop reason, iterations and final |g| (Ha/Ang, the

@@ -55,8 +55,8 @@ scored -- methyl chloride, hydrogen cyanide and hydrogen peroxide
 HF/6-31G puts hydrogen peroxide trans-planar, another conformer, so it is left
 out at RHF. One known cost: its O–O is a single bond and ozone's is not, so at
 B3LYP the `offsets` fit of ozone moves toward its r_s reference (0.03 mÅ in
-the best-of table) but away from its r_e (0.37 -> 1.03 mÅ). `calibration=scored`
-reproduces the earlier pool.
+the best-of table) but away from its r_e (1.03 mÅ; 0.37 with the earlier pool,
+at an older code vintage). `calibration=scored` reproduces the earlier pool.
 
 Most of these references are r_s or effective structures, which sit several mÅ
 from equilibrium (vinyl fluoride's is 5.7 mÅ from its r_e), so they cannot rank
@@ -75,10 +75,10 @@ three on all four at B3LYP; at RHF mixed estimation is ahead on three.
 
 > **Provenance.** The B3LYP rows are at code vintage 4614cd0, the RHF rows at
 > ba67cfe (both 2026-11-21; 4614cd0 changes only the DFT geometry
-> optimiser, so the RHF rows are the same). Three changes are in them: two to
-> the Hessian, one behind the harmonic alpha term (D-52) and one behind both
-> that and the quantum prior's curvature (D-55), and one to the B3LYP theory
-> geometries (D-57).
+> optimiser, so the RHF rows are the same). The B3LYP rows carry three
+> changes, the RHF rows the first two: two to the Hessian, one behind the
+> harmonic alpha term (D-52) and one behind both that and the quantum prior's
+> curvature (D-55), and one to the B3LYP theory geometries (D-57).
 >
 > *Rigid motions projected out* (b29cec3, decisions D-52). Off a stationary
 > point the raw Hessian's rotational block is not zero, and in isocyanic
@@ -115,12 +115,15 @@ three on all four at B3LYP; at RHF mixed estimation is ahead on three.
 > minimises: L-BFGS-B stopped where the energy stopped falling, up to 16 times
 > above its gradient tolerance, and returned without saying so. The B3LYP
 > theory geometries -- the "theory alone" answers and the prior's centres --
-> sat up to 0.25 mÅ (one bond) from their energy's minimum. Optimised on the
-> grid-response gradient, all twelve converge, and formyl fluoride's bonds
-> land nearer a converged grid's minimum (0.093 -> 0.047 mÅ RMS against
-> level 9). The theory column moves by up to 0.12 mÅ (formyl fluoride),
-> mixed estimation by up to 0.35 (chlorofluoromethane), the hybrid by 0.07
-> or less; fluoroethane's hybrid now beats theory alone (6.58 against 6.62).
+> sat up to 0.24 mÅ (in the worst bond) from their energy's minimum.
+> Optimised on the grid-response gradient, all twelve converge, and formyl
+> fluoride's bonds land nearer a converged grid's minimum (0.093 -> 0.052 mÅ
+> RMS against level 9). On a row, the theory leg moves by up to 0.12 mÅ
+> (formyl fluoride's base row), mixed estimation by up to 0.35
+> (chlorofluoromethane, whose own geometry moved less than 0.01 -- that leg
+> is sensitive there), the hybrid by 0.07 or less against either reference;
+> fluoroethane's best-of hybrid now beats theory alone, narrowly (6.58
+> against 6.62; mixed estimation's 6.16 beats both).
 > The RHF geometries were already converged (bonds within 0.008 mÅ).
 >
 > Not run: the `elec` and `all` configurations (they need `pyscf.prop`, not
