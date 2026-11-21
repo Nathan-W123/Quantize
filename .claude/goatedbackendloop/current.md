@@ -19,11 +19,18 @@ Request: measure how far the theory geometries sit from tight minima of their ow
   optimisation; a proposal (or not).
 
 ## Graph
-- N1 · diagnose · gradient + Newton step at every theory geometry, both levels · after: none · running · handoff: t18/
+- N1 · diagnose · gradient + Newton step at every theory geometry, both levels · after: none · RHF done; B3LYP running (t18/newton_b3lyp.log) · handoff: t18/newton_hf.json
 - N2 · verify · tight optimisation on two molecules (one per level) vs the Newton estimate · after: N1 · pending · handoff: -
 - N3 · gate · propose (or not) tighter theory geometries · after: N1, N2 · pending · handoff: -
 
 ## Progress
+- N1 RHF (12 geometries; t18/newton_hf.json): |g|max 2e-6 to 1.8e-5 Ha/A
+  (gtol 2e-5); Newton distance <= 1.2e-4 A RMS except H2O2 4.8e-4 (left out
+  at RHF, trans) -- torsions; largest bond change 0.008 mA, theory-column
+  RMS change <= 0.005 mA. RHF theory geometries are converged for bonds.
+- N2 RHF: tight L-BFGS-B (gtol 1e-7) of fluoroethane from its theory
+  geometry lands 5.0e-7 A from the Newton point (move 1.19e-4 A); bond
+  change 0.0053 vs 0.0054 mA. The Newton estimate holds.
 
 ## Observations
 
