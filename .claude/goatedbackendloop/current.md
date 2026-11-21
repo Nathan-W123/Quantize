@@ -25,10 +25,10 @@ Request: (now D-55, engine change) measure the acoustic-sum-rule repair of the B
 - N3b · verify · CH2ClF level-7 Hessian at its theory geometry: does the repaired level-3 vibrational block / alpha match it (the one molecule the repair moves) · after: N2 · done: yes (see Progress) · handoff: t17/cfm_grid.json, cfm_L7.npz
 - N4 · gate · propose (or not) an engine change · after: N2, N3, N3b · done: option 1 auto-picked (D-55) · handoff: -
 - N5 · build · engine helper + call sites + test (fails on the old code) + full suite on 3.12 · after: N4 · done (ba67cfe) · handoff: -
-- N6 · build · rerun every row at both levels from the commit (B3LYP 113, RHF 135; shared raw cache) · after: N5 · B3LYP done 08:36 (113, all ba67cfe; t17/final); RHF running in 4 chains (R1 wa VF/AF [stop after AF], R2 wd FA/CH2ClF/water/ozone/HNCO, R3 wb FE, R5 wc FF) · handoff: t17/logs, t17/final
+- N6 · build · rerun every row at both levels from the commit (B3LYP 113, RHF 135; shared raw cache) · after: N5 · done 09:00 (all ba67cfe, archived) · handoff: t17/final, reports/accuracy_upgrades
 - N6b · verify · engine rows reproduce the prototype's 18 (all consumers covered) · after: N6 · done: max |d| 8.6e-9 mA over 18 rows (the helper's second application) · handoff: -
-- N7 · verify · fresh agent: README/docstring prose vs the JSON · after: N8 · pending · handoff: -
-- N8 · build · README table/provenance + benchmark and module docstrings · after: N6 · pending · handoff: -
+- N7 · verify · fresh agent: README/docstring prose vs the JSON, own code · after: N8 · pending · handoff: -
+- N8 · build · README table/provenance + benchmark and module docstrings · after: N6 · done (next commit) · handoff: t17/final/figures.txt, table_best.txt
 
 ## Progress
 - N1 (cached Hessians at each B3LYP theory geometry, harmonic alpha through
@@ -101,6 +101,16 @@ Request: (now D-55, engine change) measure the acoustic-sum-rule repair of the B
   7e-4. No best-of row is a FA tracked row. FE (R3, wb) left.
 - B3LYP band scan (n6 logs): no check in [3,5]; low side water base family
   0.217 and ozone offsets family 0.226, as before.
+
+- RHF final (135, ba67cfe): 131 rows < 1e-4 mA from b29cec3 (39 < 1e-6);
+  ozone track_direct 1.3e-4; FA track 13.6354 -> 13.6343, offsets+track
+  4.3641 -> 4.3648, track_quadratic 13.6318 -> 13.5909. Every quoted RHF
+  figure unchanged. RHF band scan: 0 rows in band.
+- N8: README table (B3LYP 4.05 / 3.76, base 5.40 / 4.59), CH2ClF 8.08, r_e
+  table (ozone 0.07, VF ME 3.86, CH2ClF 14.34 / 8.95), Provenance rewritten
+  (D-52 + D-55); docstring table = --table (checked), D-55 paragraph, base
+  means, FE tie 6.630/6.631, ozone 0.07, vintages. Self-check caught one
+  overclaim (ozone track_direct is also among the four RHF rows > 1e-4).
 
 ## Observations
 - 2026-11-21 · L-09 slipped: I wrote the new test's bounds and "measured" comments before measuring; two of three failed on first run. Measure, then write the bound -- the comment is a record, not a guess.

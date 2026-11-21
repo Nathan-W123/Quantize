@@ -51,29 +51,31 @@ settings the other two are then scored under, and that alone moves the
 mixed-estimation mean at RHF from 9.84 to 11.10 mA. The margins below are the
 ones that survive giving every method its best case.
 
-Regenerated 2026-11-21 from reports/accuracy_upgrades: every row at b29cec3,
-which projects rigid motions out of the alpha term's Hessian (decisions D-52).
+Regenerated 2026-11-21 from reports/accuracy_upgrades: every row at ba67cfe,
+which projects rigid motions out of the alpha term's Hessian (decisions D-52)
+and imposes the translational sum rule on every Hessian the engine consumes
+(D-55).
 Not run: `elec` and `all` (they need pyscf.prop), and at B3LYP the torsion and
 offsets+torsion rows of fluoroethane and acetyl fluoride (a single scan
 outlasts the 2-hour job limit):
 
                               RHF/6-31G             B3LYP/6-31G(d)
                          theory    ME  hybrid    theory    ME  hybrid
-  vinyl fluoride           5.71  6.56    6.34      4.22  4.94    5.17
-  acetyl fluoride          6.44  7.96    7.28      6.76  5.51    6.42
-  fluoroethane            10.05  8.12    7.01      6.63  6.43    6.66
-  formyl fluoride          9.28  7.08    7.15      3.86  0.96    2.46
+  vinyl fluoride           5.71  6.56    6.34      4.22  4.94    5.18
+  acetyl fluoride          6.44  7.96    7.28      6.76  5.53    6.42
+  fluoroethane            10.05  8.12    7.01      6.63  6.44    6.63
+  formyl fluoride          9.28  7.08    7.15      3.86  0.93    2.43
   fluoroacetylene          4.96  4.53    4.36      3.33  3.38    2.05
-  chlorofluoromethane      5.79  4.26    5.43     10.76  8.85    8.17
+  chlorofluoromethane      5.79  4.26    5.43     10.76  8.81    8.08
   water                    8.14  0.17    0.56      1.09  0.79    0.05
-  ozone                   21.03  1.73    1.69      7.59  0.87    0.04
+  ozone                   21.03  1.73    1.69      7.59  0.86    0.04
   isocyanic acid          22.10 48.17   18.04      3.53  4.76    2.94
-  MEAN                    10.39  9.84    6.43      5.31  4.06    3.77
+  MEAN                    10.39  9.84    6.43      5.31  4.05    3.76
 
 The hybrid is best of the three on 4/9 at RHF and 5/9 at B3LYP, beats mixed
 estimation on 6/9 and 5/9 and theory alone on 7/9 and 7/9, and improves from
 RHF to B3LYP on eight of nine molecules -- by a factor of 11 on water -- the
-exception being chlorofluoromethane (5.43 -> 8.17) -- its bond offsets, not
+exception being chlorofluoromethane (5.43 -> 8.08) -- its bond offsets, not
 the level: at B3LYP the C-Cl offset (methyl chloride's) under-corrects it by
 12.8 mA and the C-F offset over-corrects by 5.7, a combination two Cl
 isotopologues cannot see (scripts/archive/chlorofluoromethane_level_gap.py).
@@ -106,15 +108,31 @@ chi-square of the rerun lies between 3 and 5, so no row is decided by the
 threshold; on the low side only two B3LYP fits have checks between 1/5 and
 1/3, water's base family (0.217) and ozone's offsets family (0.226), where the
 extra refit stops at the row's model-error floor and moves it by < 1e-5 mA
-(measured at thresholds 3.0 and 5.0 before D-52, at the same chi-squares).
+(measured at thresholds 3.0 and 5.0 before D-52, at the same chi-squares;
+the sum rule, D-55, leaves those checks where they were).
+
+The sum rule matters at B3LYP only. pyscf's analytic RKS Hessian has no
+grid-weight response, so at its default grid every B3LYP Hessian here
+breaks it (row sums 2e-4 to 1.9e-2 Ha/bohr^2); imposing it brought the
+harmonic alpha of formyl fluoride, ozone and chlorofluoromethane to within
+0.032 / 0.012 / 0.006 MHz of a converged grid (projection alone 0.40 / 0.49
+/ 0.82). Every B3LYP row moves by 0.05 mA or less except
+chlorofluoromethane's, 0.32 (base) and 0.10 (offsets) toward its r_e: its
+two Cl isotopologues leave the fit leaning on the prior's curvature, and the
+default grid had its two lowest modes 5 and 2 cm^-1 too stiff. RHF
+Hessians satisfy the rule to ~1e-9: 131 of 135 RHF rows move by < 1e-4 mA,
+ozone's track_direct by 1.3e-4 and fluoroacetylene's three tracked rows by
+up to 0.04 (their fits have two nearby solutions; track_quadratic flips
+between 13.63 and 13.59).
+
 At B3LYP, ozone's offsets row
 moves toward its r_s reference (1.43 -> 0.04) and away from its r_e (0.37 ->
 1.02): the O-O offset comes from hydrogen peroxide's single bond. With the base configuration alone (`configs=base`) the means are
-21.47 / 17.35 / 11.03 at RHF and 9.19 / 5.41 / 4.63 at B3LYP.
+21.47 / 17.35 / 11.03 at RHF and 9.19 / 5.40 / 4.59 at B3LYP.
 
 Where theory alone still beats the hybrid -- vinyl fluoride at both levels,
-acetyl fluoride at RHF, fluoroethane at B3LYP (6.63 against 6.66, a tie;
-mixed estimation's 6.43 beats both) -- the margin is 0.6-1.0 mA, below the
+acetyl fluoride at RHF, fluoroethane at B3LYP (6.630 against 6.631, a tie;
+mixed estimation's 6.44 beats both) -- the margin is 0.6-1.0 mA, below the
 resolution of those molecules' r_s / effective references. Vinyl fluoride now
 has an r_e (Piccardo et al. 2015), and against it the hybrid beats theory at
 both levels: base configuration 11.39 against 17.98 at RHF (where mixed
@@ -123,7 +141,7 @@ the best of the three. (Its old margin was partly its
 data: the 1968 constants' deuterated A values were wrong by up to 2%.)
 
 Against the molecules with an r_e the hybrid is sub-mA where the theory is
-good enough: water 0.05 and ozone 0.06 mA at B3LYP (base configuration; ozone
+good enough: water 0.05 and ozone 0.07 mA at B3LYP (base configuration; ozone
 scored against Tyuterev's r_e, not its r_s reference, whose Costain floor is
 4.1 mA). The base-configuration water figure has held since 14125f3, and a
 wider sigma_x makes it worse (0.403 at 0.010, 0.753 at 0.020), so the
@@ -150,7 +168,7 @@ molecules, at one code vintage so the comparison is clean:
 (Vinyl fluoride's figures here predate its 2026-11-19 constants; in the
 regenerated rows cd still equals base exactly, 14.27 mA at RHF. The offsets
 columns predate the 2026-11-20 calibration pool; in the regenerated rows
-offsets+cd still equals offsets, mean 7.64 mA at RHF at b29cec3.)
+offsets+cd still equals offsets, mean 7.64 mA at RHF at ba67cfe.)
 
 Largest difference anywhere: 8e-9 mA. That is solver noise, not a small
 effect. The reason is that ``cd_residuals_mhz`` skips any isotopologue without
@@ -1322,7 +1340,7 @@ def print_summary_table(configs=None, results_dir=None) -> None:
     one row per molecule -- the row where the hybrid does best -- would let the
     hybrid choose the settings the other two are then scored under, which
     flatters it: the mixed-estimation mean at RHF goes from 9.84 to 11.10 mA
-    (rows at b29cec3).
+    (rows at ba67cfe).
 
     The best of N configurations is still a selection, for all three legs,
     and it grows with N; ``configs=base`` gives the one-setting table, with no
