@@ -15,8 +15,8 @@ Request: (D-62, auto-picked at Q-29) measure why joint fits from a displaced sta
 - Success: the table; a proposal (or not).
 
 ## Graph
-- N1 · diagnose · stop-short on 9 molecules x {warm, cold} · after: none · running (t22/stopshort.log) · handoff: -
-- N2 · verify · fresh agent, own experiment (e.g. through the CLI) · after: N1 · todo · handoff: -
+- N1 · diagnose · stop-short on 9 molecules x {warm, cold} · after: none · done (t22/stopshort.json) · handoff: -
+- N2 · verify · fresh agent, own experiment through the CLI (HCOF, CH2ClF; theory-minimum and displaced starts) · after: N1 · running (t22/verify) · handoff: -
 - N3 · gate · propose (or not) · after: N1, N2 · todo · handoff: -
 
 ## Progress
@@ -27,6 +27,21 @@ Request: (D-62, auto-picked at Q-29) measure why joint fits from a displaced sta
 - Water trial: plain fit 0.09 mA (warm) / 0.29 mA (cold, max atom) from its
   settled answer, bond RMS 1.98 / 1.97 vs settled 1.93; refresh closes it
   (3e-7 A) for one Hessian; orca_update_thresh 0.001 does not (0.08 / 0.28).
+
+- N1 (t22/stopshort.json; HF/6-31G, all species, B0 as Be, calibrated
+  joint, no target; settled = 3 passes in a row < 1e-5 A RMS, all 18
+  settled). Plain fit vs settled, max atom / |bond RMS change|:
+  warm (theory minimum) <= 7.5e-4 A / <= 0.25 mA (CH2ClF 18.99 vs 18.74;
+  ozone 0.10); cold (0.03 A displaced) up to 8.4e-3 A (AF, methyl torsion,
+  bonds equal) / up to 1.29 mA (HCOF 12.47 vs 13.76, CH2ClF 17.47 vs
+  18.74 -- the unsettled answer nearer the reference, as on fluorobenzene).
+  refresh_hessian_at_answer (+1 Hessian, 0-9 s; plain fits 0-24 s, 1-5
+  Hessians) reaches the settled answer to <= 1.7e-5 A in 16/18; the two
+  others (AF, FE cold) differ only along a methyl torsion (bonds within
+  0.04). orca_update_thresh 0.001 does not fix it (HCOF cold still 3e-4,
+  CH2ClF cold 5e-4; extra gradients). The miss tracks the Hessian's age at
+  the answer: age < 5 mA (6 cases) |dbond| <= 0.055; age >= 8.5 mA (12
+  cases, warm and cold) 0.005-1.29.
 
 ## Observations
 
