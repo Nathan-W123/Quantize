@@ -40,7 +40,7 @@ Request: fix the failing test_prior_target check (backlog N20; D-53, auto-picked
 - 2026-11-21 · L-P02 again: "passed in T-14's suite" meant a different interpreter and numpy build; running the test on both interpreters found the cause in one step after a day of "cause unknown".
 
 ## Pending question
-Q-21 (asked 03:02 UTC, deadline 03:17 UTC; send_later scheduled): what's next after T-16?
+Q-21 (asked 03:03 UTC, deadline 03:19 UTC; send_later trig_015D6mF4zciSw9GLxzujdxc8): what's next after T-16?
 1. Measure the acoustic-sum-rule repair of the B3LYP Hessian, backlog N19 (b)(ii) -- prototype + rerun, propose before any engine change (Recommended; auto-pick)
 2. More r_e^SE references for the benchmark yardstick, backlog N3
 3. Offsets configs take alpha at the stationary geometry, backlog N19 (b)(i) -- measure first
