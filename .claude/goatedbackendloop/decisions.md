@@ -732,3 +732,10 @@
 - Alternatives considered: one-sided only (misses label swaps and negative errors on planar molecules); build every geometry form (smiles, pubchem, bonds) at validation (needs RDKit / the network).
 - Source: auto-picked, no answer in 15 min (Q-27)
 - Revisit if: a real config's start geometry misses its own defect by more than the tolerance.
+
+### D-61 · Next task: re-measure the README's "which objective" rows (backlog N2) (2026-11-21)
+- Decision: re-measure, at HF/6-31G with each script's own data, start and settings, the fluorobenzene (1 and 8 isotopologues) and monofluoro (parent only, all species) rows of the README's "Which objective to use" table, with the objective passed explicitly: split, joint at the calibrated default, joint at 0.003-0.050 A. Then correct the table and its prose; fix the scripts whose "split" leg passes nothing.
+- Why: Q-28 option 1. The rows' 0.005 A predates the Cartesian-alpha units fix; and MolecularOptimizer's default objective became joint at 7216d87 (2026-08-14) while fluorobenzene_full_data.py, monofluoro_benchmark.py and monofluoro_tune.py still get their "split" legs by passing no objective_mode -- so a "split" number from them since then may be joint at the calibrated width.
+- Alternatives considered: auto_systematic_sigma magnitudes (F13); implement N22 (user's call); done for now.
+- Source: auto-picked, no answer in 15 min (Q-28)
+- Revisit if: the user picks another option.
