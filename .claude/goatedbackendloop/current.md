@@ -27,7 +27,8 @@ change proposed before it is made.
 - N3 · verify · fresh agent: continuity scan of HNCO alpha theory -> offset geometry with its own Hessians and projector; own edit reproducing the row · after: N2c · done · handoff: t15/verify (scripts/scan.py, run_bench.py, variants.sh; results/)
 - N4 · gate · propose (or not) an engine change · after: N3 · done: option 1 auto-picked (D-52) · handoff: -
 - N5 · build · engine projector + test (fails on the old code) + full suite on 3.12 · after: N4 · done (b29cec3) · handoff: -
-- N6 · build · rerun every row at both levels from the commit (worktrees, warm cache, chi2 logged) · after: N5 · running (task bj1fbkb66; worktrees t15/wta: HF 135 + B3LYP VF/AF/HNCO/water; t15/wtb: B3LYP FE/FF/FA/CH2ClF/ozone; logs t15/logs) · handoff: -
+- N6 · build · rerun every row at both levels from the commit (worktrees, warm cache, chi2 logged) · after: N5 · RHF 135/135 done; B3LYP 59/113 done, rest running (task bbps4q960: chain C wta FF/FA + twins, chain D wtb FE rest/CH2ClF/ozone + twins) · handoff: t15/wta/output, t15/wtb/output, t15/logs
+- N6b · verify · fresh agent: is AF B3LYP's stationary-point alpha shift (0.3-1.3 MHz) removed noise or a projector defect -- own Hessians, orientation and grid tests · after: N6 · running (t15/verify_af) · handoff: -
 - N7 · verify · fresh agent: the committed rows and README against the JSON · after: N6 · pending · handoff: -
 - N8 · build · README table/provenance + benchmark docstring (rescale caveat) · after: N6 · pending · handoff: -
 
@@ -146,6 +147,14 @@ change proposed before it is made.
   prototype on VF 11 + AF 8 rows (16 identical, 3 cache noise <= 8e-5).
   Probing AF's stationary-point ME move (t15/probe/capture_af.py,
   alpha_af.py).
+- AF B3LYP at its theory geometry (stationary): the raw mass-weighted
+  Hessian's six rigid eigenvalues are -41.6 / -14.2 / 15.9 / 35.5 / 42.3 /
+  51.8 cm-1 (RHF: 2-6), against the methyl torsion at 136.8 (CD3 101.7).
+  Projection moves alpha by 0.29-0.48 MHz (parent) to 0.96-1.31 (CD3) --
+  that is the 0.06 mA ME move. Reading: DFT-grid / residual-gradient rigid
+  residue mixed into the torsion, removed -- not a projector defect. To
+  test by another mechanism (N7): a finer grid should shrink the raw rigid
+  block and bring raw alpha toward the projected value.
 
 ## Observations
 - 2026-11-20 · the stationary-point sanity check caught my projector removing a real bend on a near-linear molecule before any long run -- the same linearity trap as T-14, a second time in one day (L-P04 applied; candidate lesson: every new rigid/linear treatment goes through rigid_mode_count, never its own threshold).
