@@ -781,3 +781,11 @@
 - Alternatives considered: flag only; remove model_error.auto; done for now.
 - Source: auto-picked, no answer in 15 min (Q-34)
 - Revisit if: a per-species estimate that beats the flat fractions on both yardsticks is found (the VPT2 correction itself already supplies its sigma when one is computed).
+
+### D-68 · Next task: the other two defect-based corrections (2026-11-21)
+- Decision: check defect_bias_floor and defect_bias_scale for the per-component split D-67 removed from the model-error estimate; propose before any behaviour change.
+- Why: Q-35 option 1 (recommended).
+- Outcome (T-25, by reading the code): defect_bias_scale multiplies all three components' sigmas by one ratio |defect after| / |defect before| -- no per-component split, nothing to change. defect_bias_floor floors each sigma at defect_model_sigma of the corrected constants (the split), but it is off by default and unreachable from MolecularOptimizer and the CLI (only resolve_corrections(defect_bias_floor=True), in tests), and its own docstring records it as superseded by the scale. Docstring note added; no measurement needed.
+- Alternatives considered: make model_error.auto the default (user's call); implement N22 / N23 (user's call); done for now.
+- Source: auto-picked, no answer in 15 min (Q-35)
+- Revisit if: defect_bias_floor is wired into the engine.

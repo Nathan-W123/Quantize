@@ -723,6 +723,14 @@ def apply_planarity_constraint(targets, isotopologues, coords_ang,
 def _apply_defect_bias_floor(targets, isotopologues, coords_ang):
     """Raise each sigma to the residual inertial defect left after correcting.
 
+    (Off by default and not reachable from MolecularOptimizer or the CLI --
+    only resolve_corrections(defect_bias_floor=True) runs it; superseded by
+    apply_defect_bias_scale below. It reads defect_model_sigma, which puts the
+    whole residue on every component's moment; measured as a model-error
+    sigma that split ran 0.007-9.1x the B0-Be gaps (decisions D-67).
+    apply_defect_bias_scale applies one ratio to all three components and
+    does not share it.)
+
     The inertial defect I_c - I_a - I_b is zero for a rigid planar molecule and
     a fixed negative number for a rigid non-planar one, so once a structure's
     own defect is subtracted what remains is vibrational contamination and
