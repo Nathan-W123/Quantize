@@ -27,7 +27,9 @@ Request: (D-58, auto-picked at Q-25) measure the grid-weight term pyscf's defaul
 - N1 · diagnose · which entry points read run_gradient into the answer · after: none · done by reading (benchmark: target mode, gradient replaced; CLI: no target, centre x_ref - H^-1 g) · handoff: -
 - N2 · diagnose · dg and the centre shift at all 12 B3LYP theory geometries; gradient cost · after: N1 · done (t19/gridg.json) · handoff: -
 - N3 · verify · fresh agent, own experiments: a benchmark row with run_gradient perturbed; a no-target fit with each gradient vs N2's shift · after: N2 · done (t19/verify; see Progress) · handoff: -
-- N4 · gate · propose (or not) the grid response in run_gradient (and run_hessian's gradient) · after: N2, N3 · asked (Q-26) · handoff: -
+- N4 · gate · propose (or not) the grid response in run_gradient (and run_hessian's gradient) · after: N2, N3 · done: flagged, not changed (D-59, auto-picked at Q-26) · handoff: -
+- N5 · build · README + run_gradient docstring note · after: N4 · done (a20b3e4) · handoff: -
+- N6 · verify · fresh agent fact-check of the note against t19 JSON, own code · after: N5 · running (t19/factcheck) · handoff: - · handoff: -
 
 ## Progress
 - N2 (t19/gridg.json; T-18 geometries, which are grid-response minima):
@@ -73,6 +75,5 @@ Request: (D-58, auto-picked at Q-25) measure the grid-weight term pyscf's defaul
 - 2026-11-21 · the verifier, told only to measure through the CLI, found that the gradient the CLI's answer uses is run_hessian's, not run_gradient's -- my brief named the wrong function; patching only it would have shipped a no-op.
 
 ## Pending question
-- Q-26 (asked 16:16 UTC, deadline 16:32, send_later trig_018E3fPEdRbTE5noHofwtUgV): the N22 gate. 1 flag, don't implement (recommended; the only auto-pickable one) · 2 implement grid response in run_gradient + run_hessian's gradient (+7-14% wall time; needs the user's say-so) · 3 measure a cost-neutral variant first · 4 done for now.
 
 ## Handoff
