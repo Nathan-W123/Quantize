@@ -1,26 +1,38 @@
 # Current task
-Task: T-25
-Status: done
-Request: (D-68, auto-picked at Q-35) check defect_bias_floor and defect_bias_scale for the per-component split D-67 removed.
+Task: T-26
+Status: clarifying
+Request: (D-69, auto-picked at Q-36) have the multistart say when its top starts are near-tied but far apart (N24); thresholds from T-23 data; propose before building.
 
 ## Brief
-- By reading: what each does per component and where it is reachable.
+- Outcome: the run reports which other starts end within the energies'
+  resolution of the selected one but far from it, so a user sees that the
+  answer is one of several the fit does not decide between.
+- How (proposed, Q-37): multistart._run_single_start records the fit's own
+  model energy at the answer (quantum_prior_energy, free);
+  multistart.near_tied_starts(results, best, tie 5e-5 Ha, distance 2 mA,
+  Kabsch-aligned max atom) lists the others; run_generic stores it on the
+  best result, prints it, and the report (md + html) lists it under "Best
+  start"; "Final energy" relabelled as the last quantum point's. Ranking
+  unchanged.
+- Thresholds (t23 data, 20 start pairs): |model - true| at an answer median
+  5.6e-6, 90th percentile 2.5e-5, max 4.3e-4 Ha -> tie 5e-5 (2x the 90th);
+  distance 2 mA leaves out the 0.15-1.2 mA pairs. Flags 5 of 10 runs (VF
+  cold 8.7 mA; AF warm 20.6; AF cold 18.9 / 9.5; FE warm 11.6; FE cold 12.0
+  / 18.3), none of HCOF / CH2ClF (pairs <= 1.2 mA apart or > 5e-5 apart).
+- Success: a unit test on synthetic results (flags tie+far only); the report
+  line; one real CLI run showing it; CI selection.
 
 ## Graph
-- N1 · diagnose · read both and their callers · after: none · done (D-68) · handoff: -
-- N2 · build · docstring note on _apply_defect_bias_floor; backlog F13 updated · after: N1 · done · handoff: -
+- N1 · diagnose · thresholds from t23 · after: none · done · handoff: -
+- N2 · gate · exact behaviour (Q-37) · after: N1 · asked · handoff: -
+- N3 · build · helper, recording, report, test · after: N2 · todo · handoff: -
+- N4 · verify · fresh agent: a real CLI run shows it; test fails on old code · after: N3 · todo · handoff: -
 
 ## Progress
-- defect_bias_scale (benchmark `defect` configuration): sigma x max(1,
-  |defect after| / |defect before|), the same factor on A, B and C -- no
-  split. defect_bias_floor: per-component floor from defect_model_sigma
-  (the split), off by default, not passed by MolecularOptimizer, not in the
-  CLI; tests call resolve_corrections(defect_bias_floor=True) directly.
 
 ## Observations
-- 2026-11-21 · reading the mechanism first showed the scale could not have the flaw, so no measurement was run -- the auto-pick's "measure" was not needed.
 
 ## Pending question
-- Q-36 (asked 22:21 UTC, deadline 22:37): what's next. 1 N24: warn when the multistart's top starts are near-tied but far apart (recommended) · 2 F3 hygiene (BOMs, scripts package, test precision) · 3 a user's-call item: model_error.auto as default, N22, N23 · 4 done for now.
+- Q-37 (asked 22:41 UTC, deadline 22:57): the N24 behaviour. 1 as proposed (recommended) · 2 record in the bundle only, no report line or print · 3 as proposed with the thresholds in config · 4 done for now.
 
 ## Handoff

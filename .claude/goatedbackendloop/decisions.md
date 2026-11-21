@@ -789,3 +789,10 @@
 - Alternatives considered: make model_error.auto the default (user's call); implement N22 / N23 (user's call); done for now.
 - Source: auto-picked, no answer in 15 min (Q-35)
 - Revisit if: defect_bias_floor is wired into the engine.
+
+### D-69 · Next task: say when multistart answers are near-tied but far apart (backlog N24) (2026-11-21)
+- Decision: measure the tie and distance thresholds on T-23's ten CLI runs, propose the exact reporting behaviour, then build it; no extra quantum calls, ranking unchanged (D-65).
+- Why: Q-36 option 1 (recommended). T-23: near-tied starts (within 1.4e-6 Ha true) sit up to 12 mA apart, so the reported answer is effectively arbitrary, and nothing says so.
+- Alternatives considered: F3 hygiene; model_error.auto as default, N22, N23 (user's call); done for now.
+- Source: auto-picked, no answer in 15 min (Q-36)
+- Revisit if: the user picks another option.
