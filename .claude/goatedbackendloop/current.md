@@ -16,8 +16,8 @@ Request: (D-62, auto-picked at Q-29) measure why joint fits from a displaced sta
 
 ## Graph
 - N1 · diagnose · stop-short on 9 molecules x {warm, cold} · after: none · done (t22/stopshort.json) · handoff: -
-- N2 · verify · fresh agent, own experiment through the CLI (HCOF, CH2ClF; theory-minimum and displaced starts) · after: N1 · running (t22/verify) · handoff: -
-- N3 · gate · propose (or not) · after: N1, N2 · todo · handoff: -
+- N2 · verify · fresh agent, own experiment through the CLI (HCOF, CH2ClF; theory-minimum and displaced starts) · after: N1 · done (t22/verify/results) · handoff: -
+- N3 · gate · propose (or not) · after: N1, N2 · asked (Q-30) · handoff: -
 
 ## Progress
 - Code read: refresh_hessian_at_answer exists (one Hessian, re-converge,
@@ -43,8 +43,30 @@ Request: (D-62, auto-picked at Q-29) measure why joint fits from a displaced sta
   the answer: age < 5 mA (6 cases) |dbond| <= 0.055; age >= 8.5 mA (12
   cases, warm and cold) 0.005-1.29.
 
+- N2 (CLI, `cli run`, pyscf_hf HF/6-31G, BALANCED 3 starts, internal
+  coordinates, BOB on, no VPT2): plain answer vs its own optimum (Hessian
+  at the answer; n_starts=1 restart chain and refresh_hessian_at_answer
+  agree to 0.1-1.4 microA): HCOF warm 0.025 mA rms / 0.061 max, cold 0.587 /
+  1.386; CH2ClF warm 0.109 / 0.298, cold 0.367 / 1.122 -- about 1-2% of the
+  start-to-answer distance (the selected start's Hessian 2.9-32.8 mA from
+  its answer). Bond RMS vs reference, plain -> optimum: HCOF 13.767 ->
+  13.767 (warm), 13.662 -> 13.766 (cold); CH2ClF 18.582 -> 18.749,
+  18.231 -> 18.750 (the short answers nearer the reference). Refresh: one
+  pass, +1 Hessian, 0 gradients, +15-21% wall time (2.5-7.5 s on 11-35 s).
+  Warm and cold refreshed answers agree to 1 microA; plain ones differ 0.3-0.6
+  mA.
+- N2 surprises: (1) the multistart ranks starts on a stale energy -- each
+  start's energy at its last quantum point, not at its answer (reported
+  energies off by up to 6.3e-4 Ha against real differences ~1e-5 Ha); HCOF
+  picked the wrong start, and its BALANCED restart chain oscillates between
+  two starts (period 2, 0.054 mA rms). (2) at OMP 4 threads HCOF cold's
+  plain answer varies 0.54 mA rms run to run (bitwise identical at 1
+  thread); the refreshed answer does not. (3) restarts from the answer print
+  "Low acceptance (<20%)".
+
 ## Observations
 
 ## Pending question
+- Q-30 (asked 20:01 UTC, deadline 20:17, send_later trig_01DkWovFcrfs9ncKWrGjwXf3): the N23 gate. 1 flag, don't change (recommended; the only auto-pickable one) · 2 refresh at the end of every plain run (+1 Hessian, +15-21%; user's call) · 3 opt-in config key, default off (user's call) · 4 done for now.
 
 ## Handoff
