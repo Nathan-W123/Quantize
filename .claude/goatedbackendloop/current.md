@@ -68,5 +68,6 @@ Request: (D-62, auto-picked at Q-29) measure why joint fits from a displaced sta
 - 2026-11-21 · told only to measure through the CLI, the verifier found the multistart's stale-energy ranking (N24) and a thread-count non-determinism -- neither visible in my direct-optimizer measurement. The CLI gap was also smaller than the optimizer-level one (internal coordinates, multistart).
 
 ## Pending question
+- Q-31 (asked 20:18 UTC, deadline 20:34, send_later trig_01LSidfAH5MaKziYVtRLQxE9): what's next. 1 the multistart's stale-energy ranking (N24, recommended) · 2 auto_systematic_sigma magnitudes (F13) · 3 implement a flagged trade-off, N22 or N23 (user's call; never auto-picked) · 4 done for now.
 
 ## Handoff
