@@ -739,3 +739,10 @@
 - Alternatives considered: auto_systematic_sigma magnitudes (F13); implement N22 (user's call); done for now.
 - Source: auto-picked, no answer in 15 min (Q-28)
 - Revisit if: the user picks another option.
+
+### D-62 · Next task: measure how far plain joint fits stop from their optimum (backlog N23) (2026-11-21)
+- Decision: measure, at HF/6-31G on the nine benchmark molecules from theory's minimum and from a 0.03 A displaced start, the distance from a plain joint fit (no target prior, as the CLI runs) to the answer restarts settle on (three passes in a row under 1e-5 A RMS), and what each remedy recovers and costs: the engine's refresh_hessian_at_answer (one Hessian; quantize uncertainty already calls it) and orca_update_thresh 0.001. Propose before any change; a remedy that adds cost to every run is the user's call (stated preference).
+- Why: Q-29 option 1. T-21: fluorobenzene from a displaced start stops 3.7-4.1 mA (largest atom) and 1.3-1.4 mA of bond RMS from its settled answer; the plain fit skips the at-answer refresh by design ("it costs one Hessian").
+- Alternatives considered: auto_systematic_sigma magnitudes (F13); implement N22 (user's call); done for now.
+- Source: auto-picked, no answer in 15 min (Q-29)
+- Revisit if: the user picks another option.
