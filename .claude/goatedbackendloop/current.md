@@ -77,5 +77,6 @@ Request: (D-58, auto-picked at Q-25) measure the grid-weight term pyscf's defaul
 - 2026-11-21 · the verifier, told only to measure through the CLI, found that the gradient the CLI's answer uses is run_hessian's, not run_gradient's -- my brief named the wrong function; patching only it would have shipped a no-op.
 
 ## Pending question
+- Q-27 (asked 17:01 UTC, deadline 17:17, send_later trig_01KAFLfArbm6JvPRs7MCYRCM): what's next. 1 fix the inertial-defect false positive (F3 part; recommended, auto-pickable) · 2 implement N22 (needs the user's say-so; never auto-picked) · 3 more r_e^SE references (N3) · 4 done for now.
 
 ## Handoff
