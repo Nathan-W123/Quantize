@@ -19,8 +19,8 @@ Request: measure how far the theory geometries sit from tight minima of their ow
   optimisation; a proposal (or not).
 
 ## Graph
-- N1 · diagnose · gradient + Newton step at every theory geometry, both levels · after: none · RHF done; B3LYP running (t18/newton_b3lyp.log) · handoff: t18/newton_hf.json
-- N2 · verify · tight optimisation on two molecules (one per level) vs the Newton estimate · after: N1 · pending · handoff: -
+- N1 · diagnose · gradient + Newton step at every theory geometry, both levels · after: none · done (t18/newton_{hf,b3lyp}.json) · handoff: -
+- N2 · verify · tight optimisations vs the Newton estimate · after: N1 · RHF done (FE agrees to 5e-7 A); B3LYP: Newton understates (HCOF 2.6e-5 vs the T-17 verifier's tight 1.03e-4 A RMS) -> real tight optimisations, VF running (t18/vf_opt.py: why it stopped; backend vs grid-response gradient) · handoff: -
 - N3 · gate · propose (or not) tighter theory geometries · after: N1, N2 · pending · handoff: -
 
 ## Progress
@@ -31,6 +31,20 @@ Request: measure how far the theory geometries sit from tight minima of their ow
 - N2 RHF: tight L-BFGS-B (gtol 1e-7) of fluoroethane from its theory
   geometry lands 5.0e-7 A from the Newton point (move 1.19e-4 A); bond
   change 0.0053 vs 0.0054 mA. The Newton estimate holds.
+
+- N1 B3LYP (t18/newton_b3lyp.json): the optimiser stopped well above its
+  gtol (2e-5 Ha/A): |g|max VF 3.2e-4, FE 1.4e-4, HCOF 1.3e-4, CH2ClF
+  9.3e-5, AF 5.9e-5 (water, FA, calibration ones <= 1.8e-5). Newton
+  step: VF theory bond RMS 4.220 -> 4.150 mA (max bond 0.168), FE 1.1e-3 A
+  (torsion, bonds 0.019), CH2ClF 25.102 -> 25.090. But at B3LYP the Newton
+  step understates: HCOF Newton 2.6e-5 A RMS vs the T-17 verifier's tight
+  minimum 1.03e-4 (bonds: verifier's C-H +0.044 vs Newton max 0.014) --
+  the default-grid gradient and Hessian both lack grid response, so they
+  are not consistent with each other or with the energy.
+- Found: pyscf_backend.optimise() never checks sol.success / sol.message --
+  an unconverged L-BFGS-B result is returned silently (it reports only a
+  hit step bound). Suspect: line-search failure on a gradient that is not
+  the energy's derivative (no grid response).
 
 ## Observations
 
