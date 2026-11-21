@@ -37,5 +37,6 @@ Request: (D-69, auto-picked at Q-36) have the multistart say when its top starts
 ## Observations
 
 ## Pending question
+- Q-38 (asked 23:32 UTC, deadline 23:48): what's next. 1 F3 hygiene (recommended) · 2 N19 the chi-square rescale switch (measure first) · 3 a user's-call item: model_error.auto as default, N22, N23 · 4 done for now.
 
 ## Handoff
