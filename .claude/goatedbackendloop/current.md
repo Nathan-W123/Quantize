@@ -16,8 +16,9 @@ Request: (D-61, auto-picked at Q-28) re-measure the README's sparse-data sigma r
 
 ## Graph
 - N1 · diagnose · scans: mono (3 molecules x 2 data levels), fb1, fb8 · after: none · done (t21/scan_*.json) · handoff: -
-- N1b · verify · are the plateau stops optima? refit + restart + tight (conv_freq 0.01, 200 it) · after: N1 · running (t21/restart_*.log) · handoff: -
-- N2 · build · scripts: pass objective_mode="split" where a leg is labelled split · after: N1 · todo · handoff: -
+- N1b · verify · are the plateau stops optima? refit + restart + tight (conv_freq 0.01, 200 it) · after: N1 · done: monofluoro yes, fluorobenzene no (t21/restart_*.json) · handoff: -
+- N1c · diagnose · fluorobenzene restart chains to stationarity, cold and warm start · after: N1b · running (t21/chain_fb*.log) · handoff: -
+- N2 · build · scripts: pass objective_mode="split" where a leg is labelled split · after: N1 · done (d2078fa; their tests 48 passed) · handoff: -
 - N3 · build · README table + prose · after: N1 · todo · handoff: -
 - N4 · verify · fresh agent fact-check against t21 JSON · after: N3 · todo · handoff: -
 
@@ -42,6 +43,16 @@ Request: (D-61, auto-picked at Q-28) re-measure the README's sparse-data sigma r
   README's 4.0 (split) / 8.2 (expt alone) / 8.9 (j0.005).
   Every hybrid fit ends on the plateau rule (fb8: all at iteration 11, the
   earliest the 10-iteration window allows), so N1b checks they are optima.
+
+- N1b: monofluoro (warm start from theory): every fit restart-stationary
+  (moved <= 3.5e-4 A, bond RMS within 0.05 mA); tight runs (conv_freq 0.01,
+  200 it) land on the same answers (<= 3.5e-4 A). Fluorobenzene (cold start,
+  0.03 A noise): tight runs reproduce the fit, but a restart from the answer
+  moves joint fits 3.7-4.1e-3 A and worsens bond RMS by 1.3-1.4 mA (fb8 joint
+  default 9.74 -> 11.07; fb1 9.93 -> 11.25); split moves 0.8-1.2e-3 A
+  (10.38 -> 10.60, 10.70 -> 10.75). The answer depends on where the quantum
+  model was last expanded (refreshed only after 5 mA of drift), so cold-start
+  numbers are not optima of the stated objective.
 
 ## Observations
 
