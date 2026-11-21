@@ -20,7 +20,7 @@ Request: measure the acoustic-sum-rule repair of the B3LYP Hessian (backlog N19 
 
 ## Graph
 - N1 · diagnose · per-molecule sum-rule violation, rigid eigenvalues, harmonic alpha shift at the B3LYP theory geometry (cached Hessians) · after: none · done · handoff: t17/diag.json, diag_hf.json
-- N2 · build · prototype in two git-archive copies (repair after the disk cache, B3LYP only), rerun base + offsets for all 9 (18 rows; the full 113 only if adopted) · after: N1 · running since 03:36 (t17/logs, chains a/b, timeout 7000 s) · handoff: t17/proto_a, proto_b
+- N2 · build · prototype in two git-archive copies (repair after the disk cache, B3LYP only), rerun base + offsets for all 9 (18 rows; the full 113 only if adopted) · after: N1 · running: first launch 03:23 died at the harness's 30-min default (VF base done, 5.2307 -> 5.24); resumed 03:54 with base first, then offsets (tags a_base/b_base/a_off/b_off, 2 h limit) · handoff: t17/proto_a, proto_b
 - N3 · verify · fresh agent: converged-grid alpha on formyl fluoride and ozone (levels 3/5/7, fixed geometry + re-optimised control), raw vs repaired, own Hessians, 1 thread · after: N1 · running · handoff: t17/verify
 - N4 · gate · propose (or not) an engine change · after: N2, N3 · pending · handoff: -
 
@@ -38,6 +38,7 @@ Request: measure the acoustic-sum-rule repair of the B3LYP Hessian (backlog N19 
   full 113 rerun waits for adoption.
 
 ## Observations
+- 2026-11-21 · a background launch without an explicit timeout got the harness's 30-min default, not the inner `timeout 7000`; the chains died with 1 of 18 rows. L-09's limit check must include the harness's own default, not just the job's.
 
 ## Pending question
 
