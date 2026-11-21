@@ -42,6 +42,8 @@ def _run_one_start(payload):
     opt = MolecularOptimizer(coords=coords, elems=elems, isotopologues=isotopologues, **kwargs)
     final_coords = opt.run()
     last = opt.history[-1] if opt.history else {}
+    # The quantum energy at the start's last quantum point, not at
+    # final_coords -- see select_best_result.
     _e = last.get("energy", np.inf)
     _fr = last.get("freq_rms", np.inf)
 
@@ -250,6 +252,19 @@ def select_best_result(
     1) Find best spectral RMS across starts.
     2) Keep starts with freq_rms <= max(spectral_gate_abs, spectral_gate_rel * best_freq_rms).
     3) Rank within the gated set using ``primary_objective`` / stagnation penalty.
+
+    Each result's ``energy`` is the quantum energy at that start's last
+    quantum point, not at its answer (_run_single_start reads the last history
+    record). Measured through `cli run` (HF/6-31G; formyl fluoride,
+    chlorofluoromethane, vinyl and acetyl fluoride, fluoroethane, each from
+    its RHF minimum and from a 0.03 A-displaced start; 30 starts) it was
+    8.6e-5 Ha (median) and up to 1.6e-3 Ha from the energy at the answer,
+    against differences between starts of ~1e-5. It still put the start with
+    the lowest energy at its answer first in 7 of the 10 runs; every miss was
+    between starts within 1.4e-6 Ha of each other, 0.15-12 mA apart along
+    flat directions such as a methyl torsion, which no energy ranking
+    separates -- the fit's own model energy at the answer (free) got 8 of 10.
+    Left as it is (decisions D-65).
     """
     if not results:
         raise ValueError("No multistart results to select from.")

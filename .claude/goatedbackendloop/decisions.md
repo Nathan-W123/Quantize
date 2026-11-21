@@ -760,3 +760,10 @@
 - Alternatives considered: auto_systematic_sigma magnitudes (F13); implement N22 / N23 (user's call); done for now.
 - Source: auto-picked, no answer in 15 min (Q-31)
 - Revisit if: the user picks another option.
+
+### D-65 · The multistart's stale per-start energy: flagged, not changed (2026-11-21)
+- Decision: keep select_best_result's ranking; document in its docstring (and at _run_single_start) that each start's `energy` is the last quantum point's, with T-23's measurement; reword backlog N24 to the underlying issue.
+- Why: T-23, 10 CLI runs (5 molecules x warm/cold, 30 starts): the stale energy is 8.6e-5 Ha (median), up to 1.6e-3, from the energy at the answer, yet it put the lowest-at-the-answer start first in 7/10; the model energy at the answer (free) 8/10; every miss of either was between starts within 1.4e-6 Ha, 0.15-12 mA apart along flat directions, where no energy ranking is meaningful. Re-ranking would change reported answers by up to 12 mA with no measured accuracy gain.
+- Alternatives considered: rank and report by the model energy at the answer (free); by the true energy (one SCF per start); done for now.
+- Source: auto-picked, no answer in 15 min (Q-32)
+- Revisit if: a case shows starts whose energies at their answers differ by more than the model's error but are misranked; or the report's per-start energy is used for anything beyond ranking.

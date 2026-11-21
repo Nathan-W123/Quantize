@@ -1,6 +1,6 @@
 # Current task
 Task: T-23
-Status: building
+Status: done
 Request: (D-64, auto-picked at Q-31) the multistart ranks its starts on a stale energy (backlog N24): measure, then propose a no-cost fix before making it.
 
 ## Brief
@@ -15,7 +15,7 @@ Request: (D-64, auto-picked at Q-31) the multistart ranks its starts on a stale 
 ## Graph
 - N1 · diagnose · 4 cases (HCOF, CH2ClF x warm/cold) · after: none · done (t23/*.json) · handoff: -
 - N1b · diagnose · 8 more (VF, AF, FE x warm/cold; HCOF, CH2ClF cold repeat) · after: N1 · done (t23/rank_all.log, *.json) · handoff: -
-- N2 · gate · propose (or not) · after: N1b · asked (Q-32) · handoff: -
+- N2 · gate · propose (or not) · after: N1b · done: flagged, not changed (D-65, auto-picked at Q-32); docstring note in multistart.py · handoff: -
 
 ## Progress
 - Code: multistart._run_single_start records energy = history[-1]['energy'],
@@ -43,8 +43,8 @@ Request: (D-64, auto-picked at Q-31) the multistart ranks its starts on a stale 
   13.40-14.59.
 
 ## Observations
+- 2026-11-21 · N24's premise ("picked the wrong start") was true but immaterial: measuring the true energy at every answer showed every misrank was a near-tie (<= 1.4e-6 Ha). Measuring what the bug changes, not only that it exists, turned a planned fix into a note.
 
 ## Pending question
-- Q-32 (asked 20:46 UTC, deadline 21:02, send_later trig_012zQcvUP8xYFhxqV2MoUmhY): the N24 gate. 1 flag, don't change the ranking (recommended) · 2 rank and report by the model energy at the answer (free) · 3 rank by the true energy at the answer (+1 SCF per start; user's call) · 4 done for now.
 
 ## Handoff
