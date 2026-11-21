@@ -40,14 +40,17 @@ def defect_model_sigma(obs_constants, coords, masses, component_indices=None):
     negative number for a rigid non-planar one, so the difference between the
     defect of the *measured* constants and the defect of a *structure* is
     vibrational contamination and nothing else -- a per-species, data-driven
-    measurement of exactly the quantity the flat fraction in
-    DEFAULT_SIGMA_REL_ABC guesses at.
+    residue. It was meant to measure the quantity the flat fraction in
+    DEFAULT_SIGMA_REL_ABC guesses at; as a per-component sigma it does not
+    (below).
 
     The structural part must be subtracted, not ignored: measured defects on
     this reference set run from +0.09 to -6.35 amu.A^2, which looks like a 70x
     spread in non-rigidity but is almost entirely non-planarity. Subtracting
     the structure's own defect collapses the range to 0.022-0.092 -- and that
-    residue is the real signal.
+    residue is the real signal. (Those are the parent species; over every
+    benchmark species, ozone's included, the defects run -7.70 to +0.113 and
+    the residue 0.001-0.113.)
 
     Converted to a relative sigma by dividing the defect through by the moment
     of inertia it perturbs, since B = K / I gives dB/B = dI/I -- the whole
@@ -55,16 +58,19 @@ def defect_model_sigma(obs_constants, coords, masses, component_indices=None):
     among A, B and C. Measured against the B3LYP VPT2 gaps 0.5 |alpha_sum|
     on seven molecules it runs 0.17-8.9x on A, 0.05-6.1x on B and
     0.04-1.06x on C (too small on B and C everywhere but water; formyl
-    fluoride's B 0.45x, fluoroethane's 20-25x small), and against r_e^SE
-    gaps 0.14-0.40x on B and C; the flat DEFAULT_SIGMA_REL_ABC does better
-    on both (decisions D-67), so the engine no longer uses this for the
-    model error. (This used to compare formyl fluoride's 0.21% with
-    fluoroacetylene's VPT2 0.23%: two molecules.) It remains the per-species
-    residue _apply_defect_bias_floor reads after a correction.
+    fluoride's B 0.45x, fluoroethane's 20-25x too small; per-molecule
+    medians), and against equilibrium-structure gaps 0.14-0.40x on B and C
+    (vinyl fluoride, chlorofluoromethane, ozone); the flat
+    DEFAULT_SIGMA_REL_ABC is closer in 19 of 21 molecule-components and 11 of
+    12 (decisions D-67), so the engine no longer uses this for the model
+    error. (This used to compare formyl fluoride's 0.21% with
+    fluoroacetylene's VPT2 0.23% -- two molecules; at B3LYP/6-31G(d)
+    fluoroacetylene's is 0.21%.) It remains the per-species residue
+    _apply_defect_bias_floor reads after a correction.
 
     Needs all three constants (the defect is otherwise undefined), so linear
-    molecules and partially-measured species get None and the caller falls
-    back to the flat default.
+    molecules and partially-measured species get None (_apply_defect_bias_floor
+    then skips the species).
     """
     obs = np.asarray(obs_constants, dtype=float).ravel()
     idx = (list(range(obs.size)) if component_indices is None

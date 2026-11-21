@@ -1,6 +1,6 @@
 # Current task
 Task: T-24
-Status: building
+Status: done
 Request: (D-66, auto-picked at Q-33) auto_systematic_sigma's magnitudes (backlog F13): measure against per-species B0-Be gaps; propose before any change.
 
 ## Brief
@@ -17,7 +17,7 @@ Request: (D-66, auto-picked at Q-33) auto_systematic_sigma's magnitudes (backlog
 - N1 · diagnose · ratios on 9 molecules (VPT2) and 3 (r_e^SE) · after: none · done (t24/gaps.json) · handoff: -
 - N2 · gate · propose · after: N1 · done: option 1 (D-67, auto-picked at Q-34) · handoff: -
 - N3 · build · flat estimate; README, docstrings, runner comment; 5 water tests re-measured, 2 fail on the old code; CI selection 1625 passed · after: N2 · done · handoff: -
-- N4 · verify · fresh agent fact-check of the new prose vs t24 data and the tests · after: N3 · todo · handoff: -
+- N4 · verify · fresh agent fact-check of the new prose vs t24 data and the tests · after: N3 · done: main claim holds (flat closer in 19/21 VPT2, 11/12 r_e molecule-components); fixed: the report warning still said 'inertial defect, 3-10x', ranges were medians unlabelled, old-estimate figures wrong (8.1/4.2/2.7 -> 8.5/4.4/2.8%, 43/62 -> 60/87x, 0.0455->0.0180 -> 0.0160->0.0159), stale docstrings and the trade table (re-measured), ozone's r_e is not r_e^SE, water's r_e left out, VPT2 weak on water and ozone A; 'only opt-in widths change' is wrong with systematic_in_weighting (the fit moves) · handoff: -
 
 ## Progress
 - Reachability: model_error.auto is opt-in (CLI `model_error: {auto: true}`,
@@ -40,6 +40,7 @@ Request: (D-66, auto-picked at Q-33) auto_systematic_sigma's magnitudes (backlog
   molecules; against formyl fluoride's own VPT2 gap its B is 0.45x.
 
 ## Observations
+- 2026-11-21 · the fact-check found I had re-measured only the new values and carried the old estimate's figures over from memory and from a different data set (gaps.json's B0 vs the test's) -- four wrong. Measure both sides of a before/after before writing either.
 - 2026-11-21 · five water tests had been tuned to the old estimate's water numbers (43x / 62x, 7.9-71 GHz, anti-monotonic); one of them was the stated reason the option is off by default, and it no longer holds. Measured each value before re-pinning it (L-09).
 
 ## Pending question

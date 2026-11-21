@@ -111,8 +111,9 @@ def test_defect_sigma_subtracts_the_structural_part():
     Measured defects across the reference set run +0.09 to -6.35 amu.A^2, which
     reads as a 70x spread in non-rigidity. Almost all of it is structural: the
     molecules with large defects are simply not planar. Subtracting the
-    structure's own defect collapses the range to 0.022-0.092, and that residue
-    is what a vibrational sigma may be built on. A regression that dropped the
+    structure's own defect collapses the range to 0.022-0.092 (parent species;
+    over every benchmark species -7.70 to +0.113, residue 0.001-0.113), and
+    that residue is what a vibrational sigma may be built on. A regression that dropped the
     subtraction would inflate fluoroethane's sigma by roughly 300x.
     """
     from backend.spectral.spectral import defect_model_sigma
@@ -130,10 +131,12 @@ def test_defect_sigma_subtracts_the_structural_part():
 
 
 def test_defect_sigma_is_tighter_than_the_flat_guess_on_b_and_c():
-    """The measured claim: the flat 0.5% is about 2x too pessimistic.
+    """The defect estimate sits below the flat 0.5% on B and C.
 
-    Cross-checked independently by the VPT2 route, which puts fluoroacetylene's
-    real B0-Be gap at 0.23% against the same 0.5% guess.
+    This used to read "the flat 0.5% is about 2x too pessimistic". Measured
+    against formyl fluoride's own B3LYP VPT2 B0-Be gap it is the other way
+    round: the flat is 1.05x (B) and 0.74x (C) of the gap, the defect 0.45x and
+    0.28x (decisions D-67, which is why the engine now uses the flat one).
     """
     from backend.spectral.spectral import defect_model_sigma
     mol, sp = _fcho()
@@ -145,7 +148,7 @@ def test_defect_sigma_is_tighter_than_the_flat_guess_on_b_and_c():
 
 
 def test_defect_sigma_declines_when_it_cannot_be_formed():
-    """A linear species has no defect; the caller must fall back, not guess."""
+    """A linear species has no defect: None, not a guess."""
     from backend.spectral.spectral import defect_model_sigma
     from dev.monofluoro_references import MOLECULES_SET2
     mol = next(m for m in MOLECULES_SET2 if m.key == "fluoroacetylene")

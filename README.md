@@ -252,10 +252,11 @@ constraints, and published CO/H₂O constants — no Psi4 or ORCA needed).
 > and `alpha_mhz` both have one), or `sigma_systematic_mhz` on the isotopologue
 > (MHz per component; add `sigma_includes_systematic: true` when `sigma_mhz`
 > already holds it, so it is counted once). `model_error: {auto: true}` fills it
-> in where neither is given with 1% of A and 0.5% of B and C -- within 0.2-2.5x
+> in where neither is given with 1% of A and 0.5% of B and C -- within 0.2-2.6x
 > of the B₀-B_e gaps the benchmark's B3LYP VPT2 corrections give on seven
-> molecules; the inertial-defect estimate it replaced ran 0.04-8.9x, too small
-> on B and C everywhere but water -- and `model_error.isotopologue_correlation` (default 0.99)
+> molecules (0.2-2.5x as per-molecule medians), though 8.6x on ozone's A against
+> its r_e; the inertial-defect estimate it replaced ran 0.007-9.1x (medians
+> 0.04-8.9x), too small on B and C everywhere but water -- and `model_error.isotopologue_correlation` (default 0.99)
 > sets how much of it isotopologues share. A run whose rows carry none -- raw
 > $B_0$ fitted as $B_e$ -- reports widths of measurement precision only and
 > says so in its report and uncertainty bundle (`model_error`: null per

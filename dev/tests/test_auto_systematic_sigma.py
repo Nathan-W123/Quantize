@@ -8,13 +8,15 @@ Angstrom and an angle width of 10975 degrees -- which turned out to be the
 sigma-units mismatch fixed in test_systematic_sigma_units, not a problem with
 deriving it.
 
-With that fixed the derived term is sensible (0.0147 Angstrom, 1.70 degrees
-on water) and it repairs a real under-coverage: the old angle interval of
-0.0273 degrees was NINE TIMES too narrow to reach the 0.246-degree angle
-error the engine itself makes.
+With that fixed the derived term is sensible (0.0018 Angstrom, 0.32 degrees
+on water with the flat estimate, D-67) and it repairs a real under-coverage:
+the old angle interval of 0.0273 degrees was NINE TIMES too narrow to reach
+the 0.246-degree angle error the engine itself makes.
 
-It is still OFF by default, and these tests pin why. See
-test_the_interval_is_anti_monotonic_in_sigma.
+It is still OFF by default. The reason these tests used to pin -- an
+interval that narrowed when more measurement error was admitted -- no longer
+occurs (test_the_interval_is_monotonic_in_sigma); turning it on would change
+every reported interval, which is a decision of its own.
 """
 
 from __future__ import annotations
@@ -98,9 +100,10 @@ def test_opt_in_derives_a_systematic_without_touching_the_quoted_sigma():
     assert np.allclose(raw, 0.2)
     # And the derived gap is the flat relative default -- 1% of A, 0.5% of B
     # and C -- not a rescaling of the quoted sigma (decisions D-67). It used to
-    # be the inertial-defect estimate, 8.1% / 4.2% / 2.7% here: against the
-    # B3LYP VPT2 gap 8.9x / 6.1x / 1.06x on water and 0.04-0.45x on B and C
-    # of every other benchmark molecule.
+    # be the inertial-defect estimate, 8.5% / 4.4% / 2.8% here (H2-16O):
+    # against the B3LYP VPT2 gap 8.7x / 6.3x / 1.06x for H2-16O, and
+    # 0.008-0.54x on B and C of every species of the other benchmark
+    # molecules.
     frac = sysg / np.asarray(B0_H2O, dtype=float)
     assert np.allclose(frac, (0.010, 0.005, 0.005), rtol=1e-12, atol=0.0), frac
 
@@ -130,8 +133,8 @@ def test_it_repairs_the_angle_under_coverage():
 def test_the_model_error_dominates_both_coordinates():
     """With the derived systematic on, it is the larger term for the bond AND
     the angle: measured 8.8x and 11.8x their statistical widths with the flat
-    estimate (43x and 62x with the inertial-defect one it replaced, which ran
-    6-9x large on water's A and B).
+    estimate (60x and 87x with the inertial-defect one it replaced, which ran
+    6-9x large on water's A and B against the VPT2 gaps).
 
     This replaces "the bond is barely affected" (asserted < 2x). The bond only
     looked conservative because its statistical width carried the
@@ -175,9 +178,11 @@ def test_the_interval_is_monotonic_in_sigma():
 
     With sigma_floor_rel off, so the quoted sigma reaches the weighting, the
     inertial-defect estimate (to D-67) made admitting 1000x more measurement
-    uncertainty NARROW the reported bond width: 0.0455 -> 0.0180 Angstrom.
-    An uncertainty that shrinks when you admit more error cannot be
-    published, and this test pinned that as the reason auto stayed off. That
+    uncertainty NARROW the reported bond width -- by the time it was
+    replaced only just, 0.01600 -> 0.01590 Angstrom (the angle widened, 2.565
+    -> 2.569 deg); this docstring once recorded 0.0455 -> 0.0180. An
+    uncertainty that shrinks when you admit more error cannot be published,
+    and this test pinned that as the reason auto stayed off. That
     estimate ran 6-9x large on water's A and B; with the flat one the same
     1000x widens the bond, 0.00199 -> 0.00230 Angstrom (angle 0.320 -> 0.343
     deg).

@@ -15,14 +15,16 @@ internal prior (both the defaults since 2026-11-12):
 
   start            weighting OFF          weighting ON
                    dr (mA)   dang         dr (mA)   dang
-  accepted          +2.551  +0.6569        +4.833  +0.1734
-  +3% scaled        +2.551  +0.6569        +4.721  +0.1736
-  -3% scaled        +2.551  +0.6569        +4.924  +0.1730
-  r+0.05 ang-5      +2.550  +0.6569        +4.406  +0.1711
-  r-0.05 ang+5      +2.551  +0.6569        +4.811  +0.1453
+  accepted          +2.551  +0.6569        +4.121  +0.2561
+  +3% scaled        +2.551  +0.6569        +4.116  +0.2562
+  -3% scaled        +2.551  +0.6569        +4.124  +0.2561
+  r+0.05 ang-5      +2.550  +0.6569        +4.098  +0.2566
+  r-0.05 ang+5      +2.551  +0.6569        +4.118  +0.2556
 
-Better on the angle in 5 of 5 starts (by about 0.49 deg) and worse on the
-bond in 5 of 5 (by about 2.2 mA). This test once recorded the angle as WORSE
+(with the flat model-error estimate, D-67). Better on the angle in 5 of 5
+starts (by 0.40 deg) and worse on the bond in 5 of 5 (by 1.55-1.57 mA); with
+the inertial-defect estimate it replaced, 0.49 deg and 2.2 mA (weighting ON
++4.41 to +4.92 mA, +0.145 to +0.174 deg). This test once recorded the angle as WORSE
 in 5 of 5 (+1.27 to +1.63 deg): that was the rule-library prior, then on by
 default, pulling the down-weighted fit toward its own angle. The decision
 is not made here. The double counting that sat beside it is resolved on the
@@ -32,8 +34,9 @@ takes that copy out before it adds the correlated one
 
 MECHANISM. Spectral data alone, no prior, gives dr +1.435 mA and dang
 +0.690 -- essentially the weighting-OFF answer. So this fit is
-data-determined. Flooring sigma at the model gap down-weights the data by
-about 1e5 and hands the answer to the quantum prior, which on this surface
+data-determined. Flooring sigma at the model gap down-weights the data -- a
+sigma ratio of 4e3-4e4 (0.2 MHz quoted against the flat 0.7-8.4 GHz) -- and
+hands the answer to the quantum prior, which on this surface
 has the angle better and the bond worse.
 
 WHAT THAT MEANS, and it is worth stating plainly: this engine's accuracy
@@ -157,7 +160,7 @@ def test_the_reported_width_tracks_the_quoted_sigma_only_through_its_own_part():
     was the floor's max() hiding the measurement part, plus the model error
     counted twice. Counted once, in quadrature with the measurement part,
     2000 MHz against the flat estimate's 0.7-8.4 GHz model gap (D-67; the
-    inertial-defect one gave 7.9-71 GHz and 5%) widens the bond by 30%
+    inertial-defect one gave 2.9-71 GHz and 5%) widens the bond by 30%
     (0.00170 -> 0.00220 Ang), and 2 MHz is already at the model-error limit.
     """
     widths = []

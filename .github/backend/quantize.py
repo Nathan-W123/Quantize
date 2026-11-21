@@ -627,12 +627,21 @@ class MolecularOptimizer:
         # of A, 0.5% of B and C). It used to be the inertial-defect estimate
         # (defect_model_sigma), on the reasoning that a species' own
         # vibrational contamination beats a fraction that is the same for
-        # every molecule. Measured, it does not: against the B3LYP VPT2 gaps
-        # 0.5 |alpha_sum| on seven molecules it ran 0.17-8.9x on A, 0.05-6.1x
-        # on B and 0.04-1.06x on C (too small on B and C everywhere but water;
-        # fluoroethane 20-25x), and against the r_e^SE gaps 0.14-0.40x on B
-        # and C, where the flat fractions are 1.0-2.5x / 0.58-1.17x /
-        # 0.23-0.83x (VPT2) and 0.68-1.05x / 0.58-0.80x on B / C (r_e^SE).
+        # every molecule. Measured, it does not. Against the B3LYP VPT2 gaps
+        # 0.5 |alpha_sum| on seven molecules (per-molecule medians; over all 37
+        # species in brackets) it ran 0.17-8.9x (0.03-9.1) on A, 0.05-6.1x
+        # (0.008-6.3) on B and 0.04-1.06x (0.007-1.06) on C -- too small on B
+        # and C everywhere but water, fluoroethane's 20-25x too small -- where
+        # the flat fractions are 1.0-2.5x (0.96-2.6) / 0.58-1.17x (0.57-1.4)
+        # / 0.23-0.83x (0.20-0.84). Against equilibrium structures (r_e^SE for
+        # vinyl fluoride and chlorofluoromethane, an r_e for ozone and water)
+        # it is 0.14-0.40x on B and C for the first three and 8.2x / 1.08x for
+        # water, the flat 0.58-1.18x / 0.24-0.80x; on A the flat is worst
+        # there (ozone 8.6x, water 0.69x) and the defect worse still (16.6x,
+        # 4.8x). The flat is closer in 19 of 21 molecule-components on the
+        # VPT2 yardstick and 11 of 12 on the r_e one; the exceptions are
+        # water's C and acetyl fluoride's A. VPT2 itself is good to ~10%
+        # except on water's A (0.54x of its r_e gap) and ozone's A (1.8-3.9x).
         # The defect puts the whole residue on every component's moment,
         # which is not how a B0 - Be gap divides among A, B and C (decisions
         # D-67).
@@ -672,8 +681,10 @@ class MolecularOptimizer:
         # a bond width of 0.0128 Angstrom against 9.4045 before, and an
         # independent estimate from B ~ 1/r^2 puts it at 0.0115.
         #
-        # So the blocker on auto-derivation is gone: run through this path it
-        # now yields 0.0142 Angstrom and 1.85 degrees, not 47 and 10975.
+        # So the blocker on auto-derivation is gone: run through this path
+        # (test_auto_systematic_sigma's water fit) it yields 0.0018 Angstrom
+        # and 0.32 degrees with the flat estimate (0.012 and 2.4 with the
+        # inertial-defect one it replaced), not 47 and 10975.
         # Reinstating it is still a change of default -- every user who
         # quotes only measurement sigmas would start seeing the model-error
         # term included -- so it is left off pending that decision, and the
@@ -2071,8 +2082,7 @@ class MolecularOptimizer:
                 "usually dominates (analytic water: 0.28 mA without it, 6.9 with its "
                 "corrections' sigma). State sigma_systematic_mhz per isotopologue, apply "
                 "B0 -> Be corrections with a stated sigma, or set model_error: {auto: "
-                "true} for the engine's estimate (from the inertial defect; it runs "
-                "3-10x large on A and B)")
+                "true} for the engine's flat estimate (1% of A, 0.5% of B and C)")
         elif bare or part:
             msgs.append(
                 "the model-error term covers only part of the data: "
