@@ -21,5 +21,6 @@ Request: (D-68, auto-picked at Q-35) check defect_bias_floor and defect_bias_sca
 - 2026-11-21 · reading the mechanism first showed the scale could not have the flaw, so no measurement was run -- the auto-pick's "measure" was not needed.
 
 ## Pending question
+- Q-36 (asked 22:21 UTC, deadline 22:37): what's next. 1 N24: warn when the multistart's top starts are near-tied but far apart (recommended) · 2 F3 hygiene (BOMs, scripts package, test precision) · 3 a user's-call item: model_error.auto as default, N22, N23 · 4 done for now.
 
 ## Handoff
