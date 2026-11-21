@@ -689,3 +689,10 @@
 - Source: auto-picked, no answer in 15 min (Q-21)
 - Revisit if: the user picks another option.
 
+### D-55 · Impose the translational sum rule on every Hessian the engine consumes (2026-11-21)
+- Decision: an engine helper that subtracts each atom's row sums from its diagonal block and symmetrises (exact for a symmetric input's symmetric part; a no-op on an invariant Hessian, idempotent to ~1e-18), applied where a Hessian enters: the optimizer's quantum state (_run_hessian) and the alpha module's consumers (the rigid-mode projector both mode analyses use, the rigid-direction derivatives, and the displaced Hessians of both cubic schemes). All levels. Test failing on the old code; full suite on 3.12; rerun every row at both levels from the commit; engine rows must reproduce the T-17 prototype's 18; README/docstrings updated.
+- Why: T-17: every B3LYP/6-31G(d) Hessian from pyscf's analytic RKS (no grid-weight response) breaks the rule (row sums 2e-4 to 1.9e-2 Ha/bohr^2); the repaired level-3 Hessian matches level 7-9 on alpha (HCOF 0.032, O3 0.012, CH2ClF 0.006 MHz vs 0.40 / 0.49 / 0.82 raw) and CH2ClF's vibrations (within 0.1 cm-1 vs 5); RHF Hessians satisfy it to ~1e-9. Benchmark: 17 of 18 measured rows move <= 0.04 mA; CH2ClF improves vs its r_e^SE (base 9.24 -> 8.95, offsets 5.99 -> 5.91).
+- Alternatives considered: alpha only (leaves the prior's curvature wrong -- CH2ClF's 5 cm-1); apply in the pyscf backend (the source; would mix repaired and raw entries in the shared disk cache unless every Hessian were recomputed); don't adopt, document.
+- Source: auto-picked, no answer in 15 min (Q-22, recommended option)
+- Revisit if: the user picks another option; a backend's Hessian breaks the rotational rule in a way the projection does not cover; or the B3LYP theory geometries are re-converged (N3 found HCOF 2.6e-4 A from its tight minimum, as large an alpha effect).
+

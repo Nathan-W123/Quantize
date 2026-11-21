@@ -1,7 +1,7 @@
 # Current task
 Task: T-17
 Status: building
-Request: measure the acoustic-sum-rule repair of the B3LYP Hessian (backlog N19 b-ii; D-54, auto-picked at Q-21); measurement only, any engine change proposed before it is made.
+Request: (now D-55, engine change) measure the acoustic-sum-rule repair of the B3LYP Hessian (backlog N19 b-ii; D-54, auto-picked at Q-21); measurement only, any engine change proposed before it is made.
 
 ## Brief
 - Outcome: per molecule, how far the repair moves the B3LYP alpha (all
@@ -23,7 +23,12 @@ Request: measure the acoustic-sum-rule repair of the B3LYP Hessian (backlog N19 
 - N2 · build · prototype in two git-archive copies (repair after the disk cache, B3LYP only), rerun base + offsets for all 9 (18 rows; the full 113 only if adopted) · after: N1 · done 05:30 (t17/compare.txt) · handoff: t17/proto_a, proto_b
 - N3 · verify · fresh agent: converged-grid alpha on formyl fluoride and ozone (levels 3/5/7/9, fixed geometry + re-optimised control), raw vs repaired, own Hessians · after: N1 · done: verdict (a) at fixed geometry, with a geometry caveat (see Progress) · handoff: t17/verify
 - N3b · verify · CH2ClF level-7 Hessian at its theory geometry: does the repaired level-3 vibrational block / alpha match it (the one molecule the repair moves) · after: N2 · done: yes (see Progress) · handoff: t17/cfm_grid.json, cfm_L7.npz
-- N4 · gate · propose (or not) an engine change · after: N2, N3, N3b · asked (Q-22) · handoff: -
+- N4 · gate · propose (or not) an engine change · after: N2, N3, N3b · done: option 1 auto-picked (D-55) · handoff: -
+- N5 · build · engine helper + call sites + test (fails on the old code) + full suite on 3.12 · after: N4 · running · handoff: -
+- N6 · build · rerun every row at both levels from the commit (B3LYP 113, RHF 135; shared raw cache) · after: N5 · pending · handoff: -
+- N6b · verify · engine rows reproduce the prototype's 18 (all consumers covered) · after: N6 · pending · handoff: -
+- N7 · verify · fresh agent: README/docstring prose vs the JSON · after: N8 · pending · handoff: -
+- N8 · build · README table/provenance + benchmark and module docstrings · after: N6 · pending · handoff: -
 
 ## Progress
 - N1 (cached Hessians at each B3LYP theory geometry, harmonic alpha through
@@ -73,10 +78,5 @@ Request: measure the acoustic-sum-rule repair of the B3LYP Hessian (backlog N19 
 - 2026-11-21 · a background launch without an explicit timeout got the harness's 30-min default, not the inner `timeout 7000`; the chains died with 1 of 18 rows. L-09's limit check must include the harness's own default, not just the job's.
 
 ## Pending question
-Q-22 (asked 05:18 UTC, deadline 05:33 UTC; send_later trig_01Fiu7krK5Zfvz3hKfYbP3ht): adopt the sum-rule repair in the engine?
-1. Adopt everywhere a Hessian enters (optimizer quantum state + both alpha mode analyses), all levels (no-op at RHF), test failing on the old code, rerun every B3LYP row, update docs (Recommended; auto-pick)
-2. Adopt in the alpha mode analyses only (not the prior's curvature)
-3. Don't adopt; document it as a known B3LYP default-grid limitation
-4. Done for now
 
 ## Handoff
