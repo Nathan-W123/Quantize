@@ -17,10 +17,10 @@ Request: (D-61, auto-picked at Q-28) re-measure the README's sparse-data sigma r
 ## Graph
 - N1 · diagnose · scans: mono (3 molecules x 2 data levels), fb1, fb8 · after: none · done (t21/scan_*.json) · handoff: -
 - N1b · verify · are the plateau stops optima? refit + restart + tight (conv_freq 0.01, 200 it) · after: N1 · done: monofluoro yes, fluorobenzene no (t21/restart_*.json) · handoff: -
-- N1c · diagnose · fluorobenzene restart chains to stationarity, cold and warm start · after: N1b · running (t21/chain_fb*.log) · handoff: -
+- N1c · diagnose · fluorobenzene restart chains to stationarity, cold and warm start · after: N1b · done (t21/chain_fb*.json) · handoff: -
 - N2 · build · scripts: pass objective_mode="split" where a leg is labelled split · after: N1 · done (d2078fa; their tests 48 passed) · handoff: -
-- N3 · build · README table + prose · after: N1 · todo · handoff: -
-- N4 · verify · fresh agent fact-check against t21 JSON · after: N3 · todo · handoff: -
+- N3 · build · README table + prose · after: N1 · done (8858bb4) · handoff: -
+- N4 · verify · fresh agent fact-check against t21 JSON · after: N3 · running (t21/factcheck) · handoff: -
 
 ## Progress
 - Found by reading: MolecularOptimizer's default objective_mode became
@@ -54,8 +54,20 @@ Request: (D-61, auto-picked at Q-28) re-measure the README's sparse-data sigma r
   model was last expanded (refreshed only after 5 mA of drift), so cold-start
   numbers are not optima of the stated objective.
 
-## Observations
+- N1c (chains to < 1e-4 A): fb1 theory 11.42; split 10.78 cold / 11.27
+  warm; joint default 11.27 / 11.27; joint 0.005 11.18 / 11.18. fb8: split
+  10.63 / 11.60; joint default 11.07 / 11.08; joint 0.005 11.25 / 11.25.
+  Joint is start-independent, split is not; every stationary hybrid within
+  0.8 mA of theory. The first-pass 9.7-9.9 were non-stationary.
+- Monofluoro: split beats calibrated joint 6/6; joint 0.050 beats split in
+  the 3 all-species cases (0.07-0.80); 0.005 worse than 0.020 in 6/6;
+  theory C-F +26.9 to +30.7, every variant lowers it.
+- Not re-measured, possibly stale: the next section's rank figures
+  ("vinyl fluoride's 22 measured constants carry rank 9" -- the constants
+  were replaced by Hayashi & Inagusa's, 8 species / 24 constants).
 
+## Observations
+- 2026-11-21 · the plateau stop looked like convergence (tight runs reproduced it) but a restart from the answer moved fluorobenzene 4 mA: tightening the stop does not test stationarity when the model is stale; a restart does.
 ## Pending question
 
 ## Handoff
