@@ -767,3 +767,10 @@
 - Alternatives considered: rank and report by the model energy at the answer (free); by the true energy (one SCF per start); done for now.
 - Source: auto-picked, no answer in 15 min (Q-32)
 - Revisit if: a case shows starts whose energies at their answers differ by more than the model's error but are misranked; or the report's per-start energy is used for anything beyond ranking.
+
+### D-66 · Next task: auto_systematic_sigma's magnitudes (backlog F13) (2026-11-21)
+- Decision: measure the inertial-defect estimate (defect_model_sigma) behind model_error.auto against per-species B0-Be gaps -- the benchmark's own B3LYP VPT2 correction (0.5 |alpha_sum|) on nine molecules, and the r_e^SE structures in the repo as an independent yardstick -- and propose before any change.
+- Why: Q-33 option 1 (recommended): F13 recorded it 3-10x off on water A and B.
+- Alternatives considered: more r_e^SE references (N3); implement N22 / N23 (user's call); done for now.
+- Source: auto-picked, no answer in 15 min (Q-33)
+- Revisit if: the user picks another option.
