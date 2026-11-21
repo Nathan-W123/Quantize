@@ -15,7 +15,7 @@ once by a container swap).
 
 ### L-P04 · Verify a computed quantity against a value already in the repo
 - Adjustment: before adding a derived quantity -- including a hand-built stand-in for a library function's output -- compute it for a case whose answer is in the repo and compare values, shape and multiplicity; no such case is itself a reason for suspicion.
-- Evidence: 2026-11-10 · a Costain r_s floor gave 852 mA for ozone against the docstring's 4.1. -2026-11-20 (T-10: candidate offsets one per atom vs measure_offsets' one per bond; a verifier caught it). -2026-11-20 (T-14: a prototype took argmin over moments where "absent" is encoded as inf and zeroed the wrong axis on exactly linear geometries; the verifier's own edit disagreed on one row). Extension: before selecting from a library array (argmin / argmax / index), check how it encodes the missing case (inf, 0, NaN). · Scope: project · Status: validated
+- Evidence: 2026-11-10 · a Costain r_s floor gave 852 mA for ozone against the docstring's 4.1. -2026-11-20 (T-10: candidate offsets one per atom vs measure_offsets' one per bond; a verifier caught it). -2026-11-20 (T-14: a prototype took argmin over moments where "absent" is encoded as inf and zeroed the wrong axis on exactly linear geometries; the verifier's own edit disagreed on one row). -2026-11-20 (T-15: the new projector's own linearity threshold projected out part of a real bend; caught by the stationary-point check before any long run). Extension: before selecting from a library array (argmin / argmax / index), check how it encodes the missing case (inf, 0, NaN); any new rigid / linear treatment goes through rigid_mode_count, never its own threshold. · Scope: project · Status: validated
 
 ### L-P06 · A library module with only a script consumer is misplaced
 - Adjustment: before committing a module under backend/, list its importers; if none are in backend/, wire it in or move it.
@@ -27,7 +27,7 @@ once by a container swap).
 
 ### L-09 · Bound tests by a measured scale, never by a round number
 - Adjustment: print the quantity and its scale before writing a tolerance; set the bound from the measurement with stated headroom.
-- Evidence: 2026-11-10 · atol=1e-18 on a norm-3.1e4 projector. · Scope: project · Status: validated
+- Evidence: 2026-11-10 · atol=1e-18 on a norm-3.1e4 projector. +2026-11-20 (T-15: a bound set by measurement -- water e2e 0.65x -- had measured the defect; when a fix makes such a test fail, check its quantity against an exact reference, here B_e(r_e), before calling either side wrong). · Scope: project · Status: validated
 
 ### L-11 · A fix in one objective mode can break another
 - Adjustment: when a fix touches the step, the certificate or the bootstrap, rerun every reproduction script the verifiers left, on both versions, for every objective mode they cover.
@@ -54,8 +54,8 @@ once by a container swap).
 - Evidence: 2026-11-20 · per-bond widths: CH2ClF 17.64 -> 2.44 mA, HNCO angle 1.49 -> 16.47 deg. +T-07 (ozone vs r_e, trans H2O2) +T-10 (HNCO moved by a C-Cl member). · Scope: project · Status: provisional
 
 ### L-18 · In results prose, name the row and file each number comes from
-- Adjustment: quote each figure with its config and yardstick (best-of / offsets row; vs primary / vs r_e) and its file; generate before/after pairs from the JSON with a script, derived figures too; have the prose fact-checked against the data.
-- Evidence: 2026-11-20 · a fact-check of 622b573 found 4 mixed-row errors. +T-10; -T-11 (README vs docstring mixed by a two-file grep); -T-08 (a hand-computed estimate was wrong). · Scope: project · Status: provisional
+- Adjustment: quote each figure with its config, leg (theory / ME / hybrid) and yardstick (best-of / offsets row; vs primary / vs r_e) and its file; when calling a move small, give the largest over every leg, and say against whom a method "wins"; generate before/after pairs from the JSON with a script, derived figures too; have the prose fact-checked against the data.
+- Evidence: 2026-11-20 · a fact-check of 622b573 found 4 mixed-row errors. +T-10; -T-11 (README vs docstring mixed by a two-file grep); -T-08 (a hand-computed estimate was wrong). +T-15 (fact-check of ebb41e0 by own code: 0 wrong numbers of ~70, 5 misleading -- a 0.28 that was the ME leg beside a hybrid figure, "wins" without naming the loser; my own progress note had called AF's move 1e-4 from the hybrid leg when its ME leg moved 0.062). · Scope: project · Status: provisional
 
 ### L-19 · A negative result through the engine is conditional on its configuration
 - Adjustment: when an engine experiment finds "no effect", name the settings it depends on (weighting, prior, width) and say whether another setting could change it.
@@ -64,3 +64,7 @@ once by a container swap).
 ### L-20 · Screen against the whole decision rule, not the side the last finding was on
 - Adjustment: when a run list is cut by a screen on a test's statistic, write the test's full rule (both bounds, every pass, every parameter value compared) and screen each check against all of it before narrowing.
 - Evidence: 2026-11-20 · T-13: "rerun B3LYP only where first-pass chi2 > 2.5" missed the lower bound 1/T; scanning every check on both bands found 8 rows (water 0.217, ozone 0.226) that tighten at 3 and 4 but not 5. They moved < 1e-5 mA, so the count held, but it would have been unmeasured. · Scope: project · Status: provisional
+
+### L-21 · Compare two runs only under the same cache state
+- Adjustment: before putting a difference between two runs down to code, rerun one side under the other's cache state (warm vs cold) or both cold; record the cache state beside the code vintage.
+- Evidence: 2026-11-21 · T-15: 57/117 RHF rows differed between prototype and commit with docstring-only code changes; the prototype on a warm cache reproduced the commit to every digit (fresh vs cache-read Hessians through the 1e-9 A key, amplified to 0.04 mA by fluoroacetylene's tracked fits). Worktrees sharing one exact cache gave bit-identical duplicates (15 rows). · Scope: project · Status: provisional

@@ -56,14 +56,14 @@ Sessions: 0 · Last consolidated: 2026-11-20
 ### L-09 · Ending a turn on background work: say what runs, how far, how long
 - Observation: the user twice asked why the loop had stopped while a benchmark ran in the background.
 - Evidence: 2026-11-20 · "why did the loop stop" (Quantize T-07).
-- Adjustment: when a turn ends to wait on background work, say what is running, its progress (n of N), a rough ETA, and that the loop resumes on its own.
-- Scope: workflow · Status: provisional · Outcomes: +2026-11-20 (T-10, T-13: no "why did it stop" since)
+- Adjustment: when a turn ends to wait on background work, say what is running, its progress (n of N), an ETA from a measured per-item rate (not a guess), and that the loop resumes on its own; if a job will meet a time limit, start its remainder in parallel rather than wait for the timeout.
+- Scope: workflow · Status: provisional · Outcomes: +2026-11-20 (T-10, T-13: no "why did it stop" since) -2026-11-20 (T-15: a guessed 15-20 min ETA missed by hours -- projected modes moved every cubic displacement off the cache) +2026-11-21 (T-15: remainder started in a parallel worktree before a 2 h timeout; no rows lost)
 
 ### L-10 · Give a verifier an experiment that settles the question, not your reading
 - Observation: asked to force sigma_x and reproduce, a verifier found a chi2-rescale switch my reading had put down to the width itself.
 - Evidence: 2026-11-20 · Quantize T-11 (t11/verify/fine_hf.json).
 - Adjustment: state the claim as an experiment the verifier can run (hold X fixed, vary Y, reproduce the rows, by a different mechanism than yours), not as a conclusion to review.
-- Scope: workflow · Status: provisional · Outcomes: +2026-11-20 (T-12: "move the threshold to 3 and 5" gave the flip point and the floor) +2026-11-20 (T-13: a source edit instead of my monkeypatch reproduced every row bit for bit and showed the 5.93 best-of needs six rows, not the four I named) +2026-11-20 (T-14: told to make its own edit, the verifier's fix disagreed with my prototype on one row and exposed my prototype's bug)
+- Scope: workflow · Status: provisional · Outcomes: +2026-11-20 (T-12: "move the threshold to 3 and 5" gave the flip point and the floor) +2026-11-20 (T-13: a source edit instead of my monkeypatch reproduced every row bit for bit and showed the 5.93 best-of needs six rows, not the four I named) +2026-11-20 (T-14: told to make its own edit, the verifier's fix disagreed with my prototype on one row and exposed my prototype's bug) +2026-11-21 (T-15, three verifiers: own projector refuted my gradient-proportional prediction and found the 23.2-28.6 recipe range; own Hessians, frames and grids confirmed the fix but refuted my mechanism; own code on the JSON found 5 misleading statements my figure script could not)
 
 ## Retired
 ## Changelog
@@ -76,3 +76,4 @@ Sessions: 0 · Last consolidated: 2026-11-20
 - 2026-11-20 L-10 outcome + (T-13).
 - 2026-11-20 L-06, L-10 outcomes + (T-14); project L-P04 extended (sentinel encodings).
 - 2026-11-20 consolidated: learnings.md 127 -> ~75 lines (observations and evidence compressed, no lesson dropped); lessons.md 161 -> ~80 (L-08 into L-07, validated lessons compressed); L-08 outcome + (T-13).
+- 2026-11-21 L-09 revised (measured-rate ETA, parallel remainder before a limit); L-10 outcome + (T-15); project L-21 added, L-P04 / L-09 / L-18 extended.

@@ -80,7 +80,7 @@ isotopologues cannot see (scripts/archive/chlorofluoromethane_level_gap.py).
 The
 calibration pool (2026-11-20) moved the offset rows: chlorofluoromethane's C-Cl
 and isocyanic acid's C-N now get a correction, which took their RHF offsets
-hybrid from 20.14 and 21.62 to 5.42 and 8.14 (the 8.14 did not survive D-52,
+hybrid from 20.14 and 21.62 to 5.42 and 8.14 (at b29cec3, 5.43 and 28.56;
 below), but mixed estimation gains too and takes chlorofluoromethane and
 formyl fluoride from the hybrid, which is why its win counts at RHF fell from
 6/9 and 8/9.
@@ -98,8 +98,10 @@ from 5.34 to 6.43, win counts unchanged. Off a stationary point the harmonic
 force field is not unique, so that row depends on the recipe: an unweighted
 Cartesian projection gives 23.20 and alpha taken at the stationary geometry
 23.36. Isocyanic acid's track_direct, tracked off-stationary too, went from
-22.13 to 18.04; every other RHF row moved by 0.09 mA or less, every B3LYP row
-by 0.28 or less (isocyanic acid's offsets family, 3.71 -> 3.49). No reduced
+22.13 to 18.04, and the offsets family's mixed-estimation leg from 59.78 to
+54.34; every other RHF row moved by 0.09 mA or less on every leg, every B3LYP
+row by 0.28 or less (isocyanic acid's offsets family: mixed estimation 5.67 ->
+5.39, hybrid 3.71 -> 3.49). No reduced
 chi-square of the rerun lies between 3 and 5, so no row is decided by the
 threshold; on the low side only two B3LYP fits have checks between 1/5 and
 1/3, water's base family (0.217) and ozone's offsets family (0.226), where the
@@ -110,12 +112,14 @@ moves toward its r_s reference (1.43 -> 0.04) and away from its r_e (0.37 ->
 1.02): the O-O offset comes from hydrogen peroxide's single bond. With the base configuration alone (`configs=base`) the means are
 21.47 / 17.35 / 11.03 at RHF and 9.19 / 5.41 / 4.63 at B3LYP.
 
-Where theory alone still wins -- vinyl fluoride at both levels, acetyl
-fluoride at RHF, fluoroethane at B3LYP (6.63 against 6.66, a tie) -- the
-margin is 0.6-1.0 mA, below the resolution of those molecules' r_s / effective
-references. Vinyl fluoride now has an r_e (Piccardo et al. 2015), and against
-it the hybrid wins at both levels: base configuration 11.39 against theory's
-17.98 at RHF, 3.36 against 5.86 at B3LYP. (Its old margin was partly its
+Where theory alone still beats the hybrid -- vinyl fluoride at both levels,
+acetyl fluoride at RHF, fluoroethane at B3LYP (6.63 against 6.66, a tie;
+mixed estimation's 6.43 beats both) -- the margin is 0.6-1.0 mA, below the
+resolution of those molecules' r_s / effective references. Vinyl fluoride now
+has an r_e (Piccardo et al. 2015), and against it the hybrid beats theory at
+both levels: base configuration 11.39 against 17.98 at RHF (where mixed
+estimation's 10.70 is ahead of both), 3.36 against 5.86 at B3LYP, where it is
+the best of the three. (Its old margin was partly its
 data: the 1968 constants' deuterated A values were wrong by up to 2%.)
 
 Against the molecules with an r_e the hybrid is sub-mA where the theory is

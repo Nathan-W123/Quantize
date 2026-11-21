@@ -1,6 +1,6 @@
 # Current task
 Task: T-15
-Status: building
+Status: done
 Request: measure whether projecting translations and rotations out of the
 Hessian before the alpha normal-mode analysis moves any benchmark row
 (backlog N19 b-i; D-51, auto-picked at Q-18); measurement only, any engine
@@ -29,7 +29,7 @@ change proposed before it is made.
 - N5 · build · engine projector + test (fails on the old code) + full suite on 3.12 · after: N4 · done (b29cec3) · handoff: -
 - N6 · build · rerun every row at both levels from the commit (worktrees, warm cache, chi2 logged) · after: N5 · done: RHF 135, B3LYP 113, all b29cec3 · handoff: t15/final (merged JSON, figures.txt, tables), reports/accuracy_upgrades
 - N6b · verify · fresh agent: is AF B3LYP's stationary-point alpha shift (0.3-1.3 MHz) removed noise or a projector defect -- own Hessians, orientation and grid tests · after: N6 · done: removed contamination, projector correct (see Progress) · handoff: t15/verify_af
-- N7 · verify · fresh agent: the committed rows and README against the JSON · after: N6 · running (own code, not figures.py/--table; t15/verify_n7) · handoff: -
+- N7 · verify · fresh agent: the committed rows and README against the JSON · after: N6 · done: 0 wrong of ~70, 5 misleading fixed (see Progress) · handoff: t15/verify_n7
 - N8 · build · README table/provenance + benchmark docstring (rescale caveat) · after: N6 · done (ebb41e0) · handoff: -
 
 ## Progress
@@ -187,6 +187,18 @@ change proposed before it is made.
   monofluoro_references D-43 figures marked as measured at c8904da.
   Archived (scripts/archive_benchmark_results.py; old output/ JSON kept as
   *.pre-t15). figures.py on reports/ = on t15/final; tests 16 passed.
+
+- N7 fact-check (own code on reports/ JSON and git history, not
+  figures.py / --table): every number right at 2 decimals, every history
+  claim matched a source. Fixed 5 misleading statements: AF's 0.06-0.08 is
+  its stationary-point ME rows (offsets rows 0.002); "the 8.14 did not
+  survive" read as if 5.42 had (now 5.43); the B3LYP 0.28 max is HNCO's ME
+  leg (hybrid 0.22) -- both legs now given, and RHF HNCO offsets ME 59.78 ->
+  54.34 added; FE B3LYP "theory wins" (ME 6.43 beats both); VF r_e "hybrid
+  wins at both levels" (ME ahead at RHF); AF rigid 52 cm-1 is one molecule;
+  "within 0.07 MHz" was 0.0725 -> 0.08. Unverifiable, pre-existing: the CD
+  table's vintage (backlog F3), Costain 4.1 / 14125f3 / 0.403 / 0.753, the
+  D-43 counterfactual means.
 
 ## Observations
 - 2026-11-21 · L-09 ETA: chain D's CH2ClF tracked rows would have run into its timeout; a third worktree on the shared cache finished the twins and ozone in parallel and its duplicates came out bit-identical -- parallel resumption on a shared exact cache is safe.

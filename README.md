@@ -86,8 +86,9 @@ three on all four at B3LYP; at RHF mixed estimation is ahead on three.
 > recipe (23.2–28.6 mÅ). Every other RHF row moves by 0.09 mÅ or less, every
 > B3LYP row by 0.28 or less. At B3LYP the projection matters at stationary
 > points too: pyscf's analytic DFT Hessian has no grid-weight response, so at
-> its default grid the rigid modes sit up to 52 cm⁻¹ from zero and leak into low
-> torsions (acetyl fluoride's mixed-estimation rows move 0.06–0.08 mÅ). Not
+> its default grid acetyl fluoride's rigid modes (the one molecule measured) sit
+> up to 52 cm⁻¹ from zero and leak into its methyl torsion; its stationary-point
+> mixed-estimation rows move 0.06–0.08 mÅ. Not
 > run: the `elec` and `all` configurations (they need `pyscf.prop`, not
 > installed here), and at B3LYP the `torsion` and `offsets+torsion` rows of
 > fluoroethane and acetyl fluoride (a single scan outlasts the 2-hour job
