@@ -26,7 +26,8 @@ _ROOT = ensure_repo_paths(Path(__file__).resolve().parent.parent)
 
 from backend.conformers.conformer_generation import build_conformer_ensemble
 from backend.conformers.geometryguess import guess_geometry_molecular_input
-from backend.multistart import run_multistart, select_best_result, underconstrained_success_score
+from backend.multistart import (near_tie_note, near_tied_starts, run_multistart, select_best_result,
+                                underconstrained_success_score)
 from backend.spectral.spectral import SpectralEngine
 from backend.spectral.spectral_model import normalize_spectral_model
 from backend.torsion.torsion_hamiltonian import (
@@ -2378,6 +2379,13 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
         best = min(results, key=lambda x: float(x.get("selection_score", np.inf)))
     else:
         best = select_best_result(results, spectral_gate_abs=0.05, spectral_gate_rel=2.0)
+    # Starts that end near-tied with the selected one but far from it (D-70):
+    # the ranking cannot separate them, so say so rather than hide it.
+    best["multistart_near_ties"] = near_tied_starts(results, best, spectral_gate_abs=0.05,
+                                                    spectral_gate_rel=2.0)
+    _note = near_tie_note(best["multistart_near_ties"])
+    if _note:
+        print(f"[{name}] {_note}")
     best_metrics = best["metrics_labeled"]
     best_conformer_summary = dict(conformer_workflow["summary"])
     conf_diag = best.get("conformer_diagnostics") or {}

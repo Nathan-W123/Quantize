@@ -796,3 +796,10 @@
 - Alternatives considered: F3 hygiene; model_error.auto as default, N22, N23 (user's call); done for now.
 - Source: auto-picked, no answer in 15 min (Q-36)
 - Revisit if: the user picks another option.
+
+### D-70 · Report multistart near-ties (2026-11-21)
+- Decision: build the near-tie report as proposed in T-26 (model energy at each start's answer; near_tied_starts with 5e-5 Ha and 2 mA; stored on the best result, printed, listed in the md / html reports under "Best start"; "Final energy" relabelled as the last quantum point's; ranking unchanged).
+- Why: T-26 thresholds from the T-23 data (model energy error 90th percentile 2.5e-5 Ha; flags 5 of 10 runs, the methyl-torsion molecules and VF cold, 8.7-20.6 mA apart).
+- Alternatives considered: bundle only; configurable thresholds; done for now.
+- Source: auto-picked, no answer in 15 min (Q-37)
+- Revisit if: the flag fires on cases where the starts are not genuinely undecided.

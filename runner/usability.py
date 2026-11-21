@@ -5,6 +5,7 @@ import json
 import re
 import shutil
 import hashlib
+import html
 from datetime import datetime, UTC
 from pathlib import Path
 from typing import Any
@@ -671,6 +672,16 @@ def _validate_internal_priors_block(cfg: dict[str, Any], n_atoms: int) -> None:
 _INERTIAL_DEFECT_WARN = 1.0
 _INERTIAL_DEFECT_REL = 0.1
 _INERTIA_TO_MHZ = 505379.0084353526
+
+
+def _near_tie_note(best: dict[str, Any]) -> str | None:
+    """The report's line for multistart starts near-tied with the selected one
+    but far from it (backend.multistart.near_tied_starts), or None."""
+    near = best.get("multistart_near_ties") or []
+    if not near:
+        return None
+    from backend.multistart import near_tie_note
+    return near_tie_note(near)
 
 
 def inertial_defect_mhz(a_mhz: float, b_mhz: float, c_mhz: float) -> float:
@@ -1900,8 +1911,11 @@ def write_markdown_report(path: Path, result: dict[str, Any], artifacts: dict[st
         f"- Run directory: `{result.get('run_dir', '.')}`",
         f"- Best start: `{best.get('idx', 'n/a')}`",
         f"- Spectral RMS: `{float(best.get('freq_rms', np.nan)):.6f}` MHz",
-        f"- Final energy: `{float(best.get('energy', np.nan)):.10g}` Eh",
+        f"- Energy at the last quantum point: `{float(best.get('energy', np.nan)):.10g}` Eh",
     ]
+    _near = _near_tie_note(best)
+    if _near:
+        lines.append(f"- Warning: {_near}")
     if score:
         lines.extend(
             [
@@ -2115,7 +2129,9 @@ def write_html_report(path: Path, result: dict[str, Any], artifacts: dict[str, A
         f"<div><strong>Run directory:</strong> {result.get('run_dir', '.')}</div>",
         f"<div><strong>Best start:</strong> {best.get('idx', 'n/a')}</div>",
         f"<div><strong>Spectral RMS:</strong> {float(best.get('freq_rms', np.nan)):.6f} MHz</div>",
-        f"<div><strong>Final energy:</strong> {float(best.get('energy', np.nan)):.10g} Eh</div>",
+        f"<div><strong>Energy at the last quantum point:</strong> {float(best.get('energy', np.nan)):.10g} Eh</div>",
+        *( [f"<div><strong>Warning:</strong> {html.escape(_near_tie_note(best))}</div>"]
+           if _near_tie_note(best) else [] ),
         f"<div><strong>Success score:</strong> {float(score.get('score', np.nan)):.1f}</div>",
         f"<div><strong>Constrained rank:</strong> {score.get('constrained_rank', 'n/a')}/{score.get('internal_dof', 'n/a')}</div>",
         "</div>",
@@ -2591,6 +2607,8 @@ def write_outputs(result: dict[str, Any]) -> dict[str, Path | list[Path]]:
             "energy": result.get("best", {}).get("energy"),
             "coords": np.asarray(result.get("best", {}).get("coords", []), dtype=float).tolist(),
             "history": list(result.get("best", {}).get("history", []) or []),
+            # So a rebuilt report keeps the near-tie warning (D-70).
+            "multistart_near_ties": list(result.get("best", {}).get("multistart_near_ties") or []),
         },
         "score": result.get("score", {}),
         "residual_rows": rows,

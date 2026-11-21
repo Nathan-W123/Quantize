@@ -1,6 +1,6 @@
 # Current task
 Task: T-26
-Status: clarifying
+Status: verifying
 Request: (D-69, auto-picked at Q-36) have the multistart say when its top starts are near-tied but far apart (N24); thresholds from T-23 data; propose before building.
 
 ## Brief
@@ -24,15 +24,18 @@ Request: (D-69, auto-picked at Q-36) have the multistart say when its top starts
 
 ## Graph
 - N1 · diagnose · thresholds from t23 · after: none · done · handoff: -
-- N2 · gate · exact behaviour (Q-37) · after: N1 · asked · handoff: -
-- N3 · build · helper, recording, report, test · after: N2 · todo · handoff: -
-- N4 · verify · fresh agent: a real CLI run shows it; test fails on old code · after: N3 · todo · handoff: -
+- N2 · gate · exact behaviour (Q-37) · after: N1 · done: as proposed (D-70, auto-picked) · handoff: -
+- N3 · build · helper, recording, report, test · after: N2 · done (6 tests; payload carries it for rebuilds; CI selection 1631 passed) · handoff: -
+- N4 · verify · fresh agent: a real CLI run shows it; quiet cases stay quiet · after: N3 · running · handoff: -
 
 ## Progress
+- Real `cli run` (acetyl fluoride, RHF minimum start, HF/6-31G): printed and
+  in report.md / report.html: "near-tied starts: start 2 (+1.9e-05 Eh, 20.6
+  mA)". The first run's payload dropped it (report_payload.json keeps five
+  fields of best) -- added; after a rerun, `cli report` rebuilds it.
 
 ## Observations
 
 ## Pending question
-- Q-37 (asked 22:41 UTC, deadline 22:57): the N24 behaviour. 1 as proposed (recommended) · 2 record in the bundle only, no report line or print · 3 as proposed with the thresholds in config · 4 done for now.
 
 ## Handoff

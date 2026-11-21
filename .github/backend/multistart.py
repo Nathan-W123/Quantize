@@ -3,8 +3,18 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 
 import numpy as np
 
-from backend.quantize import MolecularOptimizer
+from backend.quantize import MolecularOptimizer, _kabsch_align
 from backend.registry import get_backend
+
+#: Two starts are near-tied when their quantum energies at their answers differ
+#: by no more than this (Hartree), and far apart when, aligned, some atom
+#: differs by more than NEAR_TIE_DISTANCE_ANG. The energy is the fit's own
+#: quadratic model at the answer (free): measured through `cli run` on 30
+#: starts (T-23) it is within 5.6e-6 Ha (median) and 2.5e-5 (90th percentile)
+#: of the true energy there; the tie is twice that. 2 mA leaves out the
+#: 0.15-1.2 mA pairs that differ only by where each fit stopped.
+NEAR_TIE_ENERGY_HA = 5e-5
+NEAR_TIE_DISTANCE_ANG = 2e-3
 
 
 def _spectral_isotopologue_snapshot(opt):
@@ -46,6 +56,15 @@ def _run_one_start(payload):
     # final_coords -- see select_best_result.
     _e = last.get("energy", np.inf)
     _fr = last.get("freq_rms", np.inf)
+    # The energy at the answer itself, from the fit's own quadratic model of
+    # the quantum surface (no quantum call); near_tied_starts compares these.
+    _e_answer = None
+    if not opt.spectral_only and opt.quantum is not None:
+        try:
+            _e_answer = float(opt.quantum_prior_energy(np.asarray(final_coords, dtype=float),
+                                                       use_proxy=True))
+        except Exception:  # a diagnostic must not lose the fit
+            _e_answer = None
 
     # ── Acceptance-rate diagnostics ───────────────────────────────────────────
     n_iters = len(opt.history)
@@ -99,6 +118,7 @@ def _run_one_start(payload):
         "start_coords": np.asarray(coords, dtype=float).copy(),
         "freq_rms": float(_fr if _fr is not None else np.inf),
         "energy": float(_e if _e is not None else np.inf),
+        "energy_at_answer_model": _e_answer,
         "history": opt.history,
         "workdir": start_dir,
         "spectral_isotopologues_snapshot": _spectral_isotopologue_snapshot(opt),
@@ -297,6 +317,59 @@ def select_best_result(
     if finite_energy:
         return min(finite_energy, key=lambda r: float(r.get("energy", np.inf)))
     return min(gated, key=lambda r: float(r.get("freq_rms", np.inf)))
+
+
+def near_tied_starts(results, best, spectral_gate_abs=0.05, spectral_gate_rel=2.0,
+                     tie_ha=NEAR_TIE_ENERGY_HA, distance_ang=NEAR_TIE_DISTANCE_ANG):
+    """The other starts the selection could just as well have reported.
+
+    A start counts when it passes the same spectral gate select_best_result
+    applies, its model energy at its answer (``energy_at_answer_model``) is
+    within ``tie_ha`` of the selected start's, and its answer is more than
+    ``distance_ang`` from the selected one at some atom after alignment. Such a
+    pair is not ranked by any energy these fits carry (T-23: every misrank
+    was between starts within 1.4e-6 Ha), so the reported geometry is one of
+    several the fit does not decide between -- along a flat direction such
+    as a methyl torsion. Returns dicts (idx, energy difference, distance,
+    freq_rms), farthest first; empty when there is nothing to say.
+    """
+    e_best = best.get("energy_at_answer_model")
+    if e_best is None or not np.isfinite(float(e_best)):
+        return []
+    best_freq = min(float(r.get("freq_rms", np.inf)) for r in results)
+    gate = max(float(spectral_gate_abs), float(spectral_gate_rel) * best_freq)
+    x_best = np.asarray(best["coords"], dtype=float)
+    out = []
+    for r in results:
+        if r is best or r.get("idx") == best.get("idx"):
+            continue
+        e = r.get("energy_at_answer_model")
+        if e is None or not np.isfinite(float(e)) or float(r.get("freq_rms", np.inf)) > gate:
+            continue
+        de = float(e) - float(e_best)
+        if abs(de) > float(tie_ha):
+            continue
+        x = np.asarray(r["coords"], dtype=float)
+        if x.shape != x_best.shape:
+            continue
+        dist = float(np.linalg.norm(_kabsch_align(x, x_best) - x_best, axis=1).max())
+        if dist > float(distance_ang):
+            out.append({"idx": r.get("idx"), "energy_difference_ha": de,
+                        "max_atom_distance_ang": dist,
+                        "freq_rms": float(r.get("freq_rms", np.inf))})
+    return sorted(out, key=lambda d: -d["max_atom_distance_ang"])
+
+
+def near_tie_note(near):
+    """One line for the report, or None."""
+    if not near:
+        return None
+    parts = ", ".join(f"start {d['idx']} ({d['energy_difference_ha']:+.1e} Eh, "
+                      f"{1000.0 * d['max_atom_distance_ang']:.1f} mA)" for d in near)
+    return (f"near-tied starts: {parts} -- within {NEAR_TIE_ENERGY_HA:.0e} Eh of this one "
+            f"in the fit's model energy at their answers but more than "
+            f"{1000.0 * NEAR_TIE_DISTANCE_ANG:.0f} mA away (largest atom, aligned), so the "
+            f"fit does not decide between them; this geometry is one of them")
 
 
 def _infer_internal_dof(coords):
