@@ -27,8 +27,8 @@ Request: (now D-55, engine change) measure the acoustic-sum-rule repair of the B
 - N5 · build · engine helper + call sites + test (fails on the old code) + full suite on 3.12 · after: N4 · done (ba67cfe) · handoff: -
 - N6 · build · rerun every row at both levels from the commit (B3LYP 113, RHF 135; shared raw cache) · after: N5 · done 09:00 (all ba67cfe, archived) · handoff: t17/final, reports/accuracy_upgrades
 - N6b · verify · engine rows reproduce the prototype's 18 (all consumers covered) · after: N6 · done: max |d| 8.6e-9 mA over 18 rows (the helper's second application) · handoff: -
-- N7 · verify · fresh agent: README/docstring prose vs the JSON, own code · after: N8 · pending · handoff: -
-- N8 · build · README table/provenance + benchmark and module docstrings · after: N6 · done (next commit) · handoff: t17/final/figures.txt, table_best.txt
+- N7 · verify · fresh agent: README/docstring prose vs the JSON, own code · after: N8 · running (t17/verify_n7) · handoff: -
+- N8 · build · README table/provenance + benchmark and module docstrings · after: N6 · done (75ef5fa) · handoff: t17/final/figures.txt, table_best.txt
 
 ## Progress
 - N1 (cached Hessians at each B3LYP theory geometry, harmonic alpha through
