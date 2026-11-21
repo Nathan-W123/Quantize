@@ -27,7 +27,7 @@ once by a container swap).
 
 ### L-09 · Bound tests by a measured scale, never by a round number
 - Adjustment: print the quantity and its scale before writing a tolerance; set the bound from the measurement with stated headroom.
-- Evidence: 2026-11-10 · atol=1e-18 on a norm-3.1e4 projector. +2026-11-20 (T-15: a bound set by measurement -- water e2e 0.65x -- had measured the defect; when a fix makes such a test fail, check its quantity against an exact reference, here B_e(r_e), before calling either side wrong). +2026-11-21 (T-16: an exact-zero assertion on a re-converged geometry broke under a numpy upgrade; bounded by the measured restart scale, with the defect's own move measured on the other side). · Scope: project · Status: validated
+- Evidence: 2026-11-10 · atol=1e-18 on a norm-3.1e4 projector. +2026-11-20 (T-15: a bound set by measurement -- water e2e 0.65x -- had measured the defect; when a fix makes such a test fail, check its quantity against an exact reference, here B_e(r_e), before calling either side wrong). +2026-11-21 (T-16: an exact-zero assertion on a re-converged geometry broke under a numpy upgrade; bounded by the measured restart scale, with the defect's own move measured on the other side). -2026-11-21 (T-17: I wrote a new test's bounds and "measured" comments before measuring; two of three failed on first run -- measure, then write the bound). · Scope: project · Status: validated
 
 ### L-11 · A fix in one objective mode can break another
 - Adjustment: when a fix touches the step, the certificate or the bootstrap, rerun every reproduction script the verifiers left, on both versions, for every objective mode they cover.
@@ -51,11 +51,11 @@ once by a container swap).
 
 ### L-17 · Run a remedy on every molecule it changes before calling it a fix
 - Adjustment: list every molecule a change can move and run all of them on every yardstick before reporting a gain; say n when it is small.
-- Evidence: 2026-11-20 · per-bond widths: CH2ClF 17.64 -> 2.44 mA, HNCO angle 1.49 -> 16.47 deg. +T-07 (ozone vs r_e, trans H2O2) +T-10 (HNCO moved by a C-Cl member). · Scope: project · Status: provisional
+- Evidence: 2026-11-20 · per-bond widths: CH2ClF 17.64 -> 2.44 mA, HNCO angle 1.49 -> 16.47 deg. +T-07 (ozone vs r_e, trans H2O2) +T-10 (HNCO moved by a C-Cl member). +T-17 (a per-molecule diagnostic over all nine found the one molecule a Hessian repair moves -- CH2ClF -- before any rerun; base + offsets measured on all nine before adoption). · Scope: project · Status: provisional
 
 ### L-18 · In results prose, name the row and file each number comes from
 - Adjustment: quote each figure with its config, leg (theory / ME / hybrid) and yardstick (best-of / offsets row; vs primary / vs r_e) and its file; when calling a move small, give the largest over every leg, and say against whom a method "wins"; generate before/after pairs from the JSON with a script, derived figures too; have the prose fact-checked against the data.
-- Evidence: 2026-11-20 · a fact-check of 622b573 found 4 mixed-row errors. +T-10; -T-11 (README vs docstring mixed by a two-file grep); -T-08 (a hand-computed estimate was wrong). +T-15 (fact-check of ebb41e0 by own code: 0 wrong numbers of ~70, 5 misleading -- a 0.28 that was the ME leg beside a hybrid figure, "wins" without naming the loser; my own progress note had called AF's move 1e-4 from the hybrid leg when its ME leg moved 0.062). · Scope: project · Status: provisional
+- Evidence: 2026-11-20 · a fact-check of 622b573 found 4 mixed-row errors. +T-10; -T-11 (README vs docstring mixed by a two-file grep); -T-08 (a hand-computed estimate was wrong). +T-15 (fact-check of ebb41e0 by own code: 0 wrong numbers of ~70, 5 misleading -- a 0.28 that was the ME leg beside a hybrid figure, "wins" without naming the loser; my own progress note had called AF's move 1e-4 from the hybrid leg when its ME leg moved 0.062). -T-17 (fact-check: I quoted CH2ClF's effective-reference move, 0.32, as its move against r_e, 0.29 -- the yardstick has to travel with the number). · Scope: project · Status: provisional
 
 ### L-19 · A negative result through the engine is conditional on its configuration
 - Adjustment: when an engine experiment finds "no effect", name the settings it depends on (weighting, prior, width) and say whether another setting could change it.
@@ -67,4 +67,4 @@ once by a container swap).
 
 ### L-21 · Compare two runs only under the same cache state
 - Adjustment: before putting a difference between two runs down to code, rerun one side under the other's cache state (warm vs cold) or both cold; record the cache state beside the code vintage.
-- Evidence: 2026-11-21 · T-15: 57/117 RHF rows differed between prototype and commit with docstring-only code changes; the prototype on a warm cache reproduced the commit to every digit (fresh vs cache-read Hessians through the 1e-9 A key, amplified to 0.04 mA by fluoroacetylene's tracked fits). Worktrees sharing one exact cache gave bit-identical duplicates (15 rows). · Scope: project · Status: provisional
+- Evidence: 2026-11-21 · T-15: 57/117 RHF rows differed between prototype and commit with docstring-only code changes; the prototype on a warm cache reproduced the commit to every digit (fresh vs cache-read Hessians through the 1e-9 A key, amplified to 0.04 mA by fluoroacetylene's tracked fits). Worktrees sharing one exact cache gave bit-identical duplicates (15 rows). +T-17 (engine vs prototype on the same cache: 8.6e-9 mA over 18 rows). · Scope: project · Status: provisional

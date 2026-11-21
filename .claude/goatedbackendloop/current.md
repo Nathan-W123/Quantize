@@ -1,6 +1,6 @@
 # Current task
 Task: T-17
-Status: building
+Status: done
 Request: (now D-55, engine change) measure the acoustic-sum-rule repair of the B3LYP Hessian (backlog N19 b-ii; D-54, auto-picked at Q-21); measurement only, any engine change proposed before it is made.
 
 ## Brief
@@ -131,5 +131,10 @@ Request: (now D-55, engine change) measure the acoustic-sum-rule repair of the B
 - 2026-11-21 · a background launch without an explicit timeout got the harness's 30-min default, not the inner `timeout 7000`; the chains died with 1 of 18 rows. L-09's limit check must include the harness's own default, not just the job's.
 
 ## Pending question
+Q-23 (asked 09:11 UTC, deadline 09:27 UTC; send_later trig_01D6MsHVWpu2cEmQZDdLy6MW): what's next after T-17?
+1. Measure how far the B3LYP theory geometries sit from tight default-grid minima, backlog N21 -- measurement only (Recommended; auto-pick)
+2. More r_e^SE references for the yardstick, backlog N3
+3. Offsets configs take alpha at the stationary geometry, backlog N19 (b)(i) -- measure first
+4. Done for now
 
 ## Handoff
