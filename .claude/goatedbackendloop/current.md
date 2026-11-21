@@ -23,8 +23,8 @@ Request: (now D-57, a change) measure how far the theory geometries sit from tig
 - N2 · verify · tight optimisations vs the Newton estimate · after: N1 · done: RHF Newton exact; B3LYP needs grid-response optimisations (all 12 run, t18/gr_*.json) · handoff: t18/gr_a.log, gr_b.log
 - N3 · gate · propose (or not) tighter theory geometries · after: N1, N2 · done: option 1 auto-picked (D-57) · handoff: -
 - N4 · build · optimise(): grid-response gradient for DFT + convergence check; test failing on the old code; CI selection on 3.12 · after: N3 · done (4614cd0; 1619 passed) · handoff: -
-- N5 · build · regenerate the B3LYP theory geometries, rerun every B3LYP row (113), archive · after: N4 · geometries done; rows: water/HNCO/FF/ozone (w3) and CH2ClF (w4) done; VF (w3, g3v) and FA (w4, g4a) running; AF 8/11, FE 7/11 hit the 2 h limit 12:29, resumed (g1b, g2b) · handoff: t18/logs
-- N6 · build · README + docstrings · after: N5 · pending · handoff: -
+- N5 · build · regenerate the B3LYP theory geometries, rerun every B3LYP row (113), archive · after: N4 · done 15:20 (113 rows at 4614cd0, archived; RHF stays ba67cfe) · handoff: t18/final
+- N6 · build · README + docstrings · after: N5 · done (next commit) · handoff: t18/final/figures.txt, table_best.txt
 - N7 · verify · fresh agent: prose vs JSON · after: N6 · pending · handoff: -
 
 ## Progress
@@ -85,6 +85,16 @@ Request: (now D-57, a change) measure how far the theory geometries sit from tig
   0.151, the other eight <= 0.010 mA; theory bond RMS VF 4.220 -> 4.144,
   AF 9.438 -> 9.479, FE 6.630 -> 6.620, HCOF 5.542 -> 5.660. vs the t18
   tight minima (gtol 1e-6): <= 0.069 mA (CH2ClF, soft C-Cl), VF 0.045.
+
+- N5 rows (113, 4614cd0) vs ba67cfe: B3LYP best-of 5.30 / 4.02 / 3.75 (was
+  5.31 / 4.05 / 3.76), base 9.20 / 5.45 / 4.58 (was 9.19 / 5.40 / 4.59);
+  wins best 5/9, ME 5/9, theory 8/9 (was 7/9: FE hybrid 6.58 now beats its
+  theory 6.62); base ME 6/9 (was 5/9). Largest moves: theory 0.118 (HCOF),
+  ME 0.352 (CH2ClF), hybrid 0.065 (FE offsets family), hybrid vs r_e 0.068
+  (CH2ClF offsets 5.91 -> 5.98, worse). r_e table B3LYP: ozone 8.64 / 0.21 /
+  0.07, VF 5.83 / 3.92 / 3.34, CH2ClF 22.38 / 14.54 / 8.94, water same.
+  Ozone offsets 0.03 / vs r_e 1.03. Band scan: max reduced chi2 0.227; low
+  side water base family 0.218, ozone offsets family 0.227.
 
 ## Observations
 - 2026-11-21 · the same slip as T-17 within the hour: a test comment said "Measured" before the measurement. Write measured-value comments only after the run that prints them.

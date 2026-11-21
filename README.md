@@ -26,15 +26,15 @@ Against published structures for nine molecules
 |-----------------|-------------:|-----------------:|----------------:|
 | RHF/6-31G, best configuration per method | 10.39 | 9.84 | **6.43** |
 | RHF/6-31G, base configuration            | 21.47 | 17.35 | **11.03** |
-| B3LYP/6-31G(d), best configuration per method | 5.31 | 4.05 | **3.76** |
-| B3LYP/6-31G(d), base configuration            | 9.19 | 5.40 | **4.59** |
+| B3LYP/6-31G(d), best configuration per method | 5.30 | 4.02 | **3.75** |
+| B3LYP/6-31G(d), base configuration            | 9.20 | 5.45 | **4.58** |
 
 "Best configuration" gives each method its own best of the 15 (RHF) or 13
 (B3LYP) settings per molecule, which flatters all three; "base" is one setting
 for everything. On the best-of rows the hybrid is the best of the three on 4 of 9
 molecules at RHF and 5 of 9 at B3LYP, beats mixed estimation on 6/9 and 5/9 and
-theory alone on 7/9 and 7/9, and improves from RHF to B3LYP on eight of nine.
-The exception, chlorofluoromethane (5.43 -> 8.08), is its offsets, not the
+theory alone on 7/9 and 8/9, and improves from RHF to B3LYP on eight of nine.
+The exception, chlorofluoromethane (5.43 -> 8.14), is its offsets, not the
 level: at B3LYP methyl chloride's C–Cl offset leaves the prior's C–Cl 13 mÅ
 long and the fluorides' C–F offset leaves its C–F 6 mÅ short, a combination its
 two chlorine isotopologues barely see, so the fit keeps most of it (against r_e,
@@ -54,8 +54,8 @@ scored -- methyl chloride, hydrogen cyanide and hydrogen peroxide
 -- which give C–Cl, C–N, O–H and O–O a second member. N–H still has none.
 HF/6-31G puts hydrogen peroxide trans-planar, another conformer, so it is left
 out at RHF. One known cost: its O–O is a single bond and ozone's is not, so at
-B3LYP the `offsets` fit of ozone moves toward its r_s reference (0.04 mÅ in
-the best-of table) but away from its r_e (0.37 -> 1.02 mÅ). `calibration=scored`
+B3LYP the `offsets` fit of ozone moves toward its r_s reference (0.03 mÅ in
+the best-of table) but away from its r_e (0.37 -> 1.03 mÅ). `calibration=scored`
 reproduces the earlier pool.
 
 Most of these references are r_s or effective structures, which sit several mÅ
@@ -66,16 +66,19 @@ differences below that. Against the four molecules with a published r_e
 | Molecule (r_e source) | RHF theory | ME | hybrid | B3LYP theory | ME | hybrid |
 |---|---:|---:|---:|---:|---:|---:|
 | water (Császár 2005) | 8.14 | **0.17** | 0.56 | 10.89 | 0.92 | **0.05** |
-| ozone (Tyuterev 1999) | 22.09 | **2.88** | 3.13 | 8.65 | 0.21 | **0.07** |
-| vinyl fluoride (Piccardo 2015, r_e^SE) | 17.98 | **10.70** | 11.39 | 5.86 | 3.86 | **3.36** |
-| chlorofluoromethane (Vogt 2014, r_e^SE) | 45.68 | 28.16 | **10.80** | 22.37 | 14.34 | **8.95** |
+| ozone (Tyuterev 1999) | 22.09 | **2.88** | 3.13 | 8.64 | 0.21 | **0.07** |
+| vinyl fluoride (Piccardo 2015, r_e^SE) | 17.98 | **10.70** | 11.39 | 5.83 | 3.92 | **3.34** |
+| chlorofluoromethane (Vogt 2014, r_e^SE) | 45.68 | 28.16 | **10.80** | 22.38 | 14.54 | **8.94** |
 
 The hybrid beats theory alone on all four at both levels and is the best of the
 three on all four at B3LYP; at RHF mixed estimation is ahead on three.
 
-> **Provenance.** Every row is at code vintage ba67cfe (2026-11-21). Two
-> changes to the Hessian are in it: one behind the harmonic alpha term
-> (D-52), one behind both that and the quantum prior's curvature (D-55).
+> **Provenance.** The B3LYP rows are at code vintage 4614cd0, the RHF rows at
+> ba67cfe (both 2026-11-21; 4614cd0 changes only the DFT geometry
+> optimiser, so the RHF rows are the same). Three changes are in them: two to
+> the Hessian, one behind the harmonic alpha term (D-52) and one behind both
+> that and the quantum prior's curvature (D-55), and one to the B3LYP theory
+> geometries (D-57).
 >
 > *Rigid motions projected out* (b29cec3, decisions D-52). Off a stationary
 > point the raw Hessian's rotational block is not zero, and in isocyanic
@@ -99,12 +102,26 @@ three on all four at B3LYP; at RHF mixed estimation is ahead on three.
 > MHz before) and chlorofluoromethane's vibrations to within 0.1 cm⁻¹ (5 before).
 > The B3LYP rows move by 0.05 mÅ or less, except chlorofluoromethane's (up to
 > 0.32 against its effective reference), whose two-isotopologue fit leans on
-> the prior's curvature: against its r_e they move 9.24 -> 8.95 mÅ (base) and
-> 5.99 -> 5.91 (`offsets`). RHF Hessians
+> the prior's curvature: against its r_e they moved 9.24 -> 8.95 mÅ (base) and
+> 5.99 -> 5.91 (`offsets`) at ba67cfe. RHF Hessians
 > satisfy the rule to ~1e-9; 131 of the 135 RHF rows move by less than 1e-4
 > mÅ, ozone's `track_direct` by 1.3e-4, and fluoroacetylene's three tracked
 > rows, whose fits have two nearby solutions, by up to 0.04 (none of the four
 > is a best-of row).
+>
+> *B3LYP theory geometries re-optimised on the energy's own gradient*
+> (4614cd0, D-57). pyscf's DFT gradient also leaves out the grid-weight
+> response, so it is not the derivative of the energy the optimiser
+> minimises: L-BFGS-B stopped where the energy stopped falling, up to 16 times
+> above its gradient tolerance, and returned without saying so. The B3LYP
+> theory geometries -- the "theory alone" answers and the prior's centres --
+> sat up to 0.25 mÅ (one bond) from their energy's minimum. Optimised on the
+> grid-response gradient, all twelve converge, and formyl fluoride's bonds
+> land nearer a converged grid's minimum (0.093 -> 0.047 mÅ RMS against
+> level 9). The theory column moves by up to 0.12 mÅ (formyl fluoride),
+> mixed estimation by up to 0.35 (chlorofluoromethane), the hybrid by 0.07
+> or less; fluoroethane's hybrid now beats theory alone (6.58 against 6.62).
+> The RHF geometries were already converged (bonds within 0.008 mÅ).
 >
 > Not run: the `elec` and `all` configurations (they need `pyscf.prop`, not
 > installed here), and at B3LYP the `torsion` and `offsets+torsion` rows of
