@@ -1358,7 +1358,9 @@ MOLECULES_SET3 = [OZONE, ETHYLENE_OXIDE, ISOCYANIC_ACID]
 # measured on all nine scored molecules' offsets fits: CH2Cl2 (Vogt 2014
 # r_e^SE, inside the limit) moved the mean hybrid bond error from 5.38 to
 # 5.57 mA at HF/6-31G and from 4.13 to 4.11 at B3LYP/6-31G(d); CHF2Cl (Vogt
-# 2014, C-Cl sd 0.9 mA, outside the limit) to 5.70 and 3.91. B3LYP's C-Cl
+# 2014, C-Cl sd 0.9 mA, outside the limit) to 5.70 and 3.91 (measured at
+# c8904da, before the alpha Hessian's rigid-motion projection, D-52, which
+# moved isocyanic acid's HF offsets row 8.14 -> 28.56 mA). B3LYP's C-Cl
 # error grows with fluorination (+25 mA in CH3Cl and CH2Cl2, +38 in CH2ClF,
 # +40 in CHF2Cl), so only a fluorinated chloride transfers to chlorofluoro-
 # methane there. Any new member also narrows the width given to every

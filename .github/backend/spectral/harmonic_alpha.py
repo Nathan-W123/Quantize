@@ -337,8 +337,17 @@ def _project_rigid_mw(hess_bohr, coords_ang, masses_amu):
     its axis however bent it is numerically -- keeping that column (norm ~1e-5
     of the others at I_a 6e-9) would project out part of a real bend (seen
     while prototyping: fluoroacetylene lost a 441 cm^-1 component). At a
-    stationary point the projection only removes the rigid modes' numerical
-    residue; benchmark rows there moved <= 2e-3 mA.
+    stationary point the projection removes whatever the rigid block holds.
+    At RHF that is a few cm^-1, and benchmark rows there moved <= 2e-3 mA.
+    pyscf's analytic B3LYP Hessian has no grid-weight response, so at its
+    default grid the rigid eigenvalues reach 52 cm^-1 in magnitude (acetyl
+    fluoride, next to its 137 cm^-1 methyl torsion): projecting them out
+    moved that molecule's alpha by up to 1.3 MHz (CD3) and its
+    mixed-estimation rows by up to 0.08 mA, toward the converged-grid value
+    (parent within 0.07 MHz of grids.level 7, against 0.5 unprojected). The
+    same defect inside the vibrational block is not removed (CD3 A stays 0.8
+    MHz off); an acoustic-sum-rule repair of the raw Hessian or a finer grid
+    would.
     """
     m = np.asarray(masses_amu, dtype=float)
     x = np.asarray(coords_ang, dtype=float)

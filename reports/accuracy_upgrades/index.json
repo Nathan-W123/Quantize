@@ -29,12 +29,9 @@
       "track_quadratic": 9
     },
     "code_vintages": {
-      "2eb9b6c": 3,
-      "5cfc5d4": 70,
-      "676eb0d": 9,
-      "c8904da": 53
+      "b29cec3": 135
     },
-    "mixed_vintage": true
+    "mixed_vintage": false
   },
   "b3lyp_6-31gd": {
     "molecules": [
@@ -64,10 +61,8 @@
       "track_quadratic": 9
     },
     "code_vintages": {
-      "5cfc5d4": 62,
-      "676eb0d": 8,
-      "c8904da": 43
+      "b29cec3": 113
     },
-    "mixed_vintage": true
+    "mixed_vintage": false
   }
 }

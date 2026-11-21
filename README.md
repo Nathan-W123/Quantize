@@ -24,17 +24,17 @@ Against published structures for nine molecules
 
 | Level of theory | Theory alone | Mixed estimation | Quantize hybrid |
 |-----------------|-------------:|-----------------:|----------------:|
-| RHF/6-31G, best configuration per method | 10.39 | 9.85 | **5.34** |
+| RHF/6-31G, best configuration per method | 10.39 | 9.84 | **6.43** |
 | RHF/6-31G, base configuration            | 21.47 | 17.35 | **11.03** |
-| B3LYP/6-31G(d), best configuration per method | 5.31 | 4.05 | **3.78** |
-| B3LYP/6-31G(d), base configuration            | 9.19 | 5.42 | **4.63** |
+| B3LYP/6-31G(d), best configuration per method | 5.31 | 4.06 | **3.77** |
+| B3LYP/6-31G(d), base configuration            | 9.19 | 5.41 | **4.63** |
 
 "Best configuration" gives each method its own best of the 15 (RHF) or 13
 (B3LYP) settings per molecule, which flatters all three; "base" is one setting
 for everything. On the best-of rows the hybrid is the best of the three on 4 of 9
 molecules at RHF and 5 of 9 at B3LYP, beats mixed estimation on 6/9 and 5/9 and
 theory alone on 7/9 and 7/9, and improves from RHF to B3LYP on eight of nine.
-The exception, chlorofluoromethane (5.42 -> 8.18), is its offsets, not the
+The exception, chlorofluoromethane (5.43 -> 8.17), is its offsets, not the
 level: at B3LYP methyl chloride's C–Cl offset leaves the prior's C–Cl 13 mÅ
 long and the fluorides' C–F offset leaves its C–F 6 mÅ short, a combination its
 two chlorine isotopologues barely see, so the fit keeps most of it (against r_e,
@@ -46,7 +46,7 @@ The best-of rows owe most of their margin over the base rows to the bond-class
 offsets: theory corrected by the error each bond class shows in the other
 molecules (leave-one-out). That correction helps all three methods, so at RHF
 mixed estimation now beats the hybrid on chlorofluoromethane (4.26 against
-5.42) and formyl fluoride (by 0.08 mÅ), as it already did on water. A class seen in
+5.43) and formyl fluoride (by 0.07 mÅ), as it already did on water. A class seen in
 only one molecule cannot be calibrated that way, so the pool also takes three
 equilibrium structures that are measured for their offsets and never fitted or
 scored -- methyl chloride, hydrogen cyanide and hydrogen peroxide
@@ -68,30 +68,31 @@ differences below that. Against the four molecules with a published r_e
 | water (Császár 2005) | 8.14 | **0.17** | 0.56 | 10.89 | 0.92 | **0.05** |
 | ozone (Tyuterev 1999) | 22.09 | **2.88** | 3.13 | 8.65 | 0.21 | **0.06** |
 | vinyl fluoride (Piccardo 2015, r_e^SE) | 17.98 | **10.70** | 11.39 | 5.86 | 3.87 | **3.36** |
-| chlorofluoromethane (Vogt 2014, r_e^SE)* | 45.68 | 28.16 | **10.80** | 22.37 | 14.38 | **9.24** |
+| chlorofluoromethane (Vogt 2014, r_e^SE) | 45.68 | 28.16 | **10.80** | 22.37 | 14.37 | **9.24** |
 
 The hybrid beats theory alone on all four at both levels and is the best of the
 three on all four at B3LYP; at RHF mixed estimation is ahead on three.
-*Chlorofluoromethane's benchmark rows predate its r_e, so its numbers come from
-fits that reproduce those rows exactly, scored against Vogt's structure.
 
-> **Provenance.** Every bond-offset row (`offsets`, `offsets+bob`,
-> `offsets+defect`, `offsets+cd`, `offsets+track`, `offsets+torsion`) is at code
-> vintage c8904da (2026-11-20), with the calibration pool above, except one
-> noted below. The other rows are at 5cfc5d4 (2026-11-17), except vinyl
-> fluoride's, rerun at 676eb0d (2026-11-19) after its rotational constants were
-> replaced by Hayashi & Inagusa's 1989 measurements. Three RHF fluoroacetylene
-> rows -- `track`, `offsets+track` and `track_quadratic` -- are at 2eb9b6c
-> (2026-11-20), after the harmonic alpha term stopped dividing by a nearly
-> linear molecule's axial moment (19.16 -> 13.64, 4.96 -> 4.36 and 19.17 ->
-> 13.64 mÅ). The change reaches only geometries treated as linear, so no other
-> molecule; fluoroacetylene's other rows, rerun at both levels (torsion rows
-> aside: it has no rotor), are bit-identical. Not run: the `elec` and `all`
-> configurations (they
-> need `pyscf.prop`, not installed here), and at B3LYP the `torsion` and
-> `offsets+torsion` rows of fluoroethane and acetyl fluoride (a single scan
-> outlasts the 2-hour job limit), so those two molecules' B3LYP best-of is over
-> 11 configurations. Results are archived in
+> **Provenance.** Every row is at code vintage b29cec3 (2026-11-20), which
+> projects translations and rotations out of the Hessian before the harmonic
+> alpha term's normal-mode analysis (decisions D-52). Off a stationary point
+> the raw Hessian's rotational block is not zero, and in isocyanic acid's RHF
+> `offsets` fit a 0.7% rotation leaking into the H–N–C bend had put alpha_B
+> off by about 100 MHz: that fit (and its `+bob`, `+defect`, `+cd`, `+track`
+> and `+torsion` rows) goes from 8.14 to 28.56 mÅ, its `track_direct` from
+> 22.13 to 18.04, which is now its best RHF row. That takes the RHF best-of
+> hybrid mean from 5.34 to 6.43; win counts are unchanged. Off a stationary
+> point the harmonic force field is not unique, so that row depends on the
+> recipe (23.2–28.6 mÅ). Every other RHF row moves by 0.09 mÅ or less, every
+> B3LYP row by 0.28 or less. At B3LYP the projection matters at stationary
+> points too: pyscf's analytic DFT Hessian has no grid-weight response, so at
+> its default grid the rigid modes sit up to 52 cm⁻¹ from zero and leak into low
+> torsions (acetyl fluoride's mixed-estimation rows move 0.06–0.08 mÅ). Not
+> run: the `elec` and `all` configurations (they need `pyscf.prop`, not
+> installed here), and at B3LYP the `torsion` and `offsets+torsion` rows of
+> fluoroethane and acetyl fluoride (a single scan outlasts the 2-hour job
+> limit), so those two molecules' B3LYP best-of is over 11 configurations.
+> Results are archived in
 > [`reports/accuracy_upgrades/`](reports/accuracy_upgrades/).
 
 Held-out prediction needs no reference structure at all. Fitted to every

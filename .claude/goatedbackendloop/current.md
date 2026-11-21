@@ -27,10 +27,10 @@ change proposed before it is made.
 - N3 · verify · fresh agent: continuity scan of HNCO alpha theory -> offset geometry with its own Hessians and projector; own edit reproducing the row · after: N2c · done · handoff: t15/verify (scripts/scan.py, run_bench.py, variants.sh; results/)
 - N4 · gate · propose (or not) an engine change · after: N3 · done: option 1 auto-picked (D-52) · handoff: -
 - N5 · build · engine projector + test (fails on the old code) + full suite on 3.12 · after: N4 · done (b29cec3) · handoff: -
-- N6 · build · rerun every row at both levels from the commit (worktrees, warm cache, chi2 logged) · after: N5 · RHF 135/135 done; B3LYP 59/113 done, rest running (task bbps4q960: chain C wta FF/FA + twins, chain D wtb FE rest/CH2ClF/ozone + twins) · handoff: t15/wta/output, t15/wtb/output, t15/logs
-- N6b · verify · fresh agent: is AF B3LYP's stationary-point alpha shift (0.3-1.3 MHz) removed noise or a projector defect -- own Hessians, orientation and grid tests · after: N6 · running (t15/verify_af) · handoff: -
+- N6 · build · rerun every row at both levels from the commit (worktrees, warm cache, chi2 logged) · after: N5 · done: RHF 135, B3LYP 113, all b29cec3 · handoff: t15/final (merged JSON, figures.txt, tables), reports/accuracy_upgrades
+- N6b · verify · fresh agent: is AF B3LYP's stationary-point alpha shift (0.3-1.3 MHz) removed noise or a projector defect -- own Hessians, orientation and grid tests · after: N6 · done: removed contamination, projector correct (see Progress) · handoff: t15/verify_af
 - N7 · verify · fresh agent: the committed rows and README against the JSON · after: N6 · pending · handoff: -
-- N8 · build · README table/provenance + benchmark docstring (rescale caveat) · after: N6 · pending · handoff: -
+- N8 · build · README table/provenance + benchmark docstring (rescale caveat) · after: N6 · done (uncommitted -> next commit) · handoff: -
 
 ## Progress
 - 19:52 UTC: t15/proj from HEAD (129ca37 code = 2eb9b6c engine), caches
@@ -156,7 +156,41 @@ change proposed before it is made.
   test by another mechanism (N7): a finer grid should shrink the raw rigid
   block and bring raw alpha toward the projected value.
 
+- AF verifier (t15/verify_af, own pyscf Hessians, 4 frames, grids L3-L7):
+  verdict (a). The unprojected alpha is contaminated and the projection
+  removes it; the cause is pyscf's analytic RKS Hessian lacking the
+  grid-weight response (rotations leak into the vibrational eigenvectors,
+  changing zetas), not the residual gradient (predicted 4.7e-6 au, actual
+  1.2e-4; re-optimising to 30x smaller gradient changed nothing). Projected
+  default-grid alpha is within 0.07/0.04/0.01 MHz (parent A/B/C) of the
+  converged grid (L7), unprojected off by 0.46/0.52/0.29; CD3 0.83 vs 2.14
+  (A). Both approach the same limit at L5/L7. Left: the same defect in the
+  vibrational block (CD3 A -0.83) -- an acoustic-sum-rule repair of the raw
+  Hessian (free) or grids.level >= 5 removes it (within 0.04 MHz). Not
+  implemented: an accuracy/cost option (D-03) -> backlog. Docstring note:
+  at B3LYP's default grid the rigid residue is +-40 cm-1, not "numerical".
+
+- B3LYP rerun done 02:30 (chains C/D + E/F in a third worktree wtc on the
+  same cache; 15 ozone/CH2ClF rows run twice, bit-identical). 113 rows, all
+  b29cec3, every row moved, max 0.28 (HNCO offsets family 3.71 -> 3.49).
+  Best-of 5.31 / 4.06 / 3.77 (was 3.78), base 9.19 / 5.41 / 4.63, wins
+  5/9, 5/9, 7/9 unchanged; RHF -> B3LYP improves 8/9 (CH2ClF 5.43 -> 8.17).
+  B3LYP band scan: no check in [3,5]; low side water base family 0.217 and
+  ozone offsets family 0.226 -- both the same at HEAD, where T-13 measured
+  the extra refit moving the rows < 1e-5. Stationary-config max moves: RHF
+  hybrid 1.8e-3, ME 8e-4; B3LYP ME 0.078 (AF lam), hybrid 6.6e-3 (FE defect).
+- N8: README table, prose, r_e table (CH2ClF footnote dropped: rows carry
+  r_e scores now), Provenance rewritten for b29cec3; benchmark docstring
+  table (= --table output, checked), 11.10, edge paragraph rewritten, 6.66,
+  7.64; print_summary_table's stale 2.9 -> 9.84 -> 11.10; projector
+  docstring's "numerical residue" corrected with the AF verifier's numbers;
+  monofluoro_references D-43 figures marked as measured at c8904da.
+  Archived (scripts/archive_benchmark_results.py; old output/ JSON kept as
+  *.pre-t15). figures.py on reports/ = on t15/final; tests 16 passed.
+
 ## Observations
+- 2026-11-21 · L-09 ETA: chain D's CH2ClF tracked rows would have run into its timeout; a third worktree on the shared cache finished the twins and ozone in parallel and its duplicates came out bit-identical -- parallel resumption on a shared exact cache is safe.
+- 2026-11-21 · L-10 again: the AF verifier confirmed the projection but refuted my mechanism (grid-weight response, not residual gradient) and found the docstring's "numerical residue" claim wrong at B3LYP.
 - 2026-11-20 · the stationary-point sanity check caught my projector removing a real bend on a near-linear molecule before any long run -- the same linearity trap as T-14, a second time in one day (L-P04 applied; candidate lesson: every new rigid/linear treatment goes through rigid_mode_count, never its own threshold).
 - 2026-11-20 · the "no-op at stationary points" framing hid where the projection matters: the offsets configs evaluate alpha off-stationary by design; my ETA (15-20 min) missed that projected modes move every cubic displacement off the cache.
 - 2026-11-20 · a test bound set by measurement (water e2e 0.65x) had measured the defect: when a fix makes a test fail, check the test's quantity against an exact reference (B_e(r_e)) before calling either side wrong.
