@@ -682,3 +682,10 @@
 - Source: auto-picked, no answer in 15 min (Q-20)
 - Revisit if: the user picks another option.
 
+### D-54 · Next task: measure the acoustic-sum-rule repair of the B3LYP Hessian (backlog N19 b-ii) (2026-11-21)
+- Decision: prototype the translational sum-rule repair on every B3LYP/6-31G(d) Hessian the benchmark consumes (after the disk cache, so the cache stays raw), measure per-molecule alpha and every B3LYP row, check against a converged-grid reference on a second molecule, and propose (or not) an engine change before making one.
+- Why: Q-20/Q-21 option 1 (recommended): T-15's AF verifier found pyscf's analytic RKS Hessian lacks the grid-weight response; projection removes the rigid leak but CD3-AF A stays 0.8 MHz off the converged grid, and the repair brought it within 0.04 at no cost.
+- Alternatives considered: more r_e^SE references (N3); offsets alpha at the stationary geometry (N19 b-i); done for now.
+- Source: auto-picked, no answer in 15 min (Q-21)
+- Revisit if: the user picks another option.
+
