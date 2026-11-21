@@ -36,6 +36,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from backend.base_backend import impose_translational_sum_rule
 from backend.spectral.centrifugal_distortion import (
     _CM_TO_MHZ,
     _EIGVAL_TO_CM,
@@ -344,10 +345,15 @@ def _project_rigid_mw(hess_bohr, coords_ang, masses_amu):
     fluoride, next to its 137 cm^-1 methyl torsion): projecting them out
     moved that molecule's alpha by up to 1.3 MHz (CD3) and its
     mixed-estimation rows by up to 0.08 mA, toward the converged-grid value
-    (parent within 0.08 MHz of grids.level 7, against 0.5 unprojected). The
-    same defect inside the vibrational block is not removed (CD3 A stays 0.8
-    MHz off); an acoustic-sum-rule repair of the raw Hessian or a finer grid
-    would.
+    (parent within 0.08 MHz of grids.level 7, against 0.5 unprojected).
+
+    The same defect sits inside the vibrational block, where no projection
+    reaches, so the Hessian first gets the translational sum rule imposed
+    (impose_translational_sum_rule, decisions D-55): against a converged grid
+    that took the harmonic alpha of formyl fluoride, ozone and
+    chlorofluoromethane from 0.40 / 0.49 / 0.82 MHz off (projection alone; on
+    ozone that is worse than no projection, 0.12) to 0.032 / 0.012 / 0.006,
+    and CD3-acetyl fluoride's A from 0.8 to 0.04.
     """
     m = np.asarray(masses_amu, dtype=float)
     x = np.asarray(coords_ang, dtype=float)
@@ -368,7 +374,7 @@ def _project_rigid_mw(hess_bohr, coords_ang, masses_amu):
     Q, _ = np.linalg.qr(np.column_stack(cols))
     P = np.eye(3 * n) - Q @ Q.T
     isq, sq = np.repeat(1.0 / sm, 3), np.repeat(sm, 3)
-    F = np.asarray(hess_bohr, dtype=float) * isq[:, None] * isq[None, :]
+    F = impose_translational_sum_rule(hess_bohr) * isq[:, None] * isq[None, :]
     F = P @ F @ P
     F = 0.5 * (F + F.T)
     return F * sq[:, None] * sq[None, :]
@@ -977,8 +983,8 @@ def cartesian_cubic_force_field(hessian_fn, coords_ang, fd_delta_ang: float = 0.
     for k in range(n_cart):
         step = np.zeros(n_cart)
         step[k] = fd_delta_ang
-        h_plus = np.asarray(hessian_fn(coords + step.reshape(coords.shape)), dtype=float)
-        h_minus = np.asarray(hessian_fn(coords - step.reshape(coords.shape)), dtype=float)
+        h_plus = impose_translational_sum_rule(hessian_fn(coords + step.reshape(coords.shape)))
+        h_minus = impose_translational_sum_rule(hessian_fn(coords - step.reshape(coords.shape)))
         cubic[:, :, k] = (h_plus - h_minus) / (2.0 * fd_delta_ang)
     # Symmetrise over the first two indices; V is smooth so ∂³V is fully symmetric
     # and averaging cancels first-order finite-difference asymmetry.
@@ -1051,8 +1057,8 @@ def normal_mode_hessian_derivatives(
     dH = np.zeros((n_vib, n_cart, n_cart))
     for r in range(n_vib):
         dx = (steps[r] * D_ref[:, r]).reshape(coords.shape)
-        h_p = np.asarray(hessian_fn(coords + dx), dtype=float)
-        h_m = np.asarray(hessian_fn(coords - dx), dtype=float)
+        h_p = impose_translational_sum_rule(hessian_fn(coords + dx))
+        h_m = impose_translational_sum_rule(hessian_fn(coords - dx))
         dH[r] = (h_p - h_m) / (2.0 * steps[r])
 
     phi3 = np.einsum("rij,is,jt->rst", dH, D_ref, D_ref, optimize=True)
@@ -1084,7 +1090,7 @@ def _rigid_directions_with_derivatives(hess_bohr, coords_ang):
     """
     coords = np.asarray(coords_ang, dtype=float)
     n = coords.shape[0]
-    H = np.asarray(hess_bohr, dtype=float)
+    H = impose_translational_sum_rule(hess_bohr)
     dirs, derivs = [], []
     for k in range(3):                                  # translations
         t = np.zeros((n, 3))
