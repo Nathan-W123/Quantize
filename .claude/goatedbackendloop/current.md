@@ -20,7 +20,7 @@ Request: measure how far the theory geometries sit from tight minima of their ow
 
 ## Graph
 - N1 · diagnose · gradient + Newton step at every theory geometry, both levels · after: none · done (t18/newton_{hf,b3lyp}.json) · handoff: -
-- N2 · verify · tight optimisations vs the Newton estimate · after: N1 · RHF done (FE agrees to 5e-7 A); B3LYP: Newton understates (HCOF 2.6e-5 vs the T-17 verifier's tight 1.03e-4 A RMS) -> real tight optimisations, VF running (t18/vf_opt.py: why it stopped; backend vs grid-response gradient) · handoff: -
+- N2 · verify · tight optimisations vs the Newton estimate · after: N1 · RHF done; B3LYP VF done (see Progress); all 12 B3LYP tight minima of the default-grid energy running (t18/gr_opt.py, gr_a/gr_b logs) · handoff: t18/opt_vinyl_fluoride.json
 - N3 · gate · propose (or not) tighter theory geometries · after: N1, N2 · pending · handoff: -
 
 ## Progress
@@ -45,6 +45,16 @@ Request: measure how far the theory geometries sit from tight minima of their ow
   an unconverged L-BFGS-B result is returned silently (it reports only a
   hit step bound). Suspect: line-search failure on a gradient that is not
   the energy's derivative (no grid response).
+
+- N2 VF (t18/opt_vinyl_fluoride.json), L-BFGS-B from the theory geometry:
+  backend gradient (no grid response), gtol 2e-5 or 1e-6: stops on ftol
+  ("relative reduction of F") after 10 iterations with |g| 2.0e-4 Ha/A,
+  theory bond RMS 4.220 -> 4.100 mA (max bond 0.349) -- the gradient is not
+  the energy's derivative, so the run ends where the energy stops falling,
+  and that depends on the start. Grid-response gradient (exact derivative
+  of the default-grid energy), gtol 1e-6: converges, 71 iterations, |g|
+  6e-6, theory bond RMS 4.147 (max bond 0.210). The cached theory geometry
+  is 0.21 mA (worst bond) from the true minimum of its own energy.
 
 ## Observations
 
