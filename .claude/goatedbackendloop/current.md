@@ -24,8 +24,8 @@ Request: (now D-57, a change) measure how far the theory geometries sit from tig
 - N3 · gate · propose (or not) tighter theory geometries · after: N1, N2 · done: option 1 auto-picked (D-57) · handoff: -
 - N4 · build · optimise(): grid-response gradient for DFT + convergence check; test failing on the old code; CI selection on 3.12 · after: N3 · done (4614cd0; 1619 passed) · handoff: -
 - N5 · build · regenerate the B3LYP theory geometries, rerun every B3LYP row (113), archive · after: N4 · done 15:20 (113 rows at 4614cd0, archived; RHF stays ba67cfe) · handoff: t18/final
-- N6 · build · README + docstrings · after: N5 · done (next commit) · handoff: t18/final/figures.txt, table_best.txt
-- N7 · verify · fresh agent: prose vs JSON · after: N6 · pending · handoff: -
+- N6 · build · README + docstrings · after: N5 · done (31f9c84) · handoff: t18/final/figures.txt, table_best.txt
+- N7 · verify · fresh agent: prose vs JSON, own code · after: N6 · running (t18/verify_n7) · handoff: -
 
 ## Progress
 - N1 RHF (12 geometries; t18/newton_hf.json): |g|max 2e-6 to 1.8e-5 Ha/A
