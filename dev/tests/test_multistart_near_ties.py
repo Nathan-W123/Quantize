@@ -4,12 +4,13 @@ The ranking picks the start with the lowest energy, but measured through
 `cli run` (T-23: five molecules, ten runs, 30 starts) every misranked pick was
 between starts within 1.4e-6 Ha of each other at their answers -- below what
 any energy these fits carry resolves -- and such near-tied starts sat up to
-20.6 mA apart along flat directions (methyl torsions). The reported geometry
+20.6 mA apart along flat directions (a methyl torsion, a CH2 twist). The reported geometry
 is then one of several the fit does not decide between. The engine now says
 so (decisions D-70): each start records the fit's own model energy at its
 answer, and near_tied_starts lists the others within NEAR_TIE_ENERGY_HA and
 farther than NEAR_TIE_DISTANCE_ANG. On the T-23 data that flags 5 of the 10
-runs (8.7-20.6 mA), and none of formyl fluoride's or chlorofluoromethane's.
+runs (8.6-20.6 mA), and none of formyl fluoride's or chlorofluoromethane's;
+checked against true SCF energies, every start listed is near-tied.
 """
 
 import contextlib

@@ -330,8 +330,15 @@ def near_tied_starts(results, best, spectral_gate_abs=0.05, spectral_gate_rel=2.
     pair is not ranked by any energy these fits carry (T-23: every misrank
     was between starts within 1.4e-6 Ha), so the reported geometry is one of
     several the fit does not decide between -- along a flat direction such
-    as a methyl torsion. Returns dicts (idx, energy difference, distance,
-    freq_rms), farthest first; empty when there is nothing to say.
+    as a methyl torsion or a CH2 twist. Returns dicts (idx, energy difference,
+    distance, freq_rms), farthest first; empty when there is nothing to say
+    (also when a start's model energy could not be formed).
+
+    The model energy can miss by more than the tie: checked on ten CLI runs
+    against true SCF energies, every start listed was near-tied and 8.6-20.6
+    mA away, and one more would have been listed on the true energies
+    (acetyl fluoride from its RHF minimum, start 3: model +6.3e-5 Ha, true
+    +1.0e-5, 2.06 mA) -- a borderline pair can go unmentioned.
     """
     e_best = best.get("energy_at_answer_model")
     if e_best is None or not np.isfinite(float(e_best)):

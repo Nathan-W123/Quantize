@@ -2459,7 +2459,7 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
     print(f"  Spectral RMS (MHz)   : {best['freq_rms']:.6f}")
     energy = best.get("energy")
     if energy is not None and energy != 0.0:
-        print(f"  Final energy (Eh)    : {energy:.10f}")
+        print(f"  Energy at last QM pt : {energy:.10f} Eh")
     score = underconstrained_success_score(results, best, isotopologues)
     print(f"  Success score (0-100): {score['score']:.1f}")
     print(

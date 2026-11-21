@@ -1,6 +1,6 @@
 # Current task
 Task: T-26
-Status: verifying
+Status: done
 Request: (D-69, auto-picked at Q-36) have the multistart say when its top starts are near-tied but far apart (N24); thresholds from T-23 data; propose before building.
 
 ## Brief
@@ -26,7 +26,7 @@ Request: (D-69, auto-picked at Q-36) have the multistart say when its top starts
 - N1 · diagnose · thresholds from t23 · after: none · done · handoff: -
 - N2 · gate · exact behaviour (Q-37) · after: N1 · done: as proposed (D-70, auto-picked) · handoff: -
 - N3 · build · helper, recording, report, test · after: N2 · done (6 tests; payload carries it for rebuilds; CI selection 1631 passed) · handoff: -
-- N4 · verify · fresh agent: a real CLI run shows it; quiet cases stay quiet · after: N3 · running · handoff: -
+- N4 · verify · fresh agent: all 10 CLI runs as predicted; every listed start near-tied in true SCF energy (|dE| <= 3.0e-5) and 8.6-20.6 mA away; one borderline miss (AF warm start 3: model +6.3e-5, true +1.0e-5, 2.06 mA) documented; single-thread outputs bit-identical to the parent apart from the additions; tests fail on the parent; console 'Final energy' relabelled; VF's far starts are CH2 twists, not methyl torsions · after: N3 · done · handoff: -
 
 ## Progress
 - Real `cli run` (acetyl fluoride, RHF minimum start, HF/6-31G): printed and
