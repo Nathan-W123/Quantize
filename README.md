@@ -292,46 +292,62 @@ out worse than either theory or experiment alone would give.
 > On 9 molecules at HF/6-31G the change took config runs from 2 of 9 to 8 of 9
 > restart-stationary and the mean angle error from 4.05 to 0.97 degrees.
 
-### Which objective to use depends on how much data you have
+### Which objective to use
 
-This is the single most consequential setting, and it flips with the size of the
-dataset. Two measured cases:
+Measured on the scripts that compare the two (RHF/6-31G, each script's own data
+and settings, the objective passed explicitly; code ae82fd7), RMS bond error in
+mÅ against each script's reference structure:
 
-| Case | Observables | Internal DOF | Best objective |
-|------|-------------|--------------|----------------|
-| Water, one isotopologue (`scripts/theory_vs_experiment_vs_hybrid.py`) | 3 | 3 | `joint`, `quantum_prior_sigma_ang: 0.005` |
-| Fluorobenzene, one isotopologue (`scripts/fluorobenzene_vs_published.py`) | 3 | 30 | `joint`, `quantum_prior_sigma_ang: 0.005` |
-| Fluorobenzene, eight isotopologues (`scripts/fluorobenzene_full_data.py`) | 24 | 30 | `split` |
-| Vinyl / acetyl fluoride, fluoroethane — parent only (`scripts/monofluoro_benchmark.py`) | 3 | 12–18 | `joint`, `quantum_prior_sigma_ang: 0.005` |
-| Vinyl / acetyl fluoride, fluoroethane — all species (same script) | 18 | 12–18 | `split` |
+| Case | Observables | Internal DOF | Theory | `split` | `joint`, calibrated (0.020 Å) | `joint`, 0.005 Å |
+|------|-------------|--------------|--------|---------|-------------------------------|------------------|
+| Fluorobenzene, parent only (`scripts/fluorobenzene_vs_published.py`) | 3 | 30 | 11.42 | 10.78 / 11.27 | 11.27 | 11.18 |
+| Fluorobenzene, eight isotopologues (`scripts/fluorobenzene_full_data.py`) | 24 | 30 | 11.42 | 10.63 / 11.60 | 11.07 | 11.25 |
+| Vinyl fluoride, parent only (`scripts/monofluoro_benchmark.py`) | 3 | 12 | 19.05 | 18.24 | 18.31 | 18.61 |
+| Vinyl fluoride, all species | 24 | 12 | 19.05 | 15.87 | 17.41 | 18.38 |
+| Acetyl fluoride, parent only | 3 | 15 | 15.75 | 14.78 | 15.20 | 15.61 |
+| Acetyl fluoride, all species | 30 | 15 | 15.75 | 14.45 | 14.58 | 15.06 |
+| Fluoroethane, parent only | 3 | 18 | 14.99 | 11.55 | 13.14 | 14.27 |
+| Fluoroethane, all species | 18 | 18 | 14.99 | 12.12 | 12.49 | 13.53 |
 
-With few observables the split partition hands whole directions to data that
-barely resolves them, drives the residual below what the physics justifies, and
-distorts the structure doing it — on water the angle error trebles, on
-fluorobenzene the C–H angles do. A calibrated prior keeps those directions
-contested and fixes most of it.
+The fluorobenzene answers were restarted from themselves until they stopped
+moving (under 1e-4 Å). From the scripts' displaced start a first pass stops
+where the quantum model was last expanded, about 4 mÅ short of its own optimum
+(and up to 1.4 mÅ nearer the reference on bonds, which the optimum does not keep). `joint`'s optimum is the same from
+either start; `split`'s is not (from the displaced start / from theory's
+minimum). The monofluoro fits start from theory's minimum, as the script does,
+and every one is restart-stationary.
 
-With a full isotopologue set the position reverses. Against the published
-fluorobenzene structure, 24 observables give RMS bond errors of 11.4 mÅ from
-theory alone, 8.2 mÅ from spectroscopy alone, and **4.0 mÅ** from the split
-hybrid — better than either input on bond lengths, angles and the C–F distance
-at once. Forcing `quantum_prior_sigma_ang: 0.005` there costs more than half the
-gain (8.9 mÅ), because the prior now over-constrains directions the data
-determines perfectly well.
+What the table shows:
 
-Rule of thumb: keep the joint objective's calibrated prior when the fit is
-undersaturated, and try `split` when it is not. `python scripts/tune_quantum_prior.py`
-scans the value; 0.005 Å is a sparse-data result, not a validated default.
+- No objective wins everywhere, and the amount of data does not pick one.
+  `split` beats the calibrated `joint` in all six monofluoro cases; a wider
+  `joint` prior (0.050 Å) beats `split` in the three all-species ones (by
+  0.07-0.80 mÅ); on fluorobenzene only `joint` reaches an answer that does not
+  depend on where the fit starts.
+- The hybrid's gain over theory is small: 0.55-3.4 mÅ in the monofluoro cases
+  (`split` or the calibrated `joint`), against 15-19 mÅ of theory error; on
+  fluorobenzene every stationary answer is within 0.8 mÅ of theory, one
+  (`split` from theory's minimum, eight isotopologues) 0.2 above it.
+- 0.005 Å, the width these rows used to recommend for sparse data, is worse
+  than the calibrated 0.020 in all six monofluoro cases; on fluorobenzene it is
+  0.09 mÅ better with one isotopologue and 0.18 worse with eight.
 
-> **The 0.005 Å rows above predate a units fix.** Internal-coordinate runs
-> used to take $\alpha_q$'s typical curvature from the q-space Hessian, which
-> mixes Hartree/Å² with Hartree/rad²; on water that made the prior 1.5–2.1×
-> stronger at a given σ than in Cartesian mode. It now comes from the
-> Cartesian Hessian in both modes, so σ means the same thing in each, and a
-> 0.005 measured then corresponds to roughly 0.0035 Å now. Re-scanned on the
-> one-isotopologue water case, the corrected engine's trade is monotone and
-> 0.003 Å gives the old combined score (`dev/tests/test_endtoend_water_pipeline.py`).
-> The fluorobenzene and monofluoro rows have not been re-scanned.
+Not reproduced: the figures this section used to give (fluorobenzene with eight
+isotopologues 4.0 mÅ from `split`, 8.2 from spectroscopy alone, 8.9 from `joint`
+at 0.005 Å; "joint when undersaturated, split when not"). They predate the
+Cartesian-alpha units fix; since 7216d87 the scripts' "split" legs ran `joint`
+at the calibrated width, because the engine's default objective changed and the
+scripts passed none (fixed in d2078fa); and the cold-start fluorobenzene fits
+were not at their optima. These scripts also fit B₀ as if it were B_e against
+r_s or effective references, which the next section shows is what drives this
+comparison. The [Results](#results) benchmark -- `joint`, vibrational
+corrections, the prior centred on the theory geometry -- is the measurement of
+the hybrid itself. `python scripts/monofluoro_tune.py` scans the width on the
+monofluoro cases (`--split` scans the split cutoff). Water's one-isotopologue
+case (`scripts/theory_vs_experiment_vs_hybrid.py`, an analytic surface),
+re-scanned after the units fix, is monotone and 0.003 Å gives its old combined
+score (`dev/tests/test_endtoend_water_pipeline.py`).
+
 [`backend/spectral/prior_widths.py`](.github/backend/spectral/prior_widths.py)
 carries a per-level table (HF/6-31G 0.020 Å, B3LYP/6-31G(d) 0.007, B3LYP/cc-pVTZ
 0.004) and `MolecularOptimizer` uses it when `quantum_prior_sigma_ang` is left
@@ -350,13 +366,12 @@ Microwave Spectral Tables* — nothing is back-calculated from a geometry.
 This benchmark predates the vibration–rotation corrections it calls for below;
 the [Results](#results) table reflects the current engine.
 
-**The objective-choice rule above does not survive measured data.** The water
-and fluorobenzene rows use isotopologue constants *derived* from their reference
-structures, which are mutually consistent by construction. That removes the
-systematic r_s-vs-r_0 offset which turns out to drive the behaviour. Re-run on
-measured constants, `split` wins at rank deficits of 15, 3 and 1 while `joint`
-wins at 12, 10 and 3 — no ordering at all. Treat those rows as describing
-self-consistent synthetic data, not experiment.
+**The eight-isotopologue fluorobenzene row is synthetic.** Its constants
+beyond the parent's are *derived* from the reference structure, so they are
+mutually consistent by construction, which removes the systematic r_s-vs-r_0
+offset that drives the behaviour on measured constants. Treat it as
+self-consistent synthetic data, not experiment; the monofluoro rows use measured
+constants.
 
 What does hold up:
 
@@ -369,8 +384,8 @@ What does hold up:
   against 12 internal DOF; acetyl fluoride 30 → rank 14 of 15; fluoroethane
   18 → rank 15 of 18. All published data still leaves every molecule
   underdetermined, so `sv_min_abs` / `objective_mode` matter in every real case.
-- **On overall bond error the hybrid is not dependably better than theory** —
-  5 of 6 even choosing the objective with hindsight. The binding constraint is
+- **On overall bond error the hybrid is better than theory, but not by much**
+  -- 0.55-3.4 mÅ in all six cases (table above), against 15-19. The binding constraint is
   no longer the objective but the missing vibration-rotation correction: fitting
   r_0 constants uncorrected against an r_s reference leaves a one-signed ~0.5%
   residual that the fit removes by distorting the structure. In vinyl fluoride
