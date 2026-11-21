@@ -1,6 +1,6 @@
 # Current task
 Task: T-20
-Status: building
+Status: done
 Request: (D-60, auto-picked at Q-27) fix the validator's inertial-defect false positive on non-planar molecules (backlog F3 part).
 
 ## Brief
@@ -17,7 +17,7 @@ Request: (D-60, auto-picked at Q-27) fix the validator's inertial-defect false p
 ## Graph
 - N1 · diagnose · measure observed vs structure defects · after: none · done (t20/defects.py, startgeo.py) · handoff: -
 - N2 · build · the check + tests · after: N1 · done (runner/usability.py; 6 new tests) · handoff: -
-- N3 · verify · tests fail on the old code / one-sided variant; shipped configs; CI selection · after: N2 · running (CI selection) · handoff: -
+- N3 · verify · tests fail on the old code / one-sided variant; shipped configs; CI selection · after: N2 · done (CI selection 3.12: 1625 passed) · handoff: -
 
 ## Progress
 - N1: observed - reference-structure defect, 37 benchmark isotopologues:
@@ -39,5 +39,6 @@ Request: (D-60, auto-picked at Q-27) fix the validator's inertial-defect false p
 ## Observations
 
 ## Pending question
+- Q-28 (asked 17:25 UTC, deadline 17:41, send_later trig_01K3AfSM1QUTsi1spkGnEmmy): what's next. 1 re-measure the sparse-data sigma rows (N2, recommended) · 2 auto_systematic_sigma magnitudes (F13) · 3 implement N22 (needs the user's say-so; never auto-picked) · 4 done for now.
 
 ## Handoff

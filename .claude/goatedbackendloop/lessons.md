@@ -35,7 +35,7 @@ once by a container swap).
 
 ### L-12 · Check what a "far from the truth" verdict is measured against
 - Adjustment: before fixing to a reference, ask what the reference procedure does from the point being judged; if it does not move, the point is valid and the comparator is wrong.
-- Evidence: 2026-11-16 · split termini 17-25 widths apart, both stationary; two fixes tuned to the wrong comparator failed. · Scope: project · Status: provisional
+- Evidence: 2026-11-16 · split termini 17-25 widths apart, both stationary; two fixes tuned to the wrong comparator failed. +2026-11-21 (T-20: |defect| > 1 compared every molecule with a planar one; comparing with the config's own structure removed the false positive and kept the catches). · Scope: project · Status: provisional
 
 ### L-14 · One value, one reader: validator, builder and CLI share the rule
 - Adjustment: when a fix adds a check for a config key, grep every reader and route them through one helper; read provenance from the raw file, never after normalization; read optional numbers with `is not None`, never `or`; test through load_config.
@@ -43,7 +43,7 @@ once by a container swap).
 
 ### L-15 · A green test must be shown to fail, for every branch it claims
 - Adjustment: break the guarded property in the code and see the test fail, once per branch its docstring names, with a fixture that exercises it; assert work skipped (call counts), not speed ratios; compare against an inlined old formula, never the function's wrapper; assert the fixture's premise in the test.
-- Evidence: 2026-11-17 · round 10 A-4 / A-5 (a residual-only file passing, a sampler compared with itself); +2026-11-19 (a rescale test that widened, not tightened). · Scope: project · Status: validated
+- Evidence: 2026-11-17 · round 10 A-4 / A-5 (a residual-only file passing, a sampler compared with itself); +2026-11-19 (a rescale test that widened, not tightened). +2026-11-21 (T-20: each new branch removed in turn failed exactly its own test). · Scope: project · Status: validated
 
 ### L-16 · Break an aggregate diagnostic down by row before naming its cause
 - Adjustment: before attributing a failed check or ratio to a cause, print it per species and component and check whether the outliers share a property (precision, source, site).

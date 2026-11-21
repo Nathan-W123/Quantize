@@ -87,3 +87,4 @@ Sessions: 0 · Last consolidated: 2026-11-20
 - 2026-11-21 L-09 revised (explicit harness timeout on background launches); L-10 outcome + (T-17); project L-09 / L-17 / L-18 / L-21 outcomes.
 - 2026-11-21 L-10 outcome + (T-18); project L-09 / L-18 outcomes -, L-17 +.
 - 2026-11-21 L-11 added (time the change itself); L-10 outcome + (T-19); project L-18 outcome -.
+- 2026-11-21 project L-12 / L-15 outcomes + (T-20).
