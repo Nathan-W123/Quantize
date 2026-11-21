@@ -2240,7 +2240,7 @@ def build_run_inputs(cfg: dict[str, Any], *, verbose: bool = True) -> dict[str, 
             optimizer_kwargs[key] = _optimizer_value(key, value)
     # model_error: how the B0-versus-Be gap enters the reported widths when a
     # species does not state it (sigma_systematic_mhz): auto -> the engine's
-    # estimate from the inertial defect; isotopologue_correlation -> how much
+    # flat estimate (1% of A, 0.5% of B and C); isotopologue_correlation -> how much
     # of it isotopologues share (the engine's 0.99 when unset).
     me_cfg = cfg.get("model_error") or {}
     if me_cfg.get("auto") is not None:

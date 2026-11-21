@@ -41,7 +41,7 @@ from backend.spectral.rovib_corrections import (
     correction_summary,
 )
 from backend.spectral.correction_models import parse_correction_table, RovibCorrection
-from backend.spectral.spectral import default_sigma_constants, defect_model_sigma
+from backend.spectral.spectral import default_sigma_constants
 
 
 #: Default width of the quantum prior, in Angstrom -- the displacement over
@@ -623,11 +623,19 @@ class MolecularOptimizer:
         self._correction_g_tensor = correction_g_tensor or None
         # Fill in a missing observation sigma before anything reads it.
         #
-        # Preference order is most-informed first: the inertial defect measures
-        # this species' own vibrational contamination from its own constants,
-        # so it beats a fraction that is the same for every molecule. It needs
-        # all three constants, and falls back to the calibrated flat default
-        # when it cannot be formed (linear species, partial measurements).
+        # The estimate is the flat relative default (DEFAULT_SIGMA_REL_ABC: 1%
+        # of A, 0.5% of B and C). It used to be the inertial-defect estimate
+        # (defect_model_sigma), on the reasoning that a species' own
+        # vibrational contamination beats a fraction that is the same for
+        # every molecule. Measured, it does not: against the B3LYP VPT2 gaps
+        # 0.5 |alpha_sum| on seven molecules it ran 0.17-8.9x on A, 0.05-6.1x
+        # on B and 0.04-1.06x on C (too small on B and C everywhere but water;
+        # fluoroethane 20-25x), and against the r_e^SE gaps 0.14-0.40x on B
+        # and C, where the flat fractions are 1.0-2.5x / 0.58-1.17x /
+        # 0.23-0.83x (VPT2) and 0.68-1.05x / 0.58-0.80x on B / C (r_e^SE).
+        # The defect puts the whole residue on every component's moment,
+        # which is not how a B0 - Be gap divides among A, B and C (decisions
+        # D-67).
         #
         # sigma_systematic_constants is filled from the same estimate: it is
         # the model-error part, which for this error source is all of it, and
@@ -705,12 +713,8 @@ class MolecularOptimizer:
                           and self.auto_systematic_sigma)
             if not (_needs_meas or _needs_sys):
                 continue
-            _sig = defect_model_sigma(_obs, self.coords, _iso["masses"], _ci)
-            _how = "inertial defect"
-            if _sig is None:
-                _sig = default_sigma_constants(_obs, _ci)
-                _how = "flat model default"
-            _sig = np.asarray(_sig, dtype=float)
+            _sig = np.asarray(default_sigma_constants(_obs, _ci), dtype=float)
+            _how = "flat model default"
             if _needs_meas:
                 _iso["sigma_constants"] = _sig.copy()
                 _filled.append(f"{_iso.get('name', 'iso')} [{_how}]")

@@ -15,7 +15,9 @@ Request: (D-66, auto-picked at Q-33) auto_systematic_sigma's magnitudes (backlog
 
 ## Graph
 - N1 · diagnose · ratios on 9 molecules (VPT2) and 3 (r_e^SE) · after: none · done (t24/gaps.json) · handoff: -
-- N2 · gate · propose · after: N1 · asked (Q-34) · handoff: -
+- N2 · gate · propose · after: N1 · done: option 1 (D-67, auto-picked at Q-34) · handoff: -
+- N3 · build · flat estimate; README, docstrings, runner comment; 5 water tests re-measured, 2 fail on the old code; CI selection 1625 passed · after: N2 · done · handoff: -
+- N4 · verify · fresh agent fact-check of the new prose vs t24 data and the tests · after: N3 · todo · handoff: -
 
 ## Progress
 - Reachability: model_error.auto is opt-in (CLI `model_error: {auto: true}`,
@@ -38,8 +40,8 @@ Request: (D-66, auto-picked at Q-33) auto_systematic_sigma's magnitudes (backlog
   molecules; against formyl fluoride's own VPT2 gap its B is 0.45x.
 
 ## Observations
+- 2026-11-21 · five water tests had been tuned to the old estimate's water numbers (43x / 62x, 7.9-71 GHz, anti-monotonic); one of them was the stated reason the option is off by default, and it no longer holds. Measured each value before re-pinning it (L-09).
 
 ## Pending question
-- Q-34 (asked 21:24 UTC, deadline 21:40): the F13 gate. 1 auto (and the no-sigma fallback) use the flat 1% / 0.5% / 0.5% default (recommended) · 2 flag only (correct README + docstring) · 3 remove model_error.auto · 4 done for now.
 
 ## Handoff

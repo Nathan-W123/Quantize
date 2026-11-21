@@ -50,10 +50,17 @@ def defect_model_sigma(obs_constants, coords, masses, component_indices=None):
     residue is the real signal.
 
     Converted to a relative sigma by dividing the defect through by the moment
-    of inertia it perturbs, since B = K / I gives dB/B = dI/I. Measured on
-    formyl fluoride this returns 0.21% against the flat 0.5% guess, agreeing
-    with the independent VPT2 estimate of the same gap (0.23% on
-    fluoroacetylene) -- two unrelated routes to the same correction factor.
+    of inertia it perturbs, since B = K / I gives dB/B = dI/I -- the whole
+    residue on every component, which is not how a B0 - Be gap divides
+    among A, B and C. Measured against the B3LYP VPT2 gaps 0.5 |alpha_sum|
+    on seven molecules it runs 0.17-8.9x on A, 0.05-6.1x on B and
+    0.04-1.06x on C (too small on B and C everywhere but water; formyl
+    fluoride's B 0.45x, fluoroethane's 20-25x small), and against r_e^SE
+    gaps 0.14-0.40x on B and C; the flat DEFAULT_SIGMA_REL_ABC does better
+    on both (decisions D-67), so the engine no longer uses this for the
+    model error. (This used to compare formyl fluoride's 0.21% with
+    fluoroacetylene's VPT2 0.23%: two molecules.) It remains the per-species
+    residue _apply_defect_bias_floor reads after a correction.
 
     Needs all three constants (the defect is otherwise undefined), so linear
     molecules and partially-measured species get None and the caller falls

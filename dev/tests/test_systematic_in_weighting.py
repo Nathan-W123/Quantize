@@ -140,7 +140,11 @@ def test_it_does_fix_the_statistics():
         return float(np.sqrt(np.sum(rw ** 2) / rw.size))
 
     assert rms(opt_off) > 5.0, "premise broken: residuals were already small"
-    assert rms(opt_on) < 2.0, f"residuals still {rms(opt_on):.2f} sigma"
+    # Measured 2.09 with the flat estimate (D-67; under 2 with the
+    # inertial-defect one, 6-9x larger on water's A and B). The flat C is
+    # 0.23x water's VPT2 gap, so part of the model error stays in the
+    # residuals.
+    assert rms(opt_on) < 2.5, f"residuals still {rms(opt_on):.2f} sigma"
 
 
 def test_the_reported_width_tracks_the_quoted_sigma_only_through_its_own_part():
@@ -152,8 +156,9 @@ def test_the_reported_width_tracks_the_quoted_sigma_only_through_its_own_part():
     This used to assert the widths were IDENTICAL for 2 and 2000 MHz. That
     was the floor's max() hiding the measurement part, plus the model error
     counted twice. Counted once, in quadrature with the measurement part,
-    2000 MHz against a 7.9-71 GHz model gap widens the bond by 5%
-    (0.00768 -> 0.00808 Ang), and 2 MHz is already at the model-error limit.
+    2000 MHz against the flat estimate's 0.7-8.4 GHz model gap (D-67; the
+    inertial-defect one gave 7.9-71 GHz and 5%) widens the bond by 30%
+    (0.00170 -> 0.00220 Ang), and 2 MHz is already at the model-error limit.
     """
     widths = []
     for sigma in (0.002, 2.0, 2000.0):
@@ -172,7 +177,7 @@ def test_the_reported_width_tracks_the_quoted_sigma_only_through_its_own_part():
             unc = opt.geometry_uncertainty()
         widths.append(max(v for k, v in unc.items() if k.count("-") == 1))
     assert widths[0] == pytest.approx(widths[1], rel=1e-5), widths
-    assert widths[1] < widths[2] < 1.1 * widths[1], widths
+    assert widths[1] < widths[2] < 1.4 * widths[1], widths   # measured 1.30x
 
 
 def test_but_it_trades_the_bond_for_the_angle_so_it_stays_off():

@@ -774,3 +774,10 @@
 - Alternatives considered: more r_e^SE references (N3); implement N22 / N23 (user's call); done for now.
 - Source: auto-picked, no answer in 15 min (Q-33)
 - Revisit if: the user picks another option.
+
+### D-67 · model_error.auto (and the no-sigma fallback) use the flat relative default (2026-11-21)
+- Decision: where a species gives no systematic sigma and auto_systematic_sigma is on, or gives no sigma at all, the engine fills in DEFAULT_SIGMA_REL_ABC (1% of A, 0.5% of B and C) instead of the inertial-defect estimate (defect_model_sigma, kept as a diagnostic). README, docstrings and the runner's comment corrected; a test that fails on the old code; CI selection; fact-check.
+- Why: T-24: against the benchmark's B3LYP VPT2 gaps on seven molecules the defect estimate ran 0.17-8.9x (A), 0.05-6.1x (B), 0.04-1.06x (C) -- too small on B and C everywhere but water (fluoroethane 20-25x) -- and against the r_e^SE gaps 0.14-0.40 on B and C; the flat default 1.0-2.5 / 0.58-1.17 / 0.23-0.83 (VPT2) and 0.68-1.05 / 0.58-0.80 on B / C (r_e^SE). No compute cost; only opt-in users' widths (and API species with no sigma) change.
+- Alternatives considered: flag only; remove model_error.auto; done for now.
+- Source: auto-picked, no answer in 15 min (Q-34)
+- Revisit if: a per-species estimate that beats the flat fractions on both yardsticks is found (the VPT2 correction itself already supplies its sigma when one is computed).

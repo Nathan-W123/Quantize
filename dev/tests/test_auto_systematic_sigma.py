@@ -96,10 +96,13 @@ def test_opt_in_derives_a_systematic_without_touching_the_quoted_sigma():
     assert np.all(sysg > 0.0)
     # The user's measurement precision is left exactly as quoted.
     assert np.allclose(raw, 0.2)
-    # And the derived gap is a sizeable fraction of each constant, not a
-    # rescaling of the quoted sigma.
+    # And the derived gap is the flat relative default -- 1% of A, 0.5% of B
+    # and C -- not a rescaling of the quoted sigma (decisions D-67). It used to
+    # be the inertial-defect estimate, 8.1% / 4.2% / 2.7% here: against the
+    # B3LYP VPT2 gap 8.9x / 6.1x / 1.06x on water and 0.04-0.45x on B and C
+    # of every other benchmark molecule.
     frac = sysg / np.asarray(B0_H2O, dtype=float)
-    assert np.all(frac > 0.005) and np.all(frac < 0.20), frac
+    assert np.allclose(frac, (0.010, 0.005, 0.005), rtol=1e-12, atol=0.0), frac
 
 
 def test_derived_widths_are_physically_sensible():
@@ -126,7 +129,9 @@ def test_it_repairs_the_angle_under_coverage():
 
 def test_the_model_error_dominates_both_coordinates():
     """With the derived systematic on, it is the larger term for the bond AND
-    the angle: measured 43x and 62x their statistical widths.
+    the angle: measured 8.8x and 11.8x their statistical widths with the flat
+    estimate (43x and 62x with the inertial-defect one it replaced, which ran
+    6-9x large on water's A and B).
 
     This replaces "the bond is barely affected" (asserted < 2x). The bond only
     looked conservative because its statistical width carried the
@@ -138,8 +143,8 @@ def test_the_model_error_dominates_both_coordinates():
     _o1, unc_on = _fit(auto=True)
     b_off, a_off = _widths(unc_off)
     b_on, a_on = _widths(unc_on)
-    assert (b_on / b_off) > 10.0
-    assert (a_on / a_off) > 10.0
+    assert (b_on / b_off) > 5.0
+    assert (a_on / a_off) > 5.0
 
 
 def test_fitted_geometry_does_not_move():
@@ -165,27 +170,26 @@ def test_explicit_systematic_is_not_overwritten():
     assert np.allclose(got, 0.01 * np.asarray(B0_H2O))
 
 
-def test_the_interval_is_anti_monotonic_in_sigma():
-    """WHY THIS IS NOT THE DEFAULT, pinned so it cannot be forgotten.
+def test_the_interval_is_monotonic_in_sigma():
+    """What used to keep this off by default, and what has changed.
 
-    With sigma_floor_rel off, so the quoted sigma reaches the weighting,
-    admitting 1000x more measurement uncertainty NARROWS the reported bond
-    width: 0.0455 -> 0.0180 Angstrom. The mechanism is real -- tighter data
-    is weighted more heavily, so a coherent model shift moves the optimum
-    further -- but an uncertainty that shrinks when you admit more error
-    cannot be published.
+    With sigma_floor_rel off, so the quoted sigma reaches the weighting, the
+    inertial-defect estimate (to D-67) made admitting 1000x more measurement
+    uncertainty NARROW the reported bond width: 0.0455 -> 0.0180 Angstrom.
+    An uncertainty that shrinks when you admit more error cannot be
+    published, and this test pinned that as the reason auto stayed off. That
+    estimate ran 6-9x large on water's A and B; with the flat one the same
+    1000x widens the bond, 0.00199 -> 0.00230 Angstrom (angle 0.320 -> 0.343
+    deg).
 
-    The fix is to let the systematic weight the fit as well as the report, so
-    the two sigmas cannot disagree by 1e5. When that lands, this test should
-    start failing, and that is the signal to make the derivation default.
+    Whether to make the derivation the default is a separate decision: it
+    would change every reported interval (backlog F13).
     """
     _o_t, unc_tight = _fit(auto=True, sigma_mhz=2.0, sigma_floor_rel=0.0)
     _o_l, unc_loose = _fit(auto=True, sigma_mhz=2000.0, sigma_floor_rel=0.0)
-    b_tight, _a1 = _widths(unc_tight)
-    b_loose, _a2 = _widths(unc_loose)
-    assert b_loose < b_tight, (
-        "the anti-monotonicity is gone -- if the systematic now weights the "
-        "fit, make auto_systematic_sigma default True and delete this test")
+    b_tight, a_tight = _widths(unc_tight)
+    b_loose, a_loose = _widths(unc_loose)
+    assert b_loose > b_tight and a_loose > a_tight, (b_tight, b_loose, a_tight, a_loose)
 
 
 def test_with_the_floor_on_it_is_monotonic():
