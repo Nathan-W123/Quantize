@@ -129,16 +129,21 @@ three on all four at B3LYP; at RHF mixed estimation is ahead on three.
 > *Flagged, not changed: the fit's own gradient* (D-59). The gradient a fit
 > takes from the `pyscf_hf` backend -- `run_hessian`'s at each Hessian,
 > `run_gradient`'s between them -- is still pyscf's default, without the grid
-> response: up to 4.4e-4 Ha/Å off at the B3LYP theory geometries. The
-> benchmark cannot see it, because its target prior uses H(x - target) in
-> place of the gradient (a row came out bit-identical with the gradient
+> response: up to 4.4e-4 Ha/Å off at the B3LYP theory geometries (3.3e-4
+> once the rigid motions the fit projects out are removed). The benchmark
+> cannot see it, because its target prior (Cartesian mode) uses H(x - target)
+> in place of the gradient (a row came out bit-identical with the gradient
 > replaced or corrupted). A fit without a target -- the CLI's -- centres its
 > quantum prior at x - H⁻¹g, which the missing term moves by up to 0.27 mÅ in
 > a bond. Run through the CLI (B3LYP/6-31G(d), the benchmark's base
-> corrections) with the grid response on both, formyl fluoride's answer moves
-> 1.5e-4 Å (bond RMS 2.53 -> 2.49 mÅ against its reference) and
-> fluoroethane's 1.8e-4 Å (6.68 -> 6.61), for 7-14% more wall time. That
-> trade is left open (backlog N22).
+> corrections plus the CLI's default BOB terms) with the grid response on
+> both, the selected answers move 1.5e-4 Å (formyl fluoride; bond RMS 2.53 ->
+> 2.49 mÅ against its effective reference) and 1.7e-4 Å (fluoroethane; 6.68
+> -> 6.61), all of it through `run_hessian`'s gradient: the selected start
+> never calls `run_gradient`. With it, formyl fluoride's CLI answer lands
+> 6e-6 Å from the benchmark's (1.6e-4 without). The cost is being
+> re-measured (an earlier 7-14% included a duplicated gradient); the trade is
+> left open (backlog N22).
 >
 > Not run: the `elec` and `all` configurations (they need `pyscf.prop`, not
 > installed here), and at B3LYP the `torsion` and `offsets+torsion` rows of
