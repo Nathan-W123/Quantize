@@ -23,7 +23,7 @@ Request: (now D-57, a change) measure how far the theory geometries sit from tig
 - N2 · verify · tight optimisations vs the Newton estimate · after: N1 · done: RHF Newton exact; B3LYP needs grid-response optimisations (all 12 run, t18/gr_*.json) · handoff: t18/gr_a.log, gr_b.log
 - N3 · gate · propose (or not) tighter theory geometries · after: N1, N2 · done: option 1 auto-picked (D-57) · handoff: -
 - N4 · build · optimise(): grid-response gradient for DFT + convergence check; test failing on the old code; CI selection on 3.12 · after: N3 · done (4614cd0; 1619 passed) · handoff: -
-- N5 · build · regenerate the B3LYP theory geometries, rerun every B3LYP row (113), archive · after: N4 · geometries regenerating (t18/wg at 4614cd0, t18/regen.py, regen.log) · handoff: -
+- N5 · build · regenerate the B3LYP theory geometries, rerun every B3LYP row (113), archive · after: N4 · geometries done; rows running in 4 chains (t18/w1-w4, tags g1/g1v/g2/g2a/g3/g4; 2 h limit, resume after); RHF rows stay at ba67cfe (DFT-only change) · handoff: t18/logs
 - N6 · build · README + docstrings · after: N5 · pending · handoff: -
 - N7 · verify · fresh agent: prose vs JSON · after: N6 · pending · handoff: -
 
@@ -78,6 +78,13 @@ Request: (now D-57, a change) measure how far the theory geometries sit from tig
   and converged-record tests fail on the old code, the HF control passes on
   both; measured: an offset gradient stops (abnormal line search, 3 it) at
   |g| 3.4e-4, 17x gtol; clean |g| 2.7e-10. CI selection 3.12: 1619 passed.
+
+- N5 geometries (4614cd0, from the start geometries, default gtol 2e-5):
+  all 12 converged (|g| 4.2e-6 to 2.0e-5, 5-70 iterations). vs the old
+  geometries, largest bond change: FE 0.251, HCOF 0.243, VF 0.205, AF
+  0.151, the other eight <= 0.010 mA; theory bond RMS VF 4.220 -> 4.144,
+  AF 9.438 -> 9.479, FE 6.630 -> 6.620, HCOF 5.542 -> 5.660. vs the t18
+  tight minima (gtol 1e-6): <= 0.069 mA (CH2ClF, soft C-Cl), VF 0.045.
 
 ## Observations
 - 2026-11-21 · the same slip as T-17 within the hour: a test comment said "Measured" before the measurement. Write measured-value comments only after the run that prints them.
