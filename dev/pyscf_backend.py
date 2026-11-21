@@ -303,6 +303,19 @@ class PySCFBackend(QuantumBackend):
     # ── QuantumBackend interface ─────────────────────────────────────────────
 
     def run_gradient(self, coords_ang) -> GradientResult:
+        """Energy and gradient for the fit.
+
+        For DFT this is pyscf's default gradient, without the grid-weight
+        response optimise() uses, so it is not quite the energy's derivative:
+        at the B3LYP/6-31G(d) theory geometries the two differ by up to
+        4.4e-4 Ha/Ang. A fit with a prior target never reads it (the prior
+        uses H (x - target) in its place); one without -- the CLI's --
+        centres its quantum prior at x - H^-1 g, up to 0.27 mAng (bond) off
+        the energy's minimum. With the response here and in run_hessian's
+        gradient (the same default one), two CLI fits moved up to 0.14 mAng
+        in a bond and their bond RMS errors fell 0.05 and 0.07 mAng, for
+        7-14% more wall time: flagged, not made (decisions D-59).
+        """
         energy, grad = self._energy_gradient(coords_ang)
         return GradientResult(energy=energy, gradient_bohr=grad)
 

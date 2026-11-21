@@ -717,3 +717,10 @@
 - Alternatives considered: more r_e^SE references (N3); offsets alpha at the stationary geometry (N19 b-i); done for now.
 - Source: auto-picked, no answer in 15 min (Q-25)
 - Revisit if: the user picks another option.
+
+### D-59 · The fit's DFT gradient: flagged, not changed (2026-11-21)
+- Decision: leave run_gradient and run_hessian's gradient on pyscf's default RKS gradient (no grid-weight response); document the effect in the README's results provenance and the backend's docstrings; backlog N22 stays open as a flagged trade-off for the user.
+- Why: T-19: the benchmark cannot see it (target prior; rows bit-identical with the gradient replaced or corrupted); CLI fits (no target) centre the quantum prior up to 0.27 mA (bond) off the energy's minimum, and with the grid response on both gradients the two measured CLI answers move <= 0.14 mA (bond RMS HCOF 2.53 -> 2.49, FE 6.68 -> 6.61) for 7-14% more wall time. The user's stated preference: accuracy-efficiency trade-offs are flagged, not implemented.
+- Alternatives considered: implement (needs the user's say-so); measure a cost-neutral variant first (one grid-response gradient per Hessian, its correction reused between); done for now.
+- Source: auto-picked, no answer in 15 min (Q-26; the only option consistent with the stated preference)
+- Revisit if: the user chooses to implement it, or a cost-neutral variant is measured.

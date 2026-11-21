@@ -126,6 +126,20 @@ three on all four at B3LYP; at RHF mixed estimation is ahead on three.
 > against 6.62; mixed estimation's 6.16 beats both).
 > The RHF geometries were already converged (bonds within 0.008 mÅ).
 >
+> *Flagged, not changed: the fit's own gradient* (D-59). The gradient a fit
+> takes from the `pyscf_hf` backend -- `run_hessian`'s at each Hessian,
+> `run_gradient`'s between them -- is still pyscf's default, without the grid
+> response: up to 4.4e-4 Ha/Å off at the B3LYP theory geometries. The
+> benchmark cannot see it, because its target prior uses H(x - target) in
+> place of the gradient (a row came out bit-identical with the gradient
+> replaced or corrupted). A fit without a target -- the CLI's -- centres its
+> quantum prior at x - H⁻¹g, which the missing term moves by up to 0.27 mÅ in
+> a bond. Run through the CLI (B3LYP/6-31G(d), the benchmark's base
+> corrections) with the grid response on both, formyl fluoride's answer moves
+> 1.5e-4 Å (bond RMS 2.53 -> 2.49 mÅ against its reference) and
+> fluoroethane's 1.8e-4 Å (6.68 -> 6.61), for 7-14% more wall time. That
+> trade is left open (backlog N22).
+>
 > Not run: the `elec` and `all` configurations (they need `pyscf.prop`, not
 > installed here), and at B3LYP the `torsion` and `offsets+torsion` rows of
 > fluoroethane and acetyl fluoride (a single scan outlasts the 2-hour job
