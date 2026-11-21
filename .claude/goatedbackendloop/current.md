@@ -21,7 +21,7 @@ Request: measure the acoustic-sum-rule repair of the B3LYP Hessian (backlog N19 
 ## Graph
 - N1 · diagnose · per-molecule sum-rule violation, rigid eigenvalues, harmonic alpha shift at the B3LYP theory geometry (cached Hessians) · after: none · done · handoff: t17/diag.json, diag_hf.json
 - N2 · build · prototype in two git-archive copies (repair after the disk cache, B3LYP only), rerun base + offsets for all 9 (18 rows; the full 113 only if adopted) · after: N1 · running: first launch 03:23 died at the harness's 30-min default (VF base done, 5.2307 -> 5.24); resumed 03:54 with base first, then offsets (tags a_base/b_base/a_off/b_off, 2 h limit) · handoff: t17/proto_a, proto_b
-- N3 · verify · fresh agent: converged-grid alpha on formyl fluoride and ozone (levels 3/5/7, fixed geometry + re-optimised control), raw vs repaired, own Hessians, 1 thread · after: N1 · running · handoff: t17/verify
+- N3 · verify · fresh agent: converged-grid alpha on formyl fluoride and ozone (levels 3/5/7/9, fixed geometry + re-optimised control), raw vs repaired, own Hessians · after: N1 · done: verdict (a) at fixed geometry, with a geometry caveat (see Progress) · handoff: t17/verify
 - N4 · gate · propose (or not) an engine change · after: N2, N3 · pending · handoff: -
 
 ## Progress
@@ -36,6 +36,21 @@ Request: measure the acoustic-sum-rule repair of the B3LYP Hessian (backlog N19 
   rule to ~1e-9: the repair is a no-op there.
 - Rows will move little, so N2 measures base + offsets only (18 rows); the
   full 113 rerun waits for adoption.
+
+- N3 verifier (own pyscf Hessians, levels 3/5/7/9, 1 thread): at the
+  fixed theory geometry the repair takes level-3 alpha to within 0.032 MHz
+  (HCOF) / 0.012 (O3) of level 9; projection alone 0.40 / 0.49; 12/12 and
+  15/15 components improve; levels 7 and 9 agree to <= 0.005. All <= 1.2e-3
+  sigma. Not asked, found: (i) projection WITHOUT the repair is worse than
+  no projection on O3 (0.12 -> 0.49 MHz; A) -- repair + projection is the
+  right pair at a DFT default grid; (ii) the B3LYP theory geometries are not
+  tight minima: HCOF |P g_mw| 7.5e-5, 2.6e-4 A from the tight level-3
+  minimum (gradient also lacks grid response) -- moves A_e 17 MHz and alpha_A
+  0.42 MHz, as large as the grid effect; O3 within 8e-6 A. Level-9 minimum vs
+  theory geometry: alpha 0.36 (HCOF) / 0.70 MHz (O3).
+- N2 so far (repaired, base): VF 5.2307 -> 5.24 hybrid; FF hybrid 2.5558 ->
+  2.52, ME 0.963 -> 0.94; AF hybrid 8.33 = 8.33, ME 5.677 -> 5.72 (toward
+  the pre-projection 5.74).
 
 ## Observations
 - 2026-11-21 · a background launch without an explicit timeout got the harness's 30-min default, not the inner `timeout 7000`; the chains died with 1 of 18 rows. L-09's limit check must include the harness's own default, not just the job's.
