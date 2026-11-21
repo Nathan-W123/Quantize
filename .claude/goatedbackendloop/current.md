@@ -94,6 +94,14 @@ Request: (now D-55, engine change) measure the acoustic-sum-rule repair of the B
   0.027 -> 0.002. r_e table B3LYP: CH2ClF ME 14.34 / hybrid 8.95; ozone
   hybrid 0.068; VF ME 3.86. Engine = prototype to 8.6e-9 mA (N6b).
 
+- RHF so far (120 of 135, ba67cfe vs b29cec3): 116 rows within 1e-4 mA
+  (39 bit-identical below 1e-6). FA's tracked rows move: track_quadratic
+  13.632 -> 13.591 (the T-15 prototype's value -- the fit has two
+  solutions and tiny perturbations pick one), track 1.1e-3, offsets+track
+  7e-4. No best-of row is a FA tracked row. FE (R3, wb) left.
+- B3LYP band scan (n6 logs): no check in [3,5]; low side water base family
+  0.217 and ozone offsets family 0.226, as before.
+
 ## Observations
 - 2026-11-21 · L-09 slipped: I wrote the new test's bounds and "measured" comments before measuring; two of three failed on first run. Measure, then write the bound -- the comment is a record, not a guess.
 - 2026-11-21 · a background launch without an explicit timeout got the harness's 30-min default, not the inner `timeout 7000`; the chains died with 1 of 18 rows. L-09's limit check must include the harness's own default, not just the job's.
