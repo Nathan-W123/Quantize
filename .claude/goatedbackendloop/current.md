@@ -25,8 +25,8 @@ Request: (now D-55, engine change) measure the acoustic-sum-rule repair of the B
 - N3b · verify · CH2ClF level-7 Hessian at its theory geometry: does the repaired level-3 vibrational block / alpha match it (the one molecule the repair moves) · after: N2 · done: yes (see Progress) · handoff: t17/cfm_grid.json, cfm_L7.npz
 - N4 · gate · propose (or not) an engine change · after: N2, N3, N3b · done: option 1 auto-picked (D-55) · handoff: -
 - N5 · build · engine helper + call sites + test (fails on the old code) + full suite on 3.12 · after: N4 · done (ba67cfe) · handoff: -
-- N6 · build · rerun every row at both levels from the commit (B3LYP 113, RHF 135; shared raw cache) · after: N5 · B3LYP: first 2 h (05:41-07:40, 2x2 threads) 29/113 (VF 11, AF 9, FE 9); resumed 07:42 in 4 chains x 1 thread (wa AF rest + VF tw; wb FE rest + FA; wc water/HNCO/FF/ozone; wd CH2ClF) · handoff: t17/logs, t17/w{a,b,c,d}/output
-- N6b · verify · engine rows reproduce the prototype's 18 (all consumers covered) · after: N6 · pending · handoff: -
+- N6 · build · rerun every row at both levels from the commit (B3LYP 113, RHF 135; shared raw cache) · after: N5 · B3LYP done 08:36 (113, all ba67cfe; t17/final); RHF running in 4 chains (R1 wa VF/AF [stop after AF], R2 wd FA/CH2ClF/water/ozone/HNCO, R3 wb FE, R5 wc FF) · handoff: t17/logs, t17/final
+- N6b · verify · engine rows reproduce the prototype's 18 (all consumers covered) · after: N6 · done: max |d| 8.6e-9 mA over 18 rows (the helper's second application) · handoff: -
 - N7 · verify · fresh agent: README/docstring prose vs the JSON · after: N8 · pending · handoff: -
 - N8 · build · README table/provenance + benchmark and module docstrings · after: N6 · pending · handoff: -
 
@@ -84,6 +84,15 @@ Request: (now D-55, engine change) measure the acoustic-sum-rule repair of the B
   the helper set to identity each test fails on its own assertion (lines
   63, 90, 99); alpha without it moves -1672 / -3.6 / +1.7 MHz, with it 0.0.
   CI selection on 3.12: 1615 passed.
+
+- N6 B3LYP (113 rows, ba67cfe) vs b29cec3: every row moves; CH2ClF base
+  family 10.842 -> 10.525 (vs r_e 9.237 -> 8.945), offsets family 8.174 ->
+  8.077 (5.992 -> 5.910), track_direct 10.992 -> 10.692; everything else
+  <= 0.049 (AF lam ME). Best-of 5.31 / 4.05 / 3.76 (was 4.06 / 3.77), base
+  9.19 / 5.40 / 4.59 (was 5.41 / 4.63); wins 5/9, 5/9, 7/9 unchanged; RHF ->
+  B3LYP improves 8/9 (CH2ClF 5.43 -> 8.08); FE theory-over-hybrid margin
+  0.027 -> 0.002. r_e table B3LYP: CH2ClF ME 14.34 / hybrid 8.95; ozone
+  hybrid 0.068; VF ME 3.86. Engine = prototype to 8.6e-9 mA (N6b).
 
 ## Observations
 - 2026-11-21 · L-09 slipped: I wrote the new test's bounds and "measured" comments before measuring; two of three failed on first run. Measure, then write the bound -- the comment is a record, not a guess.
