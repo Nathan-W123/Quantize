@@ -1,6 +1,6 @@
 # Current task
 Task: T-19
-Status: building
+Status: done
 Request: (D-58, auto-picked at Q-25) measure the grid-weight term pyscf's default RKS gradient leaves out of run_gradient, and what it does to the fit; measurement only, any change proposed before it is made.
 
 ## Brief
@@ -29,7 +29,8 @@ Request: (D-58, auto-picked at Q-25) measure the grid-weight term pyscf's defaul
 - N3 · verify · fresh agent, own experiments: a benchmark row with run_gradient perturbed; a no-target fit with each gradient vs N2's shift · after: N2 · done (t19/verify; see Progress) · handoff: -
 - N4 · gate · propose (or not) the grid response in run_gradient (and run_hessian's gradient) · after: N2, N3 · done: flagged, not changed (D-59, auto-picked at Q-26) · handoff: -
 - N5 · build · README + run_gradient docstring note · after: N4 · done (a20b3e4) · handoff: -
-- N6 · verify · fresh agent fact-check of the note against t19 JSON, own code · after: N5 · running (t19/factcheck) · handoff: - · handoff: -
+- N6 · verify · fresh agent fact-check of the note against t19 JSON, own code · after: N5 · done: 1 wrong (FE 1.8e-4 -> 1.7e-4, rounded twice), 3 misleading (the target bypass is Cartesian-only; the move came through run_hessian's gradient; references are effective structures), and the 7-14% cost was an artefact of the verifier's wrapper (a second gradient per call); fixed in the next commits · handoff: -
+- N7 · verify · re-time with exactly the change (t19/cost: lean wrapper, alternating, 2 runs each) · after: N6 · done: FF 55.5 / 55.4 -> 53.5 / 53.1 s, FE 122.8 / 128.2 -> 126.4 / 135.8 s (+4.5% on the means; repeats 4%); answers equal the verifier's grid_both to 5e-13 A · handoff: - · handoff: -
 
 ## Progress
 - N2 (t19/gridg.json; T-18 geometries, which are grid-response minima):
@@ -72,6 +73,7 @@ Request: (D-58, auto-picked at Q-25) measure the grid-weight term pyscf's defaul
   spectral floor" for every plateau (wording only).
 
 ## Observations
+- 2026-11-21 · I quoted the verifier's wall times as the change's cost without reading its wrapper, which computed a second gradient per call (7-14% reported; the change itself costs 0-4.5%). The cost reached a gate question (Q-26) and a decision (D-59) before the fact-check caught it.
 - 2026-11-21 · the verifier, told only to measure through the CLI, found that the gradient the CLI's answer uses is run_hessian's, not run_gradient's -- my brief named the wrong function; patching only it would have shipped a no-op.
 
 ## Pending question

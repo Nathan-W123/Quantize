@@ -63,7 +63,13 @@ Sessions: 0 · Last consolidated: 2026-11-20
 - Observation: asked to force sigma_x and reproduce, a verifier found a chi2-rescale switch my reading had put down to the width itself.
 - Evidence: 2026-11-20 · Quantize T-11 (t11/verify/fine_hf.json).
 - Adjustment: state the claim as an experiment the verifier can run (hold X fixed, vary Y, reproduce the rows, by a different mechanism than yours), not as a conclusion to review.
-- Scope: workflow · Status: provisional · Outcomes: +2026-11-20 (T-12: "move the threshold to 3 and 5" gave the flip point and the floor) +2026-11-20 (T-13: a source edit instead of my monkeypatch reproduced every row bit for bit and showed the 5.93 best-of needs six rows, not the four I named) +2026-11-20 (T-14: told to make its own edit, the verifier's fix disagreed with my prototype on one row and exposed my prototype's bug) +2026-11-21 (T-15, three verifiers: own projector refuted my gradient-proportional prediction and found the 23.2-28.6 recipe range; own Hessians, frames and grids confirmed the fix but refuted my mechanism; own code on the JSON found 5 misleading statements my figure script could not) +2026-11-21 (T-17: the grid verifier found two things I had not asked -- projection alone worse than none on ozone, theory geometries not tight minima; the fact-checker found two wrong figures) +2026-11-21 (T-18: the fact-checker found 3 wrong figures and the leg / reference / margin gaps my figure script could not)
+- Scope: workflow · Status: provisional · Outcomes: +2026-11-20 (T-12: "move the threshold to 3 and 5" gave the flip point and the floor) +2026-11-20 (T-13: a source edit instead of my monkeypatch reproduced every row bit for bit and showed the 5.93 best-of needs six rows, not the four I named) +2026-11-20 (T-14: told to make its own edit, the verifier's fix disagreed with my prototype on one row and exposed my prototype's bug) +2026-11-21 (T-15, three verifiers: own projector refuted my gradient-proportional prediction and found the 23.2-28.6 recipe range; own Hessians, frames and grids confirmed the fix but refuted my mechanism; own code on the JSON found 5 misleading statements my figure script could not) +2026-11-21 (T-17: the grid verifier found two things I had not asked -- projection alone worse than none on ozone, theory geometries not tight minima; the fact-checker found two wrong figures) +2026-11-21 (T-18: the fact-checker found 3 wrong figures and the leg / reference / margin gaps my figure script could not) +2026-11-21 (T-19: the CLI verifier found the gradient the answer uses is run_hessian's, not the run_gradient my brief named; the fact-checker found the cost artefact)
+
+### L-11 · Time the change itself, not an instrumented stand-in
+- Observation: a verifier's monkeypatch computed both variants per call "for the record"; I quoted its wall times as the change's cost.
+- Evidence: 2026-11-21 · T-19: 7-14% reported; re-timed with exactly the change, 0% (formyl fluoride) and 4.5% (fluoroethane, repeats 4%). The wrong figure had already reached a gate question.
+- Adjustment: before quoting a time as a cost, read what the timed code does per call; time the exact change with nothing recording inside the loop, alternating with the baseline, at least two runs each, and state the repeats' spread beside it.
+- Scope: workflow · Status: provisional · Outcomes: -
 
 ## Retired
 ## Changelog
@@ -80,3 +86,4 @@ Sessions: 0 · Last consolidated: 2026-11-20
 - 2026-11-21 project L-P02 validated (T-16: a library-version cause found by running on both interpreters); L-09 (project) outcome +.
 - 2026-11-21 L-09 revised (explicit harness timeout on background launches); L-10 outcome + (T-17); project L-09 / L-17 / L-18 / L-21 outcomes.
 - 2026-11-21 L-10 outcome + (T-18); project L-09 / L-18 outcomes -, L-17 +.
+- 2026-11-21 L-11 added (time the change itself); L-10 outcome + (T-19); project L-18 outcome -.

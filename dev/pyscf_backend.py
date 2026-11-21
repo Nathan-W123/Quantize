@@ -315,9 +315,9 @@ class PySCFBackend(QuantumBackend):
         one without -- the CLI's -- centres its quantum prior at x - H^-1 g,
         which the missing term moves by up to 0.27 mAng in a bond. With the
         response in both, two CLI fits (formyl fluoride, fluoroethane) moved
-        up to 0.14 mAng in a bond, all through run_hessian's gradient. Cost: being
-        re-measured (an earlier 7-14% included a duplicated gradient).
-        Flagged, not made (decisions D-59).
+        up to 0.14 mAng in a bond, all through run_hessian's gradient. Timed
+        through the CLI: formyl fluoride no slower, fluoroethane 4.5% (its
+        repeats differ by 4%). Flagged, not made (decisions D-59).
         """
         energy, grad = self._energy_gradient(coords_ang)
         return GradientResult(energy=energy, gradient_bohr=grad)
