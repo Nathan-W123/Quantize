@@ -725,3 +725,10 @@
 - Source: auto-picked, no answer in 15 min (Q-26; the only option consistent with the stated preference)
 - Revisit if: the user chooses to implement it, or a cost-neutral variant is measured.
 - Correction (2026-11-21, T-19 fact-check): the 7-14% cost in Q-26 and above was wrong -- the verifier's wrapper computed a second gradient on every patched call. Timed with exactly the change (two alternating CLI runs each): formyl fluoride 55.5 / 55.4 -> 53.5 / 53.1 s (no slower), fluoroethane 122.8 / 128.2 -> 126.4 / 135.8 s (~4%, the repeats' own spread). Still a cost, so still the user's call under the stated preference; the decision stands until they choose.
+
+### D-60 · Inertial-defect check: against the config's own structure (2026-11-21)
+- Decision: the validator's inertial-defect warning compares each isotopologue's observed defect with the one its config geometry gives (geometry.method coords, the isotopologue's masses), warning beyond 1.0 amu*A^2 + 10% of the structure's own; without coordinates it warns only on a defect above +1.0 (no structure gives one). A separate warning when the labelled constants are not ordered A >= B >= C (what a label swap produces, and what the old two-sided rule caught as a large negative defect).
+- Why: Q-27 option 1. The old rule warned on |defect| > 1, but I_c - I_a - I_b = -2 P_c is large and negative for every non-planar molecule (fluoroethane -6.3 to -7.7: false positive, T-19 N3). Measured T-20: observed vs reference structure, 37 benchmark isotopologues, gap -0.070 to +0.113; vs the benchmark's start geometries <= 0.26 (7.5%); fluorobenzene's bad constants +5.6.
+- Alternatives considered: one-sided only (misses label swaps and negative errors on planar molecules); build every geometry form (smiles, pubchem, bonds) at validation (needs RDKit / the network).
+- Source: auto-picked, no answer in 15 min (Q-27)
+- Revisit if: a real config's start geometry misses its own defect by more than the tolerance.

@@ -653,15 +653,23 @@ def _validate_internal_priors_block(cfg: dict[str, Any], n_atoms: int) -> None:
             raise ConfigError(f"'{path}.units' must be angstrom, radian, or degree variants.")
 
 
-#: |I_c - I_a - I_b| beyond this (amu*A^2) is reported as suspect.
+#: Allowed miss (amu*A^2) between an isotopologue's observed inertial defect
+#: and the one its structure gives, plus _INERTIAL_DEFECT_REL of the latter.
 #:
-#: The defect equals -2 P_c, where P_c = sum(m z^2) is the out-of-plane second
-#: moment and cannot be negative for real atoms. Zero-point motion makes it
-#: slightly negative in practice, so a planar molecule shows a small positive
-#: defect -- about +0.05 for water, +0.16 for fluorobenzene -- and a floppy
-#: out-of-plane mode can push it to order 1. Several amu*A^2 implies a strongly
-#: negative P_c, which no structure can produce.
+#: The defect I_c - I_a - I_b equals -2 P_c, where P_c = sum(m c^2) is the
+#: out-of-plane second moment: zero for a rigid planar molecule, positive --
+#: so the defect is large and negative -- for any non-planar one (fluoroethane
+#: -6.3 to -7.7). Zero-point motion adds a little: a planar molecule's
+#: observed defect sits slightly positive, about +0.05 for water and +0.1 for
+#: ozone or formyl fluoride, and a floppy out-of-plane mode can push it to
+#: order 1. So a defect well above +1 fits no structure at all, and one far
+#: from the structure's own fits none near the given geometry. Measured on
+#: the benchmark's 37 fully assigned isotopologues: observed minus reference
+#: structure -0.070 to +0.113; against its start geometries at most 0.26
+#: (7.5%, chlorofluoromethane). The shipped fluorobenzene constants miss by
+#: +5.6.
 _INERTIAL_DEFECT_WARN = 1.0
+_INERTIAL_DEFECT_REL = 0.1
 _INERTIA_TO_MHZ = 505379.0084353526
 
 
@@ -671,36 +679,82 @@ def inertial_defect_mhz(a_mhz: float, b_mhz: float, c_mhz: float) -> float:
     return moments[2] - moments[0] - moments[1]
 
 
+def structure_inertial_defect(coords_ang, masses) -> float:
+    """I_c - I_a - I_b in amu*A^2 of a rigid structure, from its principal
+    moments about the centre of mass."""
+    x = np.asarray(coords_ang, dtype=float)
+    m = np.asarray(masses, dtype=float)
+    r = x - (m[:, None] * x).sum(axis=0) / m.sum()
+    inertia = np.einsum("i,ij,ik->jk", m, r, r)
+    inertia = np.trace(inertia) * np.eye(3) - inertia
+    i_a, i_b, i_c = np.sort(np.linalg.eigvalsh(inertia))
+    return float(i_c - i_a - i_b)
+
+
 def _check_inertial_defects(cfg: dict[str, Any]) -> None:
-    """Warn when supplied constants cannot come from any real structure.
+    """Warn when supplied constants cannot come from the structure given.
 
     This is nearly free and catches transcription errors before a run burns
-    hours converging on impossible data. It only warns: the check needs all
-    three of A, B and C, and a very floppy molecule can legitimately sit near
-    the threshold.
+    hours converging on impossible data. With coordinates in the config
+    (geometry.method coords) each isotopologue's defect is compared with the
+    one that geometry gives for its masses; otherwise only a defect no
+    structure can give (above +1) is flagged. Constants labelled out of the
+    order A >= B >= C -- what a swapped label looks like -- get their own
+    warning. It only warns: the check needs all three of A, B and C, and a
+    very floppy molecule can legitimately sit near the threshold.
     """
+    geometry = cfg.get("geometry") if isinstance(cfg.get("geometry"), dict) else {}
+    coords = None
+    if (not geometry.get("smiles")
+            and str(geometry.get("method", "bonds")).strip().lower() == "coords"):
+        coords = geometry.get("coords_angstrom")
+    unordered: list[str] = []
     suspect: list[str] = []
     for i, iso in enumerate(_as_list(cfg.get("isotopologues"), "isotopologues"), start=1):
         if not isinstance(iso, dict):
             continue
+        name = iso.get("name", f"iso_{i}")
         comps = [str(c).strip().upper() for c in (iso.get("components") or [])]
         obs = iso.get("obs_b0_mhz")
         if sorted(comps) != ["A", "B", "C"] or not isinstance(obs, list) or len(obs) != 3:
             continue
         try:
             values = {c: float(v) for c, v in zip(comps, obs)}
+            if not values["A"] >= values["B"] >= values["C"]:
+                unordered.append(f"{name}: A {values['A']:.4f}, B {values['B']:.4f}, "
+                                 f"C {values['C']:.4f} MHz")
+                continue
             defect = inertial_defect_mhz(values["A"], values["B"], values["C"])
         except (TypeError, ValueError, ZeroDivisionError):
             continue
-        if abs(defect) > _INERTIAL_DEFECT_WARN:
-            suspect.append(f"{iso.get('name', f'iso_{i}')}: {defect:+.3f}")
+        expected = None
+        masses = iso.get("masses")
+        if (coords is not None and isinstance(masses, list)
+                and len(masses) == len(coords)):
+            try:
+                expected = structure_inertial_defect(coords, masses)
+            except (TypeError, ValueError, np.linalg.LinAlgError):
+                expected = None
+        if expected is None:
+            if defect > _INERTIAL_DEFECT_WARN:
+                suspect.append(f"{name}: {defect:+.3f}")
+        elif abs(defect - expected) > _INERTIAL_DEFECT_WARN + _INERTIAL_DEFECT_REL * abs(expected):
+            suspect.append(f"{name}: {defect:+.3f} (its geometry gives {expected:+.3f})")
 
+    if unordered:
+        print(
+            "[config-warning] Rotational constants are not in the order A >= B >= C for:\n"
+            + "".join(f"  - {s}\n" for s in unordered)
+            + "[config-warning] Check the component labels before trusting a fit to them."
+        )
     if suspect:
         print(
             "[config-warning] Inertial defect I_c - I_a - I_b is implausible for:\n"
             + "".join(f"  - {s} amu*A^2\n" for s in suspect)
-            + "[config-warning] A real structure gives roughly +0.1 to +0.4 for a planar\n"
-            "[config-warning] molecule. Check the constants before trusting a fit to them."
+            + "[config-warning] A planar molecule gives a small positive value (about +0.05\n"
+            "[config-warning] to +0.4), a non-planar one the -2 P_c of its structure; none\n"
+            "[config-warning] gives a large positive one. Check the constants before\n"
+            "[config-warning] trusting a fit to them."
         )
 
 
