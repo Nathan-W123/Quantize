@@ -110,6 +110,42 @@ change proposed before it is made.
   Rerun: 1611 passed + N20.
 - Prototype B3LYP runs stopped (VF 11 + AF 8 + FA 11 + CH2ClF 1 rows done,
   their Hessians cached); every row now reruns from b29cec3.
+- 00:39 UTC: chain A done (RHF 135/135; B3LYP VF/AF/water/HNCO 50 rows);
+  chain B hit its 7000 s limit at FE 8/11. Resumed 00:40 as chains C (wta:
+  FF, FA + twins) and D (wtb: FE rest, CH2ClF, ozone + twins), task
+  bbps4q960, logs t15/logs/run_<tag>.log (run_commit2.sh).
+- RHF b29cec3 vs the prototype: 60/117 identical, 57 move 1e-6 to 2e-5 mA,
+  FA track 13.6399 -> 13.6354 and track_quadratic 13.5909 -> 13.6318. Code
+  identical (docstrings only). The prototype code rerun now (t15/proj_rerun,
+  warm cache) gives 13.635415978521591 / 13.631784424046522 -- the commit's
+  values to every digit: the difference was cache state (fresh Hessians vs
+  ones read back through the 1e-9 A key), amplified by FA's fragile track
+  fits, not code. HEAD had 13.6402 / 13.6391: the prototype's 13.59 was the
+  outlier.
+- RHF b29cec3 vs HEAD rows (t14/fix + archive torsion): HNCO offsets family
+  8.1373 -> 28.5553 (6 rows incl. offsets+torsion), HNCO track_direct
+  22.1304 -> 18.0436; every other row <= 0.09 mA (FE offsets+torsion 7.1015
+  -> 7.0119, AF offsets+torsion 9.6669 -> 9.6449, both vs 5cfc5d4 archive).
+- RHF table from the committed rows (--table): best-of theory 10.39, ME
+  9.84 (README 9.85: FE's best ME is now offsets+torsion 8.12), hybrid 6.43
+  (README 5.34); wins 4/9, 6/9, 7/9 unchanged. Base config unchanged
+  (21.47 / 17.35 / 11.03; 5/9, 5/9, 9/9).
+- Figure generator t15/figs/figures.py (every figure README + docstring
+  quote); on the archived rows it reproduces all of them (10.39 / 9.85 /
+  5.34, 11.28, FF 0.08, ozone 0.04 / 1.02, r_e table). Found stale already:
+  print_summary_table's docstring says hybrid-picks-the-row flatters ME by
+  2.9 mA; the data gave 11.28 - 9.85 = 1.43. RHF from b29cec3: one-row ME
+  mean 11.10; cd-section offsets mean 5.38 -> 7.64; FF margin 0.07; CH2ClF
+  rows now carry r_e scores themselves (45.68 / 28.16 / 10.80, = README's
+  footnoted values). RHF chi2 band scan (t15/scan/band.py, any check in
+  [3,5] or [0.2,1/3], every pass): 0 of 135 rows (HEAD: HNCO offsets 3.47).
+- B3LYP b29cec3, 59 rows so far vs HEAD rows: HNCO offsets family 3.7128 ->
+  3.4947; AF base family hybrid +1e-4 but ME 5.7397 -> 5.6773 (stationary
+  point -- my 21:00 note gave the hybrid leg only); FE offsets 7.6563 ->
+  7.6930; AF offsets+track 6.4450 -> 6.4242 (new AF best). Commit = the
+  prototype on VF 11 + AF 8 rows (16 identical, 3 cache noise <= 8e-5).
+  Probing AF's stationary-point ME move (t15/probe/capture_af.py,
+  alpha_af.py).
 
 ## Observations
 - 2026-11-20 · the stationary-point sanity check caught my projector removing a real bend on a near-linear molecule before any long run -- the same linearity trap as T-14, a second time in one day (L-P04 applied; candidate lesson: every new rigid/linear treatment goes through rigid_mode_count, never its own threshold).
