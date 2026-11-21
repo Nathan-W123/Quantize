@@ -22,8 +22,8 @@ Request: measure the acoustic-sum-rule repair of the B3LYP Hessian (backlog N19 
 - N1 · diagnose · per-molecule sum-rule violation, rigid eigenvalues, harmonic alpha shift at the B3LYP theory geometry (cached Hessians) · after: none · done · handoff: t17/diag.json, diag_hf.json
 - N2 · build · prototype in two git-archive copies (repair after the disk cache, B3LYP only), rerun base + offsets for all 9 (18 rows; the full 113 only if adopted) · after: N1 · done 05:30 (t17/compare.txt) · handoff: t17/proto_a, proto_b
 - N3 · verify · fresh agent: converged-grid alpha on formyl fluoride and ozone (levels 3/5/7/9, fixed geometry + re-optimised control), raw vs repaired, own Hessians · after: N1 · done: verdict (a) at fixed geometry, with a geometry caveat (see Progress) · handoff: t17/verify
-- N3b · verify · CH2ClF level-7 Hessian at its theory geometry: does the repaired level-3 vibrational block / alpha match it (the one molecule the repair moves) · after: N2 · running (t17/cfm_grid.py, 4 threads) · handoff: -
-- N4 · gate · propose (or not) an engine change · after: N2, N3, N3b · pending · handoff: -
+- N3b · verify · CH2ClF level-7 Hessian at its theory geometry: does the repaired level-3 vibrational block / alpha match it (the one molecule the repair moves) · after: N2 · done: yes (see Progress) · handoff: t17/cfm_grid.json, cfm_L7.npz
+- N4 · gate · propose (or not) an engine change · after: N2, N3, N3b · asked (Q-22) · handoff: -
 
 ## Progress
 - N1 (cached Hessians at each B3LYP theory geometry, harmonic alpha through
@@ -63,9 +63,20 @@ Request: measure the acoustic-sum-rule repair of the B3LYP Hessian (backlog N19 
   vibrational shift (381.5 -> 376.2 cm-1), and an underdetermined fit (2
   isotopologues) that leans on the prior's curvature (N16's mechanism).
 
+- N3b (my own check, 153 s at level 7, 4 threads): CH2ClF lowest modes
+  L3 raw 381.01 / 729.46, L3 repaired 376.24 / 727.39, L7 376.15 / 727.43
+  cm-1 (all modes within 0.1 after repair); alpha max vs L7 0.82 MHz raw,
+  0.006 repaired. The repair corrects the curvature, not only alpha, so
+  CH2ClF's 0.3 mA move toward its r_e is the converged-grid direction.
+
 ## Observations
 - 2026-11-21 · a background launch without an explicit timeout got the harness's 30-min default, not the inner `timeout 7000`; the chains died with 1 of 18 rows. L-09's limit check must include the harness's own default, not just the job's.
 
 ## Pending question
+Q-22 (asked 05:18 UTC, deadline 05:33 UTC; send_later trig_01Fiu7krK5Zfvz3hKfYbP3ht): adopt the sum-rule repair in the engine?
+1. Adopt everywhere a Hessian enters (optimizer quantum state + both alpha mode analyses), all levels (no-op at RHF), test failing on the old code, rerun every B3LYP row, update docs (Recommended; auto-pick)
+2. Adopt in the alpha mode analyses only (not the prior's curvature)
+3. Don't adopt; document it as a known B3LYP default-grid limitation
+4. Done for now
 
 ## Handoff
