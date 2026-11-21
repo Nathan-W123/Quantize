@@ -26,8 +26,8 @@ Request: (D-58, auto-picked at Q-25) measure the grid-weight term pyscf's defaul
 ## Graph
 - N1 · diagnose · which entry points read run_gradient into the answer · after: none · done by reading (benchmark: target mode, gradient replaced; CLI: no target, centre x_ref - H^-1 g) · handoff: -
 - N2 · diagnose · dg and the centre shift at all 12 B3LYP theory geometries; gradient cost · after: N1 · done (t19/gridg.json) · handoff: -
-- N3 · verify · fresh agent, own experiments: a benchmark row with run_gradient perturbed; a no-target fit with each gradient vs N2's shift · after: N2 · running (t19/verify) · handoff: -
-- N4 · gate · propose (or not) the grid response in run_gradient (and run_hessian's gradient) · after: N2, N3 · todo · handoff: -
+- N3 · verify · fresh agent, own experiments: a benchmark row with run_gradient perturbed; a no-target fit with each gradient vs N2's shift · after: N2 · done (t19/verify; see Progress) · handoff: -
+- N4 · gate · propose (or not) the grid response in run_gradient (and run_hessian's gradient) · after: N2, N3 · asked (Q-26) · handoff: -
 
 ## Progress
 - N2 (t19/gridg.json; T-18 geometries, which are grid-response minima):
@@ -46,8 +46,33 @@ Request: (D-58, auto-picked at Q-25) measure the grid-weight term pyscf's defaul
   0.8 / 1.0, AF 2.0 / 2.1, CH2ClF 1.3 / 1.5, HCOF 0.6 / 0.6; the SCF is
   1.2-3.9 s, so per gradient job (SCF + gradient) at most +13% (FE).
 
+- N3 (fresh agent, t19/verify, worktree at b81a762): (a) benchmark
+  formyl fluoride base, B3LYP, through main(): run_gradient default / grid
+  / +N(0,1e-3) noise -> fitted coordinates bit-identical (0.0 A), row
+  5.6599 / 0.9873 / 2.4885 in all three -- the target prior replaces the
+  gradient. (b) through the CLI (cli.main run, pyscf_hf, BALANCED, no
+  target, the benchmark's base correction table passed in): run_gradient
+  alone changes nothing -- the selected start (theory geometry) makes one
+  run_hessian call and no run_gradient call, and the gradient it uses is
+  run_hessian's. With run_hessian's gradient also on the grid response:
+  HCOF moves 1.53e-4 A (C=O -0.068, C-F +0.064 mA), bond RMS 2.532 ->
+  2.486; FE 1.75e-4 A (C-C -0.139, C-F +0.132), 6.677 -> 6.612; internal
+  mode the same to 0.002. The CLI's grid geometry for HCOF is 5.7e-6 A from
+  the benchmark hybrid's (default 1.56e-4). Repeats reproduce to 8e-10 A.
+  Wall time (whole CLI run, 3 starts): HCOF 63 -> 67 s, FE 135 -> 154 s
+  (repeat 131.5); the selected start alone HCOF 13.4 -> 13.4, FE 32.9 ->
+  34.0. Jittered starts call run_gradient 2-6 times and move too (FE start
+  2: 1.26e-2 A, a ~1 deg methyl torsion).
+- Side findings (N3): the validator's inertial-defect warning fires on
+  |defect| > 1 for any molecule, but I_c - I_a - I_b = -2 P_c is large and
+  negative for every non-planar one (fluoroethane -6.3 to -7.7) -- a false
+  positive (backlog F3). The plateau exit prints "Converged to rank-N
+  spectral floor" for every plateau (wording only).
+
 ## Observations
+- 2026-11-21 · the verifier, told only to measure through the CLI, found that the gradient the CLI's answer uses is run_hessian's, not run_gradient's -- my brief named the wrong function; patching only it would have shipped a no-op.
 
 ## Pending question
+- Q-26 (asked 16:16 UTC, deadline 16:32, send_later trig_018E3fPEdRbTE5noHofwtUgV): the N22 gate. 1 flag, don't implement (recommended; the only auto-pickable one) · 2 implement grid response in run_gradient + run_hessian's gradient (+7-14% wall time; needs the user's say-so) · 3 measure a cost-neutral variant first · 4 done for now.
 
 ## Handoff
