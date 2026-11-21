@@ -210,5 +210,10 @@ change proposed before it is made.
 - 2026-11-20 · a fit that T-13 found threshold-fragile turned out to sit on a ~100 MHz alpha error -- a row that flips under a small perturbation deserved a look at its inputs, not just its switch.
 
 ## Pending question
+Q-20 (asked 02:41 UTC, deadline 02:56 UTC; send_later trig_01Bk57r4bnj39siB7atLCtfn): what's next after T-15?
+1. Fix the failing test_prior_target check, backlog N20 (Recommended; auto-pick)
+2. Sum-rule repair of the B3LYP Hessian, backlog N19 (b)(ii)
+3. Offsets configs take alpha at the stationary geometry, backlog N19 (b)(i)
+4. Done for now
 
 ## Handoff
