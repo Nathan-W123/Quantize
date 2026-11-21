@@ -1,6 +1,6 @@
 # Current task
 Task: T-21
-Status: building
+Status: done
 Request: (D-61, auto-picked at Q-28) re-measure the README's sparse-data sigma rows that predate the Cartesian-alpha fix (backlog N2) -- widened to the whole "Which objective" table once the scripts' "split" legs turned out to run joint.
 
 ## Brief
@@ -20,7 +20,7 @@ Request: (D-61, auto-picked at Q-28) re-measure the README's sparse-data sigma r
 - N1c · diagnose · fluorobenzene restart chains to stationarity, cold and warm start · after: N1b · done (t21/chain_fb*.json) · handoff: -
 - N2 · build · scripts: pass objective_mode="split" where a leg is labelled split · after: N1 · done (d2078fa; their tests 48 passed) · handoff: -
 - N3 · build · README table + prose · after: N1 · done (8858bb4) · handoff: -
-- N4 · verify · fresh agent fact-check against t21 JSON · after: N3 · running (t21/factcheck) · handoff: -
+- N4 · verify · fresh agent fact-check against t21 JSON · after: N3 · done: cells right; fixed in b12b061 -- fluorobenzene split not stationary (drifts under the 1e-4 rule), the default flip is 6f43c5a not 7216d87 (shallow clone), the old 4.0 was real split (ab587e6) so its cause is untraced, monofluoro does show a pattern, derived constants keep the offset, 0.18 -> 0.17, water test is 0.010, VF 22-constant figures historical · handoff: -
 
 ## Progress
 - Found by reading: MolecularOptimizer's default objective_mode became
@@ -67,7 +67,10 @@ Request: (D-61, auto-picked at Q-28) re-measure the README's sparse-data sigma r
   were replaced by Hayashi & Inagusa's, 8 species / 24 constants).
 
 ## Observations
+- 2026-11-21 · I dated the default flip to 7216d87 from `git log --follow` in a shallow clone (.git/shallow lists it as a root); the fact-checker found 6f43c5a on GitHub. The wrong date also put a false cause in the README.
+- 2026-11-21 · my restart chains stopped at the first pass under 1e-4 A; further restarts kept drifting split 0.03 mA per pass. A per-pass threshold is not a certificate when the drift is slow and one-signed.
 - 2026-11-21 · the plateau stop looked like convergence (tight runs reproduced it) but a restart from the answer moved fluorobenzene 4 mA: tightening the stop does not test stationarity when the model is stale; a restart does.
 ## Pending question
+- Q-29 (asked 19:03 UTC, deadline 19:19, send_later trig_01BQAVtiCSFwtHN65uRPJSar): what's next. 1 measure the displaced-start stop short of the optimum (N23, recommended) · 2 auto_systematic_sigma magnitudes (F13) · 3 implement N22 (user's call; never auto-picked) · 4 done for now.
 
 ## Handoff

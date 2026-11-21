@@ -68,3 +68,10 @@ once by a container swap).
 ### L-21 · Compare two runs only under the same cache state
 - Adjustment: before putting a difference between two runs down to code, rerun one side under the other's cache state (warm vs cold) or both cold; record the cache state beside the code vintage.
 - Evidence: 2026-11-21 · T-15: 57/117 RHF rows differed between prototype and commit with docstring-only code changes; the prototype on a warm cache reproduced the commit to every digit (fresh vs cache-read Hessians through the 1e-9 A key, amplified to 0.04 mA by fluoroacetylene's tracked fits). Worktrees sharing one exact cache gave bit-identical duplicates (15 rows). +T-17 (engine vs prototype on the same cache: 8.6e-9 mA over 18 rows). · Scope: project · Status: provisional
+
+### L-22 · A per-pass movement threshold is not a stationarity certificate
+- Observation: restart chains stopped at the first pass under 1e-4 A; further restarts kept drifting fluorobenzene's split fit 7e-5 to 1.5e-4 A and +0.03 mA per pass, one-signed.
+- Evidence: 2026-11-21 · T-21 fact-check (t21/factcheck/extend_split*.py): 10.78 -> 10.99 and 10.63 -> 10.76 over 4-5 more restarts.
+- Adjustment: certify stationarity by the trend of the score over three or more restarts, not one pass under a threshold; report a drifting fit as unsettled, with its range.
+- Scope: project · Status: provisional · Outcomes: -
+
