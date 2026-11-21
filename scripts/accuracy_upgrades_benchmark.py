@@ -117,8 +117,10 @@ breaks it (row sums 2e-4 to 1.9e-2 Ha/bohr^2); imposing it brought the
 harmonic alpha of formyl fluoride, ozone and chlorofluoromethane to within
 0.032 / 0.012 / 0.006 MHz of a converged grid (projection alone 0.40 / 0.49
 / 0.82). Every B3LYP row moves by 0.05 mA or less except
-chlorofluoromethane's, 0.32 (base) and 0.10 (offsets) toward its r_e: its
-two Cl isotopologues leave the fit leaning on the prior's curvature, and the
+chlorofluoromethane's (up to 0.32 against its effective reference), which
+move toward its r_e by 0.29 (base, 9.24 -> 8.95) and 0.08 (offsets, 5.99 ->
+5.91): its two Cl isotopologues leave the fit leaning on the prior's
+curvature, and the
 default grid had its two lowest modes 5 and 2 cm^-1 too stiff. RHF
 Hessians satisfy the rule to ~1e-9: 131 of 135 RHF rows move by < 1e-4 mA,
 ozone's track_direct by 1.3e-4 and fluoroacetylene's three tracked rows by

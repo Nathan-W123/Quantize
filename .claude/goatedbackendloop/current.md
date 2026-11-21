@@ -27,7 +27,7 @@ Request: (now D-55, engine change) measure the acoustic-sum-rule repair of the B
 - N5 · build · engine helper + call sites + test (fails on the old code) + full suite on 3.12 · after: N4 · done (ba67cfe) · handoff: -
 - N6 · build · rerun every row at both levels from the commit (B3LYP 113, RHF 135; shared raw cache) · after: N5 · done 09:00 (all ba67cfe, archived) · handoff: t17/final, reports/accuracy_upgrades
 - N6b · verify · engine rows reproduce the prototype's 18 (all consumers covered) · after: N6 · done: max |d| 8.6e-9 mA over 18 rows (the helper's second application) · handoff: -
-- N7 · verify · fresh agent: README/docstring prose vs the JSON, own code · after: N8 · running (t17/verify_n7) · handoff: -
+- N7 · verify · fresh agent: README/docstring prose vs the JSON, own code · after: N8 · done: 2 wrong, 3 misleading, fixed (see Progress) · handoff: t17/verify_n7
 - N8 · build · README table/provenance + benchmark and module docstrings · after: N6 · done (75ef5fa) · handoff: t17/final/figures.txt, table_best.txt
 
 ## Progress
@@ -112,7 +112,21 @@ Request: (now D-55, engine change) measure the acoustic-sum-rule repair of the B
   means, FE tie 6.630/6.631, ozone 0.07, vintages. Self-check caught one
   overclaim (ozone track_direct is also among the four RHF rows > 1e-4).
 
+- N7 fact-check of 75ef5fa (own code): every table cell, mean, win count,
+  RHF/B3LYP move, band-scan and converged-grid figure verified. Wrong: (1)
+  CH2ClF "0.32 / 0.10 toward its r_e" -- those are its effective-reference
+  moves; vs r_e 0.29 (9.24 -> 8.95) and 0.08 (5.99 -> 5.91), README and
+  docstring (and 75ef5fa's commit message); (2) _project_rigid_mw "CD3-AF
+  A 0.8 -> 0.04" -- 0.04 was the parent's; CD3 0.832 -> 0.018. Misleading:
+  "rigid-mode eigenvalues 23-117" is each molecule's largest, at the theory
+  geometries (off them, to 579 cm-1); "two changes ... behind alpha and the
+  prior" (D-52 is alpha only); QuantumState "every Hessian the optimizer
+  uses" (the correction-level table is repaired inside harmonic_alpha).
+  Rounding: "within 0.03" was 0.0319. All fixed; CH2ClF's C-Cl/C-F +7.4 /
+  -7.2 and 0.44 sentence marked as measured at c8904da.
+
 ## Observations
+- 2026-11-21 · L-18 again: the fact-check found I had quoted chlorofluoromethane's effective-reference move (0.32) as its move against r_e (0.29) -- the yardstick, not just the leg, has to travel with the number.
 - 2026-11-21 · L-09 slipped: I wrote the new test's bounds and "measured" comments before measuring; two of three failed on first run. Measure, then write the bound -- the comment is a record, not a guess.
 - 2026-11-21 · a background launch without an explicit timeout got the harness's 30-min default, not the inner `timeout 7000`; the chains died with 1 of 18 rows. L-09's limit check must include the harness's own default, not just the job's.
 

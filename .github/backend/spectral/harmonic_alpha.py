@@ -353,7 +353,7 @@ def _project_rigid_mw(hess_bohr, coords_ang, masses_amu):
     that took the harmonic alpha of formyl fluoride, ozone and
     chlorofluoromethane from 0.40 / 0.49 / 0.82 MHz off (projection alone; on
     ozone that is worse than no projection, 0.12) to 0.032 / 0.012 / 0.006,
-    and CD3-acetyl fluoride's A from 0.8 to 0.04.
+    and CD3-acetyl fluoride's A from 0.8 to 0.02.
     """
     m = np.asarray(masses_amu, dtype=float)
     x = np.asarray(coords_ang, dtype=float)

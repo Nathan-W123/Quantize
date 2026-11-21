@@ -39,7 +39,7 @@ level: at B3LYP methyl chloride's C–Cl offset leaves the prior's C–Cl 13 mÅ
 long and the fluorides' C–F offset leaves its C–F 6 mÅ short, a combination its
 two chlorine isotopologues barely see, so the fit keeps most of it (against r_e,
 C–Cl +7.4 and C–F −7.2 mÅ); started from r_e itself, the fit stays within
-0.44 mÅ RMS at both levels
+0.44 mÅ RMS at both levels (measured at c8904da, before D-52 and D-55)
 ([`scripts/archive/chlorofluoromethane_level_gap.py`](scripts/archive/chlorofluoromethane_level_gap.py)).
 
 The best-of rows owe most of their margin over the base rows to the bond-class
@@ -74,8 +74,8 @@ The hybrid beats theory alone on all four at both levels and is the best of the
 three on all four at B3LYP; at RHF mixed estimation is ahead on three.
 
 > **Provenance.** Every row is at code vintage ba67cfe (2026-11-21). Two
-> changes to the Hessian behind the harmonic alpha term and the quantum
-> prior's curvature are in it.
+> changes to the Hessian are in it: one behind the harmonic alpha term
+> (D-52), one behind both that and the quantum prior's curvature (D-55).
 >
 > *Rigid motions projected out* (b29cec3, decisions D-52). Off a stationary
 > point the raw Hessian's rotational block is not zero, and in isocyanic
@@ -91,14 +91,16 @@ three on all four at B3LYP; at RHF mixed estimation is ahead on three.
 > *Translational sum rule imposed* (ba67cfe, D-55). pyscf's analytic DFT
 > Hessian has no grid-weight response, so at its default grid every B3LYP
 > Hessian here breaks the rule that moving the whole molecule changes nothing
-> (row sums 2e-4 to 1.9e-2 Ha/bohr², rigid-mode eigenvalues 23–117 cm⁻¹), and
+> (row sums 2e-4 to 1.9e-2 Ha/bohr²; at the theory geometries each molecule's
+> largest rigid-mode eigenvalue is 23–117 cm⁻¹), and
 > projection cannot reach the part of that error inside the vibrations.
 > Imposing the rule brought the harmonic alpha of formyl fluoride, ozone and
-> chlorofluoromethane to within 0.03 MHz of a converged grid (0.4–0.8 MHz
-> before) and chlorofluoromethane's vibrations to within 0.1 cm⁻¹ (5 before).
-> The B3LYP rows move by 0.05 mÅ or less, except chlorofluoromethane, whose
-> two-isotopologue fit leans on the prior's curvature: 0.32 mÅ (base, against
-> its r_e 9.24 -> 8.95) and 0.10 (`offsets`, 5.99 -> 5.91). RHF Hessians
+> chlorofluoromethane to within 0.006–0.032 MHz of a converged grid (0.4–0.8
+> MHz before) and chlorofluoromethane's vibrations to within 0.1 cm⁻¹ (5 before).
+> The B3LYP rows move by 0.05 mÅ or less, except chlorofluoromethane's (up to
+> 0.32 against its effective reference), whose two-isotopologue fit leans on
+> the prior's curvature: against its r_e they move 9.24 -> 8.95 mÅ (base) and
+> 5.99 -> 5.91 (`offsets`). RHF Hessians
 > satisfy the rule to ~1e-9; 131 of the 135 RHF rows move by less than 1e-4
 > mÅ, ozone's `track_direct` by 1.3e-4, and fluoroacetylene's three tracked
 > rows, whose fits have two nearby solutions, by up to 0.04 (none of the four

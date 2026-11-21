@@ -4,11 +4,11 @@ Moving the whole molecule changes nothing, so every row of an exact Cartesian
 Hessian sums to zero over the atoms: sum_j H[i a, j b] = 0. pyscf's analytic
 RKS Hessian (2.15, CPU) has no grid-weight response, and at its default grid
 every B3LYP/6-31G(d) Hessian in the benchmark breaks the rule by 2e-4 (water)
-to 1.9e-2 Ha/bohr^2 (chlorofluoromethane), with rigid-mode eigenvalues of
-23-117 cm^-1 (decisions D-55). Projecting the rigid modes out (D-52) removes
-the leak into the vibrations but not the error inside them: chlorofluoromethane's
-lowest two modes stayed 5 and 2 cm^-1 too stiff, and its alpha 0.82 MHz off a
-level-7 grid. Imposing the rule took them to 0.1 cm^-1 and 0.006 MHz.
+to 1.9e-2 Ha/bohr^2 (chlorofluoromethane); at the theory geometries each
+molecule's largest rigid-mode eigenvalue is 23-117 cm^-1 (decisions D-55).
+Projecting the rigid modes out (D-52) removes the leak into the vibrations
+but not the error inside them: chlorofluoromethane's lowest two modes stayed
+5 and 2 cm^-1 too stiff, and its alpha 0.82 MHz off a level-7 grid. Imposing the rule took them to 0.1 cm^-1 and 0.006 MHz.
 
 The engine now imposes it wherever a Hessian enters -- the optimizer's quantum
 state and the alpha module's mode analyses (impose_translational_sum_rule).

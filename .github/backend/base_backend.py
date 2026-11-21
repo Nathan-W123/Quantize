@@ -67,8 +67,9 @@ def impose_translational_sum_rule(hessian_bohr):
     Why it is needed (decisions D-55): pyscf's analytic RKS Hessian (2.15,
     CPU) has no grid-weight response, and at its default grid every
     B3LYP/6-31G(d) Hessian in the benchmark breaks the rule -- row sums of
-    2e-4 (water) to 1.9e-2 Ha/bohr^2 (chlorofluoromethane), rigid-mode
-    eigenvalues of 23-117 cm^-1. Projecting the rigid modes out removes their
+    2e-4 (water) to 1.9e-2 Ha/bohr^2 (chlorofluoromethane); at the theory
+    geometries each molecule's largest rigid-mode eigenvalue is 23-117
+    cm^-1. Projecting the rigid modes out removes their
     leak into the vibrations but not the error inside them: imposing the rule
     took chlorofluoromethane's vibrations from up to 5 cm^-1 off a level-7
     grid to 0.1, and the harmonic alpha of three molecules from 0.4-0.8 MHz
@@ -98,9 +99,11 @@ class QuantumState:
     """Unit-converted view over a HessianResult or an in-place gradient update.
 
     The Hessian is stored with the translational sum rule imposed
-    (impose_translational_sum_rule): every Hessian the optimizer uses -- the
-    quantum prior's curvature, the reported widths, the corrections built
-    from it -- enters here.
+    (impose_translational_sum_rule): every Hessian the optimizer holds as
+    its quantum state -- the quantum prior's curvature, the reported widths,
+    the corrections built from it -- enters here. Hessians that go straight
+    to the alpha module (the correction-level table, cubic displacements)
+    get it there.
     """
 
     def __init__(
