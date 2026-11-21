@@ -6,8 +6,8 @@ lists shortened). Earlier: 2026-11-17 (219 -> ~110). Reasoning before
 once by a container swap).
 
 ### L-P02 · Cross-check on the CI interpreter before pushing a numerics fix
-- Adjustment: for a change touching linear algebra, conditioning or tolerances, run the affected tests under CI's Python before pushing.
-- Evidence: 2026-11-10 · a nan-asserting fix passed on 3.11, failed on 3.12. · Scope: project · Status: provisional
+- Adjustment: for a change touching linear algebra, conditioning or tolerances, run the affected tests under CI's Python before pushing; when a test "passed before, fails now" with no code change, run it on every interpreter and numpy build first, and record the versions beside a measured tolerance.
+- Evidence: 2026-11-10 · a nan-asserting fix passed on 3.11, failed on 3.12. +2026-11-21 (T-16: N20's "cause unknown" was numpy 2.4.6 vs 2.5.5 -- T-14's suite ran on 3.11, T-15's on 3.12; found in one run on both). · Scope: project · Status: validated
 
 ### L-P03 · Long background runs get reaped; bank the expensive part to disk
 - Adjustment: scope a run to one container lifetime, make the expensive intermediate durable (hessian_cache) first, and make the run resumable (saved rows, a part-N log per resume).
@@ -27,7 +27,7 @@ once by a container swap).
 
 ### L-09 · Bound tests by a measured scale, never by a round number
 - Adjustment: print the quantity and its scale before writing a tolerance; set the bound from the measurement with stated headroom.
-- Evidence: 2026-11-10 · atol=1e-18 on a norm-3.1e4 projector. +2026-11-20 (T-15: a bound set by measurement -- water e2e 0.65x -- had measured the defect; when a fix makes such a test fail, check its quantity against an exact reference, here B_e(r_e), before calling either side wrong). · Scope: project · Status: validated
+- Evidence: 2026-11-10 · atol=1e-18 on a norm-3.1e4 projector. +2026-11-20 (T-15: a bound set by measurement -- water e2e 0.65x -- had measured the defect; when a fix makes such a test fail, check its quantity against an exact reference, here B_e(r_e), before calling either side wrong). +2026-11-21 (T-16: an exact-zero assertion on a re-converged geometry broke under a numpy upgrade; bounded by the measured restart scale, with the defect's own move measured on the other side). · Scope: project · Status: validated
 
 ### L-11 · A fix in one objective mode can break another
 - Adjustment: when a fix touches the step, the certificate or the bootstrap, rerun every reproduction script the verifiers left, on both versions, for every objective mode they cover.

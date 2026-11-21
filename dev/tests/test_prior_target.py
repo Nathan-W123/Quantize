@@ -305,8 +305,15 @@ def test_a_target_prior_keeps_the_target_s_curvature():
     with the fit. On isocyanic acid (HF/6-31G, the benchmark recipe) a fresh
     Hessian at the answer moved it 97 mA, then 38, and three refreshes did not
     settle. On analytic water, nearly harmonic, a restart from the answer
-    moved it 4.6e-5 mA; it now moves it under 1e-6 mA (8e-10 measured), and
-    the Hessian refresh leaves it exactly where it was."""
+    moved it 4.6e-5 mA; it now moves it under 1e-6 mA, and the Hessian
+    refresh recomputes the same Hessian and moves it no further.
+
+    Neither move is exactly zero in general: the fit stops on a plateau with
+    a roundoff-sized Gauss-Newton step left, and whether a re-converge takes
+    it depends on the BLAS rounding. Measured, restart / refresh: 5e-11 / 0
+    mA with numpy 2.4.6, 7.0e-8 / 7.0e-8 mA with numpy 2.5.5 (Python and
+    scipy versions do not matter). The 1e-6 mA bound sits 14x above that and
+    46x below the defect."""
     import contextlib
     import copy
     import io
@@ -334,4 +341,5 @@ def test_a_target_prior_keeps_the_target_s_curvature():
     again = copy.deepcopy(opt)
     with contextlib.redirect_stdout(io.StringIO()):
         info = again.refresh_hessian_at_answer()
-    assert info["moved_ang"] == 0.0 and info["settled"]
+    assert info["age_after_ang"] < 1e-12, "the refreshed Hessian is the target's"
+    assert 1e3 * info["moved_ang"] < 1e-6 and info["settled"]

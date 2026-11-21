@@ -674,3 +674,11 @@
 - Alternatives considered: also take the offsets configs' alpha at the stationary geometry (removes the 23.2-28.65 mA recipe spread for HNCO offsets; changes what the configs measure; left as a backlog item); leave the engine and document.
 - Source: auto-picked, no answer in 15 min (Q-19, recommended option)
 - Revisit if: the user picks another option; or a molecule's row depends on the off-stationary recipe (mass-weighted vs valence vs stationary alpha) by more than its README figure's precision.
+
+### D-53 · Next task: the failing test_prior_target check (backlog N20) (2026-11-21)
+- Decision: find why test_a_target_prior_keeps_the_target_s_curvature's exact-zero refresh assertion fails, then bound it by a measured scale and show the bound still catches the defect it guards.
+- Why: Q-20 option 1 (recommended): small, keeps the CI selection green; cause was unknown.
+- Alternatives considered: sum-rule repair of the B3LYP Hessian (N19 b-ii); offsets configs take alpha at the stationary geometry (N19 b-i); done for now.
+- Source: auto-picked, no answer in 15 min (Q-20)
+- Revisit if: the user picks another option.
+

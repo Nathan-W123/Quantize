@@ -77,3 +77,4 @@ Sessions: 0 · Last consolidated: 2026-11-20
 - 2026-11-20 L-06, L-10 outcomes + (T-14); project L-P04 extended (sentinel encodings).
 - 2026-11-20 consolidated: learnings.md 127 -> ~75 lines (observations and evidence compressed, no lesson dropped); lessons.md 161 -> ~80 (L-08 into L-07, validated lessons compressed); L-08 outcome + (T-13).
 - 2026-11-21 L-09 revised (measured-rate ETA, parallel remainder before a limit); L-10 outcome + (T-15); project L-21 added, L-P04 / L-09 / L-18 extended.
+- 2026-11-21 project L-P02 validated (T-16: a library-version cause found by running on both interpreters); L-09 (project) outcome +.
