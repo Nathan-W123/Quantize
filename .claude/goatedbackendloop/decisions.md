@@ -703,3 +703,10 @@
 - Source: auto-picked, no answer in 15 min (Q-23)
 - Revisit if: the user picks another option.
 
+### D-57 · DFT geometry optimisation on the energy's own gradient, with a convergence check (2026-11-21)
+- Decision: pyscf_backend.optimise() takes, for a DFT mean field, the gradient with the grid-weight response (the exact derivative of the energy it minimises), and after L-BFGS-B checks the final gradient against gtol, warning and recording (last_optimise) when it stopped above it. HF and correlated methods unchanged. Regenerate the B3LYP theory geometries, rerun every B3LYP row, update README/docstrings.
+- Why: T-18: without the grid response the gradient is not the energy's derivative, so L-BFGS-B stops on ftol where the energy stops falling -- B3LYP theory geometries left |g| up to 3.2e-4 Ha/A (gtol 2e-5), bonds up to 0.24 mA off the energy's minimum (FE, HCOF, VF), silently; with the grid response all 12 converge to <= 1.4e-5 and HCOF / ozone land nearer the level-9 minimum (bond RMS 0.093 -> 0.047, 0.010 -> 0.006 mA). RHF geometries are converged to 0.008 mA and do not change.
+- Alternatives considered: convergence check only; document as a limitation; grid response in run_gradient too (changes the gradient every fit sees -- not measured, left out).
+- Source: auto-picked, no answer in 15 min (Q-24, recommended option)
+- Revisit if: the user picks another option; or a fit's own gradient term turns out to need the grid response too.
+

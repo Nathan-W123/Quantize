@@ -1,7 +1,7 @@
 # Current task
 Task: T-18
 Status: building
-Request: measure how far the theory geometries sit from tight minima of their own surface (backlog N21; D-56, auto-picked at Q-23); measurement only, any change proposed before it is made.
+Request: (now D-57, a change) measure how far the theory geometries sit from tight minima of their own surface (backlog N21; D-56, auto-picked at Q-23); measurement only, any change proposed before it is made.
 
 ## Brief
 - Outcome: per molecule and level, the RMS distance and the largest bond
@@ -21,7 +21,11 @@ Request: measure how far the theory geometries sit from tight minima of their ow
 ## Graph
 - N1 · diagnose · gradient + Newton step at every theory geometry, both levels · after: none · done (t18/newton_{hf,b3lyp}.json) · handoff: -
 - N2 · verify · tight optimisations vs the Newton estimate · after: N1 · done: RHF Newton exact; B3LYP needs grid-response optimisations (all 12 run, t18/gr_*.json) · handoff: t18/gr_a.log, gr_b.log
-- N3 · gate · propose (or not) tighter theory geometries · after: N1, N2 · asked (Q-24) · handoff: -
+- N3 · gate · propose (or not) tighter theory geometries · after: N1, N2 · done: option 1 auto-picked (D-57) · handoff: -
+- N4 · build · optimise(): grid-response gradient for DFT + convergence check; test failing on the old code; CI selection on 3.12 · after: N3 · running · handoff: -
+- N5 · build · regenerate the B3LYP theory geometries, rerun every B3LYP row (113), archive · after: N4 · pending · handoff: -
+- N6 · build · README + docstrings · after: N5 · pending · handoff: -
+- N7 · verify · fresh agent: prose vs JSON · after: N6 · pending · handoff: -
 
 ## Progress
 - N1 RHF (12 geometries; t18/newton_hf.json): |g|max 2e-6 to 1.8e-5 Ha/A
@@ -70,10 +74,5 @@ Request: measure how far the theory geometries sit from tight minima of their ow
 ## Observations
 
 ## Pending question
-Q-24 (asked 09:55 UTC, deadline ~10:10 UTC; send_later scheduled): fix the B3LYP theory geometries?
-1. Fix pyscf_backend.optimise (grid-response gradient for DFT + convergence check), regenerate B3LYP theory geometries, rerun every B3LYP row, update docs (Recommended; auto-pick)
-2. Add the convergence check only (warn on an unconverged optimisation); rows unchanged
-3. Leave it; document it as a known B3LYP default-grid limitation
-4. Done for now
 
 ## Handoff

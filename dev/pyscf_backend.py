@@ -272,16 +272,30 @@ class PySCFBackend(QuantumBackend):
                     ccsd_t_grad.Gradients(obj).kernel)
         return obj, float(obj.e_tot), obj.nuc_grad_method().kernel
 
-    def _energy_gradient(self, coords_ang):
+    @property
+    def is_dft(self) -> bool:
+        """True when the mean field is Kohn-Sham (an exchange-correlation
+        functional), so its energy depends on an integration grid."""
+        return not (self.method in ("hf", "rhf", "scf") or self.correlated)
+
+    def _energy_gradient(self, coords_ang, grid_response: bool = False):
         """(energy, flat gradient in Hartree/Bohr) at one geometry.
 
         One path for every method, so the optimiser and the finite-difference
         Hessian below do not each need to know whether they are looking at a
         mean field or a correlated wavefunction.
+
+        ``grid_response`` adds, for a DFT mean field, the derivative of the
+        integration grid's weights -- without it the gradient is not the
+        derivative of the energy (see optimise). Ignored for HF and the
+        correlated methods, which have no grid.
         """
         mf = self._mean_field(coords_ang)
         if not self.correlated:
-            grad = mf.nuc_grad_method().kernel()
+            gm = mf.nuc_grad_method()
+            if grid_response and self.is_dft:
+                gm.grid_response = True
+            grad = gm.kernel()
             return float(mf.e_tot), np.asarray(grad, dtype=float).ravel()
         _obj, e_tot, grad_fn = self._correlated(mf)
         return e_tot, np.asarray(grad_fn(), dtype=float).ravel()
@@ -392,6 +406,20 @@ class PySCFBackend(QuantumBackend):
         wrong or the surface is not what was expected, so it is reported rather
         than silently returned.
 
+        A DFT optimisation runs on the gradient WITH the grid-weight response,
+        the exact derivative of the energy it minimises. pyscf leaves that term
+        out by default, and without it L-BFGS-B's line search stops on its
+        energy tolerance wherever the energy stops falling: the B3LYP/6-31G(d)
+        benchmark geometries were left at |g| up to 3.2e-4 Ha/Ang against a
+        gtol of 2e-5, bonds up to 0.24 mAng from the energy's minimum
+        (decisions D-57); with it they converge to <= 1.4e-5, and formyl
+        fluoride's bonds come out nearer a converged grid's (0.093 -> 0.047
+        mAng RMS). Each gradient costs about twice as much.
+
+        The result's convergence is checked, not assumed: ``last_optimise``
+        records the stop reason, iterations and final |g| (Ha/Ang, the
+        largest component), and a run that ended above gtol is reported.
+
         This matters more the more expensive the method. An excursion to a
         dissociated geometry wastes one SCF at HF and can waste minutes, or
         fail outright, at CCSD(T) -- which is exactly where robustness is worth
@@ -405,8 +433,11 @@ class PySCFBackend(QuantumBackend):
         shape = start.shape
         x0 = start.ravel()
 
+        grid_response = bool(self.is_dft)
+
         def fun(flat):
-            energy, grad_bohr = self._energy_gradient(flat.reshape(shape))
+            energy, grad_bohr = self._energy_gradient(flat.reshape(shape),
+                                                      grid_response=grid_response)
             # Hartree/Bohr -> Hartree/Angstrom
             return energy, grad_bohr * ANG_TO_BOHR
 
@@ -425,4 +456,13 @@ class PySCFBackend(QuantumBackend):
                       f"geometry is at the edge of the trust region rather "
                       f"than at a stationary point. The starting guess is "
                       f"probably wrong for this level of theory.", flush=True)
+        g_max = float(np.abs(np.asarray(sol.jac, dtype=float)).max())
+        converged = g_max <= float(gtol)
+        self.last_optimise = {"message": str(sol.message), "iterations": int(sol.nit),
+                              "g_max_ha_per_ang": g_max, "gtol": float(gtol),
+                              "grid_response": grid_response, "converged": converged}
+        if not converged:
+            print(f"  [optimise] WARNING: the optimisation did not converge: "
+                  f"|g| {g_max:.1e} Ha/Ang against gtol {float(gtol):.1e} after "
+                  f"{int(sol.nit)} iterations ({sol.message}).", flush=True)
         return sol.x.reshape(shape)
