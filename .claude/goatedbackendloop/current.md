@@ -25,7 +25,7 @@ Request: (now D-55, engine change) measure the acoustic-sum-rule repair of the B
 - N3b · verify · CH2ClF level-7 Hessian at its theory geometry: does the repaired level-3 vibrational block / alpha match it (the one molecule the repair moves) · after: N2 · done: yes (see Progress) · handoff: t17/cfm_grid.json, cfm_L7.npz
 - N4 · gate · propose (or not) an engine change · after: N2, N3, N3b · done: option 1 auto-picked (D-55) · handoff: -
 - N5 · build · engine helper + call sites + test (fails on the old code) + full suite on 3.12 · after: N4 · done (ba67cfe) · handoff: -
-- N6 · build · rerun every row at both levels from the commit (B3LYP 113, RHF 135; shared raw cache) · after: N5 · B3LYP running since 05:58 (worktrees t17/wa, wb; tags n6_w1/w1tw, n6_w2/w2tw; 2 h limit, resume after) · handoff: t17/logs
+- N6 · build · rerun every row at both levels from the commit (B3LYP 113, RHF 135; shared raw cache) · after: N5 · B3LYP: first 2 h (05:41-07:40, 2x2 threads) 29/113 (VF 11, AF 9, FE 9); resumed 07:42 in 4 chains x 1 thread (wa AF rest + VF tw; wb FE rest + FA; wc water/HNCO/FF/ozone; wd CH2ClF) · handoff: t17/logs, t17/w{a,b,c,d}/output
 - N6b · verify · engine rows reproduce the prototype's 18 (all consumers covered) · after: N6 · pending · handoff: -
 - N7 · verify · fresh agent: README/docstring prose vs the JSON · after: N8 · pending · handoff: -
 - N8 · build · README table/provenance + benchmark and module docstrings · after: N6 · pending · handoff: -
