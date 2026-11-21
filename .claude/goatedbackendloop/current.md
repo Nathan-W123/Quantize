@@ -20,9 +20,10 @@ Request: measure the acoustic-sum-rule repair of the B3LYP Hessian (backlog N19 
 
 ## Graph
 - N1 · diagnose · per-molecule sum-rule violation, rigid eigenvalues, harmonic alpha shift at the B3LYP theory geometry (cached Hessians) · after: none · done · handoff: t17/diag.json, diag_hf.json
-- N2 · build · prototype in two git-archive copies (repair after the disk cache, B3LYP only), rerun base + offsets for all 9 (18 rows; the full 113 only if adopted) · after: N1 · running: first launch 03:23 died at the harness's 30-min default (VF base done, 5.2307 -> 5.24); resumed 03:54 with base first, then offsets (tags a_base/b_base/a_off/b_off, 2 h limit) · handoff: t17/proto_a, proto_b
+- N2 · build · prototype in two git-archive copies (repair after the disk cache, B3LYP only), rerun base + offsets for all 9 (18 rows; the full 113 only if adopted) · after: N1 · done 05:30 (t17/compare.txt) · handoff: t17/proto_a, proto_b
 - N3 · verify · fresh agent: converged-grid alpha on formyl fluoride and ozone (levels 3/5/7/9, fixed geometry + re-optimised control), raw vs repaired, own Hessians · after: N1 · done: verdict (a) at fixed geometry, with a geometry caveat (see Progress) · handoff: t17/verify
-- N4 · gate · propose (or not) an engine change · after: N2, N3 · pending · handoff: -
+- N3b · verify · CH2ClF level-7 Hessian at its theory geometry: does the repaired level-3 vibrational block / alpha match it (the one molecule the repair moves) · after: N2 · running (t17/cfm_grid.py, 4 threads) · handoff: -
+- N4 · gate · propose (or not) an engine change · after: N2, N3, N3b · pending · handoff: -
 
 ## Progress
 - N1 (cached Hessians at each B3LYP theory geometry, harmonic alpha through
@@ -51,6 +52,16 @@ Request: measure the acoustic-sum-rule repair of the B3LYP Hessian (backlog N19 
 - N2 so far (repaired, base): VF 5.2307 -> 5.24 hybrid; FF hybrid 2.5558 ->
   2.52, ME 0.963 -> 0.94; AF hybrid 8.33 = 8.33, ME 5.677 -> 5.72 (toward
   the pre-projection 5.74).
+
+- N2 result (18 rows, repaired vs b29cec3 archive; t17/compare.txt):
+  theory leg identical; every other leg <= 0.04 mA except CH2ClF -- base
+  hybrid 10.842 -> 10.525, vs r_e (Vogt r_e^SE) 9.237 -> 8.945; offsets
+  8.174 -> 8.077, vs r_e 5.992 -> 5.910; ME base 16.54 -> 16.49. Other r_e
+  moves: VF offsets 0.996 -> 0.990, ozone base 0.064 -> 0.068, offsets
+  1.021 -> 1.025, water unchanged. Base hybrid mean 4.634 -> ~4.59.
+  CH2ClF is the molecule with the worst violation (1.9e-2) and the
+  vibrational shift (381.5 -> 376.2 cm-1), and an underdetermined fit (2
+  isotopologues) that leans on the prior's curvature (N16's mechanism).
 
 ## Observations
 - 2026-11-21 · a background launch without an explicit timeout got the harness's 30-min default, not the inner `timeout 7000`; the chains died with 1 of 18 rows. L-09's limit check must include the harness's own default, not just the job's.
