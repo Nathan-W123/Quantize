@@ -753,3 +753,10 @@
 - Alternatives considered: refresh at the end of every plain run; an opt-in config key (default off); done for now.
 - Source: auto-picked, no answer in 15 min (Q-30; the only option consistent with the stated preference)
 - Revisit if: the user chooses either alternative.
+
+### D-64 · Next task: the multistart's stale-energy ranking (backlog N24) (2026-11-21)
+- Decision: measure, per start of a `cli run`, the energy the selection uses (the last quantum point's), the fit's own quadratic-model energy at the answer (free) and the true SCF energy at the answer, and which start each ranks first; then propose a fix before making it.
+- Why: Q-31 option 1 (recommended). T-22's CLI verifier: reported per-start energies off by up to 6.3e-4 Ha against real differences of ~1e-5; formyl fluoride picked the wrong start and its restart chain oscillates.
+- Alternatives considered: auto_systematic_sigma magnitudes (F13); implement N22 / N23 (user's call); done for now.
+- Source: auto-picked, no answer in 15 min (Q-31)
+- Revisit if: the user picks another option.
