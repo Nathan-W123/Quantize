@@ -23,7 +23,7 @@ Request: (now D-57, a change) measure how far the theory geometries sit from tig
 - N2 · verify · tight optimisations vs the Newton estimate · after: N1 · done: RHF Newton exact; B3LYP needs grid-response optimisations (all 12 run, t18/gr_*.json) · handoff: t18/gr_a.log, gr_b.log
 - N3 · gate · propose (or not) tighter theory geometries · after: N1, N2 · done: option 1 auto-picked (D-57) · handoff: -
 - N4 · build · optimise(): grid-response gradient for DFT + convergence check; test failing on the old code; CI selection on 3.12 · after: N3 · done (4614cd0; 1619 passed) · handoff: -
-- N5 · build · regenerate the B3LYP theory geometries, rerun every B3LYP row (113), archive · after: N4 · geometries done; rows running in 4 chains (t18/w1-w4, tags g1/g1v/g2/g2a/g3/g4; 2 h limit, resume after); RHF rows stay at ba67cfe (DFT-only change) · handoff: t18/logs
+- N5 · build · regenerate the B3LYP theory geometries, rerun every B3LYP row (113), archive · after: N4 · geometries done; rows: water/HNCO/FF/ozone (w3) and CH2ClF (w4) done; VF (w3, g3v) and FA (w4, g4a) running; AF 8/11, FE 7/11 hit the 2 h limit 12:29, resumed (g1b, g2b) · handoff: t18/logs
 - N6 · build · README + docstrings · after: N5 · pending · handoff: -
 - N7 · verify · fresh agent: prose vs JSON · after: N6 · pending · handoff: -
 
