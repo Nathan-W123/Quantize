@@ -30,7 +30,7 @@ sys.path.insert(0, str(_HERE.parent.parent))
 import dev.analytic_water_backend  # noqa: F401,E402  (registers analytic_water)
 from backend.spectral.centrifugal_distortion import CD_NAMES, compute_cd_constants  # noqa: E402
 from backend.spectral.spectral import CD_FIT_KEYS  # noqa: E402
-from test_cd_rows_sign import _water_cd  # noqa: E402
+from test_cd_rows_sign import _water_cd, _x0  # noqa: E402
 
 _IDX = [CD_NAMES.index(k) for k in CD_FIT_KEYS]
 
@@ -175,4 +175,22 @@ def test_every_hand_off_carries_the_geometry(fit):
     assert harm._harmonic_cd_from_hessian, "premise"
     assert harm.spectral._hess_coords_for_cd is not None
     np.testing.assert_array_equal(harm.spectral._hess_coords_for_cd, harm._hessian_ref_coords)
+
+
+def test_with_a_target_prior_the_hessian_belongs_to_the_aligned_target():
+    # With a target-centred prior the Hessian is computed at (or rotated into)
+    # the target aligned onto the fit, not at the fit's own geometry, and the
+    # rows must be handed that geometry. A target in another frame and with
+    # another shape makes the two differ.
+    target = _turned(_x0(r=0.975, deg=103.0), [1, 2, 3], 1.1)
+    opt = _water_cd(prior_target_coords=target, coordinate_mode="cartesian")
+    assert opt._target_prior_active(), "premise: the target prior is on"
+    with contextlib.redirect_stdout(io.StringIO()):
+        opt.run()
+    ref = np.asarray(opt._hessian_ref_coords, float)
+    assert np.abs(ref - np.asarray(opt.coords, float)).max() > 1e-3, "premise"
+    np.testing.assert_array_equal(opt.spectral._hess_coords_for_cd, ref)
+    sp, iso = opt.spectral, opt.spectral.isotopologues[0]
+    x = np.asarray(opt.coords, float)
+    np.testing.assert_allclose(_pred(sp, iso, _turned(x, [0, 1, 1], 0.7)), _pred(sp, iso, x), rtol=1e-8)
 

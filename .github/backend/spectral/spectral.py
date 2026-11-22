@@ -691,9 +691,16 @@ class SpectralEngine:
 
     def cd_frame_coords(self, coords):
         """``coords`` turned and shifted onto the frame of the Hessian the
-        distortion constants are predicted from (unweighted least squares, as
-        MolecularOptimizer rotates a held Hessian), or ``coords`` unchanged
-        when that frame is not known.
+        distortion constants are predicted from (unweighted least squares), or
+        ``coords`` unchanged when that frame is not known.
+
+        Unweighted rather than the mass-weighted Eckart frame, which is the
+        principled one for separating rotation from vibration; at the
+        geometries a fit visits the two differ by 0.3-2 degrees, the
+        constants by 0.1-0.5% (at most 0.022 of a row's sigma) and the fitted
+        bonds by at most 0.06 mA (T-36, formyl fluoride, vinyl fluoride and
+        chlorofluoromethane at HF/6-31G) -- either removes the orientation
+        dependence below, which is what matters.
 
         A Cartesian Hessian belongs to the orientation it was computed in.
         Predicting from it at a trial geometry in another orientation mixed
