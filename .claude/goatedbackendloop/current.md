@@ -60,7 +60,7 @@ Request: (D-85, auto-picked at Q-51) Why distortion-row steps beyond ~2 mA fail 
   and internal motion.
 
 ## Pending question
-Q-53 · asked 2026-11-22T09:22Z · deadline 09:37Z · auto-pick 1
+Q-53 · asked 2026-11-22T09:17Z · deadline 09:32Z · auto-pick 1
 1. (Recommended) Fix the orientation defect: predict the distortion constants
    in the Hessian's own frame (align the trial geometry onto the geometry
    the Hessian was computed at before predicting); test rotation invariance,
