@@ -1057,3 +1057,10 @@
 - Source: assumption, unconfirmed (opt-in per Q-67's own condition: something other than the target fit moved)
 - Revisit if: the user wants it on by default, or linear bends are preferred.
 
+### D-107 · Next task: internal-mode water from a far start (N33) (2026-11-22)
+- Decision: T-44 diagnoses why internal-mode water (analytic backend, start r 1.25 A / 80 deg, joint) refuses zero-length steps and ends 820 widths from its mode, then proposes.
+- Why: Q-68's recommended option; the default path.
+- Alternatives considered: a page of the decisions waiting for the user; N7; done for now.
+- Source: auto-picked, no answer in 15 min (Q-68)
+- Revisit if: the user picks another option.
+
