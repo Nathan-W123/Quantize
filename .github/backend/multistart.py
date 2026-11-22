@@ -376,12 +376,13 @@ def _reported_shift_in_sigma(post_best, post_other):
     reported coordinates and in their own widths: the largest
     |q_other - q_best| / sigma_best over the bonds, angles and dihedrals both
     posteriors carry, and the coordinate where it falls. (None, None) when
-    either posterior is missing or failed.
+    either posterior is missing or failed. A coordinate without a finite
+    positive width on the selected start is left out of the maximum.
 
     The atom distance alone overstates what a near-tie changes. Measured
     through `cli run` (T-31: ten runs at HF/6-31G, the seven near-tied pairs
     8.6-20.6 mA apart at the largest atom): the reported bonds and angles moved
-    by at most 0.29 of their sigma (median 0.11) -- 2.9 mA on a 10.2 mA bond,
+    by at most 0.29 of their sigma (median over the pairs 0.13) -- 2.9 mA on a 10.2 mA bond,
     0.35 deg on a 1.83 deg angle -- since the spread is along torsions, which
     move hydrogens. That is the number a reader of the structure needs.
     """
@@ -415,12 +416,13 @@ def near_tie_note(near):
         return f", {z:.2f} sigma at most in a reported coordinate ({d.get('max_shift_coordinate')})"
     parts = ", ".join(f"start {d['idx']} ({d['energy_difference_ha']:+.1e} Eh, "
                       f"{1000.0 * d['max_atom_distance_ang']:.1f} mA{_shift(d)})" for d in near)
+    explain = (". The sigma figure is the largest difference in a reported bond, angle "
+               "or dihedral, over this geometry's own width there"
+               if any(d.get("max_shift_in_sigma") is not None for d in near) else "")
     return (f"near-tied starts: {parts} -- within {NEAR_TIE_ENERGY_HA:.0e} Eh of this one "
             f"in the fit's model energy at their answers but more than "
             f"{1000.0 * NEAR_TIE_DISTANCE_ANG:.0f} mA away (largest atom, aligned), so the "
-            f"fit does not decide between them; this geometry is one of them. The sigma "
-            f"figure is the largest difference in a reported bond, angle or dihedral, "
-            f"over this geometry's own width there")
+            f"fit does not decide between them; this geometry is one of them{explain}")
 
 
 def _infer_internal_dof(coords):

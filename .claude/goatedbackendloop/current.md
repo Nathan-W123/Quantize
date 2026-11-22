@@ -1,6 +1,6 @@
 # Current task
 Task: T-31
-Status: building
+Status: done
 Request: (D-78, auto-picked at Q-44) N24: measure how far the reported answer depends on which near-tied multistart start wins, then propose.
 
 ## Brief
@@ -23,7 +23,8 @@ Request: (D-78, auto-picked at Q-44) N24: measure how far the reported answer de
 - N3 · gate · proposal (Q-45) · after: N2 · done (D-79, auto-picked 1) · handoff: -
 - N4 · build · shift in sigma on each near-tied start + note · after: N3 · done · handoff: -
 - N5 · verify · tests + mutations, replay of t31 data, CI selection · after: N4 · done · handoff: -
-- N6 · verify · independent verifier · after: N4 · pending · handoff: -
+- N6 · verify · independent verifier · after: N4 · done: holds, 2 wording fixes · handoff: -
+- N7 · build · fallback note wording, docstring median · after: N6 · done · handoff: -
 
 ## Progress
 - N1: 10 `cli run`s at 62beb3f (t31/logs), rc 0, 3 starts each; the runs'
@@ -49,6 +50,20 @@ Request: (D-78, auto-picked at Q-44) N24: measure how far the reported answer de
   the helper gives analyse.py's figures (max 0.287, fluoroethane warm bond
   2-8). CI selection 1639 passed, 15 skipped.
 
+- N6: verifier (t31v/): `cli run` old vs new, OMP 1, fluoroethane warm and
+  acetyl fluoride warm: of 23 output files only the near-tie line (stdout,
+  md, html) and two JSON keys differ (plus timestamps / config path);
+  selected start, coords, widths identical. Own bond / angle / dihedral code
+  gives 0.2870 (bond 2-8) and 0.1293 (bond 2-7), as reported. Found: the
+  note's explanation sentence printed with no figure; "median 0.11" is the
+  bonds-only median (per pair 0.129).
+- N7: explanation only when a listed start has a figure (test + mutation M7
+  fails it); docstring median 0.13. CI selection 1639 passed, 15 skipped.
+
 ## Observations
+- 2026-11-22 · replaying the measurement data through the shipped helper
+  was a cheap check that it computes what the analysis measured.
+- 2026-11-22 · I quoted a median without saying over what; the verifier
+  caught it. State what a summary statistic is taken over.
 
 ## Pending question

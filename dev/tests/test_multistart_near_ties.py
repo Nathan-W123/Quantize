@@ -164,3 +164,4 @@ def test_without_both_posteriors_the_shift_is_none_and_the_note_says_less():
         assert got[0]["max_shift_in_sigma"] is None and got[0]["max_shift_coordinate"] is None
         note = near_tie_note(got)
         assert note.startswith("near-tied starts: start 2") and "sigma at most" not in note
+        assert "sigma figure" not in note and note.endswith("this geometry is one of them")

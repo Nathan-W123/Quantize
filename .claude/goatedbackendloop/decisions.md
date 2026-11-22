@@ -863,7 +863,7 @@
 
 ### D-79 · The near-tie note says how far the reported coordinates move, in sigma (2026-11-22)
 - Decision: near_tied_starts adds max_shift_in_sigma and max_shift_coordinate per listed start (largest |q_other - q_selected| / sigma_selected over the bonds, angles and dihedrals both posteriors carry; dihedrals wrapped; None without both posteriors); near_tie_note prints it. No extra compute; ranking and answers unchanged.
-- Why: Q-45 option 1 (recommended). T-31: the 7 near-tied pairs in 10 CLI runs are 8.6-20.6 mA apart at the largest atom but move the reported bonds and angles by at most 0.29 sigma (median 0.11), so the note's atom distance alone overstated what a near-tie changes.
+- Why: Q-45 option 1 (recommended). T-31: the 7 near-tied pairs in 10 CLI runs are 8.6-20.6 mA apart at the largest atom but move the reported bonds and angles by at most 0.29 sigma (median over the pairs 0.13; the commit message's 0.11 is the bonds-only median), so the note's atom distance alone overstated what a near-tie changes.
 - Alternatives considered: docstring only; records only; done for now.
 - Source: auto-picked, no answer in 15 min (Q-45)
 - Revisit if: a run lists a start whose shift is above 1 sigma (then the reported width does not cover the ambiguity).
