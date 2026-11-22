@@ -33,3 +33,10 @@ Q-69 (asked 19:04 UTC, deadline 19:19 UTC): fix the empty coordinate set?
    the start, say so and suggest coordinate_mode: cartesian
 3. Both: join, and warn when the set still does not span
 4. Done for now
+Q-70 (asked 19:25 UTC, deadline 19:40 UTC): what next after T-44?
+1. An independent verifier on the four changes no one else has checked
+   (4f23b17 inline bootstrap, dda22df fork warning, 23ca969 Cartesian
+   fallback, 81edad9 fragment joining) (Recommended)
+2. One page listing the decisions waiting for you, each with its numbers
+3. N7: the split estimator's covariance from its linear response
+4. Done for now
