@@ -923,3 +923,10 @@
 - Alternatives considered: keep D-86's documentation (wrong); fix without asking (a behaviour change to agreed doc-only work: asked as Q-53).
 - Source: assumption, unconfirmed (my reading of the verifier's finding, which I reproduced)
 - Revisit if: the fix shows the rotation is not the whole cause.
+
+### D-88 · Fix: predict the distortion constants in the Hessian's own frame (2026-11-22)
+- Decision: SpectralEngine.set_hessian_for_cd takes the geometry the Hessian was computed at (MolecularOptimizer passes _hessian_ref_coords at all three hand-offs); _predict_cd_for_iso aligns the trial geometry onto it (unweighted Kabsch, as _run_hessian rotates a held Hessian) before predicting. Without a stated geometry (direct engine use, tests) nothing changes.
+- Why: Q-53 option 1 (recommended). T-35: the prediction kept the Cartesian Hessian in its own frame, so a 0.01 rad rotation moved DJ/DJK/DK up to 0.5% while A/B/C did not move; the fit turned the molecule to fit the rows. A correctness fix, opt-in distortion fits only.
+- Alternatives considered: project rigid modes out of the rows' Jacobian (leaves the prediction orientation-dependent); leave it documented; done for now.
+- Source: auto-picked, no answer in 15 min (Q-53)
+- Revisit if: the distortion fits still crawl after the fix.
