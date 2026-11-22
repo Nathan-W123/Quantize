@@ -11,4 +11,5 @@ Request: T-49 (D-116): independent verifier on 58d159a and 9c1ad3c
 - 2026-11-22 · subagents cannot write report files here; save the hand-back to disk from the transcript
 - 2026-11-22 · equal ranks were not enough to say the step and posterior read the same null space (internal mode); comparing the subspaces was
 ## Pending question
+- Q-76 (asked 23:16 UTC, deadline 23:31 UTC): what next? 1 (Recommended) narrow independent check of af66799 (it replaced most of 9c1ad3c's logic); 2 ozone's 0.006-width stop (joint default path); 3 N34 dimer in joint mode; 4 Done for now. Deadline takes 1.
 ## Handoff
