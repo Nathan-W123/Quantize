@@ -888,3 +888,10 @@
 - Alternatives considered: N3 references; N7 split widths; done for now.
 - Source: auto-picked, no answer in 15 min (Q-48)
 - Revisit if: -
+
+### D-83 · Next task: measure a growing trust radius on the scripts' fits (N26) (2026-11-22)
+- Decision: prototype the standard trust-region growth (ratio > 0.75 with the step at the radius doubles it, capped at the start radius) by monkeypatch, and measure on fits without distortion rows, autoconfig off as the scripts run them: iterations, stop reason and answers against the shipped code; measurement only, no behaviour change.
+- Why: Q-49 option 1 (recommended). T-33: adapt_lambda never enlarges the radius, so autoconfig-off fits crawl after early rejections; any fix changes every such fit's path, so its effect on the fits that already converge must be known first.
+- Alternatives considered: settle the optimum in the distortion cases; N3 references; done for now.
+- Source: auto-picked, no answer in 15 min (Q-49)
+- Revisit if: -
