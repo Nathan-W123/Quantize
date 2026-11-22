@@ -937,3 +937,10 @@
 - Alternatives considered: N7 split widths; N3 references; done for now.
 - Source: auto-picked, no answer in 15 min (Q-54)
 - Revisit if: -
+
+### D-90 · Linear molecules: D only, from the perpendicular axes (2026-11-22)
+- Decision: compute_cd_constants treats a geometry with I_min/I_max < CD_LINEAR_REL_TOL (1e-3) as linear and returns D = -(tau'_bb + tau'_cc)/8 as DJ (DJK, DK, the asymmetry parameters NaN, reduction "linear"); the distortion rows fit DJ alone for such a prediction and drop a stated DJK / DK with a note. README says to give D as DJ.
+- Why: Q-55 option 1 (recommended; deadline passed with no answer). T-37: the asymmetric-top path gave DJ 1e11-1e13 MHz for fluoroacetylene and HCN bent 0.5-3 deg; the perpendicular-axis D is smooth (<= 0.35% at 5 deg); the ratio separates the reference set by 13x (HNCO 1.3e-2 against <= 5.6e-4 for the linear two bent 5 deg). Non-linear predictions bit-identical on one Hessian (nine molecules).
+- Alternatives considered: refuse distortion rows for linear molecules; document only; done for now.
+- Source: auto-picked, no answer in 15 min (Q-55)
+- Revisit if: a quasi-linear molecule (I_min/I_max near 1e-3) is fitted.

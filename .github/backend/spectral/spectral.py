@@ -810,7 +810,7 @@ class SpectralEngine:
         pred = self._predict_cd_for_iso(iso, coords)
         if pred is None:
             return None
-        keys = [k for k in CD_FIT_KEYS if k in obs]
+        keys = self._cd_keys(iso, obs, pred)
         if not keys:
             return None
         pred_d = pred.as_dict()
@@ -835,6 +835,24 @@ class SpectralEngine:
              for k in keys], dtype=float)
         return (keys, np.array([float(obs[k]) for k in keys], dtype=float),
                 np.array([float(pred_d[k]) for k in keys], dtype=float), sigma)
+
+    def _cd_keys(self, iso: dict, obs: dict, pred) -> list:
+        """The observed keys the rows fit: DJ, DJK, DK where observed; for a
+        linear molecule (a prediction in the "linear" branch) DJ alone, which
+        is its D -- DJK and DK do not exist, and a stated value of either is
+        dropped with a note."""
+        keys = [k for k in CD_FIT_KEYS if k in obs]
+        if pred is not None and getattr(pred, "reduction", None) == "linear":
+            dropped = [k for k in keys if k != "DJ"]
+            if dropped:
+                note = (f"  [cd-warning] {iso.get('name', 'iso')}: a linear molecule has one "
+                        f"quartic constant, D (give it as DJ); {', '.join(dropped)} "
+                        f"not fitted.")
+                if note not in _CD_PRINTED:
+                    _CD_PRINTED.add(note)
+                    print(note)
+            keys = [k for k in keys if k == "DJ"]
+        return keys
 
     def _default_cd_sigma(self, obs: dict) -> dict:
         """The model part of the distortion rows' sigma: the harmonic model's
@@ -897,6 +915,8 @@ class SpectralEngine:
         masses = np.asarray(iso["masses"], dtype=float)
         obs = iso.get("cd_observed") or {}
         keys = [k for k in CD_FIT_KEYS if k in obs]
+        if keys:
+            keys = self._cd_keys(iso, obs, self._predict_cd_for_iso(iso, coords))
         if not keys:
             return np.zeros((0, 3 * len(coords)))
         cache_key = (

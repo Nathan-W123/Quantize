@@ -83,6 +83,16 @@ def is_linear(coords_ang, masses_amu, rel_tol: float = 1e-6) -> bool:
     return bool(eigvals[0] / eigvals[-1] < rel_tol)
 
 
+#: Below this I_min / I_max a geometry is treated as linear for the distortion
+#: constants, far looser than is_linear's default: a linear molecule's trial
+#: geometries are slightly bent (a fit's start, its finite-difference steps),
+#: and there the asymmetric-top reduction ran on an enormous A and returned
+#: DJ ~1e11-1e13 MHz (fluoroacetylene and HCN bent 0.5-3 deg, HF/6-31G). The
+#: ratio is <= 5.6e-4 for those two bent by up to 5 deg and >= 1.3e-2 (HNCO)
+#: for every bent molecule in the reference set.
+CD_LINEAR_REL_TOL = 1e-3
+
+
 def rigid_mode_count(coords_ang, masses_amu) -> int:
     """Number of zero-frequency translation+rotation modes: 5 if linear else 6."""
     n_atoms = np.asarray(coords_ang, dtype=float).shape[0]
@@ -471,6 +481,9 @@ def compute_cd_constants(
     """
     masses = np.asarray(masses_amu, dtype=float)
     coords = np.asarray(coords_ang, dtype=float)
+    if coords.shape[0] >= 3 and is_linear(coords, masses, rel_tol=CD_LINEAR_REL_TOL):
+        return _linear_cd_constants(hess_bohr, coords, masses, min_freq_cm, fd_delta,
+                                    sigma_fraction)
     omega_cm, L_mw = normal_modes(
         hess_bohr, masses, n_rigid=rigid_mode_count(coords, masses)
     )
@@ -531,6 +544,38 @@ def compute_cd_constants(
             + (f"{resid:.2e} MHz" if with_residual else "not computed")
             + ". Validated against H2-16O."
         ),
+    )
+
+
+def _linear_cd_constants(hess_bohr, coords, masses, min_freq_cm, fd_delta, sigma_fraction):
+    """A linear (or near-linear) molecule's one quartic constant, D, from the
+    two perpendicular axes: D = -(tau'_bb + tau'_cc) / 8, which is -tau'_bb / 4
+    at the linear geometry (where tau'_bb = tau'_cc) and stays smooth as the
+    geometry bends -- fluoroacetylene 2.8873 -> 2.8905 kHz and HCN
+    73.83 -> 74.09 kHz from linear to 5 deg (HF/6-31G). It is reported as DJ;
+    DJK and DK do not exist for a linear molecule and are NaN, as are the
+    asymmetry parameters. The a axis, along the molecule, takes no part: its
+    rotational constant is infinite at the linear geometry and enormous when
+    slightly bent, which is what broke the asymmetric-top path.
+    """
+    nan = float("nan")
+    omega_cm, L_mw = normal_modes(hess_bohr, masses, n_rigid=5)
+    mask = omega_cm >= min_freq_cm
+    omega_cm, L_mw = omega_cm[mask], L_mw[:, mask]
+    if L_mw.shape[1] == 0:
+        return CDConstants(DJK=nan, DK=nan, delta_J=nan, delta_K=nan, d1=nan, d2=nan,
+                           reduction="linear", sigma={"DJ": 1.0},
+                           notes="linear molecule: no vibrational modes above frequency cutoff")
+    B0_ref = rotational_constants_mhz(coords, masses)
+    dB1_mhz, _ = bk_mode_derivatives(coords, masses, L_mw, omega_cm, fd_delta, B0_ref)
+    tau = tau_prime_from_dB1_cm(dB1_mhz[1:3] * _MHZ_TO_CM, omega_cm) * _CM_TO_MHZ
+    d = float(-(tau[0, 0] + tau[1, 1]) / 8.0)
+    return CDConstants(
+        DJ=d, DJK=nan, DK=nan, delta_J=nan, delta_K=nan, d1=nan, d2=nan,
+        reduction="linear", reduction_order=4, reduction_residual_mhz=nan,
+        source="harmonic_hessian", method="harmonic_VR_linear",
+        sigma={"DJ": max(abs(d) * max(sigma_fraction, _CD_REDUCTION_ACCURACY), 0.01)},
+        notes="Linear molecule: D only, reported as DJ (DJK, DK do not exist).",
     )
 
 
