@@ -1036,3 +1036,10 @@
 - Source: auto-picked, no answer in 15 min (Q-65)
 - Revisit if: the user picks forkserver, or Python's default start method changes (3.14: forkserver).
 
+### D-104 · Next task: fluoroacetylene's internal-mode refits (N31 rest) (2026-11-22)
+- Decision: T-43 diagnoses why fluoroacetylene's joint internal-mode bootstrap keeps 27/50 refits (its coordinates span its directions), then proposes.
+- Why: Q-66's recommended option; the default path's bootstrap.
+- Alternatives considered: N7 split covariance; N3 references; done for now.
+- Source: auto-picked, no answer in 15 min (Q-66)
+- Revisit if: the user picks another option.
+
