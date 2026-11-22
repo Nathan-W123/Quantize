@@ -973,3 +973,10 @@
 - Source: auto-picked, no answer in 15 min (Q-57)
 - Revisit if: a Jacobian row is found that legitimately depends on the molecule's position or orientation. Found (T-38 verifier): the conformer mixture (lab-frame offsets); the projection is skipped for it (rows unprojected, results as before). _chi2_dof counts the same projected Jacobian.
 
+### D-95 · Next task: measure the internal prior's angle-row units (N29) (2026-11-22)
+- Decision: T-39 measures how much InternalPriorEngine's angle/dihedral Jacobian (57.3x too small against its degree residuals) moves the fits that use it, then proposes the unit fix.
+- Why: Q-58's recommended option; a confirmed defect found by the T-38 verifier; measuring first is reversible.
+- Alternatives considered: N7 split widths; N3 references; done for now.
+- Source: auto-picked, no answer in 15 min (Q-58)
+- Revisit if: the user picks another option.
+
