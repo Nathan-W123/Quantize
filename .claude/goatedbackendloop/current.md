@@ -23,9 +23,10 @@ Request: (D-73, auto-picked at Q-40) N19 (a): measure how often fits sit near th
 - N2b · measure · rescale off (NORESCALE=1, fresh results file) vs on, B3LYP: ozone offsets +9.7e-6 mA, ozone base +1.4e-6, water base -8.6e-10, water offsets -4.9e-9 -- the switch at 1/4 moves these rows < 1e-5 mA (the tightened sigmas sit at their model-error floors; chi2 identical before and after the refit) · after: N2 · done · handoff: -
 - N3 · gate · proposal (Q-41) · after: N2b · done: option 1, auto-picked (D-74) · handoff: -
 - N4 · build · engine records checks, dof reuse; benchmark info + row field; docstring · after: N3 · done · handoff: -
-- N5 · verify · 6 new tests, each shown to fail on its mutation (the reset needed a second-run case); new-code benchmark rows vs old-code rows (HNCO HF offsets; B3LYP ozone / water offsets, base); fresh verifier: old vs new run() over the rescale's branches; CI selection · after: N4 · running · handoff: -
+- N5 · verify · 5 new tests (52d58ff's message says six: wrong count), each shown to fail on its mutation (the reset needed a second-run case); new-code benchmark rows vs old-code rows (HNCO HF offsets; B3LYP ozone / water offsets, base); fresh verifier: old vs new run() over the rescale's branches; CI selection · after: N4 · running · handoff: -
 
 ## Progress
+- CI selection at 52d58ff: 1636 passed, 15 skipped (1631 + 5).
 - New-code benchmark (t29/wt_new, same caches): HNCO HF offsets, B3LYP water / ozone offsets + base: hybrid_rms_ma bit-identical to the old code's; each row's chi2_rescale_checks equal the instrumented log's values exactly; outcomes in band / refit then at floor.
 
 ## Observations
