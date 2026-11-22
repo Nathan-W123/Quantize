@@ -774,14 +774,14 @@ class SpectralEngine:
         # precision) the rows pulled water's geometry 0.4-0.6 widths with
         # pulls up to 31 on DJK.
         #
-        # The 0.01 MHz floor below sets the weight wherever 40% of the
-        # constant is smaller: every heavy molecule's DJ, a few kHz (T-32,
-        # HF/6-31G harmonic constants of nine reference molecules: 13 of 27
-        # rows, weight 1.9-75x under the model error). Measured with
-        # synthetic data, removing it moved the answers 0.2-29 mA with no
-        # consistent gain (closer to the reference in 3 of 9), while the rows
-        # themselves, at a mismatch inside the 40%, moved bonds up to 45 mA
-        # either way -- so it is kept, and the README says so.
+        # The 0.01 MHz floor below sets the sigma wherever 40% of the
+        # constant is smaller: of nine reference molecules' HF/6-31G harmonic
+        # constants (T-32), 13 of 27 rows -- every DJ but water's, and five
+        # DJK / DK -- at 1.4-8.7x the model error. Measured with synthetic
+        # data on three of them, removing it moved bonds 0.2-31 mA with no
+        # consistent gain (bond RMS closer to the reference in 3 of 9), while
+        # the rows themselves, 30% off the prediction, moved bonds up to 42 mA
+        # as shipped -- so it is kept, and the README says so.
         meas = iso.get("cd_sigma") or {}
         model = iso.get("cd_model_sigma") or self._default_cd_sigma(obs)
         sigma = np.array(

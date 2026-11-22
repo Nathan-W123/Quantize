@@ -77,6 +77,12 @@ Sessions: 0 · Last consolidated: 2026-11-20
 - Adjustment: before dating a change or naming its cause from history, check `.git/shallow`; when the commit found is listed there, read the history from the remote (the GitHub tools) instead.
 - Scope: workflow · Status: provisional · Outcomes: -
 
+### L-13 · Quote the shipped configuration's figures, counted by script
+- Observation: two tasks in a row, summary prose mixed populations: a bonds-only median quoted for bonds and angles (T-31); ranges taken across the shipped and an experimental variant, and "6 of 18" counted by eye for 7 (T-32).
+- Evidence: 2026-11-22 · both caught only by the independent fact-check (T-31 verifier; T-32 fc32: 4 wrong, 6 imprecise claims in one README paragraph).
+- Adjustment: before writing a figure into prose, compute it by script from the data files, for the configuration the reader will run, and name the population it covers (which fits, which coordinates, weight or sigma).
+- Scope: workflow · Status: provisional · Outcomes: -
+
 ## Retired
 ## Changelog
 - 2026-11-12 created; L-01 added.

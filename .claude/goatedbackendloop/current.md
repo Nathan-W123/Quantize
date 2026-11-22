@@ -1,6 +1,6 @@
 # Current task
 Task: T-32
-Status: building
+Status: done
 Request: (D-80, auto-picked at Q-46) N8 (b): measure whether the 0.01 MHz distortion sigma floor swamps heavy molecules' kHz-size DJ, then propose.
 
 ## Brief
@@ -22,7 +22,8 @@ Request: (D-80, auto-picked at Q-46) N8 (b): measure whether the 0.01 MHz distor
 - N1c · measure · same at max_iter 200 (FF, VF, CH2ClF), history kept · after: N1b · done · handoff: -
 - N2 · gate · proposal (Q-47) · after: N1c · done (D-81, auto-picked 1) · handoff: -
 - N3 · build · README note, comment at the floor, backlog N8 · after: N2 · done · handoff: -
-- N4 · verify · independent fact-check of the prose · after: N3 · pending · handoff: -
+- N4 · verify · independent fact-check of the prose · after: N3 · done: 4 wrong, 6 imprecise · handoff: -
+- N5 · build · prose rewritten on as-shipped figures, records corrected · after: N4 · done · handoff: -
 
 ## Progress
 - N1 (t32/cdfloor.py, cd.json, floor_table.txt): harmonic constants at the
@@ -40,8 +41,10 @@ Request: (D-80, auto-picked at Q-46) N8 (b): measure whether the 0.01 MHz distor
   in 11-20 iterations; fluoroacetylene, linear, is erratic both ways). Their
   geometries sit 0.5-47 mA from the no-row fit (bond max) and floor vs no
   floor 0.4-29 mA apart -- but unconverged, so not answers. Rerunning at 200.
-- N1c (t32/fits200, compare200.py): at max_iter 200, 12 of 18 fits with rows
-  plateau after 59-199 iterations (no rows: 11-13); 6 still hit 200. The
+- N1c (t32/fits200, compare200.py): at max_iter 200, 11 of 18 fits with rows
+  stopped after 13-199 iterations (no rows: 11-12); 7 hit 200 (as shipped:
+  4 of 9 stopped after 59-133, 5 hit 200). [corrected after the fact-check;
+  first written as 12 / 59-199 / 11-13 / 6] The
   answers agree with the 40-iteration ones within a few mA. Against the
   no-row answer (bond max): x1.0 rows 0.5-3.3 mA; x0.7 / x1.3 (a mismatch
   inside the stated 40% model error) 1.1-45 mA and up to 2.4 deg -- several
@@ -52,6 +55,17 @@ Request: (D-80, auto-picked at Q-46) N8 (b): measure whether the 0.01 MHz distor
   the fit and pull the structure by more than its width at a model-sized
   mismatch (opt-in: fit_cd_constants and cd_weight > 0, config reachable).
 
+- N4: fact-checker (fc32/): iteration ranges and "6 of 18" wrong (11-12,
+  7 of 18); 45 mA and 0.2-29 came from or mixed in the no-floor runs; "inside
+  the 40%" is 0.6-1.1 model sigma; "several widths" is up to 2.9 (checked:
+  formyl fluoride C=O 28.9 / 9.8 mA as shipped); 1.9-75 is a weight ratio,
+  the sigma ratio is 1.4-8.7. README and comment rewritten on the as-shipped
+  numbers, each recomputed by script.
+
 ## Observations
+- 2026-11-22 · second task running where my summary numbers mixed
+  populations (T-31 a bonds-only median; T-32 floor and no-floor runs, an
+  eye-count of 6 for 7). Counting by script and quoting the shipped
+  configuration's figures would have avoided both.
 
 ## Pending question

@@ -248,14 +248,17 @@ constraints, and published CO/H₂O constants — no Psi4 or ORCA needed).
 >
 > Measured 2026-11-22 before relying on it (HF/6-31G; formyl fluoride, vinyl fluoride and
 > chlorofluoromethane; synthetic `cd_observed` at 0.7, 1.0 and 1.3 times the harmonic prediction at
-> the reference structure; `cd_weight` 1): the rows slow the fit, from 11–13 iterations without them
-> to 59–199, and 6 of 18 fits had not stopped at 200. A mismatch inside the stated 40% (0.7 or 1.3
-> times) moved the bonds by up to 45 mÅ and the angles by up to 2.4° from the fit without rows,
-> several times the bonds' reported widths (9.8–16.6 mÅ); matching data moved them by at most
-> 3.3 mÅ. For molecules this heavy $\Delta_J$ is a few kHz, so 40% of it is below the rows'
-> 0.01 MHz sigma floor, which then sets the weight (1.9–75 times below the 40% model error).
-> Removing the floor changed the answers by 0.2–29 mÅ and brought them closer to the reference
-> structures in 3 of 9 cases, so it stays. Compare a distortion-row fit with one without.
+> the reference structure; `cd_weight` 1). The rows slow the fit: the three fits without them stopped
+> after 11–12 iterations, while of the nine with them four stopped after 59–133 and five were still
+> moving at 200. Observed constants 30% off the prediction (0.6–1.1 times the rows' stated model
+> sigma) moved the bonds by up to 42 mÅ and the angles by up to 2.2° from the fit without rows, up
+> to 2.9 times a bond's reported width (formyl fluoride's C=O: 28.9 against 9.8 mÅ); matching data
+> moved them by at most 2.8 mÅ. Several of these fits had not converged, so read the numbers as what
+> a run returns, not as optima. For these molecules $\Delta_J$ is 3–8 kHz, so 40% of it is below the
+> rows' 0.01 MHz sigma floor, which then sets the sigma 3–8 times above the model error. Removing the
+> floor changed the bonds by 0.2–31 mÅ and brought the bond RMS closer to the reference structures in
+> 3 of 9 cases (two of them by under 0.4 mÅ), so it stays. Compare a distortion-row fit with one
+> without.
 
 > **Model error.** The reported widths include the $B_0$-versus-$B_e$ model
 > error, propagated as shared across isotopologues, only where a row carries it:
