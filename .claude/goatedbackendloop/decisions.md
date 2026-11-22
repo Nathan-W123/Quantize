@@ -1092,3 +1092,10 @@
 - Alternatives considered: N7 split-objective widths; N34 dimer in joint mode; done for now.
 - Source: auto-picked, no answer in 15 min (Q-71)
 - Revisit if: the user picks another option.
+
+### D-112 · Next task: measure automatic dihedrals and the Cartesian fallback together (2026-11-22)
+- Decision: T-47 runs the nine molecules (HF/6-31G, joint, internal mode) in four settings -- neither, use_dihedrals: auto, cartesian_fallback, both -- and reports distance to each fit's own optimum, bond RMS, Hessians and wall time; no default changes.
+- Why: Q-72's recommended option; decision page item 3 asks for this before either becomes a default (both act on acetyl fluoride, never measured together).
+- Alternatives considered: N7 split-objective widths; N34 dimer in joint mode; done for now.
+- Source: auto-picked, no answer in 15 min (Q-72)
+- Revisit if: the user answers the decision page.
