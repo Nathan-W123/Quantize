@@ -853,3 +853,10 @@
 - Alternatives considered: skip only after a "converged" stop (the plateau stop is what these fits end on, so it would rarely fire, and bit-identity is still not guaranteed; diagnostics such as history length and iteration counts differ even then); keep D-76 as is (implements a trade-off).
 - Source: assumption, unconfirmed (my call on the verifier's finding: reverting restores the behaviour the user had)
 - Revisit if: the rescale becomes reachable from the CLI or config, or a real fit is seen refitting on unchanged weights.
+
+### D-78 · Next task: does the reported width cover the multistart ambiguity? (N24) (2026-11-22)
+- Decision: measure, for T-23's ten CLI runs rerun at HEAD, whether the selected start's reported 1-sigma bond and angle widths cover the distance to its near-tied rivals (|dq| / sigma per coordinate); then propose; no behaviour change without a proposal.
+- Why: Q-44 option 1 (recommended). D-65 measured the ranking and D-70 reports near-ties; what is left of N24 is whether the arbitrariness is already inside the stated uncertainty or outside it.
+- Alternatives considered: N8 (b) distortion sigma floor; N3 references; done for now.
+- Source: auto-picked, no answer in 15 min (Q-44)
+- Revisit if: -
