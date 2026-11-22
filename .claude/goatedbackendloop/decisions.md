@@ -825,3 +825,10 @@
 - Alternatives considered: embed the multireference test geometries; model_error.auto as default, N22, N23 (user's call); done for now.
 - Source: auto-picked, no answer in 15 min (Q-40)
 - Revisit if: -
+
+### D-74 · Keep the chi-square rescale switch; record its checks (2026-11-22)
+- Decision: keep the switch (threshold 4, two-sided) unchanged; MolecularOptimizer.run keeps one record per rescale check (chi2_rescale_checks: reduced chi-square, dof, outcome, factor) and its dof gate reuses the dof reduced_chi_square() computed; accuracy_upgrades_benchmark's hybrid_fit hands the checks back through an `info` dict and each row stores them; the benchmark docstring's rescale caveat gives the 03e7d03 margins. No fit's answer changes.
+- Why: T-29 measured that no current result is decided by the switch: the nearest fits sit at 1.853 (HF HNCO offsets, 2.2x below 4) and 0.2175 / 0.2267 (B3LYP water base / ozone offsets, 13% / 10% below 1/4), and turning the rescale off moves those rows by 9e-10 and 1e-5 mA. A continuous rescale would move every firing fit (340 of 362 at T-15) for no measured benefit. Recording the checks lets the next rerun show a near-switch fit without instrumentation.
+- Alternatives considered: docstring only; a continuous rescale (flagged, not recommended); done for now.
+- Source: auto-picked, no answer in 15 min (Q-41)
+- Revisit if: a rerun's chi2_rescale_checks show a check in [3, 5] or [1/5, 1/3] whose rescale-off row differs by more than 1e-3 mA.
