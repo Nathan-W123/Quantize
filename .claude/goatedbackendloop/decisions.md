@@ -994,3 +994,10 @@
 - Source: auto-picked, no answer in 15 min (Q-60)
 - Revisit if: the user picks another option.
 
+### D-98 · Next task: why joint internal-mode fits stop short (N31) (2026-11-22)
+- Decision: T-41 diagnoses why joint internal-coordinate fits (the CLI default) stop 0.03-1.0 posterior widths short of their own optimum on acetyl fluoride, fluoroethane and fluoroacetylene, then proposes.
+- Why: Q-61's recommended option; default path; it leaves the CLI bootstrap with 0-27 of 50 usable refits.
+- Alternatives considered: N7 split covariance; N30 spawned workers; done for now.
+- Source: auto-picked, no answer in 15 min (Q-61)
+- Revisit if: the user picks another option.
+
