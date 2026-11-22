@@ -40,3 +40,10 @@ Q-59 (asked 13:16 UTC, deadline 13:31 UTC): the internal prior's angle units
    comment, backlog) -- the deadline's pick
 3. Move on to N7 (split widths), leaving N29 open
 4. Done for now
+Q-60 (asked 13:35 UTC, deadline 13:50 UTC): what's next after T-39?
+1. N7: measure the split estimator's reported widths against its actual
+   spread, then propose (Recommended)
+2. N29 option 1: fix the internal prior's angle units (accuracy moves both
+   ways: your call, never auto-picked)
+3. N3: search again for semi-experimental references
+4. Done for now
