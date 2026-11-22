@@ -40,7 +40,7 @@ Request: (D-78, auto-picked at Q-44) N24: measure how far the reported answer de
 ## Observations
 
 ## Pending question
-Q-45 · asked 2026-11-22T05:38Z · deadline 05:53Z · auto-pick 1
+Q-45 · asked 2026-11-22T05:18Z · deadline 05:33Z · auto-pick 1
 1. (Recommended) Put the measure in the near-tie note: per listed start, the
    largest |dq| / sigma over the reported bonds and angles, from the two
    starts' own posteriors (no extra compute); answers and ranking unchanged.
