@@ -987,3 +987,10 @@
 - Source: auto-picked, no answer in 15 min (Q-59); option 1 left for the user
 - Revisit if: the user decides on option 1, or a calibration of the preset's angle sigma is wanted.
 
+### D-97 · Next task: measure the split estimator's widths against its spread (N7) (2026-11-22)
+- Decision: T-40 measures, for objective_mode split (and joint as the control), the reported geometry widths against the Monte Carlo spread of refits under the noise the posterior assumes; then proposes.
+- Why: Q-60's recommended option; N7 says split widths are not the split estimator's (one-constant water: 0.05x); measuring is reversible.
+- Alternatives considered: N29 fix (user's call, not auto-picked); N3 references; done for now.
+- Source: auto-picked, no answer in 15 min (Q-60)
+- Revisit if: the user picks another option.
+
