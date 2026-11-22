@@ -1,5 +1,5 @@
 # Current task
-Status: blocked
+Status: done
 Request: T-43 (N31 rest, D-104): why fluoroacetylene's joint internal-mode bootstrap keeps 27/50 refits, then propose
 ## Brief
 - Outcome: a measured cause for the refused refits (where they stop, why the
@@ -11,7 +11,9 @@ Request: T-43 (N31 rest, D-104): why fluoroacetylene's joint internal-mode boots
 - Success: the cause named with numbers a second mechanism confirms.
 ## Progress
 - N1 · diagnose · FA refits · done (t43 decomp.py, cart_from.py; t40 refused.py)
-- N2 · propose · Q-67 · asked
+- N2 · propose · Q-67 · auto-picked option 1 (D-105)
+- N3 · build · Cartesian fallback (opt-in), floor, switch, history flag, CLI key, README · done; 10 tests on an H-C-C-F field; mutations (no switch / never accept / no floor) each fail; CI selection 1701 passed
+- N4 · measure · 9 molecules off vs on (t43 fb.py, run2.sh, m_*_floor.json): FA fixed (1.9e-6, 50/50); AF base 2.8e-6, bond -0.18, 13 -> 24 s, refits 9/50; 7 bit-identical; without the floor FF/CFM moved 4e-7 A and AF/FE refits were rescued only by round-off triggers
 ## Observations
 - N1 (HF/6-31G, joint, internal, autoconfig off): the base stops on plateau
   at 0.008 widths, refits at 0.001-0.043 against a cloud-scaled gate of
@@ -25,6 +27,10 @@ Request: T-43 (N31 rest, D-104): why fluoroacetylene's joint internal-mode boots
   exactly linear -- a Cartesian fit from the internal stop reaches 180.0000
   deg and 7e-11 widths in 11 iterations, moving atoms 5e-5 A. The answer
   barely moves; the bootstrap's gate is what notices.
+
+- 2026-11-22 · water from r 1.25 A / 80 deg in internal mode (analytic
+  backend) refused 10 zero-length steps and ended 820 widths from its mode --
+  not chased (noted N33).
 
 ## Pending question
 ## Handoff

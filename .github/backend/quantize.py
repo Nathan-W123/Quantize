@@ -535,6 +535,7 @@ class MolecularOptimizer:
         ic_damping=1e-6,
         ic_use_dihedrals=False,
         ic_micro_iter=20,
+        ic_cartesian_fallback=False,
         ic_prior_weight=None,
         ic_prior_sigma_bond=None,
         ic_prior_sigma_angle_deg=None,
@@ -1236,6 +1237,13 @@ class MolecularOptimizer:
         self._ic_use_dihedrals = self._ic_dihedrals_setting is True
         self._ic_dihedrals_reason = None
         self._ic_micro_iter = max(1, int(ic_micro_iter))
+        # Opt-in: retake in Cartesians an internal step the back-transform
+        # could not realise, and step in Cartesians for the rest of the pass
+        # (_cartesian_fallback_step). Off by default: it moves acetyl
+        # fluoride's answer and costs it a Hessian (D-106).
+        self._ic_cartesian_fallback = bool(ic_cartesian_fallback)
+        self._ic_fallback_steps = 0
+        self._ic_switched = False
         # THE INTERNAL-COORDINATE PRIOR IS A THIRD TERM, so by default it is
         # only there when nothing else holds the undetermined directions.
         # The objective this engine is built on is spectra + quantum chemistry;
@@ -2398,6 +2406,71 @@ class MolecularOptimizer:
         x = self.coords if coords is None else np.asarray(coords, dtype=float)
         return float(np.sqrt(np.mean((np.asarray(x, dtype=float) - ref) ** 2)))
 
+    def _cartesian_fallback_step(self, J_cart, residual_w, g, H, B, ic_prior_rows,
+                                 coord_set, B_active):
+        """The internal step's objective, stepped in Cartesians; None if refused.
+
+        An internal step is a step in bonds and angles, carried to Cartesians
+        by micro-iterations. A valence angle has its maximum at 180 deg, so
+        near a linear chain the step can ask for what no geometry has, the
+        back-transform realises something else, and that step raises the
+        objective and is refused -- unchanged next time, since it lies inside
+        the trust radius. Fluoroacetylene (HF/6-31G), whose optimum is exactly
+        linear, stopped so at 179.995 deg, 0.008 posterior widths short, and
+        its bootstrap kept about half its refits; a Cartesian fit from there
+        reaches 180.0000 deg and 7e-11 widths (T-43, D-105).
+
+        Same objective: the spectral rows (rigid part removed, as in
+        Cartesian mode), the q-space prior rows carried through Wilson B
+        (exact for their gradient: r = r_ref - J_q dq, dq = B dx), and the
+        Cartesian quantum terms; accepted on the same ratio test. Once one is
+        accepted the rest of the pass steps in Cartesians: alternating let
+        the internal steps undo the fallback's, and acetyl fluoride (whose
+        methyl torsion bonds and angles cannot turn) ended 0.40 widths from
+        its optimum against 0.19 without; continuing reaches 2.8e-6.
+        "Could not realise": an error over a tenth of the step and over 1e-6
+        -- without the floor, a converged fit's zero-length steps passed on
+        round-off and switched (formyl fluoride, chlorofluoromethane).
+
+        Measured on nine molecules (HF/6-31G, joint, benchmark starts):
+        fluoroacetylene reaches its optimum (1.9e-6 widths; its bootstrap
+        keeps 50 of 50 refits, from 27; atoms move up to 2.6e-4 A); acetyl
+        fluoride's base fit too (2.8e-6, bond RMS -0.18 mA, one more Hessian:
+        13 -> 24 s) but only 9 of its 50 refits; the other seven are
+        bit-identical. A free torsion is not this: bonds and angles cannot
+        express it at all, its steps are realised (fluoroethane never
+        triggers), and use_dihedrals: auto is its remedy (D-100). Opt-in
+        (ic_cartesian_fallback, internal_coordinates.cartesian_fallback),
+        because it moves acetyl fluoride's answer and costs it a Hessian
+        (D-106).
+        """
+        Jx = self._rigid_free_jacobian(np.asarray(J_cart, dtype=float))
+        if ic_prior_rows is not None:
+            Jp, _r_ref, _q_ref, wp = ic_prior_rows
+            Jx = np.vstack([Jx, wp * (np.asarray(Jp, dtype=float) @ np.asarray(B_active, dtype=float))])
+        if Jx.shape[0] != np.asarray(residual_w).size:
+            return None
+        gx = None if g is None else self._prior_gradient(g, H)
+        dx, _rank, _sv, alpha_q, _vt = self.optimizer.step(
+            Jx, residual_w, gx, H, B=B, prior_displacement=self._prior_displacement())
+        if self.symmetry is not None:
+            dx = self.symmetry.project_step(dx)
+        trial = self.coords + np.asarray(dx, dtype=float).reshape(-1, 3)
+        valid, stats = self._geometry_validity(trial)
+        if self.accept_requires_geometry_valid and not valid:
+            return None
+        _, r1 = self.spectral.stacked(trial, want_jacobian=self.spectral._cd_rows_active())
+        if ic_prior_rows is not None:
+            r1 = np.concatenate([r1, ic_prior_rows[3] * self._ic_prior_trial_rows(
+                ic_prior_rows, coord_set, trial)])
+        ok, rho = self._joint_step_ratio(residual_w, r1, Jx, np.asarray(dx, dtype=float).ravel(),
+                                         gx, H, alpha_q, trial)
+        if not ok:
+            return None
+        _, r_mhz = self.spectral.stacked_unweighted(trial, want_jacobian=False)
+        return (trial, np.asarray(dx, dtype=float).ravel(), float(np.sqrt(np.mean(r1 ** 2))),
+                float(np.sqrt(np.mean(np.asarray(r_mhz) ** 2))), rho, valid, stats)
+
     @staticmethod
     def _ic_prior_trial_rows(rows, coord_set, trial_coords):
         """The q-space prior's residuals at a trial geometry, from this step's rows.
@@ -3123,6 +3196,7 @@ class MolecularOptimizer:
         )
         print("\n" + header)
         print("-" * len(header))
+        self._ic_switched = False     # every pass starts in its own coordinates
         if self.debug_rank_diagnostics:
             labels = ["A", "B", "C"]
             print("[rank-debug] Active spectral components in optimizer:")
@@ -3231,6 +3305,7 @@ class MolecularOptimizer:
             _ic_Bplus = None
             _ic_g = g
             _ic_H = H
+            _J_cart, _g_cart, _H_cart = J, g, H     # for _cartesian_fallback_step
             if self.coordinate_mode == "internal":
                 _ic_coord_set = InternalCoordinateSet(self.coords, self.elems, self._ic_use_dihedrals)
                 _ic_B_active = _ic_coord_set.active_B_matrix(self.coords)
@@ -3492,6 +3567,22 @@ class MolecularOptimizer:
                     quantum_accept = model_delta <= quantum_descent_tol_eff
             geometry_accept = (not self.accept_requires_geometry_valid) or geometry_valid
             accepted = spectral_accept and quantum_accept and geometry_accept
+            _fb_used = False
+            if joint and self.coordinate_mode == "internal" and self._ic_cartesian_fallback and (
+                    self._ic_switched
+                    or (not accepted and _bt_err is not None
+                        and _bt_err > max(0.1 * float(np.linalg.norm(dp)), 1e-6))):
+                if self._ic_switched:
+                    accepted = spectral_accept = False
+                _fb = self._cartesian_fallback_step(
+                    _J_cart, residual_w, _g_cart, _H_cart, B, _ic_prior_rows,
+                    _ic_coord_set, _ic_B_active)
+                if _fb is not None:
+                    (trial_coords, dx, wrms_after, mhz_rms_after, step_ratio,
+                     geometry_valid, guardrail_stats) = _fb
+                    spectral_accept = geometry_accept = accepted = _fb_used = True
+                    self._ic_fallback_steps += 1
+                    self._ic_switched = True
             if accepted:
                 self.coords = trial_coords
                 if self.symmetry is not None:
@@ -3550,6 +3641,7 @@ class MolecularOptimizer:
                     model_delta=model_delta,
                     step_ratio=step_ratio,
                     backtransform_error=(_bt_err if self.coordinate_mode == "internal" else None),
+                    cartesian_fallback=_fb_used,
                     internal_rank=(rank if self.coordinate_mode == "internal" else None),
                     internal_singular_values=(sv.tolist() if self.coordinate_mode == "internal" else None),
                     dq_range_norm=(dx_range_norm if self.coordinate_mode == "internal" else None),

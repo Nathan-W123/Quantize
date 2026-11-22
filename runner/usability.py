@@ -388,6 +388,9 @@ def _validate_run_controls(cfg: dict[str, Any], elements: list[Any]) -> None:
                                      or (isinstance(_dih, str) and _dih.strip().lower() == "auto")):
             raise ConfigError(
                 f"'internal_coordinates.use_dihedrals' must be true, false or auto (got {_dih!r}).")
+        if ic.get("cartesian_fallback") is not None and not isinstance(ic.get("cartesian_fallback"), bool):
+            raise ConfigError("'internal_coordinates.cartesian_fallback' must be true or false "
+                              f"(got {ic.get('cartesian_fallback')!r}).")
         for key, integer in (("damping", False), ("microiterations", True)):
             if ic.get(key) is not None:
                 why = _number_problem(ic.get(key), f"internal_coordinates.{key}", integer=integer)

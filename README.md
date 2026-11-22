@@ -670,6 +670,18 @@ On Windows, you can instead set `orca_exe` in `BASE_SETTINGS` to your `orca.exe`
 > −0.19 and +0.22 mÅ, autoconfig off; −0.08 and +0.37 on) and costs acetyl
 > fluoride one more Hessian.
 
+> **Near-linear chains in internal mode.** A valence angle cannot step
+> through 180°, so a fit whose optimum is exactly linear stops just short:
+> fluoroacetylene (HF/6-31G) at 179.995°, 0.008 posterior widths from its
+> optimum, and its bootstrap kept 27 of 50 refits. Set
+> `internal_coordinates.cartesian_fallback: true` to retake such a step in
+> Cartesian coordinates on the same objective (and step in Cartesians for
+> the rest of that fit): fluoroacetylene then reaches its optimum and keeps
+> 50 of 50; fits that never refuse such a step are unchanged. It is not the
+> default because it also moves acetyl fluoride's answer (bond RMS −0.18 mÅ)
+> and costs it one more Hessian. `coordinate_mode: cartesian` avoids both
+> issues.
+
 **Parallel multistart + ORCA:** many licenses allow only one ORCA job at a time. `run_multistart` therefore defaults to **`max_workers=1`** when `quantum_backend="orca"`. If your license allows multiple processes, set **`QUANTIZE_ALLOW_PARALLEL_ORCA=1`** before running to use the preset worker count.
 
 **Parallel workers and in-process backends:** with more than one worker, bootstrap refits and multistart starts run in forked processes. A child forked from a process whose quantum backend has started threads (pyscf or Psi4 with `OMP_NUM_THREADS` above 1) can hang for ever: a water bootstrap hung 3 of 3 times at 50 samples with four threads. One worker (the default) runs the refits in-process and cannot hang; with several, set `OMP_NUM_THREADS=1` or use ORCA, which runs as a separate program.

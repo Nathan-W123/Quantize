@@ -2048,6 +2048,7 @@ def build_run_inputs(cfg: dict[str, Any], *, verbose: bool = True) -> dict[str, 
     ic_use_dihedrals = "auto" if (isinstance(_dih, str) and _dih.strip().lower() == "auto") else bool(_dih)
     ic_damping = float(internal_cfg.get("damping", 1e-6))
     ic_micro_iter = int(internal_cfg.get("microiterations", 20))
+    ic_cartesian_fallback = bool(internal_cfg.get("cartesian_fallback", False))
     # Unstated means the engine's rule: no rule-library prior while the
     # quantum prior is on (the fit is spectra + quantum, D-09). A stated
     # weight is used as given.
@@ -2195,6 +2196,7 @@ def build_run_inputs(cfg: dict[str, Any], *, verbose: bool = True) -> dict[str, 
         cd_weight=cd_weight,
         coordinate_mode=coordinate_mode,
         ic_use_dihedrals=ic_use_dihedrals,
+        ic_cartesian_fallback=ic_cartesian_fallback,
         ic_damping=ic_damping,
         ic_micro_iter=ic_micro_iter,
         ic_prior_weight=ic_prior_weight,

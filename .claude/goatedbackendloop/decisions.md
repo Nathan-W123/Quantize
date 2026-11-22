@@ -1043,3 +1043,17 @@
 - Source: auto-picked, no answer in 15 min (Q-66)
 - Revisit if: the user picks another option.
 
+### D-105 · Internal mode: retake a step the back-transform could not realise in Cartesians (2026-11-22)
+- Decision: T-43 implements and measures a Cartesian fallback: an internal-mode step refused whose back-transform failed is retaken as a Cartesian joint step on the same objective (rigid-free J, the q-space prior rows through Wilson B, the projected Cartesian quantum terms); propose before committing if anything other than the stalled fits moves.
+- Why: T-43: fluoroacetylene's optimum is exactly linear; a valence angle cannot step through 180 deg, so the internal step back-transforms with a 1.6e-3 error, is refused, and is retried unchanged until the plateau rule stops the fit at 179.995 deg (0.008 widths); the bootstrap then keeps about half its refits. A Cartesian fit from there reaches 180.0000 deg (7e-11 widths) in 11 iterations.
+- Alternatives considered: linear-bend coordinates (changes reported names); documentation only.
+- Source: auto-picked, no answer in 15 min (Q-67)
+- Revisit if: the fallback changes any fit that did not stall.
+
+### D-106 · The Cartesian fallback committed as an opt-in (2026-11-22)
+- Decision: ic_cartesian_fallback / internal_coordinates.cartesian_fallback (default false): a joint internal-mode step refused whose back-transform error exceeds max(0.1 |dq|, 1e-6) is retaken as a Cartesian step on the same objective, and the rest of the pass steps in Cartesians; history records cartesian_fallback; README note.
+- Why: T-43 measured (9 molecules, HF/6-31G, joint): fluoroacetylene reaches its optimum (0.008 -> 1.9e-6 widths, bootstrap 27 -> 50 of 50, atoms <= 2.6e-4 A); acetyl fluoride's base fit 0.19 -> 2.8e-6 with bond RMS -0.18 mA and one more Hessian (13 -> 24 s), refits 9/50; seven others bit-identical. Without the 1e-6 floor, converged fits' zero steps switched on round-off; without the switch, acetyl fluoride ended at 0.40 widths. A free torsion is use_dihedrals: auto's case, not this one.
+- Alternatives considered: as the default (moves AF's answer, costs a Hessian: the user's call, per D-100's precedent); linear-bend coordinates; documentation only.
+- Source: assumption, unconfirmed (opt-in per Q-67's own condition: something other than the target fit moved)
+- Revisit if: the user wants it on by default, or linear bends are preferred.
+
