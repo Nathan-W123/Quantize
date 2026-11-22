@@ -1071,3 +1071,10 @@
 - Source: auto-picked, no answer in 15 min (Q-69)
 - Revisit if: a complex's report should not list the joining distance.
 
+### D-109 · Next task: verify the four unchecked changes (2026-11-22)
+- Decision: T-45 runs an independent verifier on 4f23b17 (one-worker bootstrap in-process), dda22df (fork warning), 23ca969 (opt-in Cartesian fallback), 81edad9 (fragment joining).
+- Why: Q-70's recommended option; no one but me has checked them (L-10: every verifier round so far found something).
+- Alternatives considered: a page of the decisions waiting for the user; N7; done for now.
+- Source: auto-picked, no answer in 15 min (Q-70)
+- Revisit if: the user picks another option.
+
