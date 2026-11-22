@@ -958,3 +958,11 @@
 - Alternatives considered: a tighter inertia ratio (2x margins at best, fails on HNCO's observed C); an explicit flag only.
 - Source: assumption, unconfirmed (fix of my own regression within D-90's scope)
 - Revisit if: a linear molecule's isotopologue lists C, or a molecule with every atom within 0.4 A of its axis is not linear.
+
+### D-93 · Next task: diagnose fluoroacetylene's crawl (N28) (2026-11-22)
+- Decision: T-38 diagnoses why fluoroacetylene's plain joint fit crawls (57-58 iterations, last steps 3-6e-3 A), starting from the hypothesis that the solver treats a linear molecule's 5 rigid modes as 6; then propose a fix.
+- Why: Q-56's recommended option; diagnosis is reversible and the crawl means the reported geometry is not an optimum.
+- Alternatives considered: N7 split widths; N3 reference search; done for now.
+- Source: auto-picked, no answer in 15 min (Q-56)
+- Revisit if: the user picks another option.
+
