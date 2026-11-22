@@ -1085,3 +1085,10 @@
 - Source: assumption, unconfirmed (defect fixes within the agreed T-45 scope)
 - Revisit if: a contact should carry its own prior, or a complex in joint mode needs converging (N34).
 
+
+### D-111 · Next task: one page of the decisions waiting for the user (2026-11-22)
+- Decision: T-46 gathers every open "user's call" from the records into one page: what each changes, the measured evidence, the options, and a recommendation.
+- Why: Q-71's recommended option; about nine flagged trade-offs have piled up and none can be auto-picked.
+- Alternatives considered: N7 split-objective widths; N34 dimer in joint mode; done for now.
+- Source: auto-picked, no answer in 15 min (Q-71)
+- Revisit if: the user picks another option.

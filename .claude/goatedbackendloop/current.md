@@ -1,15 +1,11 @@
 # Current task
-Status: done
-Request: T-45 (D-109): independent verifier on 4f23b17, dda22df, 23ca969, 81edad9
+Status: building
+Request: T-46 (D-111): one page of the decisions waiting for the user
 ## Brief
-- Outcome: each change's claims held / refuted with measurements; defects fixed.
+- Outcome: a page listing each open user's-call decision: what it changes, measured evidence, options, recommendation.
+- Approach: collect from decisions.md and backlog.md (every "user's call" / "flagged"), re-check each figure against its source (L-18), publish as a private page.
+- Success: every open flagged item appears once, every figure traced to a record or a rerun.
 ## Progress
-- N1 · verify · fresh subagent (t45v/) · done: 4f23b17 held; dda22df held for its rule, 2 gaps; 23ca969 numbers held, 4 defects; 81edad9 refuted for complexes
-- N2 · fix · contacts, fallback history/weight, warning gaps, wording · done (D-110)
-- N3 · check · 7 new tests, 7/7 mutations caught; CI selection 1713 passed, 15 skipped · done
 ## Observations
-- 2026-11-22 · reading every reader of the fallback's split fields (L-25) found the convergence test and print crashing on None before commit
-- 2026-11-22 · the verifier's report was only in the transcript; save verifier reports to the scratch folder next time
 ## Pending question
-- Q-71 (asked 20:17 UTC, deadline 20:32 UTC): what next? 1 (Recommended) one page of the decisions waiting for you; 2 N7 split-objective widths; 3 N34 dimer in joint mode; 4 Done for now. Deadline takes 1.
 ## Handoff
