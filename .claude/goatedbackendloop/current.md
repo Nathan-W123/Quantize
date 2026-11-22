@@ -67,3 +67,12 @@ Request: (D-78, auto-picked at Q-44) N24: measure how far the reported answer de
   caught it. State what a summary statistic is taken over.
 
 ## Pending question
+Q-46 · asked 2026-11-22T05:49Z · deadline 06:04Z · auto-pick 1
+1. (Recommended) N8 (b): measure whether the 0.01 MHz distortion sigma floor
+   swamps heavy molecules' kHz-size DJ, then propose; no behaviour change
+   without a proposal.
+2. N3: look again for published r_e^SE references (sd <= 0.5 mA, D-35) for
+   HNCO, fluoroacetylene, HCOF; nothing guessed.
+3. N7: measure how much split-mode widths miss the step's range-null
+   coupling, then propose.
+4. Done for now.
