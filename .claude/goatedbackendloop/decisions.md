@@ -910,9 +910,16 @@
 - Source: auto-picked, no answer in 15 min (Q-51)
 - Revisit if: -
 
-### D-86 · Distortion-row crawl: document the cause, no solver change (2026-11-22)
+### D-86 · Distortion-row crawl: document the cause, no solver change (2026-11-22) · superseded by D-87
 - Decision: README's distortion note and backlog N8 (f) say the crawl comes from the step model: the distortion rows pull along directions the rotational constants do not see to first order, where the rotational residuals' curvature (dropped by Gauss-Newton) outweighs their linear change beyond ~2 mA. No solver change.
 - Why: Q-52 option 1 (recommended). T-35: on 56 refused steps of four formyl fluoride fits the rotational rows' change departs from the linear model by a median 1.9x the linear change (0.21 on accepted steps under 2 mA); the distortion rows' terms are 15-187x smaller; the steps lie entirely in the null space after iteration 20 (FF x1.0). Distortion fitting is opt-in and no reference molecule has observed constants to test a fix against.
 - Alternatives considered: prototype a second-order term for the rotational rows along the step and measure it (a solver change; the user's call); N7 split widths; done for now.
 - Source: auto-picked, no answer in 15 min (Q-52)
 - Revisit if: observed distortion constants for a reference molecule are added, or a fit without distortion rows shows the same refused-step pattern.
+
+### D-87 · The crawl is an orientation defect in the distortion prediction; README corrected (2026-11-22)
+- Decision: correct the README note (D-86's mechanism was wrong) and propose a fix (Q-53) rather than leave it documented.
+- Why: the fact-check of 5722ff2 (fc35) found the steps are rigid rotations (share >= 0.9998), the structural part of each step is linear (<= 0.002), and the distortion prediction changes under rotation; confirmed with my own check (t35/rotcheck.py): a 0.01 rad rotation moves the predicted constants up to 5.0e-3 relative, A/B/C 1e-15. The "curvature" D-86 cited is the stretch of a straight-line step along a rotation.
+- Alternatives considered: keep D-86's documentation (wrong); fix without asking (a behaviour change to agreed doc-only work: asked as Q-53).
+- Source: assumption, unconfirmed (my reading of the verifier's finding, which I reproduced)
+- Revisit if: the fix shows the rotation is not the whole cause.
