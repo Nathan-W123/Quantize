@@ -38,11 +38,13 @@ Request: T-38 (N28, D-93): diagnose why fluoroacetylene's plain joint fit crawls
   counts, geometries within 1e-6 mA and 2e-9 deg. With D rows (scale 1.0,
   40 iterations): off still crawling at the cap (last step 2.8e-3 A), on
   plateau at 19 (1.7e-8 A), bond RMS 15.676 -> 15.368.
+- 2026-11-22 · I wrote a guessed question time again (Q-57: 12:41 written at
+  12:02), the third time (Q-50, Q-55). Read `date -u` first, then write.
 - Side note, not chased: the converged angle is 179.796 deg, not 180.
 
 ## Pending question
 ## Handoff
-Q-57 (asked 12:41 UTC, deadline 12:56 UTC): fix fluoroacetylene's crawl?
+Q-57 (asked 12:03 UTC, deadline 12:18 UTC): fix fluoroacetylene's crawl?
 1. Implement: Cartesian steps use the Jacobian with its rigid part removed
    (J P_rigid at the current geometry; exact for the true Jacobian), in the
    joint and split steps and the ratio test; correct the SVD.py comment;
