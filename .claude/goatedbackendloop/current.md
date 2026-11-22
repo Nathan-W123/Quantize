@@ -12,4 +12,5 @@ Request: T-47 (D-112): measure use_dihedrals: auto and cartesian_fallback togeth
 - 2026-11-22 · AF's two remedies looked like different optima (3.4 mA); testing the Hessian-expansion-point hypothesis directly (refresh at the answer) settled it instead of reporting a coordinate-set dependence that was not there
 - 2026-11-22 · ozone stops 5.8e-3 widths short in all four settings (same as T-43); neither remedy touches it
 ## Pending question
+- Q-73 (asked 21:12 UTC, deadline 21:27 UTC): what next? 1 (Recommended) N7 split-objective widths (depart from the estimator's spread 0.05-58.7x on 7 of 9); 2 ozone's 0.006-width stop; 3 N34 dimer in joint mode; 4 Done for now. Deadline takes 1. Answers to the decision page override.
 ## Handoff
