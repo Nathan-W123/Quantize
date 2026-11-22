@@ -2877,8 +2877,10 @@ class MolecularOptimizer:
         for _pass in range(int(self.chi2_rescale_max_passes)):
             self._last_chi2_dof = None
             chi2_nu = self.reduced_chi_square()
-            dof = (self._last_chi2_dof if self._last_chi2_dof is not None
-                   else float(self._chi2_dof()))
+            # None when reduced_chi_square was replaced by something that
+            # does not keep it; then the gate below computes it, at the same
+            # point in the pass as it always did.
+            dof = self._last_chi2_dof
             check = {"chi2_nu": float(chi2_nu), "dof": dof, "outcome": None}
             self.chi2_rescale_checks.append(check)
             if not np.isfinite(chi2_nu) or chi2_nu <= 0.0:
@@ -2896,6 +2898,8 @@ class MolecularOptimizer:
             #
             # So the adjustment is clamped, and only made when there are enough
             # degrees of freedom for the ratio to mean anything.
+            if dof is None:
+                dof = check["dof"] = float(self._chi2_dof())
             if dof < CHI2_RESCALE_MIN_DOF:
                 check["outcome"] = "too few dof"
                 break

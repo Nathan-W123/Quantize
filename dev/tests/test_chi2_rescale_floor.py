@@ -142,11 +142,28 @@ def test_too_few_dof_is_recorded_and_still_stops_the_rescale(monkeypatch):
 
 def test_a_replaced_reduced_chi_square_still_gets_its_dof(monkeypatch):
     # A wrapper that does not set the kept dof (a test double, an instrument)
-    # must not break the gate: run() computes the dof itself then.
-    opt = MolecularOptimizer(elems=["O", "H", "H"], coords=_coords(), isotopologues=_isos(1e4)[:1],
-                             quantum_backend="analytic_water", use_autoconfig=False,
-                             max_iter=60, chi2_rescale=True)
-    monkeypatch.setattr(opt, "reduced_chi_square", lambda: 0.4322)
-    with contextlib.redirect_stdout(io.StringIO()):
-        opt.run()
-    assert opt.chi2_rescale_checks[0]["dof"] == pytest.approx(opt._chi2_dof())
+    # must not break the gate: run() computes the dof itself, at the gate and
+    # only there, as before -- an in-band or non-finite check never asks.
+    def make(value):
+        opt = MolecularOptimizer(elems=["O", "H", "H"], coords=_coords(),
+                                 isotopologues=_isos(1e4)[:1], quantum_backend="analytic_water",
+                                 use_autoconfig=False, max_iter=60, chi2_rescale=True,
+                                 chi2_rescale_max_passes=1)
+        opt.reduced_chi_square = lambda: value
+        seen = []
+        inner = opt._chi2_dof
+
+        def counted():
+            seen.append(inner())
+            return seen[-1]
+        opt._chi2_dof = counted
+        with contextlib.redirect_stdout(io.StringIO()):
+            opt.run()
+        return opt, seen
+
+    for value in (0.4322, float("nan")):           # in band; not finite
+        opt, seen = make(value)
+        assert seen == [] and opt.chi2_rescale_checks[0]["dof"] is None
+    opt, seen = make(0.01)                         # out of band: the gate asks once
+    assert len(seen) == 1 and opt.chi2_rescale_checks[0]["dof"] == seen[0]
+    assert opt.chi2_rescale_checks[0]["outcome"] == "refit"
