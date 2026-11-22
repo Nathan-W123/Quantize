@@ -1,28 +1,29 @@
 # Current task
-Task: T-28
-Status: done
-Request: (D-72, auto-picked at Q-39) F3 test-suite hygiene: tests writing run directories into the repo instead of tmp_path; force-field multireference tests KeyError on a partial gitignored output/theory_geometries_hf_6-31g.json.
+Task: T-29
+Status: building
+Request: (D-73, auto-picked at Q-40) N19 (a): measure how often fits sit near the chi-square rescale switch (re-weights when a pass's reduced chi2 passes 4.0 or falls below 0.25), then propose; no behaviour change without a proposal.
 
 ## Brief
-- Outcome: running the CI selection leaves the working tree's files (tracked
-  and ignored) unchanged; the force-field tests skip with a reason when the
-  cached theory file lacks their molecule.
-- How: a pytest plugin (scratchpad) snapshots the repo around every test and
-  lists what each one creates or modifies; fix each writer to use tmp_path
-  (config output root / run_dir override); skip on a missing key.
-- Success: plugin run shows no writes; the force-field tests skip on a
-  partial file and run on a full one; CI selection green.
+- Outcome: a measured answer to "does the switch's position decide any
+  current result", and a proposal (keep / smooth / remove) with its cost.
+- Facts so far: engine default chi2_rescale=False; the CLI never enables it;
+  four scripts do (accuracy_upgrades_benchmark, holdout_validation,
+  mixed_estimation_baseline, uncertainty_calibration), threshold 4, 3 passes.
+- How: reuse T-15's band scan (b29cec3, 248 rows, 362 fits) for the shape;
+  rerun at HEAD, instrumented (t13/chi2run2.py, worktree t29/wt), the fits
+  nearest the switch: HF HNCO offsets (largest chi2 1.85), B3LYP ozone
+  offsets (0.226), B3LYP water base (0.217); check their rows match the
+  archive (same vintage).
+- Success: current chi2 for those fits and the distance to each switch
+  point; a proposal.
 
 ## Graph
-- N1 · diagnose · per-test write log · after: none · done: 3 tests in test_endtoend_water_pipeline.py (script functions tve._pipeline / tune.run, cwd-relative output/runs), 4 dirs per suite run; nothing else · handoff: -
-- N2 · build · run_root on the two script functions, tests pass tmp_path (8cc9c59); _geom skips on a missing file or molecule (c507742) · after: N1 · done · handoff: -
-- N3 · verify · full suite with per-test and whole-session snapshots: no writes but my own backlog edit; caches none / 11-17 partial / full: skip / skip (KeyError before) / pass 2.2 s; CI selection 1631 passed, 15 skipped · after: N2 · done · handoff: -
+- N1 · diagnose · T-15 logs: 362 fits; none above 4 on the first pass (max 1.85, HNCO offsets family); 340 below 1/4 (fires, tightening): 202 < 0.05, 126 in 0.05-0.2, 12 in 0.2-0.25; 22 in [1/3, 3] · after: none · done · handoff: -
+- N2 · measure · targeted rerun at HEAD (vintage moved: ba67cfe sum rule, 4614cd0 B3LYP geometries) · after: N1 · running · handoff: -
+- N3 · gate · proposal (Q-41) · after: N2 · pending · handoff: -
 
 ## Progress
 
 ## Observations
-- Measuring the writers per test (plugin) found 1 file of 3 suspected; no guessing at callers.
-- The multireference tests always skip in a fresh clone (gitignored cache): noted in F3, not widened.
 
 ## Pending question
-- Q-40 (asked 00:21 UTC, deadline 00:36): what's next. 1 N19 the chi-square rescale switch: measure how often fits sit near it, then propose (recommended) · 2 embed the two 3-atom geometries so the multireference tests run in a fresh clone · 3 a user's-call item: model_error.auto as default, N22, N23 (never auto-picked) · 4 done for now.

@@ -818,3 +818,10 @@
 - Alternatives considered: N19 chi-square rescale switch; model_error.auto as default, N22, N23 (user's call); done for now.
 - Source: auto-picked, no answer in 15 min (Q-39)
 - Revisit if: -
+
+### D-73 · Next task: the chi-square rescale switch (N19 a) -- measure, then propose (2026-11-22)
+- Decision: measure how close the current benchmark fits sit to the rescale's switch points (reduced chi2 4 and 1/4), then propose; no behaviour change without a proposal; any accuracy/efficiency trade-off flagged, not implemented.
+- Why: Q-40 option 1 (recommended).
+- Alternatives considered: embed the multireference test geometries; model_error.auto as default, N22, N23 (user's call); done for now.
+- Source: auto-picked, no answer in 15 min (Q-40)
+- Revisit if: -
