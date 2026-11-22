@@ -81,7 +81,7 @@ Sessions: 0 · Last consolidated: 2026-11-20
 - Observation: two tasks in a row, summary prose mixed populations: a bonds-only median quoted for bonds and angles (T-31); ranges taken across the shipped and an experimental variant, and "6 of 18" counted by eye for 7 (T-32).
 - Evidence: 2026-11-22 · both caught only by the independent fact-check (T-31 verifier; T-32 fc32: 4 wrong, 6 imprecise claims in one README paragraph).
 - Adjustment: before writing a figure into prose, compute it by script from the data files, for the configuration the reader will run, and name the population it covers (which fits, which coordinates, weight or sigma).
-- Scope: workflow · Status: provisional · Outcomes: -
+- Scope: workflow · Status: provisional · Outcomes: -2026-11-22 (T-33: figures were computed by script, but the conclusion still outran them twice; the fact-checker caught it -- the lesson covers numbers, not the claim they are used for)
 
 ## Retired
 ## Changelog

@@ -1,6 +1,6 @@
 # Current task
 Task: T-33
-Status: building
+Status: done
 Request: (D-82, auto-picked at Q-48) Diagnose why fits with distortion rows do not converge, then propose.
 
 ## Brief
@@ -26,7 +26,7 @@ Request: (D-82, auto-picked at Q-48) Diagnose why fits with distortion rows do n
 - N3c · build · correct T-32's README note and comment (my own wrong figures) · after: N3b · done · handoff: -
 - N3d · verify · independent fact-check of the corrected note · after: N3c · done: 1 wrong, conclusion overstated · handoff: -
 - N3e · build · note rewritten: no fit shown at an optimum; 0.2-29 mA · after: N3d · done · handoff: -
-- N4 · gate · proposal (Q-49) · after: N3e · pending · handoff: -
+- N4 · gate · proposal (Q-49) · after: N3e · asked · handoff: -
 
 ## Progress
 - N1 (t33/h10.json): formyl fluoride, floor, x1.0, 200 iterations: rejections
@@ -65,7 +65,9 @@ Request: (D-82, auto-picked at Q-48) Diagnose why fits with distortion rows do n
   led with autoconfig's small moves as if they were the effect; the growth
   prototype puts CH2ClF x1.3 at 38.9 mA, near the autoconfig-off answer.
 - N3e: README note says no mismatched fit is shown at an optimum and how to
-  tell (step_norm); comment 0.2-29 mA.
+  tell (step_norm); comment 0.2-29 mA. Rechecked by my own script: 18 fits,
+  7 at the cap, 11 stopped, 8 of them with the last accepted step at the
+  radius, 3 of 18 with a last step under 1e-3 A.
 
 ## Observations
 - 2026-11-22 · correcting my own prose twice in one task: each rewrite
@@ -74,3 +76,14 @@ Request: (D-82, auto-picked at Q-48) Diagnose why fits with distortion rows do n
   run stops depends on the settings". Say what is unknown before what is.
 
 ## Pending question
+Q-49 · asked 2026-11-22T07:50Z · deadline 08:05Z · auto-pick 1
+1. (Recommended) N26: measure what a growing trust radius (the standard rule:
+   ratio > 0.75 with the step at the radius -> double, capped at the start
+   radius) does to the scripts' fits without distortion rows -- iterations
+   and answers on the benchmark molecules -- before proposing it. Measurement
+   only.
+2. Settle the optimum in the disagreeing distortion cases: one fixed Hessian
+   for the rows, long runs from several starts, the objective compared at
+   the candidates; then propose.
+3. N3: look again for published r_e^SE references (sd <= 0.5 mA, D-35).
+4. Done for now.
