@@ -787,7 +787,9 @@ class SpectralEngine:
             iso["cd_reduction"] = "linear"
             iso["cd_reduction_source"] = (f"auto (linear: B alone observed, atoms within "
                                           f"{off:.2f} A of the axis at the start geometry)")
-            if self._cd_rows_active():
+            # The rows are configured even if no Hessian is set yet (the
+            # harmonic table pins first): say so then too.
+            if self.cd_weight > 0.0 and self.fit_cd_constants:
                 _cd_print_once(
                     f"[cd-note] {iso.get('name', 'iso')}: predicted as a linear molecule (D "
                     f"only, fitted as DJ; B alone observed, atoms within {off:.2f} A of the "
@@ -801,7 +803,7 @@ class SpectralEngine:
         kappa = (2.0 * b - a - c) / (a - c) if abs(a - c) > 1e-12 else float("nan")
         iso["cd_reduction"] = red
         iso["cd_reduction_source"] = f"auto (kappa {kappa:+.3f} {where})"
-        if self._cd_rows_active():
+        if self.cd_weight > 0.0 and self.fit_cd_constants:
             _cd_print_once(
                 f"[cd-note] {iso.get('name', 'iso')}: distortion rows are predicted in the "
                 f"Watson {red} reduction (kappa {kappa:+.3f} {where}); state cd_reduction "

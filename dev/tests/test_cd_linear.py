@@ -237,3 +237,19 @@ def test_a_diatomic_has_the_textbook_d():
     assert se.isotopologues[0]["cd_reduction"] == "linear"
     assert r.size == 2 and np.all(np.isfinite(J)) and np.all(np.isfinite(r))
 
+
+
+def test_the_note_is_printed_before_a_hessian_is_set():
+    # With harmonic_cd_from_hessian the report table pins the branch before
+    # the rows have a Hessian; the note saying how the rows will be predicted
+    # must still be printed (it was gated on rows being active).
+    b = C.rotational_constants_mhz(_hcn(), MASSES)[1]
+    iso = {"name": "HCN-early-note", "masses": MASSES.tolist(), "obs_constants": [b],
+           "sigma_constants": [1.0], "component_indices": [1], "cd_observed": {"DJ": 0.08}}
+    with contextlib.redirect_stdout(io.StringIO()):
+        se = SpectralEngine([iso], cd_weight=1.0, fit_cd_constants=True)
+    assert not se._cd_rows_active()                       # premise: no Hessian yet
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        assert se._cd_reduction(se.isotopologues[0], _hcn()) == "linear"
+    assert "[cd-note] HCN-early-note: predicted as a linear molecule" in buf.getvalue()

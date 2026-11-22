@@ -102,7 +102,10 @@ CD_LINEAR_REL_TOL = 1e-3
 #: axis (ozone; methyl hydrogens ~1.0 A, as in a methyl-capped symmetric
 #: top). An inertia-ratio test failed both ways: HNCO (B and C observed)
 #: and short B-only symmetric tops (CH3C#CCN, I_min/I_max ~1.3e-2) fell under
-#: it.
+#: it. The B-alone test does most of the work: a bent molecule observed in B
+#: alone with every atom within 0.4 A would be pinned linear (HNCO at its
+#: HF/6-31G minimum is 0.33 A off-axis; its observed C keeps it out) -- state
+#: cd_reduction for such a case.
 CD_LINEAR_PIN_OFF_AXIS_ANG = 0.4
 
 

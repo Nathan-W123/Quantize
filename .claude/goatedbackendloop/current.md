@@ -1,6 +1,6 @@
 # Current task
 Task: T-37
-Status: verifying
+Status: done
 Request: (D-89, auto-picked at Q-54) N27: what the distortion prediction and rows do for a linear molecule, and what they should be; then propose.
 
 ## Brief
@@ -23,7 +23,8 @@ Request: (D-89, auto-picked at Q-54) N27: what the distortion prediction and row
 - N6 · build · pin the branch once per isotopologue (D-91) · after: N5 · done · handoff: -
 - N7 · verify · re-run the verifier's reproducers on the fix · after: N6 · done: crash fixed; 2 refuted (HNCO, diatomic) · handoff: -
 - N8 · build · pin rule B-only + off-axis 0.4 A; diatomics; table pinned (D-92) · after: N7 · done · handoff: -
-- N9 · verify · verifier's pin3 / diatomic scripts on the fix · after: N8 · pending · handoff: -
+- N9 · verify · verifier's pin4 / jitter3 / diatomic on the fix · after: N8 · done: holds; notes suppressed · handoff: -
+- N10 · build · notes printed when rows are configured; margin documented · after: N9 · done · handoff: -
 
 ## Progress
 - N1 (t37/linear.py): HF/6-31G Hessian at the linear reference. At the linear
@@ -84,7 +85,18 @@ Request: (D-89, auto-picked at Q-54) N27: what the distortion prediction and row
   exit 0, harmonic printout D 72.3-73.8 kHz for every start. CI selection
   1656 passed; 215 distortion + CLI tests incl. slow pass.
 
-## Observations
+- N9 (t37v pin4.py, jitter3.py, diatomic.py, run3_*): every reference
+  molecule pinned correctly (fluoroacetylene linear, HNCO S at reference and
+  HF minimum); B-only methyl tops (propyne .. CH3(C#C)7CN) 1.02 A off-axis,
+  S; jittered starts <= 0.21 A (HCN), 0.16 (FA), 0.14 (HC7N); CO D 0.16324
+  MHz = 4B^3/omega^2 to 6 digits; three CLI fits complete, no NaN. Refuted:
+  the early pin (harmonic table) suppressed the [cd-note] lines (gated on
+  rows active). Margin: the 0.4 A test alone would pin HNCO's HF minimum
+  (0.33 A); the B-alone test keeps it out.
+- N10: notes gated on rows configured (cd_weight > 0 and fit_cd_constants);
+  test + mutation; the margin written at CD_LINEAR_PIN_OFF_AXIS_ANG. CI
+  selection 1657 passed; 216 distortion + CLI tests incl. slow pass; hcn_lin
+  CLI exit 0 with the linear note printed.
 - 2026-11-22 · I introduced a crash with a per-geometry branch inside a
   finite-difference loop; my own tests sat away from the boundary. A branch
   a derivative can cross must be decided once outside it -- test at the

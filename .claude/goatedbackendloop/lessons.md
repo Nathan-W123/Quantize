@@ -81,3 +81,9 @@ once by a container swap).
 - Adjustment: before attributing a refused or crawling step to curvature, project it onto the rigid-body directions and check that every row is invariant under rigid motion.
 - Scope: project · Status: provisional · Outcomes: -
 
+### L-24 · Decide a branch outside any loop a derivative can cross, and test at the boundary
+- Observation: T-37's per-geometry linear test switched branches between a prediction and its finite-difference steps; NaN filled the Jacobian and a CLI fit crashed. My tests sat away from the threshold; the verifier probed it.
+- Evidence: 2026-11-22 · 5731f0c -> 86c99da -> 8ef6bd8: CLI HCN+DCN abort fixed by pinning once per isotopologue; then HNCO and diatomics mis-pinned, fixed by B-alone + 0.4 A off-axis.
+- Adjustment: pin a discrete choice once per fit (as the reduction is), never per evaluation; put one test exactly at each threshold and one for each class the rule must reject (here: B and C observed, an off-axis atom, a diatomic).
+- Scope: project · Status: provisional · Outcomes: -
+
