@@ -40,7 +40,7 @@ Request: (D-83, auto-picked at Q-49) N26: measure what a growing trust radius do
 ## Observations
 
 ## Pending question
-Q-50 · asked 2026-11-22T08:46Z · deadline 09:01Z · auto-pick 1
+Q-50 · asked 2026-11-22T08:13Z · deadline 08:28Z · auto-pick 1
 1. (Recommended) Close N26 as measured, no change: the standard growth rule
    never fires on the scripts' fits (answers bit-identical on nine
    molecules) and does not fix the distortion crawl (doubled steps are
