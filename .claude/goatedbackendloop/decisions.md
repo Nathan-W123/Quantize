@@ -1122,3 +1122,10 @@
 - Revisit if: the user wants split widths withheld or the split solver fixed.
 - Outcome (2026-11-22, T-48): split_stall reads 0 where the data reach every direction (water, ozone, the five split-water test fixtures) and 0.10-43 widths on the seven benchmark molecules with a null space; 11 of their 14 Cartesian and internal fits pass the 0.25 limit (FA Cartesian 0.17, CFM 0.21 / 0.10 keep the coupling note). It equals distance_to_mode to within a few % there, so it replaces the off-mode note's rank-disagreement attribution, which was wrong in Cartesian mode (step and posterior null spaces identical). README split section corrected (it said sv_min_abs defaults to 0; it is 1/sigma_x with the quantum prior on). Tests: dev/tests/test_split_stall.py, 4/4 mutations caught (one only after moving the Newton-step test off the quantum point); CI selection 1718 passed, 15 skipped.
 
+
+### D-116 · Next task: verify 58d159a and 9c1ad3c (2026-11-22)
+- Decision: T-49 runs a fresh independent verifier on 58d159a (the T-45 fixes: contacts, fallback weight and history, warning gaps) and 9c1ad3c (split_stall and the split warning), trying to refute their claims and figures; defects found are then fixed.
+- Why: Q-75's recommended option; neither commit has been checked by anyone but me (L-10: every verifier round so far found something).
+- Alternatives considered: ozone's 0.006-width stop; N34 dimer in joint mode; done for now.
+- Source: auto-picked, no answer in 15 min (Q-75)
+- Revisit if: the user answers the decision page.
