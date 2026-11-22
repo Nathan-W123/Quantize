@@ -874,3 +874,10 @@
 - Alternatives considered: N3 references; N7 split widths; done for now.
 - Source: auto-picked, no answer in 15 min (Q-46)
 - Revisit if: -
+
+### D-81 · Distortion rows: flag the measured hazard, keep the floor (2026-11-22)
+- Decision: no behaviour change. README's centrifugal-distortion note and a comment at the floor in SpectralEngine._cd_rows give T-32's numbers; backlog N8 updated.
+- Why: Q-47 option 1 (recommended). T-32: with synthetic distortion data the rows slow the fit (59-199 iterations against 11-13; 6 of 18 unstopped at 200) and a mismatch inside the stated 40% moves bonds up to 45 mA (several reported widths); removing the 0.01 MHz floor moved answers 0.2-29 mA, closer to the reference in only 3 of 9. No observed distortion constants for these molecules exist in the repo to settle the weighting.
+- Alternatives considered: measure where the pull goes and what sigma keeps a model-sized mismatch inside the widths (accuracy-side, the user's call); remove the floor (accuracy change, not auto-picked); done for now.
+- Source: auto-picked, no answer in 15 min (Q-47)
+- Revisit if: published distortion constants for a reference molecule are added, or a user fits distortion rows on a heavy molecule.

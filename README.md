@@ -245,6 +245,17 @@ constraints, and published CO/H₂O constants — no Psi4 or ORCA needed).
 > 0.8%); state the observed block's with `cd_reduction: A` or `S`, otherwise the
 > fit picks one from the asymmetry of the observed A, B, C (S when $|\kappa| \ge 0.9$;
 > the start geometry only when no isotopologue observes all three) and keeps it. $\delta_J$ and $\delta_K$ are not fitted. `fit_cd_constants` defaults to off.
+>
+> Measured 2026-11-22 before relying on it (HF/6-31G; formyl fluoride, vinyl fluoride and
+> chlorofluoromethane; synthetic `cd_observed` at 0.7, 1.0 and 1.3 times the harmonic prediction at
+> the reference structure; `cd_weight` 1): the rows slow the fit, from 11–13 iterations without them
+> to 59–199, and 6 of 18 fits had not stopped at 200. A mismatch inside the stated 40% (0.7 or 1.3
+> times) moved the bonds by up to 45 mÅ and the angles by up to 2.4° from the fit without rows,
+> several times the bonds' reported widths (9.8–16.6 mÅ); matching data moved them by at most
+> 3.3 mÅ. For molecules this heavy $\Delta_J$ is a few kHz, so 40% of it is below the rows'
+> 0.01 MHz sigma floor, which then sets the weight (1.9–75 times below the 40% model error).
+> Removing the floor changed the answers by 0.2–29 mÅ and brought them closer to the reference
+> structures in 3 of 9 cases, so it stays. Compare a distortion-row fit with one without.
 
 > **Model error.** The reported widths include the $B_0$-versus-$B_e$ model
 > error, propagated as shared across isotopologues, only where a row carries it:

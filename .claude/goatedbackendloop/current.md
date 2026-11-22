@@ -20,7 +20,9 @@ Request: (D-80, auto-picked at Q-46) N8 (b): measure whether the 0.01 MHz distor
 - N1 · measure · predicted CD constants vs the floor · after: none · done · handoff: -
 - N1b · measure · geometry with / without the floor, synthetic CD data · after: N1 · done (unconverged) · handoff: -
 - N1c · measure · same at max_iter 200 (FF, VF, CH2ClF), history kept · after: N1b · done · handoff: -
-- N2 · gate · proposal (Q-47) · after: N1c · asked · handoff: -
+- N2 · gate · proposal (Q-47) · after: N1c · done (D-81, auto-picked 1) · handoff: -
+- N3 · build · README note, comment at the floor, backlog N8 · after: N2 · done · handoff: -
+- N4 · verify · independent fact-check of the prose · after: N3 · pending · handoff: -
 
 ## Progress
 - N1 (t32/cdfloor.py, cd.json, floor_table.txt): harmonic constants at the
@@ -45,7 +47,7 @@ Request: (D-80, auto-picked at Q-46) N8 (b): measure whether the 0.01 MHz distor
   inside the stated 40% model error) 1.1-45 mA and up to 2.4 deg -- several
   times the reported bond widths (9-17 mA). Floor vs no floor 0.2-29 mA,
   bond RMS against the reference better without the floor in 3 of 9 cases,
-  worse in 5: no consistent direction.
+  worse in 6: no consistent direction.
   So the floor is the smaller issue: the rows themselves, as weighted, slow
   the fit and pull the structure by more than its width at a model-sized
   mismatch (opt-in: fit_cd_constants and cd_weight > 0, config reachable).
@@ -53,14 +55,3 @@ Request: (D-80, auto-picked at Q-46) N8 (b): measure whether the 0.01 MHz distor
 ## Observations
 
 ## Pending question
-Q-47 · asked 2026-11-22T06:42Z · deadline 06:57Z · auto-pick 1
-1. (Recommended) Flag, no behaviour change: keep the floor; write T-32's
-   numbers where fit_cd_constants / cd_weight are documented (README note,
-   docstrings) and in backlog N8.
-2. Measure where the rows' pull goes (which coordinates, prior-held
-   directions) and what model sigma would keep a 30% mismatch inside the
-   reported widths; then propose (any change is accuracy-side: your call).
-3. Remove the floor (sigma = the stated 40% model error): changes opt-in
-   heavy-molecule distortion fits by 0.2-29 mA, no consistent accuracy
-   direction. Accuracy change: not auto-picked.
-4. Done for now.
