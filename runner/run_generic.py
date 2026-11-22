@@ -2044,7 +2044,8 @@ def build_run_inputs(cfg: dict[str, Any], *, verbose: bool = True) -> dict[str, 
     # null reads as absent (it became 'none', which the constructor refused).
     coordinate_mode = str(cfg.get("coordinate_mode") or "internal").strip().lower()
     internal_cfg = cfg.get("internal_coordinates", {}) or {}
-    ic_use_dihedrals = bool(internal_cfg.get("use_dihedrals", False))
+    _dih = internal_cfg.get("use_dihedrals", False)
+    ic_use_dihedrals = "auto" if (isinstance(_dih, str) and _dih.strip().lower() == "auto") else bool(_dih)
     ic_damping = float(internal_cfg.get("damping", 1e-6))
     ic_micro_iter = int(internal_cfg.get("microiterations", 20))
     # Unstated means the engine's rule: no rule-library prior while the

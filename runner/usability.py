@@ -383,6 +383,11 @@ def _validate_run_controls(cfg: dict[str, Any], elements: list[Any]) -> None:
     if ic is not None:
         if not isinstance(ic, dict):
             raise ConfigError("'internal_coordinates' must be a mapping/object.")
+        _dih = ic.get("use_dihedrals")
+        if _dih is not None and not (isinstance(_dih, bool)
+                                     or (isinstance(_dih, str) and _dih.strip().lower() == "auto")):
+            raise ConfigError(
+                f"'internal_coordinates.use_dihedrals' must be true, false or auto (got {_dih!r}).")
         for key, integer in (("damping", False), ("microiterations", True)):
             if ic.get(key) is not None:
                 why = _number_problem(ic.get(key), f"internal_coordinates.{key}", integer=integer)
@@ -2534,8 +2539,13 @@ def write_outputs(result: dict[str, Any]) -> dict[str, Path | list[Path]]:
         # prior widths it is scored against are the fit's own, or none.
         ic_cfg = cfg.get("internal_coordinates", {}) or {}
         coords_best = np.asarray(result["best"]["coords"], dtype=float)
+        # The set the fit used: the config's, or with dihedrals added because
+        # bonds and angles missed a direction (the posterior records which).
+        _dih = posterior.get("use_dihedrals")
+        if _dih is None:
+            _dih = ic_cfg.get("use_dihedrals", False) is True
         coord_set = InternalCoordinateSet(
-            coords_best, result["elems"], use_dihedrals=bool(ic_cfg.get("use_dihedrals", False)))
+            coords_best, result["elems"], use_dihedrals=bool(_dih))
         B_active = coord_set.active_B_matrix(coords_best)
         if B_active.shape[0] > 0 and list(coord_set.active_names()) == names:
             damping = max(float(ic_cfg.get("damping", 1e-6)), 1e-14)

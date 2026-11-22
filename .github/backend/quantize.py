@@ -1221,7 +1221,20 @@ class MolecularOptimizer:
                 smoothing=float(autoconfig_smoothing),
             )
         self._ic_damping = max(float(ic_damping), 1e-14)
-        self._ic_use_dihedrals = bool(ic_use_dihedrals)
+        # Bonds and angles, plus dihedrals: True or False as stated, or "auto"
+        # -- bonds and angles, with dihedrals added only when those do not
+        # reach every direction the fit can move, decided once below
+        # (_resolve_ic_dihedrals). The default stays False: "auto" moves two
+        # benchmark answers (D-100), so it is asked for, not assumed.
+        if isinstance(ic_use_dihedrals, str):
+            _d = ic_use_dihedrals.strip().lower()
+            if _d not in ("auto", "true", "false"):
+                raise ValueError(f"ic_use_dihedrals must be True, False or 'auto', got {ic_use_dihedrals!r}")
+            self._ic_dihedrals_setting = "auto" if _d == "auto" else (_d == "true")
+        else:
+            self._ic_dihedrals_setting = bool(ic_use_dihedrals)
+        self._ic_use_dihedrals = self._ic_dihedrals_setting is True
+        self._ic_dihedrals_reason = None
         self._ic_micro_iter = max(1, int(ic_micro_iter))
         # THE INTERNAL-COORDINATE PRIOR IS A THIRD TERM, so by default it is
         # only there when nothing else holds the undetermined directions.
@@ -1278,6 +1291,8 @@ class MolecularOptimizer:
             m = np.asarray(self.spectral.isotopologues[0]["masses"], dtype=float)
             if m.size == len(self.elems):
                 self._rigid_ref_masses = m.copy()
+        if self.coordinate_mode == "internal" and self._ic_dihedrals_setting == "auto":
+            self._resolve_ic_dihedrals()
         self.quantum = None
         self._backend = None
         self._orca_ref_coords = None
@@ -2382,6 +2397,50 @@ class MolecularOptimizer:
             return float(np.sqrt(np.mean((_kabsch_align(ref, t) - t) ** 2)))
         x = self.coords if coords is None else np.asarray(coords, dtype=float)
         return float(np.sqrt(np.mean((np.asarray(x, dtype=float) - ref) ** 2)))
+
+    def _resolve_ic_dihedrals(self):
+        """Add dihedrals when bonds and angles miss a direction the fit can move.
+
+        Internal mode steps in bonds and angles. Those do not reach every
+        internal motion: a methyl group's rotation changes no bond and no
+        angle, so a step in them cannot turn it. Acetyl fluoride (HF/6-31G)
+        reached 14 of its 15 directions and fluoroethane 17 of 18; their fits
+        stopped 0.90 and 0.16 posterior widths from their own optimum, 94% and
+        99.9% of the remaining step along the missing torsion, and the
+        bootstrap kept 0/50 and 4/50 refits. With dihedrals both reach the
+        optimum (1.7e-6 and 1.6e-7 widths), and acetyl fluoride agrees with
+        the Cartesian fit of the same objective (14.584 vs 14.602 mA bond RMS)
+        (T-41, D-99). Opt-in (ic_use_dihedrals="auto"; the default is False),
+        because it moves those answers -- fluoroethane's bond RMS by up to
+        +0.37 mA, acetyl fluoride's by -0.19 -- and costs acetyl fluoride one
+        more Hessian, as its fit now travels the torsion (D-100).
+
+        Decided once, at the start geometry: the count is set by the bonding,
+        and a set that changed during a fit would change the objective's
+        coordinates under its step. Molecules whose bonds and angles already
+        reach every direction -- every one without a free torsion -- keep
+        them alone, so their fits are unchanged. Directions the imposed point
+        group forbids are not counted (physical_basis leaves them out).
+        """
+        x = np.asarray(self.coords, dtype=float)
+        try:
+            basis = np.asarray(self.physical_basis(coords=x), dtype=float)
+            B = np.asarray(InternalCoordinateSet(x, self.elems, False).active_B_matrix(x),
+                           dtype=float)
+        except Exception:  # an unusual geometry keeps the stated set
+            return
+        if basis.size == 0 or B.size == 0 or B.shape[1] != basis.shape[0]:
+            return
+        s = np.linalg.svd(B @ basis, compute_uv=False)
+        reach = int((s > 1e-6 * s[0]).sum()) if s.size and s[0] > 0 else 0
+        n = int(basis.shape[1])
+        if reach < n:
+            self._ic_use_dihedrals = True
+            self._ic_dihedrals_reason = (
+                f"bonds and angles reach {reach} of the {n} directions the fit can move "
+                f"(a torsion has no bond or angle of its own)")
+            print(f"  [internal] dihedrals added: {self._ic_dihedrals_reason}; "
+                  f"state internal_coordinates.use_dihedrals to choose.")
 
     def _rigid_mode_projector(self, coords, masses):
         """
@@ -4114,6 +4173,10 @@ class MolecularOptimizer:
                 provenance = None
         return {
             "names": list(cs.active_names()),
+            # Whether the set includes dihedrals (stated, or added because
+            # bonds and angles missed a direction: dihedrals_reason).
+            "use_dihedrals": bool(self._ic_use_dihedrals),
+            "dihedrals_reason": self._ic_dihedrals_reason,
             "kinds": [ic.kind for ic in cs.active_coords()],
             "values": q.tolist(),
             "covariance": C_q.tolist(),

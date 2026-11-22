@@ -657,6 +657,18 @@ On Windows, you can instead set `orca_exe` in `BASE_SETTINGS` to your `orca.exe`
 > ways (autoconfig off: mean bond error 24.2 → 23.0 mÅ, mean angle error
 > 1.58 → 1.92°), so it waits for a decision.
 
+> **Free torsions in internal mode.** `coordinate_mode: internal` (the
+> default) steps in bonds and angles, and a torsion -- a methyl group's
+> rotation -- changes neither, so the fit cannot turn it: acetyl fluoride and
+> fluoroethane (HF/6-31G) stopped 0.19 and 0.16 posterior widths short of
+> their optimum and kept 0 and 4 of 50 bootstrap refits. Set
+> `internal_coordinates.use_dihedrals: auto` to add dihedrals exactly when
+> bonds and angles miss a direction (it says so when it does; molecules
+> without a free torsion are unchanged), or `true`. It is not the default
+> because it moves those two answers (bond RMS against their references
+> −0.19 and +0.22 mÅ, autoconfig off; −0.08 and +0.37 on) and costs acetyl
+> fluoride one more Hessian.
+
 **Parallel multistart + ORCA:** many licenses allow only one ORCA job at a time. `run_multistart` therefore defaults to **`max_workers=1`** when `quantum_backend="orca"`. If your license allows multiple processes, set **`QUANTIZE_ALLOW_PARALLEL_ORCA=1`** before running to use the preset worker count.
 
 **Paths with spaces:** older ORCA builds can mishandle absolute paths that contain spaces; the driver runs ORCA with `cwd` set to the job directory and passes **`quantize_orca.inp`** by filename only. If you still see startup errors, move the project to a directory whose full path has no spaces.

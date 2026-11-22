@@ -31,6 +31,10 @@ def normalize_config(cfg: dict[str, Any]) -> dict[str, Any]:
         c["coordinate_mode"] = "internal"
 
     ic = c.setdefault("internal_coordinates", {}) or {}
+    # false (bonds and angles), true, or "auto": dihedrals added only when
+    # bonds and angles miss a direction the fit can move -- a free torsion,
+    # which internal mode otherwise cannot turn (MolecularOptimizer
+    # ._resolve_ic_dihedrals, D-100).
     ic.setdefault("use_dihedrals", False)
     ic.setdefault("damping", 1e-6)
     ic.setdefault("microiterations", 20)

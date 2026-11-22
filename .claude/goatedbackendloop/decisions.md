@@ -1008,3 +1008,10 @@
 - Source: auto-picked, no answer in 15 min (Q-62)
 - Revisit if: any molecule already spanned changes, or an answer moves by more than the stuck fits' difference (0.17-0.22 mA bond RMS).
 
+### D-100 · Automatic dihedrals committed as an opt-in (2026-11-22)
+- Decision: internal_coordinates.use_dihedrals / ic_use_dihedrals accept "auto" (dihedrals added once, at the start geometry, when bonds and angles miss a direction the fit can move); the default stays False; README note on free torsions; the posterior records use_dihedrals and dihedrals_reason.
+- Why: T-41 measured (9 molecules, HF/6-31G, joint internal): 7 unchanged; acetyl fluoride and fluoroethane reach their optimum (0.19 -> 1.7e-6, 0.16 -> 1.6e-7 widths) and keep 42/50 and 50/50 bootstrap refits (0, 4 before); but bond RMS moves -0.19/-0.08 (AF) and +0.22/+0.37 mA (FE, autoconfig off/on), beyond D-99's 0.22 bound, and AF costs one more Hessian (13 -> 27 s).
+- Alternatives considered: auto as the default (Q-63 option 1, recommended, left for the user); drop it.
+- Source: auto-picked, no answer in 15 min (Q-63); default change left for the user
+- Revisit if: the user wants "auto" as the default.
+
