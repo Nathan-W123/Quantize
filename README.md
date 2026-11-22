@@ -246,27 +246,21 @@ constraints, and published CO/H₂O constants — no Psi4 or ORCA needed).
 > fit picks one from the asymmetry of the observed A, B, C (S when $|\kappa| \ge 0.9$;
 > the start geometry only when no isotopologue observes all three) and keeps it. $\delta_J$ and $\delta_K$ are not fitted. `fit_cd_constants` defaults to off.
 >
-> Measured 2026-11-22 before relying on it (HF/6-31G; formyl fluoride, vinyl fluoride and
-> chlorofluoromethane; synthetic `cd_observed` at 0.7, 1.0 and 1.3 times the harmonic prediction at
-> the reference structure; `cd_weight` 1). Without the rows these fits stop after 11–12 iterations.
-> With them they mostly do not settle: of 18 fits, with the optimizer's autoconfig on (the default)
-> and off (as the benchmark scripts run it), 7 reached `max_iter` 200 and 8 of the other 11 stopped
-> on the plateau rule while still taking full trust-radius steps. Where a run ends then depends on
-> the settings. With observed constants 30% off the prediction, the bonds ended 1.1–3.5 mÅ from the
-> fit without rows with autoconfig on and up to 42 mÅ with it off, and the two settings ended up to
-> 44 mÅ apart on the same data; none of these is shown to be the optimum. With matching data the
-> bonds moved at most 3.2 mÅ. The crawl is a defect, found 2026-11-22 and not yet fixed: the
-> harmonic prediction keeps the quantum Hessian in the frame it was computed in, so rotating the
-> molecule changes the predicted constants (formyl fluoride: up to 0.5% for a 0.01 rad rotation,
-> while A, B and C do not change). The fit therefore turns the molecule to fit the distortion rows,
-> a direction nothing else resists, and every straight-line step along a rotation also stretches it,
-> so longer steps are refused. The numbers above include that effect. (With autoconfig off the trust
-> radius also only shrinks within a fit.) For these molecules $\Delta_J$ is 3–8 kHz, so 40% of it is
-> below the rows' 0.01 MHz sigma floor, which then sets the sigma 3–8 times above 40% of the predicted
-> constant. Removing the floor (autoconfig off) changed the bonds by 0.2–29 mÅ and brought the bond
-> RMS closer to the reference structures in 3 of 9 cases (two of them by under 0.4 mÅ), so it stays.
-> Treat a fit with distortion rows as unconverged unless its last steps (`step_norm` in its history)
-> are small, and compare it with one without.
+> Measured 2026-11-22 (HF/6-31G; formyl fluoride, vinyl fluoride and chlorofluoromethane;
+> synthetic `cd_observed` at 0.7, 1.0 and 1.3 times the harmonic prediction at the reference
+> structure; `cd_weight` 1). The prediction is made in the frame of the Hessian it uses: the trial
+> geometry is turned onto the geometry that Hessian was computed at first. Before that fix (D-88) a
+> Cartesian Hessian was used in whatever orientation the molecule had, so turning the molecule
+> changed the predicted constants (formyl fluoride: up to 0.5% for 0.01 rad, while A, B and C did
+> not move); the fit turned the molecule to fit the rows, the steps were refused, and most fits had
+> not settled after 200 iterations. Now all 18 fits (autoconfig on and off) stop after 11–12
+> iterations, as they do without the rows, with last steps of at most 6.1e-4 Å. Observed constants
+> 30% off the prediction moved the bonds 0.08–3.9 mÅ and the angles at most 0.14° from the fit
+> without rows; matching data moved them at most 0.08 mÅ; the two autoconfig settings agree as
+> they do without rows. For these molecules $\Delta_J$ is 3–8 kHz, so 40% of it is below the rows'
+> 0.01 MHz sigma floor, which then sets the sigma 3–8 times above 40% of the predicted constant.
+> Removing the floor changed the bonds by at most 0.08 mÅ, except formyl fluoride at 0.7 times
+> (2.9 mÅ, its bond RMS against the reference 1.1 mÅ worse), so it stays.
 
 > **Model error.** The reported widths include the $B_0$-versus-$B_e$ model
 > error, propagated as shared across isotopologues, only where a row carries it:

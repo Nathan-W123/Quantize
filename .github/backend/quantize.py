@@ -1883,9 +1883,13 @@ class MolecularOptimizer:
             )
         pinned = {str(i.get("name", "iso")): i.get("cd_reduction")
                   for i in self.spectral.isotopologues}
+        # In the Hessian's own frame (SpectralEngine.cd_frame_coords says why).
+        ref = self._hessian_ref_coords
+        at = (_kabsch_align(self.coords, ref)
+              if ref is not None and np.shape(ref) == np.shape(self.coords) else self.coords)
         cd_table = build_cd_table_from_hessian(
             hess_bohr,
-            self.coords,
+            at,
             [dict(i, cd_reduction=pinned.get(str(i.get("name", "iso"))) or i.get("cd_reduction"))
              for i in self._raw_isotopologues],
             sigma_fraction=self._cd_sigma_fraction,
@@ -1906,7 +1910,7 @@ class MolecularOptimizer:
                 corr.pred_cd = cd
             else:
                 old_iso["pred_cd"] = cd
-        self.spectral.set_hessian_for_cd(hess_bohr)
+        self.spectral.set_hessian_for_cd(hess_bohr, coords=self._hessian_ref_coords)
 
     @staticmethod
     def _due_every(call_count: int, period: int) -> bool:
@@ -1958,11 +1962,13 @@ class MolecularOptimizer:
             if self._harmonic_cd_from_hessian:
                 self._apply_harmonic_cd_corrections()
             elif self._fit_cd_constants and self._cd_weight > 0.0 and self.quantum is not None:
-                self.spectral.set_hessian_for_cd(self.quantum._hessian_bohr)
+                self.spectral.set_hessian_for_cd(self.quantum._hessian_bohr,
+                                                 coords=self._hessian_ref_coords)
         else:
             self._run_gradient()
             if self._fit_cd_constants and self._cd_weight > 0.0 and self.quantum is not None:
-                self.spectral.set_hessian_for_cd(self.quantum._hessian_bohr)
+                self.spectral.set_hessian_for_cd(self.quantum._hessian_bohr,
+                                                 coords=self._hessian_ref_coords)
 
     def _force_hessian_refresh(self):
         """Make the next quantum update recompute the Hessian rather than reuse it."""

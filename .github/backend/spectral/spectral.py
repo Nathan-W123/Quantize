@@ -587,6 +587,10 @@ class SpectralEngine:
             if hess_bohr_for_cd is not None
             else None
         )
+        # The geometry the Hessian above was computed at, in its frame, when
+        # known (set_hessian_for_cd). Without it the prediction takes the
+        # trial geometry's frame as the Hessian's.
+        self._hess_coords_for_cd = None
         self._cd_fd_delta = float(cd_fd_delta)
         self._cd_min_freq_cm = float(cd_min_freq_cm)
         self._cd_sigma_fraction = max(float(cd_sigma_fraction), 1e-6)
@@ -667,13 +671,49 @@ class SpectralEngine:
             out[k] = fv
         return out
 
-    def set_hessian_for_cd(self, hess_bohr) -> None:
-        """Update Hessian used to predict harmonic CD constants during optimization."""
+    def set_hessian_for_cd(self, hess_bohr, coords=None) -> None:
+        """Update Hessian used to predict harmonic CD constants during optimization.
+
+        ``coords`` is the geometry the Hessian was computed at, in the
+        Hessian's own Cartesian frame. With it, every prediction first turns
+        the trial geometry onto that frame (_predict_cd_for_iso); without it
+        the trial geometry's frame is taken as the Hessian's, as before.
+        """
         if hess_bohr is None:
             self._hess_bohr_for_cd = None
+            self._hess_coords_for_cd = None
         else:
             self._hess_bohr_for_cd = np.asarray(hess_bohr, dtype=float).copy()
+            self._hess_coords_for_cd = (
+                None if coords is None
+                else np.asarray(coords, dtype=float).reshape(-1, 3).copy())
         self._cd_jacobian_cache.clear()
+
+    def cd_frame_coords(self, coords):
+        """``coords`` turned and shifted onto the frame of the Hessian the
+        distortion constants are predicted from (unweighted least squares, as
+        MolecularOptimizer rotates a held Hessian), or ``coords`` unchanged
+        when that frame is not known.
+
+        A Cartesian Hessian belongs to the orientation it was computed in.
+        Predicting from it at a trial geometry in another orientation mixed
+        the two frames, so the predicted constants changed when the molecule
+        merely turned: formyl fluoride (HF/6-31G), DJ/DJK/DK up to 0.5% for a
+        0.01 rad rotation while A, B and C moved 1e-15. A fit with distortion
+        rows then turned the molecule to fit them -- a direction nothing else
+        resists -- and every straight-line step along a rotation also
+        stretched it, so steps over ~2 mA were refused and the fits crawled
+        (5 of 9 still moving at 200 iterations with autoconfig off, T-32).
+        """
+        x = np.asarray(coords, dtype=float)
+        ref = self._hess_coords_for_cd
+        if ref is None or ref.shape != x.shape:
+            return x
+        p, q = x - x.mean(axis=0), ref - ref.mean(axis=0)
+        u, _, vt = np.linalg.svd(p.T @ q)
+        d = np.sign(np.linalg.det(vt.T @ u.T))
+        rot = vt.T @ np.diag([1.0, 1.0, d]) @ u.T
+        return (rot @ p.T).T + ref.mean(axis=0)
 
     def _predict_cd_for_iso(self, iso: dict, coords) -> CDConstants | None:
         """The harmonic distortion constants at ``coords``, from the Hessian.
@@ -694,7 +734,7 @@ class SpectralEngine:
             return None
         return compute_cd_constants(
             self._hess_bohr_for_cd,
-            coords,
+            self.cd_frame_coords(coords),
             iso["masses"],
             reduction=self._cd_reduction(iso, coords),
             min_freq_cm=self._cd_min_freq_cm,
@@ -778,10 +818,9 @@ class SpectralEngine:
         # constant is smaller: of nine reference molecules' HF/6-31G harmonic
         # constants (T-32), 13 of 27 rows -- every DJ but water's, and five
         # DJK / DK -- at 1.4-8.7x the model error. Measured with synthetic
-        # data on three of them, removing it moved bonds 0.2-29 mA with no
-        # consistent gain (bond RMS closer to the reference in 3 of 9), in fits
-        # that mostly did not settle (T-33) -- so it is kept, and the README
-        # says so.
+        # data on three of them (T-36, after the frame fix), removing it moved
+        # bonds at most 0.08 mA except formyl fluoride at 0.7x (2.9 mA, 1.1 mA
+        # further from the reference) -- so it is kept, and the README says so.
         meas = iso.get("cd_sigma") or {}
         model = iso.get("cd_model_sigma") or self._default_cd_sigma(obs)
         sigma = np.array(
