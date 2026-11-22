@@ -1,5 +1,5 @@
 # Current task
-Status: building
+Status: done
 Request: T-38 (N28, D-93): diagnose why fluoroacetylene's plain joint fit crawls, then propose a fix
 ## Brief
 - Outcome: a measured cause for the crawl (HF/6-31G, autoconfig off, cartesian,
@@ -57,4 +57,10 @@ Q-57 (asked 12:03 UTC, deadline 12:18 UTC): fix fluoroacetylene's crawl?
    (1e-4) so near-linear molecules keep the analytic derivative
 3. Leave the code; note in the README that Cartesian fits of near-linear
    molecules crawl
+4. Done for now
+Q-58 (asked 12:54 UTC, deadline 13:09 UTC): what's next after T-38?
+1. N29: measure how much the internal prior's 57.3x angle-row Jacobian
+   moves Cartesian spectral-only fits, then propose the unit fix (Recommended)
+2. N7: measure the split estimator's widths against its spread, then propose
+3. N3: search again for semi-experimental references
 4. Done for now
