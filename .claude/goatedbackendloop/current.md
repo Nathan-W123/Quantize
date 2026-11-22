@@ -36,7 +36,7 @@ Request: (D-85, auto-picked at Q-51) Why distortion-row steps beyond ~2 mA fail 
 ## Observations
 
 ## Pending question
-Q-52 · asked 2026-11-22T08:55Z · deadline 09:10Z · auto-pick 1
+Q-52 · asked 2026-11-22T08:51Z · deadline 09:06Z · auto-pick 1
 1. (Recommended) Flag and document, no solver change: record the cause in
    backlog N8 and the README's distortion note (the rotational rows'
    curvature in the directions the distortion rows push, which the
