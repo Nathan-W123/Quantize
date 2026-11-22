@@ -15,7 +15,7 @@ Request: T-38 (N28, D-93): diagnose why fluoroacetylene's plain joint fit crawls
 - N2 · prototype · Cartesian steps on J P_rigid, 9 molecules off/on · done (t38 fits/, compare.py)
 - N3 · propose · Q-57 · auto-picked option 1 (D-94)
 - N4 · build · J P_rigid in the Cartesian loop; SVD.py comment; tests · after: N3 · done: 8 tests (toy linear triatomic, no pyscf), mutations M1 (loop call removed: 3 fail) and M2 (helper returns J: 4 fail); CI selection 1665 passed; FA/HCOF/water on the shipped path match the prototype (<= 2e-9)
-- N4b · measure · do the benchmark's fluoroacetylene rows move? (exactly linear fits also take finite differences) · after: N4 · running (t38 wb/wa worktrees, bench.sh)
+- N4b · measure · do the benchmark's fluoroacetylene rows move? · after: N4 · done: RHF, 9 configs (base, offsets, track, offsets+track, track_direct, track_quadratic, cd, offsets+cd, lam; same theory cache, worktrees t38/wb vs t38/wa): at most 0.0095 mA (track 13.6452 -> 13.6357), all others <= 1e-4; the unfixed code itself varies 1.6e-5 between identical configs (offsets vs offsets+cd at cd_weight 0). README rows (2 decimals) unchanged. B3LYP not rerun (inferred from RHF). 'elec' config needs pyscf.prop, absent here.
 - N5 · verify · independent verifier on 7d8c068 (t38v/) · after: N4 · running
 - N1: the rigid-mode count is right (6 kept at 179.7 deg, s_min 7e-4 > 1e-8;
   5 only when exactly linear). From iteration ~10 the steps are 95%
