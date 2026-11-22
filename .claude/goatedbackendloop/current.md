@@ -13,7 +13,8 @@ Request: T-40 (N7, D-97): measure the split estimator's reported widths against 
   ratio far from 1 shown by a second mechanism; a fix proposed, not
   implemented, until agreed.
 ## Progress
-- N1 · measure · water + 2-3 molecules, split and joint, HF/6-31G, via the engine's own BootstrapEngine error-model check (analytic_reference: cloud sd vs target sd = reported covariance less its prior part) · running (t40 spread.py; water split internal 50 refits > 10 min)
+- N1 · measure · water + 2-3 molecules, split and joint, HF/6-31G, via the engine's own BootstrapEngine error-model check (analytic_reference: cloud sd vs target sd = reported covariance less its prior part) · running (t40 runall.sh: 9 molecules x split/joint x internal/cartesian, 50 refits, OMP 1). Water split internal: cloud/target 0.86, 0.86, 0.89 (+-0.10), no departure.
 ## Observations
+- 2026-11-22 · a 50-refit bootstrap hung: the pool forks after pyscf's OpenMP threads (OMP 4) and a child deadlocked (N30). Single-threaded runs are safe; I lost ~30 min before dumping the stack. Next time dump the stack (faulthandler) at the first unexplained stall.
 ## Pending question
 ## Handoff
