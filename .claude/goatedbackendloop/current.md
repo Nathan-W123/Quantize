@@ -27,3 +27,12 @@ Request: T-42 (N30, D-102): measure, then run bootstrap refits without forking a
 
 ## Pending question
 ## Handoff
+Q-65 (asked 17:30 UTC, deadline 17:45 UTC): several workers still fork -- what then?
+1. Warn: when workers > 1 and the backend runs in-process with
+   OMP_NUM_THREADS != 1, say so before forking (no cost, no behaviour
+   change) (Recommended)
+2. Use a forkserver pool for several workers: no hang, +0.5 s per run
+   (formyl fluoride 0.8 -> 1.3 s), and library scripts that call it need a
+   __main__ guard (a cost and a usability change: your call)
+3. Leave it at the README note
+4. Done for now
