@@ -1,5 +1,5 @@
 # Current task
-Status: blocked
+Status: building
 Request: T-41 (N31, D-98): diagnose why joint internal-mode fits stop short of their own optimum, then propose
 ## Brief
 - Outcome: a measured cause for acetyl fluoride's internal-mode base fit
@@ -13,7 +13,9 @@ Request: T-41 (N31, D-98): diagnose why joint internal-mode fits stop short of t
 - Success: the cause named with numbers a second mechanism confirms.
 ## Progress
 - N1 · diagnose · AF / FE / FA / HCOF internal base fits · done (t41 reach.py)
-- N2 · propose · Q-62 · asked
+- N2 · propose · Q-62 · auto-picked option 1 (D-99)
+- N3 · build · ic_use_dihedrals='auto' (library and CLI default; true/false as stated), resolved once in __init__ (_resolve_ic_dihedrals: rank of B(bonds+angles) on the physical basis, rel 1e-6); posterior records use_dihedrals; the identifiability block reads it; validator accepts auto · done, uncommitted; CI selection 1667 passed
+- N4 · measure · 9 molecules joint internal false vs auto (autoconfig off/on), AF/FE/FA bootstrap 50 · running (t41 measure.py, runall.sh)
 ## Observations
 - N1 (HF/6-31G, joint, internal, autoconfig off, benchmark starts): internal
   mode's coordinates are bonds + angles (ic_use_dihedrals=False, also the CLI

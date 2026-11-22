@@ -1001,3 +1001,10 @@
 - Source: auto-picked, no answer in 15 min (Q-61)
 - Revisit if: the user picks another option.
 
+### D-99 · Complete the internal coordinate set when bonds and angles miss a direction (2026-11-22)
+- Decision: in internal mode, when ic_use_dihedrals is off and bonds + angles do not span every direction the fit can move (the physical basis: not rigid, not symmetry-forbidden), add dihedrals, decided once per fit and said so; molecules already spanned unchanged.
+- Why: T-41: acetyl fluoride and fluoroethane miss the methyl torsion (14/15, 17/18); the fit cannot move along it and stops 0.16-0.90 posterior widths from its optimum; with dihedrals both reach it (<= 1.7e-6) and acetyl fluoride agrees with the Cartesian fit (14.584 vs 14.602 mA).
+- Alternatives considered: dihedrals on everywhere; a warning only.
+- Source: auto-picked, no answer in 15 min (Q-62)
+- Revisit if: any molecule already spanned changes, or an answer moves by more than the stuck fits' difference (0.17-0.22 mA bond RMS).
+
