@@ -11,4 +11,5 @@ Request: T-48 (D-114, D-115): why split-objective widths depart from the split e
 - 2026-11-22 · a mutation (gradient at the reference point) passed because the fixture sits on its quantum point; moving the test geometry off it made the test bite (L-15)
 - 2026-11-22 · re-counting a docstring figure against the table caught 12 -> 11 (L-18)
 ## Pending question
+- Q-75 (asked 22:02 UTC, deadline 22:17 UTC): what next? 1 (Recommended) independent verifier on 58d159a (T-45 fixes) and 9c1ad3c (split stall), neither checked by anyone but me; 2 ozone's 0.006-width stop; 3 N34 dimer in joint mode; 4 Done for now. Deadline takes 1.
 ## Handoff
