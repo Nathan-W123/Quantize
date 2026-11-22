@@ -118,6 +118,47 @@ def _detect_bonds(coords, elems, fac=1.2):
     return bonds
 
 
+def _join_fragments(coords, bonds):
+    """The bond list with disconnected fragments joined, nearest pair first.
+
+    The covalent-radii rule leaves a stretched bond out -- O-H beyond 1.164 A
+    -- and a weakly bound complex in pieces. An internal coordinate set built
+    on such a graph cannot move the pieces relative to one another: water
+    started at r = 1.25 A had no bond and no angle, every internal step was
+    zero, and the fit stopped where it began, 820 posterior widths from its
+    optimum (T-44). While more than one fragment remains, the closest pair of
+    atoms in different fragments is added as a bond (the usual rule for
+    redundant internal coordinates). A connected molecule's list is returned
+    unchanged. Only the internal coordinate set uses this; guardrails,
+    conformer generation and the Cartesian Wilson B keep the plain rule.
+    """
+    coords = np.asarray(coords, dtype=float)
+    n = len(coords)
+    out = [tuple(b) for b in bonds]
+    parent = list(range(n))
+
+    def find(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    for i, j in out:
+        parent[find(i)] = find(j)
+    while n > 1 and len({find(i) for i in range(n)}) > 1:
+        best = None
+        for i in range(n):
+            for j in range(i + 1, n):
+                if find(i) != find(j):
+                    d = float(np.linalg.norm(coords[i] - coords[j]))
+                    if best is None or d < best[0]:
+                        best = (d, i, j)
+        _, i, j = best
+        out.append((i, j))
+        parent[find(i)] = find(j)
+    return sorted(out)
+
+
 def _detect_angles(bonds):
     """Angle triples (i, vertex, k) from bond list."""
     nbrs = defaultdict(set)

@@ -1,5 +1,5 @@
 # Current task
-Status: blocked
+Status: done
 Request: T-44 (N33, D-107): why internal-mode water from a far start refuses zero-length steps, then propose
 ## Brief
 - Outcome: a measured cause and a proposal.
@@ -7,7 +7,8 @@ Request: T-44 (N33, D-107): why internal-mode water from a far start refuses zer
   the same start in Cartesian mode; other far starts and molecules.
 ## Progress
 - N1 · diagnose · done (t44 connect.py)
-- N2 · propose · Q-69 · asked
+- N2 · propose · Q-69 · deadline: option 1 (D-108)
+- N3 · build · quantum._join_fragments, used by InternalCoordinateSet only (guardrails, conformer generation, Cartesian Wilson B keep the plain rule); 5 tests, mutation fails 3; 9 internal-mode benchmark fits bit-identical; CI selection 1706 passed · done
 ## Observations
 - N1: bonds are detected at distance < 1.2 x (sum of covalent radii) --
   O-H 1.164 A -- at every iteration (backend/quantum.py _detect_bonds). Water

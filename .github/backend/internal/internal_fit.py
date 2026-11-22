@@ -27,6 +27,7 @@ from typing import Optional, List, Any
 
 from backend.quantum import (
     _detect_bonds,
+    _join_fragments,
     _detect_angles,
     _detect_dihedrals,
     _bond_deriv,
@@ -113,7 +114,9 @@ class InternalCoordinateSet:
         self.elems = list(elems)
         self.use_dihedrals = bool(use_dihedrals)
 
-        bonds = _detect_bonds(coords, self.elems)
+        # Joined into one graph: a set on a disconnected one cannot move its
+        # pieces relative to one another (quantum._join_fragments, D-108).
+        bonds = _join_fragments(coords, _detect_bonds(coords, self.elems))
         angles = _detect_angles(bonds)
         dihedrals = _detect_dihedrals(bonds) if use_dihedrals else []
 

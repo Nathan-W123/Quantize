@@ -1064,3 +1064,10 @@
 - Source: auto-picked, no answer in 15 min (Q-68)
 - Revisit if: the user picks another option.
 
+### D-108 · Join disconnected fragments in the bond graph (2026-11-22)
+- Decision: _detect_bonds adds, while the covalent-radii graph has more than one fragment, the shortest inter-fragment atom pair as a bond; a connected molecule's bonds are unchanged.
+- Why: T-44: water started at 1.25 A (O-H threshold 1.164 A) had no bonds and no angles, so internal mode's steps were zero and the fit stopped at its start, 820 widths from its mode, silently; joined, it reaches 6.5e-6 widths. A weakly bound complex is disconnected the same way, so its intermolecular motion is unreachable in internal mode today; joining adds an intermolecular distance coordinate.
+- Alternatives considered: warn only; join and warn.
+- Source: auto-picked, no answer in 15 min (Q-69)
+- Revisit if: a complex's report should not list the joining distance.
+
