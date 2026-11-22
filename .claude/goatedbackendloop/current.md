@@ -11,4 +11,5 @@ Request: T-45 (D-109): independent verifier on 4f23b17, dda22df, 23ca969, 81edad
 - 2026-11-22 · reading every reader of the fallback's split fields (L-25) found the convergence test and print crashing on None before commit
 - 2026-11-22 · the verifier's report was only in the transcript; save verifier reports to the scratch folder next time
 ## Pending question
+- Q-71 (asked 20:17 UTC, deadline 20:32 UTC): what next? 1 (Recommended) one page of the decisions waiting for you; 2 N7 split-objective widths; 3 N34 dimer in joint mode; 4 Done for now. Deadline takes 1.
 ## Handoff
