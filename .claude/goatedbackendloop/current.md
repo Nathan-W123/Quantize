@@ -66,3 +66,10 @@ Q-63 (asked 16:12 UTC, deadline 16:27 UTC): commit the automatic dihedrals?
    false): no default result changes -- the deadline's pick
 3. Drop it; keep N31 open with the diagnosis
 4. Done for now
+Q-64 (asked 16:59 UTC, deadline 17:14 UTC): what next after T-41?
+1. N30: measure, then run single-worker bootstraps inline and multi-worker
+   ones in spawned processes (no fork after threads) (Recommended)
+2. Make use_dihedrals: auto the default (moves AF/FE answers, AF one more
+   Hessian: your call, never auto-picked)
+3. N7: the split estimator's covariance from its linear response
+4. Done for now
