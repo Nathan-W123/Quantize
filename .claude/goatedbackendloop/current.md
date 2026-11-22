@@ -1,15 +1,11 @@
 # Current task
-Status: done
-Request: T-49 (D-116): independent verifier on 58d159a and 9c1ad3c
+Status: verifying
+Request: T-50 (D-118): narrow independent check of af66799
 ## Brief
-- Outcome: each commit's claims held / refuted with measurements; defects fixed.
+- Outcome: af66799's claims held / refuted with measurements; defects fixed.
+- The verifier's hand-back is saved to scratchpad t50v/REPORT.md from the transcript (subagents cannot write report files here).
 ## Progress
-- N1 · verify · fresh subagent · done (report saved to scratchpad t49v/REPORT.md from the transcript; the subagent could not write it)
-- N2 · fixes · split_stall on the step's own record, null-space agreement rule, negative curvature, physical atom figure, units by kind, README, tests · done (D-117)
-- N3 · checks · 10/11 mutations (11th equivalent), CI 1732 passed; benchmark re-measured (t48/stall9.py)
+- N1 · verify · fresh subagent (t50v/) · running since 23:34 UTC
 ## Observations
-- 2026-11-22 · subagents cannot write report files here; save the hand-back to disk from the transcript
-- 2026-11-22 · equal ranks were not enough to say the step and posterior read the same null space (internal mode); comparing the subspaces was
 ## Pending question
-- Q-76 (asked 23:16 UTC, deadline 23:31 UTC): what next? 1 (Recommended) narrow independent check of af66799 (it replaced most of 9c1ad3c's logic); 2 ozone's 0.006-width stop (joint default path); 3 N34 dimer in joint mode; 4 Done for now. Deadline takes 1.
 ## Handoff

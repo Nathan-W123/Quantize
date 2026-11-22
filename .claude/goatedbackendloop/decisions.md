@@ -1137,3 +1137,10 @@
 - Source: assumption, unconfirmed (defect fixes within T-49's scope)
 - Revisit if: a split fit's last step is accepted while it is stalled (the check then reads None), or the user wants split widths withheld.
 
+
+### D-118 · Next task: a narrow check of af66799 (2026-11-22)
+- Decision: T-50 runs a fresh independent verifier on af66799 only (split_stall on the step's own record, the null-space agreement rule, negative curvature, the physical atom figure, summary units by kind, README), trying to refute its claims and figures; defects found are then fixed.
+- Why: Q-76's recommended option; af66799 replaced most of 9c1ad3c's logic and nobody but me has checked it (L-10).
+- Alternatives considered: ozone's 0.006-width stop; N34 dimer in joint mode; done for now.
+- Source: auto-picked, no answer in 15 min (Q-76)
+- Revisit if: the user answers the decision page.
