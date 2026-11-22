@@ -1022,3 +1022,10 @@
 - Source: assumption, unconfirmed (verifier findings on a change already chosen; each fix exact or opt-in only)
 - Revisit if: "auto" with symmetry off on a near-linear molecule (FA start adds a dihedral of an almost linear chain) shows nonsense widths.
 
+### D-102 · Next task: bootstrap workers without fork-after-threads (N30) (2026-11-22)
+- Decision: T-42 measures, then proposes running single-worker bootstraps inline and multi-worker ones in spawned processes, so no refit is forked from a multi-threaded process.
+- Why: Q-64's recommended option; T-40 saw a forked refit deadlock (pyscf, OMP 4); Python warns on every such fork (the CI selection's 37 warnings).
+- Alternatives considered: auto dihedrals as default (user's call); N7 split covariance; done for now.
+- Source: auto-picked, no answer in 15 min (Q-64)
+- Revisit if: the measurement shows a time cost (then propose before committing).
+
