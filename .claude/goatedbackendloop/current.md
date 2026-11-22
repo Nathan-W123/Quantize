@@ -76,3 +76,12 @@ Request: (D-75, auto-picked at Q-42) N25: the chi-square rescale's high-side wid
   ("no result change") against the mechanism before coding caught it.
 
 ## Pending question
+Q-44 · asked 2026-11-22T04:57Z · deadline 05:12Z · auto-pick 1
+1. (Recommended) N24: measure how far the reported answer depends on which
+   near-tied multistart start wins (flat torsions, 0.15-12 mA apart in T-23),
+   then propose; no behaviour change without a proposal.
+2. N8 (b): measure whether the 0.01 MHz distortion sigma floor swamps heavy
+   molecules' kHz-size DJ, then propose.
+3. N3: look again for published r_e^SE references (sd <= 0.5 mA, D-35) for
+   HNCO, fluoroacetylene, HCOF; nothing guessed.
+4. Done for now.
