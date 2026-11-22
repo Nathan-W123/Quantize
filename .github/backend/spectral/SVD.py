@@ -315,7 +315,12 @@ class SubspaceOptimizer:
         #
         # Scaling by the prior is also sufficient to regularise: the six rigid
         # modes are null in JᵀJ and in H alike, and both Jᵀr and g are orthogonal
-        # to them, so any positive lambda resolves that singularity.
+        # to them, so any positive lambda resolves that singularity. Jᵀr is
+        # orthogonal to them only because the Cartesian caller removes the
+        # rigid part of J (MolecularOptimizer._rigid_free_jacobian): with
+        # nothing but lambda and the eigenvalue floor holding these directions,
+        # a finite-difference Jacobian's leak of 1.5e-5 into them made
+        # fluoroacetylene's steps 95% rigid (T-38).
         scale = np.linalg.norm(prior) / n
         if not np.isfinite(scale) or scale <= 0.0:
             scale = np.linalg.norm(A) / n

@@ -13,7 +13,10 @@ Request: T-38 (N28, D-93): diagnose why fluoroacetylene's plain joint fit crawls
 ## Progress
 - N1 · diagnose · step decomposition + rigid-mode count · done (t38 diag.py, terms.py)
 - N2 · prototype · Cartesian steps on J P_rigid, 9 molecules off/on · done (t38 fits/, compare.py)
-- N3 · propose · Q-57 · asked
+- N3 · propose · Q-57 · auto-picked option 1 (D-94)
+- N4 · build · J P_rigid in the Cartesian loop; SVD.py comment; tests · after: N3 · done: 8 tests (toy linear triatomic, no pyscf), mutations M1 (loop call removed: 3 fail) and M2 (helper returns J: 4 fail); CI selection 1665 passed; FA/HCOF/water on the shipped path match the prototype (<= 2e-9)
+- N4b · measure · do the benchmark's fluoroacetylene rows move? (exactly linear fits also take finite differences) · after: N4 · running (t38 wb/wa worktrees, bench.sh)
+- N5 · verify · independent verifier on the commit · after: N4 · pending
 - N1: the rigid-mode count is right (6 kept at 179.7 deg, s_min 7e-4 > 1e-8;
   5 only when exactly linear). From iteration ~10 the steps are 95%
   translation + rotation (5.64e-3 of 5.95e-3 A translation; internal part

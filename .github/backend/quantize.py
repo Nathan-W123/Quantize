@@ -2442,6 +2442,37 @@ class MolecularOptimizer:
         Qk = U[:, :keep]
         return np.eye(3 * n) - Qk @ Qk.T
 
+    def _rigid_free_jacobian(self, J):
+        """The Cartesian Jacobian with its rigid-body part removed.
+
+        No row the step solves with depends on where the molecule sits or how
+        it is turned -- rotational constants, distortion constants predicted
+        in the Hessian's own frame, internal-coordinate priors -- so the true
+        Jacobian satisfies J = J P exactly and this changes nothing on the
+        analytic path (1e-15 of |J|, eight benchmark molecules). The finite-
+        difference path does not satisfy it: it displaces one atom at a time,
+        and near degenerate moments (B ~ C, where the analytic derivative
+        gives way to central differences) fluoroacetylene's B rows leaked
+        1.5e-5 of |J| into translation and rotation. The joint matrix holds
+        those directions only by its 1e-8 eigenvalue floor and lambda_damp,
+        so that leak asked for a 3.75 A slide of the whole molecule, the
+        trust radius was spent on it, and the fit (HF/6-31G, Cartesian)
+        crawled for 57 iterations on 6e-3 A steps 95% rigid, stopping 2.6 mA
+        from its own optimum. With the projection it converges in 19, as it
+        does with the analytic Jacobian (T-38, D-94). The distortion rows'
+        finite-difference Jacobian leaks the same way (water's, at its fit:
+        6e-6 of |J|).
+
+        Under the same flag as the quantum terms' projection: one switch
+        decides whether the step sees rigid motion at all.
+        """
+        if (not self.project_rigid_modes) or (self._rigid_ref_masses is None):
+            return J
+        J = np.asarray(J, dtype=float)
+        if J.ndim != 2 or J.shape[1] != 3 * len(self.coords):
+            return J
+        return J @ self._rigid_mode_projector(self.coords, self._rigid_ref_masses)
+
     def _project_quantum_terms(self, gradient, hessian):
         """
         Optionally remove rigid-body modes from quantum gradient/Hessian.
@@ -3080,6 +3111,10 @@ class MolecularOptimizer:
             elif self.internal_prior is not None and self.coordinate_mode == "internal":
                 # Native q-space priors are added in Phase 6; skip Cartesian prior in internal mode
                 prior_wrms_before = self.internal_prior.diagnostics(self.coords).get("prior_wrms", 0.0)
+            if self.coordinate_mode == "cartesian":
+                # The step, its rank and the ratio test below all read this J.
+                # Internal mode needs nothing: J B+ already excludes rigid motion.
+                J = self._rigid_free_jacobian(J)
             B, _ = wilson_B(self.coords, self.elems)
 
             # ── Internal-coordinate mode: transform J and quantum terms to q-space ──
