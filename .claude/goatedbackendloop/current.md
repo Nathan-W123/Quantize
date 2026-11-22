@@ -1,6 +1,6 @@
 # Current task
 Task: T-30
-Status: verifying
+Status: done
 Request: (D-75, auto-picked at Q-42) N25: the chi-square rescale's high-side widening multiplies the stated sigma while the weights use max(stated, 0.1% of the constant, ...); measure on real fits how often and how much, then propose.
 
 ## Brief
@@ -22,7 +22,8 @@ Request: (D-75, auto-picked at Q-42) N25: the chi-square rescale's high-side wid
 - N3 · gate · proposal (Q-43) · after: N2 · done (D-76, auto-picked 1) · handoff: -
 - N4 · build · skip a refit on unchanged weights, keep scaling · after: N3 · done · handoff: -
 - N5 · verify · old-vs-new sweep, tests + mutations, CI selection · after: N4 · done · handoff: -
-- N6 · verify · independent verifier (different mechanism) · after: N4 · pending · handoff: -
+- N6 · verify · independent verifier (different mechanism) · after: N4 · done: refuted · handoff: -
+- N7 · build · revert the skip (D-77), comment why the refit stays · after: N6 · done · handoff: -
 
 ## Progress
 - 2026-11-22 · first batch (4 parallel, then mh) hit the 2 h background limit.
@@ -54,7 +55,22 @@ Request: (D-75, auto-picked at Q-42) N25: the chi-square rescale's high-side wid
   continue, M3/M4 each guard dropped, M5 weights read after the scale: each
   fails a test. CI selection 1640 passed, 15 skipped.
 
+- N6: verifier (t30v/): from shifted starts the old refits on identical
+  weights move the fit (plateau / max_iter stops); new != old at the fit's
+  tolerance (toy 5.4e-10 A, final chi2 132.27626 vs 132.27695; pyscf HF water
+  1.3e-10 A, single-threaded -- 2 threads differ 4e-10 A run to run). From the
+  fixture's exact minimum: bit-identical answers, but history length,
+  iteration counts, hess_recalc_every and _last_alpha_q_eff differ. 35 real
+  benchmark fits (5 molecules x 7 configs): skip never fires, bit-identical.
+  Also: message said "floor" when a cap holds the weights.
+  Reproduced the shifted case myself (t30/shift_check.py): all stops plateau.
+- N7: code back to 5eb7554^ plus a 9-line comment; CI selection 1636 passed,
+  15 skipped.
+
 ## Observations
+- 2026-11-22 · my 17-case sweep all started at the fixture's exact minimum,
+  so it could not see path dependence; the verifier's shifted start could.
+  L-22 (stationarity) applied and would have caught it; recorded as a miss.
 - 2026-11-22 · the brief's option 1 said "stops"; working out the water case
   showed a stop changes answers (pass 3 crosses a floor). Checking the promise
   ("no result change") against the mechanism before coding caught it.

@@ -72,6 +72,6 @@ once by a container swap).
 ### L-22 · A per-pass movement threshold is not a stationarity certificate
 - Observation: restart chains stopped at the first pass under 1e-4 A; further restarts kept drifting fluorobenzene's split fit 7e-5 to 1.5e-4 A and +0.03 mA per pass, one-signed.
 - Evidence: 2026-11-21 · T-21 fact-check (t21/factcheck/extend_split*.py): 10.78 -> 10.99 and 10.63 -> 10.76 over 4-5 more restarts.
-- Adjustment: certify stationarity by the trend of the score over three or more restarts, not one pass under a threshold; report a drifting fit as unsettled, with its range.
-- Scope: project · Status: provisional · Outcomes: -
+- Adjustment: certify stationarity by the trend of the score over three or more restarts, not one pass under a threshold; report a drifting fit as unsettled, with its range. Before claiming a refit (or restart) is a no-op, run it from a start that is not already a minimum, and check the stop reason.
+- Scope: project · Status: provisional · Outcomes: -2026-11-22 (T-30: not applied; I called a refit on identical weights a no-op because the fixture starts at an exact minimum; the verifier's shifted start stopped on plateau and the refits kept moving chi2 201.96614 -> 201.96874; D-76 reverted)
 
