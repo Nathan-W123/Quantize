@@ -670,17 +670,29 @@ On Windows, you can instead set `orca_exe` in `BASE_SETTINGS` to your `orca.exe`
 > −0.19 and +0.22 mÅ, autoconfig off; −0.08 and +0.37 on) and costs acetyl
 > fluoride one more Hessian.
 
-> **Near-linear chains in internal mode.** A valence angle cannot step
-> through 180°, so a fit whose optimum is exactly linear stops just short:
-> fluoroacetylene (HF/6-31G) at 179.995°, 0.008 posterior widths from its
-> optimum, and its bootstrap kept 27 of 50 refits. Set
+> **Near-linear chains in internal mode.** Near 180° a valence angle no
+> longer describes the bend (it is not differentiable there and stands for
+> two bend directions), so a fit whose optimum is nearly linear can stop
+> short: fluoroacetylene (HF/6-31G) at 179.995°, 0.008 posterior widths from
+> its optimum (179.98°, 179.96°), and its bootstrap kept 27 of 50 refits. Set
 > `internal_coordinates.cartesian_fallback: true` to retake such a step in
 > Cartesian coordinates on the same objective (and step in Cartesians for
 > the rest of that fit): fluoroacetylene then reaches its optimum and keeps
-> 50 of 50; fits that never refuse such a step are unchanged. It is not the
-> default because it also moves acetyl fluoride's answer (bond RMS −0.18 mÅ)
-> and costs it one more Hessian. `coordinate_mode: cartesian` avoids both
+> 50 of 50; fits that never refuse such a step are unchanged. It applies to
+> the `joint` objective only. It is not the default because it also moves
+> acetyl fluoride's answer (bond RMS −0.18 mÅ) and costs it one more Hessian. `coordinate_mode: cartesian` avoids both
 > issues.
+
+> **Pieces the bond rule leaves apart.** Bonds come from the covalent-radii
+> rule (distance under 1.2× the sum of the radii; O–H 1.16 Å). Internal
+> coordinates join pieces it leaves apart -- a stretched starting bond, or
+> the molecules of a complex -- through their closest atoms; the joining
+> coordinates are listed as `contact i-j` and get no rule-book prior: where
+> the internal prior is on (spectral-only fits, by default) they are held to
+> their starting value instead. A water dimer's hydrogen bond (1.95 Å) was
+> pulled to 1.46 Å by the O–H rule; it now fits to 1.949 Å. The printed bond
+> table applies the rule to the final geometry, so it lists a contact only
+> if the fit ends it within bonding distance.
 
 **Parallel multistart + ORCA:** many licenses allow only one ORCA job at a time. `run_multistart` therefore defaults to **`max_workers=1`** when `quantum_backend="orca"`. If your license allows multiple processes, set **`QUANTIZE_ALLOW_PARALLEL_ORCA=1`** before running to use the preset worker count.
 

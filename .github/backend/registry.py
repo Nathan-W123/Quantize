@@ -51,7 +51,8 @@ def list_backends() -> list[str]:
     return sorted(_REGISTRY)
 
 
-def fork_hang_warning(backend_name: str, n_workers: int) -> str | None:
+def fork_hang_warning(backend_name: str, n_workers: int,
+                      backend_threads: int | None = None) -> str | None:
     """What to say before forking ``n_workers`` processes from this one, or None.
 
     A child forked from a process whose quantum backend has started threads
@@ -72,11 +73,16 @@ def fork_hang_warning(backend_name: str, n_workers: int) -> str | None:
     if not getattr(cls, "runs_in_process", True):
         return None
     omp = os.environ.get("OMP_NUM_THREADS", "").strip()
-    if omp == "1":
+    # A backend may set its own thread count (Psi4: psi4_num_threads), which
+    # OMP_NUM_THREADS=1 does not limit.
+    own = int(backend_threads) if backend_threads is not None else 1
+    if omp == "1" and own <= 1:
         return None
+    threads = (f"OMP_NUM_THREADS={omp or 'unset'}" if own <= 1
+               else f"{own} threads of its own")
     return (f"{int(n_workers)} workers will be forked from this process, and the "
-            f"'{backend_name}' backend computes in it with OMP_NUM_THREADS="
-            f"{omp or 'unset'}: a worker forked from a threaded process can hang "
-            f"for ever (a water bootstrap hung 3 of 3 times at four threads). "
-            f"Set OMP_NUM_THREADS=1, use one worker, or use ORCA.")
+            f"'{backend_name}' backend computes in it with {threads}: a worker "
+            f"forked from a threaded process can hang for ever (a water bootstrap "
+            f"hung 3 of 3 times at four threads). Set OMP_NUM_THREADS=1 and the "
+            f"backend's threads to 1, use one worker, or use ORCA.")
 

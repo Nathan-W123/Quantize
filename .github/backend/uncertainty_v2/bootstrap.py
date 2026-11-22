@@ -421,7 +421,10 @@ class BootstrapEngine:
         else:
             if not self.optimizer.spectral_only:
                 from backend.registry import fork_hang_warning
-                why = fork_hang_warning(self.optimizer.quantum_backend, self.config.max_workers)
+                why = fork_hang_warning(
+                    self.optimizer.quantum_backend, self.config.max_workers,
+                    backend_threads=(getattr(self.optimizer, "psi4_num_threads", None)
+                                     if self.optimizer.quantum_backend == "psi4" else None))
                 if why:
                     print(f"  [bootstrap-v2] warning: {why}")
             with ProcessPoolExecutor(max_workers=self.config.max_workers) as pool:

@@ -163,7 +163,8 @@ def run_multistart(starts, elems, isotopologues, optimizer_kwargs, max_workers=1
     ``quantum_backend='orca'``. Set ``QUANTIZE_ALLOW_PARALLEL_ORCA=1`` to keep preset parallelism.
     """
     kw = optimizer_kwargs or {}
-    qb = str(kw.get("quantum_backend", "")).strip().lower()
+    # MolecularOptimizer's own default when the key is absent.
+    qb = str(kw.get("quantum_backend", "Psi4")).strip().lower()
     spectral_only = bool(kw.get("spectral_only", False))
     allow_parallel_orca = os.environ.get("QUANTIZE_ALLOW_PARALLEL_ORCA", "").lower() in (
         "1",
@@ -203,7 +204,8 @@ def run_multistart(starts, elems, isotopologues, optimizer_kwargs, max_workers=1
 
     if not spectral_only:
         from backend.registry import fork_hang_warning
-        why = fork_hang_warning(qb, max_workers)
+        why = fork_hang_warning(qb, max_workers,
+                                backend_threads=kw.get("psi4_num_threads") if qb == "psi4" else None)
         if why:
             print(f"[multistart] warning: {why}")
     results = []

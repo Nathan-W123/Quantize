@@ -138,3 +138,44 @@ def test_a_refused_step_the_back_transform_realised_is_not_retaken():
     assert refused, "premise: the fit refuses steps"
     assert max(r["backtransform_error"] for r in refused) < 1e-6, "premise: realised to round-off"
     assert opt._ic_fallback_steps == 0
+
+
+def test_the_history_describes_the_cartesian_step():
+    opt, _ = _fit(2, True)
+    rows = [r for r in opt.history if r.get("cartesian_fallback")]
+    assert rows
+    for r in rows:
+        assert r["backtransform_error"] is None
+        # The Cartesian step's own split: its parts make up the whole step.
+        assert np.isclose(np.hypot(r["dx_range_norm"], r["dx_null_norm"]), r["step_norm"], rtol=1e-6), r
+        assert r["dq_range_norm"] is None and r["dq_null_norm"] is None
+    # A refused step after the switch is the Cartesian one too.
+    first = next(i for i, r in enumerate(opt.history) if r.get("cartesian_fallback"))
+    assert all(r.get("cartesian_fallback") for r in opt.history[first:])
+
+
+def test_the_fallback_uses_the_internal_steps_quantum_weight(monkeypatch):
+    # The legacy weight scales with the Jacobian's rank fraction, which
+    # differs between q-space and Cartesians; recomputing it would fit
+    # another objective (2.667 against 2.2, T-45 verifier).
+    from backend.spectral.SVD import SubspaceOptimizer
+    seen = []
+    real = SubspaceOptimizer._joint_step
+
+    def spy(self, J, r, g, H, a, prior_displacement=None):
+        seen.append((J.shape[1], float(a)))
+        return real(self, J, r, g, H, a, prior_displacement=prior_displacement)
+
+    monkeypatch.setattr(SubspaceOptimizer, "_joint_step", spy)
+    start = TRUE + np.random.default_rng(2).normal(0, 0.03, TRUE.shape)
+    with contextlib.redirect_stdout(io.StringIO()):
+        opt = Q.MolecularOptimizer(elems=["H", "C", "C", "F"], coords=start, isotopologues=isos,
+                                   quantum_backend="test_linear_tetratomic", use_autoconfig=False, max_iter=80,
+                                   hess_recalc_every=10, coordinate_mode="internal", ic_cartesian_fallback=True,
+                                   quantum_prior_sigma_ang=None)
+        opt.run()
+    cart = [a for n, a in seen if n == 12]
+    internal = [a for n, a in seen if n != 12]
+    assert cart and internal, "premise: both kinds of step ran"
+    # Measured with the step recomputing it: Cartesian alphas differ.
+    assert set(cart) <= set(internal), (sorted(set(cart)), sorted(set(internal)))

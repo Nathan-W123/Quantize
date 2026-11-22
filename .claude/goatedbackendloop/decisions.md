@@ -1078,3 +1078,10 @@
 - Source: auto-picked, no answer in 15 min (Q-70)
 - Revisit if: the user picks another option.
 
+### D-110 · T-45 verifier: one commit held, three fixed (2026-11-22)
+- Decision: (1) Fragment joins are named `contact i-j` (angles and dihedrals through one are flagged) and get no rule-book prior; where the internal prior is on they are held to their start. (2) The Cartesian fallback uses the internal step's quantum weight, and the history records the step taken: its prior RMS, model change, own range/null split (rigid-free J with the prior rows), no back-transform error, and refused Cartesian steps after the switch. (3) fork_hang_warning counts psi4_num_threads; multistart without a backend key warns for Psi4, the default. (4) Wording: FA's optimum lies within 0.05 deg of linear, not on it; the fallback is joint-only (README and docstring).
+- Why: independent verifier (L-10). Held: 4f23b17 inline bootstrap (bit for bit on five cases); dda22df for its stated rule; 23ca969's numbers (FA 8.0e-3 -> 1.9e-6 widths, bootstrap 27 -> 50/50; AF 0.189 -> 2.8e-6; seven bit-identical); 81edad9 for far starts and 34 connected sets. Refuted: 81edad9 for complexes -- the O-H rule pulled a dimer's O...H from 1.953 to 1.459 A (fixed: 1.949); Ar...HF came out 0.19 A asymmetric at chi2 44 (fixed: 1e-4 A, chi2 1.4e-5). Fallback: weight 2.667 against 2.2 (legacy rule), history fields from the refused internal step. Warning: silent on Psi4's own threads and on the default backend. My own check: the new split fields first broke the convergence test (None), caught by reading every reader (L-25).
+- Alternatives considered: give contacts a soft van der Waals prior (no library for it); drop the fallback's history fields (multistart scoring reads prior_wrms).
+- Source: assumption, unconfirmed (defect fixes within the agreed T-45 scope)
+- Revisit if: a contact should carry its own prior, or a complex in joint mode needs converging (N34).
+

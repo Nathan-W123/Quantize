@@ -53,6 +53,10 @@ class InternalCoordinate:
     active: bool = True
     prior_value: Optional[float] = None   # natural units (Å or rad); used in Phase 6
     prior_sigma: Optional[float] = None   # natural units; used in Phase 6
+    #: Built on a pair the covalent-radii rule did not bond, added only to
+    #: join fragments (quantum._join_fragments): not a chemical bond, so it is
+    #: named "contact" and the rule library's covalent priors skip it.
+    contact: bool = False
 
 
 def _coord_value(coords: np.ndarray, ic: InternalCoordinate) -> float:
@@ -116,23 +120,32 @@ class InternalCoordinateSet:
 
         # Joined into one graph: a set on a disconnected one cannot move its
         # pieces relative to one another (quantum._join_fragments, D-108).
-        bonds = _join_fragments(coords, _detect_bonds(coords, self.elems))
+        covalent = _detect_bonds(coords, self.elems)
+        bonds = _join_fragments(coords, covalent)
+        joins = {tuple(sorted(b)) for b in bonds} - {tuple(sorted(b)) for b in covalent}
         angles = _detect_angles(bonds)
         dihedrals = _detect_dihedrals(bonds) if use_dihedrals else []
 
+        def _has_join(*pairs):
+            return any(tuple(sorted(p)) in joins for p in pairs)
+
         self.coordinates: List[InternalCoordinate] = []
         for i, j in bonds:
+            c = _has_join((i, j))
             self.coordinates.append(InternalCoordinate(
-                kind="bond", atoms=(i, j), name=f"bond {i+1}-{j+1}",
+                kind="bond", atoms=(i, j), name=f"{'contact' if c else 'bond'} {i+1}-{j+1}",
+                contact=c,
             ))
         for i, o, k in angles:
             self.coordinates.append(InternalCoordinate(
                 kind="angle", atoms=(i, o, k), name=f"angle {i+1}-{o+1}-{k+1}",
+                contact=_has_join((i, o), (o, k)),
             ))
         for i, j, k, l in dihedrals:
             self.coordinates.append(InternalCoordinate(
                 kind="dihedral", atoms=(i, j, k, l),
                 name=f"dihedral {i+1}-{j+1}-{k+1}-{l+1}",
+                contact=_has_join((i, j), (j, k), (k, l)),
             ))
 
     # ── Coordinate values ─────────────────────────────────────────────────────
@@ -476,6 +489,12 @@ def build_internal_priors(
     # Apply chemistry defaults where available.
     if elems is not None:
         for i, ic in enumerate(active):
+            # A fragment-joining coordinate is no chemical bond or valence
+            # angle: the covalent rules gave a hydrogen-bonded water dimer's
+            # 1.95 A O...H a 0.960 +- 0.015 A prior and pulled it to 1.46
+            # (T-45 verifier). It keeps the start-anchored default.
+            if getattr(ic, "contact", False):
+                continue
             dflt = resolve_default_prior(ic, elems, q_curr[i])
             if dflt is None:
                 continue

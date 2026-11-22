@@ -107,3 +107,27 @@ def test_a_forked_multistart_says_so(monkeypatch):
         except RuntimeError:
             pass
     assert "can hang" in out.getvalue()
+
+
+def test_the_warning_counts_a_backends_own_threads(monkeypatch):
+    from backend.registry import fork_hang_warning
+    monkeypatch.setenv("OMP_NUM_THREADS", "1")
+    assert fork_hang_warning("psi4", 2, backend_threads=4) is not None
+    assert fork_hang_warning("psi4", 2, backend_threads=1) is None
+
+
+def test_multistart_without_a_backend_key_warns_for_the_default(monkeypatch):
+    import backend.multistart as MS
+
+    class Pool:
+        def __init__(self, *a, **k):
+            raise RuntimeError("stop before forking")
+
+    monkeypatch.setattr(MS, "ProcessPoolExecutor", Pool)
+    monkeypatch.setenv("OMP_NUM_THREADS", "4")
+    with contextlib.redirect_stdout(io.StringIO()) as out:
+        try:
+            MS.run_multistart([_x0(), _x0()], ["O", "H", "H"], _isos(None), {}, max_workers=2)
+        except RuntimeError:
+            pass
+    assert "can hang" in out.getvalue()

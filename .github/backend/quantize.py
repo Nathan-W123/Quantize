@@ -2407,18 +2407,21 @@ class MolecularOptimizer:
         return float(np.sqrt(np.mean((np.asarray(x, dtype=float) - ref) ** 2)))
 
     def _cartesian_fallback_step(self, J_cart, residual_w, g, H, B, ic_prior_rows,
-                                 coord_set, B_active):
+                                 coord_set, B_active, alpha_q):
         """The internal step's objective, stepped in Cartesians; None if refused.
 
         An internal step is a step in bonds and angles, carried to Cartesians
-        by micro-iterations. A valence angle has its maximum at 180 deg, so
-        near a linear chain the step can ask for what no geometry has, the
-        back-transform realises something else, and that step raises the
-        objective and is refused -- unchanged next time, since it lies inside
-        the trust radius. Fluoroacetylene (HF/6-31G), whose optimum is exactly
-        linear, stopped so at 179.995 deg, 0.008 posterior widths short, and
-        its bootstrap kept about half its refits; a Cartesian fit from there
-        reaches 180.0000 deg and 7e-11 widths (T-43, D-105).
+        by micro-iterations. Near 180 deg a valence angle stops describing the
+        bend: it is not differentiable at 180 and one angle stands for two
+        bend directions, so the step can ask for what no nearby geometry has,
+        the back-transform realises something else (fluoroacetylene, HF/6-31G:
+        error 1.6e-3 against 7e-5 for an accepted step), and that step raises
+        the objective and is refused -- unchanged next time, since it lies
+        inside the trust radius. Fluoroacetylene, whose optimum lies within
+        0.05 deg of linear (179.98 and 179.96 deg), stopped so at 179.995 deg,
+        0.008 posterior widths short, and its bootstrap kept about half its
+        refits (T-43, D-105; the mode located by the T-45 verifier). Joint
+        objective only: the split step is not tried.
 
         Same objective: the spectral rows (rigid part removed, as in
         Cartesian mode), the q-space prior rows carried through Wilson B
@@ -2451,25 +2454,49 @@ class MolecularOptimizer:
         if Jx.shape[0] != np.asarray(residual_w).size:
             return None
         gx = None if g is None else self._prior_gradient(g, H)
-        dx, _rank, _sv, alpha_q, _vt = self.optimizer.step(
-            Jx, residual_w, gx, H, B=B, prior_displacement=self._prior_displacement())
+        # The internal step's own quantum weight: the legacy rule (no
+        # quantum_prior_sigma_ang) scales it by the Jacobian's rank fraction,
+        # which differs between q-space and Cartesians (2.667 against 2.2,
+        # T-45 verifier), so recomputing it would fit another objective.
+        opt = self.optimizer
+        dx = np.asarray(opt._joint_step(Jx, residual_w, gx, H, float(alpha_q),
+                                        prior_displacement=self._prior_displacement()),
+                        dtype=float).ravel()
+        if opt.use_internal_preconditioner:
+            dx = opt._apply_internal_preconditioner(dx, B)
+        norm = float(np.linalg.norm(dx))
+        if norm > opt.trust_radius:
+            dx = dx * (opt.trust_radius / norm)
         if self.symmetry is not None:
             dx = self.symmetry.project_step(dx)
-        trial = self.coords + np.asarray(dx, dtype=float).reshape(-1, 3)
+        trial = self.coords + dx.reshape(-1, 3)
         valid, stats = self._geometry_validity(trial)
-        if self.accept_requires_geometry_valid and not valid:
-            return None
         _, r1 = self.spectral.stacked(trial, want_jacobian=self.spectral._cd_rows_active())
+        prior_wrms = None
         if ic_prior_rows is not None:
-            r1 = np.concatenate([r1, ic_prior_rows[3] * self._ic_prior_trial_rows(
-                ic_prior_rows, coord_set, trial)])
-        ok, rho = self._joint_step_ratio(residual_w, r1, Jx, np.asarray(dx, dtype=float).ravel(),
-                                         gx, H, alpha_q, trial)
-        if not ok:
-            return None
+            rp = self._ic_prior_trial_rows(ic_prior_rows, coord_set, trial)
+            prior_wrms = float(np.sqrt(np.mean(rp ** 2))) if rp.size else 0.0
+            r1 = np.concatenate([r1, ic_prior_rows[3] * rp])
+        ok, rho = self._joint_step_ratio(residual_w, r1, Jx, dx, gx, H, alpha_q, trial)
+        if self.accept_requires_geometry_valid and not valid:
+            ok = False
         _, r_mhz = self.spectral.stacked_unweighted(trial, want_jacobian=False)
-        return (trial, np.asarray(dx, dtype=float).ravel(), float(np.sqrt(np.mean(r1 ** 2))),
-                float(np.sqrt(np.mean(np.asarray(r_mhz) ** 2))), rho, valid, stats)
+        model_delta = (None if gx is None
+                       else float(np.dot(gx, dx) + 0.5 * dx @ (np.asarray(H, dtype=float) @ dx)))
+        # The step's own range/null split, on the Jacobian it was solved with
+        # (as the loop does for its step): convergence, the history and the
+        # bootstrap's trust-capped test read it.
+        _U, _s, Vt, rank = opt.decompose(Jx)
+        P_null = opt.null_projector(Vt, rank)
+        return dict(accepted=bool(ok), trial=trial, dx=dx, step_ratio=rho,
+                    dx_range_norm=float(np.linalg.norm(opt.range_projector(Vt, rank) @ dx)),
+                    dx_null_norm=float(np.linalg.norm(P_null @ dx)),
+                    g_null_norm=None if (self.spectral_only or gx is None)
+                    else float(np.linalg.norm(P_null @ np.asarray(gx, dtype=float))),
+                    wrms=float(np.sqrt(np.mean(r1 ** 2))),
+                    mhz_rms=float(np.sqrt(np.mean(np.asarray(r_mhz) ** 2))),
+                    prior_wrms=prior_wrms, model_delta=model_delta,
+                    geometry_valid=valid, guardrail_stats=stats)
 
     @staticmethod
     def _ic_prior_trial_rows(rows, coord_set, trial_coords):
@@ -3576,11 +3603,22 @@ class MolecularOptimizer:
                     accepted = spectral_accept = False
                 _fb = self._cartesian_fallback_step(
                     _J_cart, residual_w, _g_cart, _H_cart, B, _ic_prior_rows,
-                    _ic_coord_set, _ic_B_active)
-                if _fb is not None:
-                    (trial_coords, dx, wrms_after, mhz_rms_after, step_ratio,
-                     geometry_valid, guardrail_stats) = _fb
-                    spectral_accept = geometry_accept = accepted = _fb_used = True
+                    _ic_coord_set, _ic_B_active, alpha_q_eff)
+                # Once switched the pass's step IS the Cartesian one, refused
+                # or not, so the history describes it; before, only an
+                # accepted retake replaces the refused internal step.
+                if _fb is not None and (_fb["accepted"] or self._ic_switched):
+                    trial_coords, dx = _fb["trial"], _fb["dx"]
+                    wrms_after, mhz_rms_after = _fb["wrms"], _fb["mhz_rms"]
+                    step_ratio, model_delta = _fb["step_ratio"], _fb["model_delta"]
+                    prior_wrms_after = _fb["prior_wrms"]
+                    geometry_valid, guardrail_stats = _fb["geometry_valid"], _fb["guardrail_stats"]
+                    dx_range_norm, dx_null_norm = _fb["dx_range_norm"], _fb["dx_null_norm"]
+                    g_null_norm = _fb["g_null_norm"]
+                    _bt_err = None   # no back-transform: the step is Cartesian
+                    _fb_used = True
+                if _fb is not None and _fb["accepted"]:
+                    spectral_accept = geometry_accept = accepted = True
                     self._ic_fallback_steps += 1
                     self._ic_switched = True
             if accepted:
@@ -3644,8 +3682,8 @@ class MolecularOptimizer:
                     cartesian_fallback=_fb_used,
                     internal_rank=(rank if self.coordinate_mode == "internal" else None),
                     internal_singular_values=(sv.tolist() if self.coordinate_mode == "internal" else None),
-                    dq_range_norm=(dx_range_norm if self.coordinate_mode == "internal" else None),
-                    dq_null_norm=(dx_null_norm if self.coordinate_mode == "internal" else None),
+                    dq_range_norm=(dx_range_norm if self.coordinate_mode == "internal" and not _fb_used else None),
+                    dq_null_norm=(dx_null_norm if self.coordinate_mode == "internal" and not _fb_used else None),
                     spectral_accept=spectral_accept,
                     quantum_accept=quantum_accept,
                     quantum_gate_active=quantum_gate_active,
@@ -3692,13 +3730,17 @@ class MolecularOptimizer:
             dE_str = f"{delta_energy:>12.3e}" if delta_energy is not None else f"{'n/a':>12}"
             gnull_str = f"{g_null_norm:>10.3e}" if g_null_norm is not None else f"{'n/a':>10}"
             kappa_str = f"{kappa_J:.2e}" if kappa_J is not None else "n/a"
+
+            def _fmt_opt(v, spec):
+                # None on a Cartesian fallback step, which has no q-space split.
+                return format(v, spec) if v is not None else format("n/a", spec[:3])
             stage_suffix = ""
             if autoconfig_controls is not None:
                 stage_suffix = f" [{autoconfig_controls['stage']}]"
             print(
                 f"{it+1:>5}  {step_norm:>12.4e}  {wrms:>12.4f}  {freq_rms:>12.4f}  "
                 f"{rank:>6d}  {sv_kept:>12.4e}  κ(J)={kappa_str}  "
-                f"{dx_range_norm:>10.3e}  {dx_null_norm:>10.3e}  "
+                f"{_fmt_opt(dx_range_norm, '>10.3e')}  {_fmt_opt(dx_null_norm, '>10.3e')}  "
                 f"{gnull_str}  {alpha_q_eff:>8.3f}  {dE_str}  "
                 f"lambda={self.optimizer.lambda_damp:.2e} {status}{stage_suffix}"
             )
