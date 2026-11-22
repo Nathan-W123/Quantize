@@ -184,3 +184,44 @@ def test_it_removes_a_finite_difference_leak_and_follows_the_flag():
         assert np.abs(JP - JP @ P).max() <= 1e-12 * np.abs(J).max()
     opt.project_rigid_modes = False
     assert opt._rigid_free_jacobian(J_cd) is J_cd
+
+
+def test_a_conformer_mixture_keeps_its_rigid_rows():
+    # A mixture's conformers are the base plus offsets fixed in the lab
+    # frame, so turning the base changes its constants: its Jacobian has a
+    # real rigid part, which the step must keep.
+    import dev.analytic_water_backend  # noqa: F401  (registers analytic_water)
+    from test_cd_rows_sign import _isos, _x0
+    x0 = _x0()
+    th = 0.3
+    rot = np.array([[1, 0, 0], [0, np.cos(th), -np.sin(th)], [0, np.sin(th), np.cos(th)]])
+    with contextlib.redirect_stdout(io.StringIO()):
+        opt = Q.MolecularOptimizer(
+            elems=["O", "H", "H"], coords=x0, isotopologues=_isos(None), use_autoconfig=False,
+            max_iter=5, auto_systematic_sigma=False, coordinate_mode="cartesian", symmetry=None,
+            spectral_only=True, quantum_backend="none", use_conformer_mixture=True,
+            conformer_defs=[{"name": "a", "coords": x0, "weight": 0.6},
+                            {"name": "b", "coords": _x0(r=0.97, deg=100.0) @ rot.T, "weight": 0.4}])
+    J, _ = opt.spectral.stacked(opt.coords)
+    P = opt._rigid_mode_projector(np.asarray(opt.coords, float), opt._rigid_ref_masses)
+    # Measured: 0.11 of |J|.
+    assert np.linalg.norm(J - J @ P) > 1e-2 * np.linalg.norm(J), "premise: rows depend on orientation"
+    assert opt._rigid_free_jacobian(J) is J
+
+
+def test_the_degrees_of_freedom_count_the_same_jacobian(monkeypatch):
+    # chi-square's effective degrees of freedom feed the rescaling gate; they
+    # must be counted on the Jacobian the step solves with. Measured on the
+    # fits above the leak moves them by ~1e-5 (fluoroacetylene: 4.8936
+    # against 4.8958), too little to test by value, so the call is checked.
+    opt, _, _ = _fit(3, monkeypatch)
+    seen = []
+    real = Q.MolecularOptimizer._rigid_free_jacobian
+
+    def spy(self, J):
+        seen.append(np.asarray(J).shape)
+        return real(self, J)
+
+    monkeypatch.setattr(Q.MolecularOptimizer, "_rigid_free_jacobian", spy)
+    opt._chi2_dof()
+    assert seen and seen[0][1] == 9

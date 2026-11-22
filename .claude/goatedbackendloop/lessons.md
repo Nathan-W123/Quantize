@@ -79,11 +79,17 @@ once by a container swap).
 - Observation: T-35 named "the rotational rows' curvature" from a nonlinearity statistic; the steps were rigid rotations driven by an orientation-dependent prediction (fact-check fc35), and the fix (D-88) removed the crawl.
 - Evidence: 2026-11-22 · rigid-body share of the steps >= 0.9998; a 0.01 rad turn moved the distortion prediction 0.5%; after the fix all 18 fits stop in 11-12 iterations.
 - Adjustment: before attributing a refused or crawling step to curvature, project it onto the rigid-body directions and check that every row is invariant under rigid motion.
-- Scope: project · Status: provisional · Outcomes: -
+- Scope: project · Status: provisional · Outcomes: +2026-11-22 (T-38: splitting fluoroacetylene's steps found them 95% translation + rotation at once, which pointed at J^T r's rigid part and the finite-difference fallback; my first hypothesis, a wrong rigid-mode count, was ruled out by the same numbers)
 
 ### L-24 · Decide a branch outside any loop a derivative can cross, and test at the boundary
 - Observation: T-37's per-geometry linear test switched branches between a prediction and its finite-difference steps; NaN filled the Jacobian and a CLI fit crashed. My tests sat away from the threshold; the verifier probed it.
 - Evidence: 2026-11-22 · 5731f0c -> 86c99da -> 8ef6bd8: CLI HCN+DCN abort fixed by pinning once per isotopologue; then HNCO and diatomics mis-pinned, fixed by B-alone + 0.4 A off-axis.
 - Adjustment: pin a discrete choice once per fit (as the reduction is), never per evaluation; put one test exactly at each threshold and one for each class the rule must reject (here: B and C observed, an off-axis atom, a diatomic).
+- Scope: project · Status: provisional · Outcomes: -
+
+### L-25 · Before calling a projection exact, check every row family that reaches it
+- Observation: T-38 claimed J = J P for every Cartesian row; I checked rotational constants, distortion rows and the internal prior, not the conformer mixture, whose lab-frame offsets make its rows orientation-dependent. The verifier's mixture fit stopped at chi-square 718 instead of 58.
+- Evidence: 2026-11-22 · 7d8c068 -> fixed by skipping the projection for a conformer mixture (test with a premise).
+- Adjustment: list every block stacked before the change (grep the call site's builders) and measure each one's invariance; any I skip goes into the docstring as unchecked.
 - Scope: project · Status: provisional · Outcomes: -
 

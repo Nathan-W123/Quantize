@@ -2446,7 +2446,8 @@ class MolecularOptimizer:
         """The Cartesian Jacobian with its rigid-body part removed.
 
         No row the step solves with depends on where the molecule sits or how
-        it is turned -- rotational constants, distortion constants predicted
+        it is turned (but see the conformer mixture below) -- rotational
+        constants, distortion constants predicted
         in the Hessian's own frame, internal-coordinate priors -- so the true
         Jacobian satisfies J = J P exactly and this changes nothing on the
         analytic path (1e-15 of |J|, eight benchmark molecules). The finite-
@@ -2465,8 +2466,18 @@ class MolecularOptimizer:
 
         Under the same flag as the quantum terms' projection: one switch
         decides whether the step sees rigid motion at all.
+
+        Not with a conformer mixture. Its conformers are the base geometry
+        plus offsets fixed in the lab frame, so its rows do depend on the
+        base's orientation, and turning the base is a real move of that
+        model: projected, a water mixture (second conformer turned 0.3 rad,
+        spectral only) stopped at chi-square 718 instead of 58, on a
+        rotational gradient of 664 against 1.4e-4 in the internal directions
+        (T-38 verifier).
         """
         if (not self.project_rigid_modes) or (self._rigid_ref_masses is None):
+            return J
+        if getattr(self.spectral, "conformer_mixture", None) is not None:
             return J
         J = np.asarray(J, dtype=float)
         if J.ndim != 2 or J.shape[1] != 3 * len(self.coords):
@@ -2829,7 +2840,10 @@ class MolecularOptimizer:
         n_obs = int(rw.size)
         if n_obs == 0:
             return 0.0
-        J = np.asarray(J, dtype=float)
+        # The Jacobian the step solves with (see _rigid_free_jacobian): a
+        # finite-difference leak into rigid motion would otherwise count as
+        # data-touched directions (fluoroacetylene: nu 4.8936 against 4.8958).
+        J = self._rigid_free_jacobian(np.asarray(J, dtype=float))
         JTJ = J.T @ J
         if self.spectral_only or self.quantum is None:
             sv = np.linalg.svd(J, compute_uv=False)

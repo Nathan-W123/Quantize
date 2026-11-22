@@ -16,7 +16,8 @@ Request: T-38 (N28, D-93): diagnose why fluoroacetylene's plain joint fit crawls
 - N3 · propose · Q-57 · auto-picked option 1 (D-94)
 - N4 · build · J P_rigid in the Cartesian loop; SVD.py comment; tests · after: N3 · done: 8 tests (toy linear triatomic, no pyscf), mutations M1 (loop call removed: 3 fail) and M2 (helper returns J: 4 fail); CI selection 1665 passed; FA/HCOF/water on the shipped path match the prototype (<= 2e-9)
 - N4b · measure · do the benchmark's fluoroacetylene rows move? · after: N4 · done: RHF, 9 configs (base, offsets, track, offsets+track, track_direct, track_quadratic, cd, offsets+cd, lam; same theory cache, worktrees t38/wb vs t38/wa): at most 0.0095 mA (track 13.6452 -> 13.6357), all others <= 1e-4; the unfixed code itself varies 1.6e-5 between identical configs (offsets vs offsets+cd at cd_weight 0). README rows (2 decimals) unchanged. B3LYP not rerun (inferred from RHF). 'elec' config needs pyscf.prop, absent here.
-- N5 · verify · independent verifier on 7d8c068 (t38v/) · after: N4 · running
+- N5 · verify · independent verifier on 7d8c068 (t38v/) · after: N4 · done: claims 2-5 held (45 old/new pairs <= 3.4e-5 mA; FA from rotated/translated starts <= 3.4e-4 mA apart vs 1.96-3.91 before; exactly linear 5 modes; flag off bit-identical); claim 1 refuted for the conformer mixture (lab-frame offsets: water mixture chi2 58 -> 718, not stationary); _chi2_dof read the raw J; side find: internal prior angle rows 57.3x (N29)
+- N6 · fix · skip the projection for a conformer mixture; _chi2_dof on the projected J; 2 tests + mutations · after: N5 · done: mixture fit back to chi2 57.795 / 43 iterations (identical to before); CI selection 1667 passed
 - N1: the rigid-mode count is right (6 kept at 179.7 deg, s_min 7e-4 > 1e-8;
   5 only when exactly linear). From iteration ~10 the steps are 95%
   translation + rotation (5.64e-3 of 5.95e-3 A translation; internal part

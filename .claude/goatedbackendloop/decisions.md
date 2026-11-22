@@ -971,5 +971,5 @@
 - Why: T-38: near-linear molecules (B ~ C, gap/scale < 1e-4) take the finite-difference Jacobian, which leaks 1.5e-5 of |J| into rigid motion; the joint matrix has only the 1e-8 floor and lambda there, so the step became 95% translation/rotation and the fit crawled (fluoroacetylene 57 iterations, stopped 2.6 mA from its optimum). The true Jacobian has no rigid part, so the projection is exact; prototype: fluoroacetylene 19 iterations (same as the analytic Jacobian), 8 other molecules unchanged to 1e-6 mA.
 - Alternatives considered: the analytic Jacobian nearer degeneracy (Q-57 option 2, not chosen); a README note only.
 - Source: auto-picked, no answer in 15 min (Q-57)
-- Revisit if: a Jacobian row is found that legitimately depends on the molecule's position or orientation.
+- Revisit if: a Jacobian row is found that legitimately depends on the molecule's position or orientation. Found (T-38 verifier): the conformer mixture (lab-frame offsets); the projection is skipped for it (rows unprojected, results as before). _chi2_dof counts the same projected Jacobian.
 
