@@ -779,9 +779,9 @@ class SpectralEngine:
         # constants (T-32), 13 of 27 rows -- every DJ but water's, and five
         # DJK / DK -- at 1.4-8.7x the model error. Measured with synthetic
         # data on three of them, removing it moved bonds 0.2-31 mA with no
-        # consistent gain (bond RMS closer to the reference in 3 of 9), while
-        # the rows themselves, 30% off the prediction, moved bonds up to 42 mA
-        # as shipped -- so it is kept, and the README says so.
+        # consistent gain (bond RMS closer to the reference in 3 of 9), in fits
+        # that often did not converge (T-33: with autoconfig off the trust
+        # radius only shrinks) -- so it is kept, and the README says so.
         meas = iso.get("cd_sigma") or {}
         model = iso.get("cd_model_sigma") or self._default_cd_sigma(obs)
         sigma = np.array(

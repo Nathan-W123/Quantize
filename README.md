@@ -248,17 +248,19 @@ constraints, and published CO/H₂O constants — no Psi4 or ORCA needed).
 >
 > Measured 2026-11-22 before relying on it (HF/6-31G; formyl fluoride, vinyl fluoride and
 > chlorofluoromethane; synthetic `cd_observed` at 0.7, 1.0 and 1.3 times the harmonic prediction at
-> the reference structure; `cd_weight` 1). The rows slow the fit: the three fits without them stopped
-> after 11–12 iterations, while of the nine with them four stopped after 59–133 and five were still
-> moving at 200. Observed constants 30% off the prediction (0.6–1.1 times the rows' stated model
-> sigma) moved the bonds by up to 42 mÅ and the angles by up to 2.2° from the fit without rows, up
-> to 2.9 times a bond's reported width (formyl fluoride's C=O: 28.9 against 9.8 mÅ); matching data
-> moved them by at most 2.8 mÅ. Several of these fits had not converged, so read the numbers as what
-> a run returns, not as optima. For these molecules $\Delta_J$ is 3–8 kHz, so 40% of it is below the
-> rows' 0.01 MHz sigma floor, which then sets the sigma 3–8 times above the model error. Removing the
-> floor changed the bonds by 0.2–31 mÅ and brought the bond RMS closer to the reference structures in
-> 3 of 9 cases (two of them by under 0.4 mÅ), so it stays. Compare a distortion-row fit with one
-> without.
+> the reference structure; `cd_weight` 1). The rows make the fit hard to converge: without them the
+> fits stopped after 11–12 iterations; with them 2 of 9 had not stopped at 200 with the optimizer's
+> autoconfig on (the default), and 5 of 9 with it off, as the benchmark scripts run it, where the
+> trust radius only ever shrinks. Where the answer lands then depends on the settings. With
+> autoconfig on, observed constants 30% off the prediction (0.6–1.1 times the rows' stated model
+> sigma) moved the bonds 1.1–3.5 mÅ and the angles at most 0.15° from the fit without rows; with it
+> off, up to 42 mÅ and 2.2°, and in two of those six cases the two settings ended 37–44 mÅ apart on
+> the same data. Matching data moved the bonds by at most 3.2 mÅ either way. For these molecules
+> $\Delta_J$ is 3–8 kHz, so 40% of it is below the rows' 0.01 MHz sigma floor, which then sets the
+> sigma 3–8 times above the model error. Removing the floor (autoconfig off) changed the bonds by
+> 0.2–31 mÅ and brought the bond RMS closer to the reference structures in 3 of 9 cases (two of them
+> by under 0.4 mÅ), so it stays. Compare a distortion-row fit with one without, and check that it
+> stopped on its own rather than at `max_iter`.
 
 > **Model error.** The reported widths include the $B_0$-versus-$B_e$ model
 > error, propagated as shared across isotopologues, only where a row carries it:

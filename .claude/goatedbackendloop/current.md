@@ -22,7 +22,9 @@ Request: (D-82, auto-picked at Q-48) Diagnose why fits with distortion rows do n
 - N1 · measure · full history of the failing fit · after: none · done · handoff: -
 - N2 · measure · no Hessian refresh · after: N1 · done: not the cause · handoff: -
 - N3 · measure · rows' Jacobian vs FD · after: N1 · done: not the cause · handoff: -
-- N3b · measure · trust radius: autoconfig on / growth prototype, 9 cases + no-row · after: N3 · running · handoff: -
+- N3b · measure · trust radius: autoconfig on / growth prototype, 9 cases + no-row · after: N3 · done · handoff: -
+- N3c · build · correct T-32's README note and comment (my own wrong figures) · after: N3b · done · handoff: -
+- N3d · verify · independent fact-check of the corrected note · after: N3c · pending · handoff: -
 - N4 · gate · proposal (Q-49) · after: N2, N3 · pending · handoff: -
 
 ## Progress
@@ -41,6 +43,19 @@ Request: (D-82, auto-picked at Q-48) Diagnose why fits with distortion rows do n
   Same fit with autoconfig on: plateau at 18 iterations; with a prototype
   that doubles the radius after an accepted step (capped at the start
   value): plateau at 84. All three answers agree within 0.4 mA / 0.02 deg.
+- N3b (t33/fits, compare.py): the 9 shipped cases + no-row fits, autoconfig on
+  and growth prototype, max_iter 200. Autoconfig on: no-row 12 iterations;
+  with rows 7 of 9 stop (14-167), 2 hit 200 (FF and VF at x0.7); rows 30% off
+  move bonds 1.1-3.5 mA, angles <= 0.15 deg from the no-row fit (shipped,
+  autoconfig off: up to 42 mA / 2.2 deg). Same data, autoconfig on vs off:
+  44.4 and 37.0 mA apart (FF x0.7, CH2ClF x1.3), 1.8-11.2 elsewhere. The growth
+  prototype still hits 200 in 4 of 9 and ends 2-39 mA from its no-row fit.
+  So T-32's "up to 42 mA" was a property of autoconfig-off fits that had not
+  converged, not of the rows' optimum. Which answer is the optimum in the
+  disagreeing cases is not settled (the rows' prediction uses the Hessian of
+  each fit's last quantum point, so each fit's objective differs too).
+- N3c: README note and the comment at the floor rewritten on both settings'
+  numbers (each recomputed by script).
 
 ## Observations
 
