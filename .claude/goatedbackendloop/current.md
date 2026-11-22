@@ -18,12 +18,32 @@ Request: (D-78, auto-picked at Q-44) N24: measure how far the reported answer de
   bonds and angles, and which coordinates carry it.
 
 ## Graph
-- N1 · measure · rerun 10 configs instrumented · after: none · pending · handoff: -
-- N2 · analyse · |dq| / sigma per near-tied pair · after: N1 · pending · handoff: -
-- N3 · gate · proposal (Q-45) · after: N2 · pending · handoff: -
+- N1 · measure · rerun 10 configs instrumented · after: none · done · handoff: -
+- N2 · analyse · |dq| / sigma per near-tied pair · after: N1 · done · handoff: -
+- N3 · gate · proposal (Q-45) · after: N2 · asked · handoff: -
 
 ## Progress
+- N1: 10 `cli run`s at 62beb3f (t31/logs), rc 0, 3 starts each; the runs'
+  own near_tied_starts listed 7 pairs in 5 runs (8.6-20.6 mA largest atom,
+  same set as T-26: acetyl fluoride x2, fluoroethane x2, VF cold).
+- N2 (t31/analyse.py, analyse.out): per near-tied pair, the largest
+  |q_other - q_selected| / sigma_selected over the reported bonds and
+  angles (the posterior has no dihedrals): bonds max 0.29 (median 0.11),
+  angles max 0.21 (median 0.09); none above 1. Largest: fluoroethane warm
+  bond 2-8, 2.93 mA against sigma 10.2 mA; angle 0.35 deg against 1.83 deg.
+  Reported sigmas: bonds 9.2-16.7 mA, angles 1.2-2.1 deg. So the 9-21 mA
+  atom spread is along torsions (H positions); the quoted bonds and angles
+  move by under a third of their own width. The one start above 1 sigma
+  (formyl fluoride cold, start 2: bond 1-2 1.07) is 6.9e-4 Ha higher and
+  correctly not selected or listed.
 
 ## Observations
 
 ## Pending question
+Q-45 · asked 2026-11-22T05:38Z · deadline 05:53Z · auto-pick 1
+1. (Recommended) Put the measure in the near-tie note: per listed start, the
+   largest |dq| / sigma over the reported bonds and angles, from the two
+   starts' own posteriors (no extra compute); answers and ranking unchanged.
+2. Docstring only: T-31's numbers beside near_tied_starts; close N24.
+3. Close N24 in the records only.
+4. Done for now.
