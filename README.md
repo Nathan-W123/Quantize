@@ -672,6 +672,8 @@ On Windows, you can instead set `orca_exe` in `BASE_SETTINGS` to your `orca.exe`
 
 **Parallel multistart + ORCA:** many licenses allow only one ORCA job at a time. `run_multistart` therefore defaults to **`max_workers=1`** when `quantum_backend="orca"`. If your license allows multiple processes, set **`QUANTIZE_ALLOW_PARALLEL_ORCA=1`** before running to use the preset worker count.
 
+**Parallel workers and in-process backends:** with more than one worker, bootstrap refits and multistart starts run in forked processes. A child forked from a process whose quantum backend has started threads (pyscf or Psi4 with `OMP_NUM_THREADS` above 1) can hang for ever: a water bootstrap hung 3 of 3 times at 50 samples with four threads. One worker (the default) runs the refits in-process and cannot hang; with several, set `OMP_NUM_THREADS=1` or use ORCA, which runs as a separate program.
+
 **Paths with spaces:** older ORCA builds can mishandle absolute paths that contain spaces; the driver runs ORCA with `cwd` set to the job directory and passes **`quantize_orca.inp`** by filename only. If you still see startup errors, move the project to a directory whose full path has no spaces.
 
 ## Interpreting output

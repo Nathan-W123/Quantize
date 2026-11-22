@@ -398,16 +398,31 @@ class BootstrapEngine:
             jobs.append((self.optimizer, perturbed, sample_dir, i, seed, shift, polish))
 
         results: list[BootstrapSampleResult] = []
-        with ProcessPoolExecutor(max_workers=self.config.max_workers) as pool:
-            futures = [pool.submit(_run_bootstrap_worker, job) for job in jobs]
-            for fut in as_completed(futures):
-                res = fut.result()
-                results.append(res)
-                if res.success:
-                    rms_label = "n/a" if res.rms_mhz is None else f"{res.rms_mhz:.4f} MHz"
-                    print(f"  [sample {res.idx:03d}] Finished. RMS: {rms_label}")
-                else:
-                    print(f"  [sample {res.idx:03d}] FAILED: {res.error}")
+
+        def _done(res):
+            results.append(res)
+            if res.success:
+                rms_label = "n/a" if res.rms_mhz is None else f"{res.rms_mhz:.4f} MHz"
+                print(f"  [sample {res.idx:03d}] Finished. RMS: {rms_label}")
+            else:
+                print(f"  [sample {res.idx:03d}] FAILED: {res.error}")
+
+        if self.config.max_workers <= 1:
+            # One worker runs the refits here, not in a forked child. A child
+            # forked from a process whose quantum backend has started threads
+            # (pyscf with OMP_NUM_THREADS=4) inherits their locks and can hang
+            # for ever: the water split check hung 3 of 3 times at 50 samples,
+            # and finishes in 6-7 s run here. Each refit deep-copies the
+            # optimizer either way, and the clouds are bit for bit the pool's
+            # (water, formyl fluoride, 20 samples); time 0.8-1.3 s against
+            # 1.0-1.1 s (T-42). Several workers still fork: see the README.
+            for job in jobs:
+                _done(_run_bootstrap_worker(job))
+        else:
+            with ProcessPoolExecutor(max_workers=self.config.max_workers) as pool:
+                futures = [pool.submit(_run_bootstrap_worker, job) for job in jobs]
+                for fut in as_completed(futures):
+                    _done(fut.result())
 
         results.sort(key=lambda r: r.idx)
         success = [r for r in results if r.success]
