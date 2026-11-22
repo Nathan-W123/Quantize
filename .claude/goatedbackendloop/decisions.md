@@ -1113,3 +1113,12 @@
 - Alternatives considered: ozone's 0.006-width stop; N34 dimer in joint mode; done for now.
 - Source: auto-picked, no answer in 15 min (Q-73)
 - Revisit if: the user answers the decision page or picks another option.
+
+### D-115 · Split fits: measure the stall and say so (2026-11-22)
+- Decision: a per-fit check (MolecularOptimizer.split_stall) measures how far the split fit stopped from the minimum of its null-space energy (one Newton step on the fit's quadratic model, in posterior widths and Angstrom); split_inconsistency reports it first, with the measured cause, ahead of the coupling note. Reporting only: split answers unchanged.
+- Why: T-48: split fits stall where their acceptance test refuses the energy-only null step on directions the data still weigh (rank cut sv_min_abs = 1/sigma_x); the null-space minimum lies 2.9-16.6 mA away on 5 of 7 molecules, the answer moves up to 1.47 widths with the trust radius, and no covariance formula reproduces the refit spread (coupling-only linear response 0.02-4.4x). Today's warning blames the coupling, which was refuted.
+- Alternatives considered: also withhold split widths when it fires (Q-74 option 2); fix the split solver (option 3: changes split answers, the user's call).
+- Source: auto-picked, no answer in 15 min (Q-74)
+- Revisit if: the user wants split widths withheld or the split solver fixed.
+- Outcome (2026-11-22, T-48): split_stall reads 0 where the data reach every direction (water, ozone, the five split-water test fixtures) and 0.10-43 widths on the seven benchmark molecules with a null space; 11 of their 14 Cartesian and internal fits pass the 0.25 limit (FA Cartesian 0.17, CFM 0.21 / 0.10 keep the coupling note). It equals distance_to_mode to within a few % there, so it replaces the off-mode note's rank-disagreement attribution, which was wrong in Cartesian mode (step and posterior null spaces identical). README split section corrected (it said sv_min_abs defaults to 0; it is 1/sigma_x with the quantum prior on). Tests: dev/tests/test_split_stall.py, 4/4 mutations caught (one only after moving the Newton-step test off the quantum point); CI selection 1718 passed, 15 skipped.
+

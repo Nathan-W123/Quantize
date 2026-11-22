@@ -2244,6 +2244,73 @@ class MolecularOptimizer:
         K = np.linalg.solve(Vn.T @ Hb @ Vn, Vn.T @ Hb @ rest)
         return float(np.linalg.norm(K, 2))
 
+    def _split_null_newton(self, x):
+        """One Newton step on the fit's quadratic quantum model over the
+        split posterior's null space, in the physical basis: (step, basis),
+        or (None, basis) when the data reach every physical direction."""
+        Pn = self._split_energy_projector()
+        g, Hp = self._projected_reference_terms()
+        Hp = np.asarray(Hp, dtype=float)
+        Hs = np.asarray(self.optimizer._spd_hessian(Hp), dtype=float)
+        B = self.physical_basis(coords=x, n=Hs.shape[0])
+        N = B.T @ Pn @ B
+        w, V = np.linalg.eigh(0.5 * (N + N.T))
+        Vn = V[:, w > 0.5]
+        if Vn.shape[1] == 0:
+            return None, B
+        # The model's gradient here, as the fit's quadratic surface gives it.
+        gx = np.asarray(g, dtype=float) + Hp @ (x - self._orca_ref_coords).ravel()
+        Hb = B.T @ Hs @ B
+        return -Vn @ np.linalg.solve(Vn.T @ Hb @ Vn, Vn.T @ (B.T @ gx)), B
+
+    #: A split fit whose null-space energy has its minimum further than this
+    #: from the fit, in posterior widths (as distance_to_mode counts them),
+    #: stopped short of the split step's fixed point (split_stall).
+    SPLIT_STALL_LIMIT = 0.25
+
+    def split_stall(self):
+        """How far the split fit stopped from the minimum of its null-space
+        energy: (posterior widths, largest atom move in Angstrom), or None
+        off the split objective.
+
+        The split step fits the data on the range of its stacked Jacobian
+        and lets the quantum surface alone decide the rest, so its fixed point
+        has Vn^T g = 0: no energy gradient left along the null space. The
+        rank is cut at sv_min_abs = 1/sigma_x, which puts directions the data
+        still weigh (singular values 0.2-6% of the largest on formyl
+        fluoride, vinyl fluoride, chlorofluoromethane at HF/6-31G) on the
+        energy's side, while the acceptance test still scores the data there
+        -- formyl fluoride's null step takes its residual from 69 to 180 MHz
+        -- so the step is refused, the trust radius falls to its floor, and
+        the fit stops with that gradient unspent. One Newton step on the
+        fit's quadratic model, over the null space the posterior reads,
+        measures how far: on all seven benchmark molecules with a null space,
+        2.9-16.6 mA (largest atom) on five and 1.5-2.2 A -- past anything the
+        quadratic describes -- on acetyl fluoride and isocyanic acid (T-48;
+        11 of their 14 Cartesian and internal fits pass SPLIT_STALL_LIMIT;
+        fluoroacetylene's Cartesian fit and both of chlorofluoromethane's
+        read 0.17, 0.21 and 0.10 widths). Where it stops then
+        depends on the step schedule (a trust radius of 0.05 or 0.2 instead
+        of 0.1 moved the answer up to 1.47 of its reported widths), so
+        neither the split posterior nor any linear response describes the
+        answer or its spread (a coupling-only response matched T-40's refit
+        clouds no better than the posterior: 0.02-4.4x against 0.02-5.7x).
+        Zero when the data reach every physical direction.
+        """
+        if (self.spectral_only or self.quantum is None
+                or self.optimizer.objective_mode == "joint"):
+            return None
+        x = np.asarray(self.coords, dtype=float)
+        dn, B = self._split_null_newton(x)
+        if dn is None:
+            return 0.0, 0.0
+        H_spec, H_prior = self._posterior_blocks(x)[:2]
+        M = B.T @ (H_spec + H_prior) @ B
+        wm, Vm = np.linalg.eigh(0.5 * (M + M.T))
+        widths = float(np.max(np.abs(Vm.T @ dn) * np.sqrt(np.maximum(wm, 0.0) + 1e-8)))
+        atom = float(np.abs((B @ dn).reshape(-1, 3)).max())
+        return widths, atom
+
     #: A split fit further than this from the mode its posterior describes,
     #: in posterior widths (the bootstrap's default refusal limit), is one
     #: whose step and posterior disagree about the objective -- once it has
@@ -2281,16 +2348,29 @@ class MolecularOptimizer:
     def split_inconsistency(self):
         """What may keep the split posterior from describing this split fit,
         for the report, or None (also None off the split objective): a fit
+        stalled short of its null-space energy's minimum (split_stall), one
         off its posterior's mode (split_off_mode), one stopped at max_iter
         short of it, or a nonzero null response (a detector: an error-model
         bootstrap measures whether it matters)."""
         coupling = self.split_coupling()
         if coupling is None:
             return None
+        term = (getattr(self, "termination", None) or {}).get("reason")
+        # Checked first: a stalled fit is also off its posterior's mode, and
+        # the coupling can read zero while it stalls (every direction on the
+        # energy's side: one-constant water at sigma_x 0.5 mA, 31 widths).
+        stall = self.split_stall()
+        if stall is not None and stall[0] > self.SPLIT_STALL_LIMIT and term != "max_iter":
+            return (f"the split fit stopped {stall[0]:.2g} posterior widths ({1e3 * stall[1]:.2g} mA "
+                    f"on its largest atom) short of the minimum of its null-space energy: the "
+                    f"split step leaves directions the data still weigh to the quantum surface, "
+                    f"its acceptance test refuses the moves there, and the fit stops where they "
+                    f"are refused, so its answer depends on the step schedule (formyl fluoride, "
+                    f"HF/6-31G: up to 1.5 widths between trust radii) and these widths describe "
+                    f"neither this answer nor its spread")
         off = self.split_off_mode()
         if off is not None:
             return off
-        term = (getattr(self, "termination", None) or {}).get("reason")
         d = float(self.distance_to_mode())
         if term == "max_iter" and d > self.SPLIT_MODE_LIMIT:
             return (f"the split fit stopped at max_iter {d:.2g} posterior widths from its "
