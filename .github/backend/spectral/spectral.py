@@ -118,7 +118,7 @@ def default_sigma_constants(obs_constants, component_indices=None):
     return out
 
 from backend.spectral.centrifugal_distortion import (
-    CD_LINEAR_PIN_REL_TOL,
+    CD_LINEAR_PIN_OFF_AXIS_ANG,
     reduction_for_asymmetry,
     rotational_constants_mhz,
     CD_NAMES,
@@ -143,15 +143,17 @@ CD_FIT_KEYS = ("DJ", "DJK", "DK")
 _CD_PRINTED: set = set()
 
 
-def _inertia_ratio(coords, masses) -> float:
-    """I_min / I_max of the principal moments (0 for an exactly linear chain)."""
+def _off_axis_ang(coords, masses) -> float:
+    """The largest distance (Angstrom) of any atom from the molecule's axis --
+    the line through the centre of mass along the principal axis of the
+    smallest moment. 0 for an exactly linear chain."""
     x = np.asarray(coords, dtype=float)
     m = np.asarray(masses, dtype=float)
     r = x - (m[:, None] * x).sum(0) / m.sum()
     inertia = (np.einsum("i,jk->jk", m * np.einsum("ia,ia->i", r, r), np.eye(3))
                - np.einsum("i,ij,ik->jk", m, r, r))
-    ev = np.sort(np.abs(np.linalg.eigvalsh(inertia)))
-    return float(ev[0] / ev[-1]) if ev[-1] > 0.0 else 0.0
+    axis = np.linalg.eigh(inertia)[1][:, 0]
+    return float(np.max(np.linalg.norm(r - np.outer(r @ axis, axis), axis=1)))
 
 
 def _abc_from(component_indices, obs_constants):
@@ -777,19 +779,19 @@ class SpectralEngine:
             return str(red)
         # A linear molecule: decided here, once, like the reduction, so every
         # prediction of the fit -- and each finite-difference step of the
-        # rows' Jacobian -- takes the same branch (CD_LINEAR_PIN_REL_TOL).
-        ratio = _inertia_ratio(coords, iso["masses"])
-        a_seen = any(0 in [int(i) for i in np.ravel(e.get("component_indices", []))]
+        # rows' Jacobian -- takes the same branch (CD_LINEAR_PIN_OFF_AXIS_ANG).
+        b_only = all(sorted({int(i) for i in np.ravel(e.get("component_indices", []))}) == [1]
                      for e in self.isotopologues)
-        if not a_seen and ratio < CD_LINEAR_PIN_REL_TOL:
+        off = _off_axis_ang(coords, iso["masses"])
+        if b_only and off < CD_LINEAR_PIN_OFF_AXIS_ANG:
             iso["cd_reduction"] = "linear"
-            iso["cd_reduction_source"] = (f"auto (linear: I_min/I_max {ratio:.1e} at the start "
-                                          f"geometry, no A observed)")
+            iso["cd_reduction_source"] = (f"auto (linear: B alone observed, atoms within "
+                                          f"{off:.2f} A of the axis at the start geometry)")
             if self._cd_rows_active():
                 _cd_print_once(
                     f"[cd-note] {iso.get('name', 'iso')}: predicted as a linear molecule (D "
-                    f"only, fitted as DJ; I_min/I_max {ratio:.1e}, no A observed); state "
-                    f"cd_reduction 'A' or 'S' if it is a symmetric top.")
+                    f"only, fitted as DJ; B alone observed, atoms within {off:.2f} A of the "
+                    f"axis); state cd_reduction 'A' or 'S' if it is not linear.")
             return "linear"
         abc, where = self._observed_abc(iso)
         if abc is None:

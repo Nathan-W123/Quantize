@@ -143,7 +143,8 @@ def test_the_rows_fit_d_alone_and_say_so(hess):
 # finite-difference steps of the rows' Jacobian fell in the linear branch,
 # where DJK and DK are NaN: the Jacobian filled with NaN and the SVD failed
 # (a CLI HCN + DCN fit aborted at its third start). The engine now pins the
-# branch with the reduction, once (CD_LINEAR_PIN_REL_TOL).
+# branch with the reduction, once (CD_LINEAR_PIN_OFF_AXIS_ANG: B alone observed
+# and every atom near the axis).
 
 def _past_the_threshold():
     from scipy.optimize import brentq
@@ -192,3 +193,47 @@ def test_a_stated_reduction_is_kept(hess):
     # An explicit asymmetric-top reduction is honoured even near-linear.
     cd = C.compute_cd_constants(hess, _bend(_hcn(), 0.5), MASSES, reduction="S", with_residual=False)
     assert cd.reduction == "S"
+
+
+def test_b_and_c_observed_or_an_atom_off_the_axis_is_not_linear(hess):
+    # HNCO observes B and C (no A) and was pinned linear by an inertia-ratio
+    # test; a methyl-capped symmetric top observes B alone but has hydrogens
+    # ~1 A off its axis.
+    se = _engine(hess, {"DJ": 0.08})
+    iso = se.isotopologues[0]
+    iso["component_indices"] = [1, 2]
+    iso["obs_constants"] = [44500.0, 44000.0]
+    iso.pop("cd_reduction", None)
+    with contextlib.redirect_stdout(io.StringIO()):
+        assert se._cd_reduction(iso, _bend(_hcn(), 2.0)) in ("A", "S")
+    se = _engine(hess, {"DJ": 0.08})
+    iso = se.isotopologues[0]
+    iso.pop("cd_reduction", None)
+    with contextlib.redirect_stdout(io.StringIO()):
+        assert se._cd_reduction(iso, _bend(_hcn(), 70.0)) in ("A", "S")   # H ~1 A off axis
+
+
+def test_a_diatomic_has_the_textbook_d():
+    # D = 4 B^3 / omega^2 for a diatomic, from an analytic Hessian: an
+    # independent route to the perpendicular-axis formula. Pinned linear it
+    # used to raise "Unknown reduction 'LINEAR'" (the branch needed 3 atoms).
+    m = np.array([12.0, 15.9949146196])
+    x = np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 1.128]])
+    e = np.array([0.0, 0.0, 1.0])
+    blk = 1.2 * np.outer(e, e)                              # Hartree / Bohr^2
+    H = np.block([[blk, -blk], [-blk, blk]])
+    cd = C.compute_cd_constants(H, x, m, reduction="linear", with_residual=False)
+    om_cm, _ = C.normal_modes(H, m, n_rigid=5)
+    om_mhz = float(om_cm[om_cm > 50.0][0]) * 29979.2458
+    b = C.rotational_constants_mhz(x, m)[1]
+    assert cd.reduction == "linear"
+    assert cd.DJ == pytest.approx(4.0 * b ** 3 / om_mhz ** 2, rel=1e-3)
+    iso = {"name": "CO", "masses": m.tolist(), "obs_constants": [b], "sigma_constants": [1.0],
+           "component_indices": [1], "cd_observed": {"DJ": cd.DJ}}
+    with contextlib.redirect_stdout(io.StringIO()):
+        se = SpectralEngine([iso], cd_weight=1.0, fit_cd_constants=True)
+        se.set_hessian_for_cd(H, coords=x)
+        J, r = se.stacked(x)
+    assert se.isotopologues[0]["cd_reduction"] == "linear"
+    assert r.size == 2 and np.all(np.isfinite(J)) and np.all(np.isfinite(r))
+

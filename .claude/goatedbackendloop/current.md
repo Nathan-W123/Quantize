@@ -21,7 +21,9 @@ Request: (D-89, auto-picked at Q-54) N27: what the distortion prediction and row
 - N4 · verify · tests + mutations, fixed-Hessian identity, FA fits, CI · after: N3 · done · handoff: -
 - N5 · verify · independent verifier · after: N4 · done: REFUTED (crash at the threshold) · handoff: -
 - N6 · build · pin the branch once per isotopologue (D-91) · after: N5 · done · handoff: -
-- N7 · verify · re-run the verifier's reproducers on the fix · after: N6 · pending · handoff: -
+- N7 · verify · re-run the verifier's reproducers on the fix · after: N6 · done: crash fixed; 2 refuted (HNCO, diatomic) · handoff: -
+- N8 · build · pin rule B-only + off-axis 0.4 A; diatomics; table pinned (D-92) · after: N7 · done · handoff: -
+- N9 · verify · verifier's pin3 / diatomic scripts on the fix · after: N8 · pending · handoff: -
 
 ## Progress
 - N1 (t37/linear.py): HF/6-31G Hessian at the linear reference. At the linear
@@ -68,6 +70,19 @@ Request: (D-89, auto-picked at Q-54) N27: what the distortion prediction and row
   ignored, any reduction switching by geometry, stated linear not
   normalised) each fail. CI selection 1654 passed; 213 distortion + CLI tests
   incl. slow pass.
+
+- N7 (t37v pin3.py, diatomic.py, jitter2.py): crash fixed (no NaN in any of
+  three CLI fits; jittered starts max ratio 6.3e-3, all pinned linear);
+  refuted: HNCO pinned linear (observes B, C), B-only CH3C#CCN-type tops too;
+  a pinned diatomic raised "Unknown reduction 'LINEAR'"; the harmonic table
+  still decided per geometry (printed DJ 1e8 MHz for jittered starts).
+- N8: off-axis distance: jittered HCN / FA starts <= 0.212 A (20000 each);
+  bent reference molecules >= 0.444 A (ozone), HNCO 0.696, CH3Cl 1.028.
+  Rule: B alone observed and off-axis < 0.4 A. Diatomic test against
+  4B^3/omega^2 (analytic Hessian, rel 1e-3). Mutations: components ignored,
+  no off-axis test, diatomics excluded -- each fails. hcn_lin CLI rerun:
+  exit 0, harmonic printout D 72.3-73.8 kHz for every start. CI selection
+  1656 passed; 215 distortion + CLI tests incl. slow pass.
 
 ## Observations
 - 2026-11-22 · I introduced a crash with a per-geometry branch inside a

@@ -1881,7 +1881,12 @@ class MolecularOptimizer:
                 "not a validation\n"
                 "                set; see dev/tests/test_cd_mapping_validation.py."
             )
-        pinned = {str(i.get("name", "iso")): i.get("cd_reduction")
+        # The reduction (or the linear branch) each isotopologue's rows use,
+        # pinned here if not yet, so the table is in the same one: decided per
+        # geometry instead, a jittered start of a linear molecule printed and
+        # attached DJ ~1e8 MHz.
+        _at0 = np.asarray(self.coords, dtype=float)
+        pinned = {str(i.get("name", "iso")): self.spectral._cd_reduction(i, _at0)
                   for i in self.spectral.isotopologues}
         # In the Hessian's own frame (SpectralEngine.cd_frame_coords says why).
         ref = self._hessian_ref_coords

@@ -945,9 +945,16 @@
 - Source: auto-picked, no answer in 15 min (Q-55)
 - Revisit if: a quasi-linear molecule (I_min/I_max near 1e-3) is fitted.
 
-### D-91 · Pin the linear branch once per isotopologue (fixes a regression from D-90) (2026-11-22)
+### D-91 · Pin the linear branch once per isotopologue (fixes a regression from D-90) (2026-11-22) · rule revised by D-92
 - Decision: the distortion rows decide linear-or-not once per isotopologue, with the reduction (SpectralEngine._cd_reduction): "linear" when no isotopologue observes A and the first geometry's I_min/I_max < CD_LINEAR_PIN_REL_TOL (2e-2), or when cd_reduction: linear is stated. compute_cd_constants switches by geometry only for reduction "auto" (CD_LINEAR_REL_TOL 1e-3); an explicit A, S or linear is honoured. The report says when stated DJK / DK are dropped; the harmonic printout gives D for a linear molecule.
 - Why: the verifier of 5731f0c found D-90's per-geometry switch broke fits: just past 1e-3 the prediction took the asymmetric-top path while finite-difference steps fell in the linear branch (DJK, DK NaN), the Jacobian filled with NaN and the SVD failed -- a CLI HCN + DCN fit aborted where the parent commit completed (multistart jitter puts 12-15% of starts past 1e-3). Fixed: its reproducer gives one finite DJ row and the SVD succeeds at the threshold; the same CLI config completes with both isotopologues pinned linear and the dropped keys reported.
 - Alternatives considered: refuse distortion rows for linear molecules; a single per-geometry threshold (crashes at the boundary); an explicit flag only (misses the common case).
 - Source: assumption, unconfirmed (a fix of my own regression, within D-90's scope)
 - Revisit if: a symmetric top with only B observed and I_min/I_max under 2e-2 is fitted (it would be pinned linear; state cd_reduction A or S).
+
+### D-92 · The linear pin: B alone observed and atoms near the axis; diatomics; the table pinned too (2026-11-22)
+- Decision: pin "linear" only when every isotopologue observes B alone and every atom of the first geometry lies within CD_LINEAR_PIN_OFF_AXIS_ANG (0.4 A) of the molecule's axis (replacing D-91's no-A / inertia-ratio rule); the linear branch also serves a pinned diatomic; the harmonic report table takes the pinned reduction.
+- Why: the verifier of 86c99da refuted D-91: HNCO (B and C observed, no A) and short B-only symmetric tops (CH3C#CCN, ratio ~1.3e-2) were pinned linear, and a diatomic pinned linear raised "Unknown reduction 'LINEAR'" (the branch needed 3 atoms; at 5731f0c CO built its rows). Measured: 20000 jittered HCN / fluoroacetylene starts reach 0.21 A off-axis; every bent reference molecule has an atom >= 0.44 A off (ozone), methyl hydrogens ~1.0 A. The diatomic's D matches 4B^3/omega^2 to 1e-3 on an analytic Hessian.
+- Alternatives considered: a tighter inertia ratio (2x margins at best, fails on HNCO's observed C); an explicit flag only.
+- Source: assumption, unconfirmed (fix of my own regression within D-90's scope)
+- Revisit if: a linear molecule's isotopologue lists C, or a molecule with every atom within 0.4 A of its axis is not linear.
