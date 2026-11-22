@@ -52,8 +52,12 @@ THEORY_DR, THEORY_DTHETA = 10.9, -0.808
 EXPT_DR, EXPT_DTHETA = 13.2, -0.643
 
 
-def run(**optimizer_overrides):
+def run(run_root=None, **optimizer_overrides):
+    """One CLI-path fit; run_root overrides the config's output root (tests
+    pass tmp_path so the run directory does not land in the repository)."""
     cfg = copy.deepcopy(yaml.safe_load(_CONFIG.read_text(encoding="utf-8")))
+    if run_root is not None:
+        cfg.setdefault("output", {})["root"] = str(run_root)
     cfg["quantum"]["backend"] = "analytic_water_detuned"
     cfg.setdefault("optimizer", {}).update(optimizer_overrides)
     validate_config(cfg)

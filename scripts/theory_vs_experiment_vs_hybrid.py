@@ -65,8 +65,12 @@ def structure(coords):
     return 0.5 * (r1 + r2), theta
 
 
-def _pipeline(backend, harmonic, anharmonic, **optimizer):
+def _pipeline(backend, harmonic, anharmonic, run_root=None, **optimizer):
+    """One CLI-path fit; run_root overrides the config's output root (tests
+    pass tmp_path so the run directory does not land in the repository)."""
     cfg = copy.deepcopy(yaml.safe_load(_CONFIG.read_text(encoding="utf-8")))
+    if run_root is not None:
+        cfg.setdefault("output", {})["root"] = str(run_root)
     cfg["quantum"]["backend"] = backend
     cfg["rovibrational_corrections"]["harmonic_from_hessian"] = harmonic
     cfg["rovibrational_corrections"]["anharmonic_from_hessian"] = anharmonic

@@ -125,7 +125,7 @@ def test_full_chain_improves_the_bond_length_end_to_end(tmp_path):
     assert abs(target[2] - b_e[2]) < 0.10 * abs(b_0[2] - b_e[2])
 
 
-def test_hybrid_beats_both_theory_and_experiment_alone():
+def test_hybrid_beats_both_theory_and_experiment_alone(tmp_path):
     """The point of the package: combining a biased quantum surface with
     vibrationally-averaged constants should beat either on its own.
 
@@ -149,10 +149,11 @@ def test_hybrid_beats_both_theory_and_experiment_alone():
         return (abs(r - R_E) / abs(r_theory - R_E)
                 + abs(th - THETA_E) / abs(th_theory - THETA_E))
 
-    (r_expt, th_expt), _ = tve._pipeline("none", False, False)
-    (r_joint, th_joint), _ = tve._pipeline("analytic_water_detuned", True, True)
+    (r_expt, th_expt), _ = tve._pipeline("none", False, False, run_root=tmp_path)
+    (r_joint, th_joint), _ = tve._pipeline("analytic_water_detuned", True, True,
+                                           run_root=tmp_path)
     (r_split, _th_split), _ = tve._pipeline("analytic_water_detuned", True, True,
-                                           objective_mode="split")
+                                           run_root=tmp_path, objective_mode="split")
 
     assert frac(r_joint, th_joint) < frac(r_expt, th_expt) < frac(r_theory, th_theory)
     assert abs(r_joint - R_E) < abs(r_theory - R_E)
@@ -168,7 +169,7 @@ def test_hybrid_beats_both_theory_and_experiment_alone():
     assert r_expt > R_E
 
 
-def test_calibrated_quantum_prior_improves_the_weakly_determined_angle():
+def test_calibrated_quantum_prior_improves_the_weakly_determined_angle(tmp_path):
     """The split objective gives the data unconditional authority over every
     direction above a *relative* rank cutoff, including ones it barely resolves.
     Water's bond angle is such a direction, and it comes out worse than either
@@ -211,8 +212,9 @@ def test_calibrated_quantum_prior_improves_the_weakly_determined_angle():
     """
     import scripts.tune_quantum_prior as tune
 
-    r_split, th_split = tune.run(objective_mode="split")
-    r_joint, th_joint = tune.run(objective_mode="joint", quantum_prior_sigma_ang=0.010)
+    r_split, th_split = tune.run(run_root=tmp_path, objective_mode="split")
+    r_joint, th_joint = tune.run(run_root=tmp_path, objective_mode="joint",
+                                 quantum_prior_sigma_ang=0.010)
 
     # The weakly determined direction, which is what the calibrated prior is for
     # (0.049 against the split objective's 0.615 deg).
@@ -245,7 +247,7 @@ def test_calibrated_quantum_prior_improves_the_weakly_determined_angle():
     )
 
 
-def test_absolute_singular_value_floor_returns_directions_to_theory():
+def test_absolute_singular_value_floor_returns_directions_to_theory(tmp_path):
     """sv_min_abs is the blunt alternative: it drops a weakly resolved direction
     outright rather than leaving it contested.
 
@@ -272,8 +274,8 @@ def test_absolute_singular_value_floor_returns_directions_to_theory():
 
     # A split-objective mechanism: under joint the floor only moves the
     # range/null bookkeeping, not the step.
-    r_floor, th_floor = tune.run(objective_mode="split", sv_min_abs=1e5)
-    r_joint, th_joint = tune.run(objective_mode="joint",
+    r_floor, th_floor = tune.run(run_root=tmp_path, objective_mode="split", sv_min_abs=1e5)
+    r_joint, th_joint = tune.run(run_root=tmp_path, objective_mode="joint",
                                  quantum_prior_sigma_ang=0.010)
 
     # Theory alone errs long on the bond and small on the angle; the floor hands
