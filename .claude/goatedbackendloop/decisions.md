@@ -895,3 +895,10 @@
 - Alternatives considered: settle the optimum in the distortion cases; N3 references; done for now.
 - Source: auto-picked, no answer in 15 min (Q-49)
 - Revisit if: -
+
+### D-84 · Close N26: keep the trust rule as it is (2026-11-22)
+- Decision: no code change. The standard trust-radius growth (rho > 0.75 with the step at the radius doubles it, capped at the pass's start radius) is not adopted; backlog N26 closed as measured, the narrowed cause of the distortion crawl recorded in N8 (f).
+- Why: Q-50 option 1 (recommended). T-34: on nine molecules' plain joint fits (HF/6-31G, autoconfig off, no distortion rows) the rule never enlarged the radius -- its condition fired only before any rejection, at the cap -- and answers were bit-identical at 40 and 200 iterations; on the distortion crawl (formyl fluoride x1.0) it grew the radius 25 times and 24 of the doubled steps were refused (30 rejections against 6), still 200 iterations. The crawl is the step model failing beyond ~2 mA, not the radius bookkeeping.
+- Alternatives considered: diagnose why steps beyond ~2 mA fail on distortion-row fits; N3 references; done for now.
+- Source: auto-picked, no answer in 15 min (Q-50)
+- Revisit if: a fit without distortion rows is seen crawling at a shrunken radius (fluoroacetylene crawls at ~95% of its radius and is the nearest case).

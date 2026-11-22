@@ -1,6 +1,6 @@
 # Current task
 Task: T-34
-Status: building
+Status: done
 Request: (D-83, auto-picked at Q-49) N26: measure what a growing trust radius does to the scripts' fits without distortion rows; measurement only.
 
 ## Brief
@@ -21,7 +21,7 @@ Request: (D-83, auto-picked at Q-49) N26: measure what a growing trust radius do
 - N1 · build · growth prototype (monkeypatch) · after: none · done · handoff: -
 - N2 · measure · nine molecules, shipped vs growth, max_iter 40 and 200 · after: N1 · done · handoff: -
 - N2b · measure · the rule on the distortion crawl and fluoroacetylene · after: N2 · done · handoff: -
-- N3 · gate · proposal (Q-50) · after: N2b · asked · handoff: -
+- N3 · gate · proposal (Q-50) · after: N2b · done (D-84, auto-picked 1: no change) · handoff: -
 
 ## Progress
 - N2 (t34/fit.py, fits/, compare.py): 9 molecules x {ship, grow} x {40, 200},
@@ -40,13 +40,11 @@ Request: (D-83, auto-picked at Q-49) N26: measure what a growing trust radius do
 ## Observations
 
 ## Pending question
-Q-50 · asked 2026-11-22T08:13Z · deadline 08:28Z · auto-pick 1
-1. (Recommended) Close N26 as measured, no change: the standard growth rule
-   never fires on the scripts' fits (answers bit-identical on nine
-   molecules) and does not fix the distortion crawl (doubled steps are
-   refused); record the narrowed cause in backlog N8.
-2. Diagnose why steps beyond ~2 mA fail on distortion-row fits: actual
-   objective change against the Gauss-Newton model and one with the rows'
-   second derivatives, along refused steps; then propose.
+Q-51 · asked 2026-11-22T08:32Z · deadline 08:47Z · auto-pick 1
+1. (Recommended) Why distortion-row steps beyond ~2 mA fail the ratio test:
+   along refused steps, the actual objective change against the Gauss-Newton
+   model and against one with the rows' second derivatives; then propose.
+2. N7: measure how much split-mode widths miss the step's range-null
+   coupling, then propose.
 3. N3: look again for published r_e^SE references (sd <= 0.5 mA, D-35).
 4. Done for now.
