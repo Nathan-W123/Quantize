@@ -255,8 +255,13 @@ constraints, and published CO/H₂O constants — no Psi4 or ORCA needed).
 > the settings. With observed constants 30% off the prediction, the bonds ended 1.1–3.5 mÅ from the
 > fit without rows with autoconfig on and up to 42 mÅ with it off, and the two settings ended up to
 > 44 mÅ apart on the same data; none of these is shown to be the optimum. With matching data the
-> bonds moved at most 3.2 mÅ. With autoconfig off the trust radius only shrinks within a fit, one
-> cause of the crawl but not the only one. For these molecules $\Delta_J$ is 3–8 kHz, so 40% of it is
+> bonds moved at most 3.2 mÅ. The crawl comes from the step model: the distortion rows pull the fit
+> along directions the rotational constants do not see to first order (every step after the 20th
+> in formyl fluoride at 1.0 times), and there the rotational residuals curve in a way the
+> Gauss-Newton step leaves out. On the 56 refused steps of four formyl fluoride fits their change
+> departed from the linear model by a median 1.9 times the linear change itself, against 0.21 on
+> accepted steps under 2 mÅ, while the distortion rows' own terms were 15–187 times smaller. (With
+> autoconfig off the trust radius also only shrinks within a fit.) For these molecules $\Delta_J$ is 3–8 kHz, so 40% of it is
 > below the rows' 0.01 MHz sigma floor, which then sets the sigma 3–8 times above 40% of the predicted
 > constant. Removing the floor (autoconfig off) changed the bonds by 0.2–29 mÅ and brought the bond
 > RMS closer to the reference structures in 3 of 9 cases (two of them by under 0.4 mÅ), so it stays.

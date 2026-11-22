@@ -16,7 +16,9 @@ Request: (D-85, auto-picked at Q-51) Why distortion-row steps beyond ~2 mA fail 
 
 ## Graph
 - N1 · measure · per-block step accounting · after: none · done · handoff: -
-- N2 · gate · proposal (Q-52) · after: N1 · asked · handoff: -
+- N2 · gate · proposal (Q-52) · after: N1 · done (D-86, auto-picked 1) · handoff: -
+- N3 · build · README note + backlog N8 (f), figures by script · after: N2 · done · handoff: -
+- N4 · verify · independent fact-check · after: N3 · pending · handoff: -
 
 ## Progress
 - N1 (t35/acct.py, ff_{ship,grow}_{1.0,0.7}.json): formyl fluoride, 200
@@ -36,15 +38,3 @@ Request: (D-85, auto-picked at Q-51) Why distortion-row steps beyond ~2 mA fail 
 ## Observations
 
 ## Pending question
-Q-52 · asked 2026-11-22T08:51Z · deadline 09:06Z · auto-pick 1
-1. (Recommended) Flag and document, no solver change: record the cause in
-   backlog N8 and the README's distortion note (the rotational rows'
-   curvature in the directions the distortion rows push, which the
-   Gauss-Newton model drops); a solver fix for this opt-in, data-gated
-   feature is your call.
-2. Prototype a second-order term for the rotational rows along the step
-   (their curvature in the null directions) and measure on the distortion
-   cases and the benchmark's fits without rows; then propose.
-3. N7: measure how much split-mode widths miss the step's range-null
-   coupling, then propose.
-4. Done for now.
