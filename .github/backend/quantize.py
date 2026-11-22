@@ -2244,72 +2244,136 @@ class MolecularOptimizer:
         K = np.linalg.solve(Vn.T @ Hb @ Vn, Vn.T @ Hb @ rest)
         return float(np.linalg.norm(K, 2))
 
-    def _split_null_newton(self, x):
-        """One Newton step on the fit's quadratic quantum model over the
-        split posterior's null space, in the physical basis: (step, basis),
-        or (None, basis) when the data reach every physical direction."""
-        Pn = self._split_energy_projector()
-        g, Hp = self._projected_reference_terms()
-        Hp = np.asarray(Hp, dtype=float)
-        Hs = np.asarray(self.optimizer._spd_hessian(Hp), dtype=float)
-        B = self.physical_basis(coords=x, n=Hs.shape[0])
-        N = B.T @ Pn @ B
-        w, V = np.linalg.eigh(0.5 * (N + N.T))
-        Vn = V[:, w > 0.5]
-        if Vn.shape[1] == 0:
-            return None, B
-        # The model's gradient here, as the fit's quadratic surface gives it.
-        gx = np.asarray(g, dtype=float) + Hp @ (x - self._orca_ref_coords).ravel()
-        Hb = B.T @ Hs @ B
-        return -Vn @ np.linalg.solve(Vn.T @ Hb @ Vn, Vn.T @ (B.T @ gx)), B
-
     #: A split fit whose null-space energy has its minimum further than this
     #: from the fit, in posterior widths (as distance_to_mode counts them),
     #: stopped short of the split step's fixed point (split_stall).
     SPLIT_STALL_LIMIT = 0.25
 
+    def _split_step_newton(self):
+        """One Newton step on what the split step last solved with, over its
+        own null space and in its own parameters: (Cartesian step, number of
+        null directions along which the quadratic model has no minimum, the
+        step in the step's own parameters), or
+        None when that record is not at this geometry (the last step was
+        accepted, so the fit moved after it).
+
+        The record (_last_split_step) holds the step's stacked Jacobian's
+        right singular vectors and rank, and the gradient and Hessian it was
+        handed -- after the pull toward a prior target, in q-space in
+        internal mode -- so this reads the null space the step decides, not
+        the one the posterior reads: in internal mode the two differ (the
+        step's is on the q-space stack), and an internal fit standing at its
+        own fixed point read as stalled on the posterior's (T-49 verifier:
+        two-constant water at sigma_x 0.5 mA, 4.1 widths against 0.03 on
+        its own; acetyl fluoride 3.6 against 0.015). Directions of negative
+        curvature have no minimum to measure a distance to: they are counted
+        and left out, where an eigenvalue floor would have set the length
+        (acetyl fluoride and isocyanic acid, Cartesian: 1.5-2.2 A at a floor
+        of 1e-8, 0.05-1.7 A for floors of 1e-4 to 1e-2; T-49 verifier)."""
+        rec = getattr(self, "_last_split_step", None)
+        x = np.asarray(self.coords, dtype=float)
+        if rec is None or rec["coords"].shape != x.shape or not np.array_equal(rec["coords"], x):
+            return None
+        Vn = rec["Vt"][rec["rank"]:].T
+        if Vn.shape[1] == 0:
+            return np.zeros(x.size), 0, np.zeros(Vn.shape[0])
+        Hn = Vn.T @ rec["H"] @ Vn
+        w, U = np.linalg.eigh(0.5 * (Hn + Hn.T))
+        tol = 1e-6 * max(float(np.max(np.abs(w))), 1e-300)
+        z = U.T @ (Vn.T @ rec["g"])
+        dz = np.zeros_like(z)
+        pos = w > tol
+        dz[pos] = -z[pos] / w[pos]
+        dq = Vn @ (U @ dz)
+        dx = dq if rec["Bplus"] is None else rec["Bplus"] @ dq
+        return np.asarray(dx, dtype=float).ravel(), int(np.sum(w < -tol)), dq
+
+    def _split_null_mismatch(self):
+        """How far the null space the split step last decided is from the
+        one its posterior reads, as the sine of their largest principal angle
+        over the physical directions (1 when their dimensions differ, 0 when
+        they agree), or None without a record at this geometry. They differ
+        where the step's own cutoff, or its q-space stack in internal mode,
+        sees the data differently from the posterior (split_off_mode); equal
+        ranks are not enough in internal mode (one-constant water with an
+        internal prior: both rank 2, 2.2 widths off the posterior's mode)."""
+        rec = getattr(self, "_last_split_step", None)
+        x = np.asarray(self.coords, dtype=float)
+        if rec is None or rec["coords"].shape != x.shape or not np.array_equal(rec["coords"], x):
+            return None
+        B = self.physical_basis(coords=x, n=x.size)
+        Pn = self._split_energy_projector()
+        N = B.T @ Pn @ B
+        w, V = np.linalg.eigh(0.5 * (N + N.T))
+        Vp = V[:, w > 0.5]
+        Vn = rec["Vt"][rec["rank"]:].T
+        if rec["Bplus"] is not None:
+            Vn = rec["Bplus"] @ Vn
+        if Vn.size == 0:
+            Vs = np.zeros((B.shape[1], 0))
+        else:
+            # Relative to the columns' own length: rigid motion (Cartesian)
+            # and redundant combinations (q-space) have no physical part.
+            ref = max(float(np.linalg.norm(Vn, axis=0).max()), 1e-300)
+            U, sv, _ = np.linalg.svd(B.T @ Vn, full_matrices=False)
+            Vs = U[:, sv > 1e-6 * ref]
+        if Vs.shape[1] != Vp.shape[1]:
+            return 1.0
+        if Vp.shape[1] == 0:
+            return 0.0
+        return float(np.linalg.norm(Vs @ Vs.T - Vp @ Vp.T, 2))
+
+    #: Null spaces closer than this (sine of the largest principal angle)
+    #: are the same one for split_inconsistency's purposes.
+    SPLIT_NULL_AGREE = 0.1
+
     def split_stall(self):
         """How far the split fit stopped from the minimum of its null-space
-        energy: (posterior widths, largest atom move in Angstrom), or None
-        off the split objective.
+        energy: (posterior widths, largest atom move in Angstrom, null
+        directions with no minimum), or None off the split objective or when
+        the last split step was accepted (the fit moved after it, so it did
+        not stop on a refusal).
 
         The split step fits the data on the range of its stacked Jacobian
         and lets the quantum surface alone decide the rest, so its fixed point
-        has Vn^T g = 0: no energy gradient left along the null space. The
-        rank is cut at sv_min_abs = 1/sigma_x, which puts directions the data
-        still weigh (singular values 0.2-6% of the largest on formyl
+        has no energy gradient left along its null space. In the Python API
+        its rank is cut at sv_min_abs = 1/sigma_x, which puts directions the
+        data still weigh (singular values 0.2-6% of the largest on formyl
         fluoride, vinyl fluoride, chlorofluoromethane at HF/6-31G) on the
         energy's side, while the acceptance test still scores the data there
         -- formyl fluoride's null step takes its residual from 69 to 180 MHz
         -- so the step is refused, the trust radius falls to its floor, and
-        the fit stops with that gradient unspent. One Newton step on the
-        fit's quadratic model, over the null space the posterior reads,
-        measures how far: on all seven benchmark molecules with a null space,
-        2.9-16.6 mA (largest atom) on five and 1.5-2.2 A -- past anything the
-        quadratic describes -- on acetyl fluoride and isocyanic acid (T-48;
-        11 of their 14 Cartesian and internal fits pass SPLIT_STALL_LIMIT;
-        fluoroacetylene's Cartesian fit and both of chlorofluoromethane's
-        read 0.17, 0.21 and 0.10 widths). Where it stops then
-        depends on the step schedule (a trust radius of 0.05 or 0.2 instead
-        of 0.1 moved the answer up to 1.47 of its reported widths), so
-        neither the split posterior nor any linear response describes the
-        answer or its spread (a coupling-only response matched T-40's refit
-        clouds no better than the posterior: 0.02-4.4x against 0.02-5.7x).
-        Zero when the data reach every physical direction.
+        the fit stops with that gradient unspent. One Newton step on what the
+        step last solved with (_split_step_newton) measures how far. On the
+        benchmark molecules (HF/6-31G, Python API defaults), where the last
+        step was refused and the step's null space is its posterior's, it
+        read 2.9-16.6 mA (largest atom) in Cartesian coordinates and 0.8-8.8
+        in internal ones, and 28 mA on isocyanic acid with one direction of
+        negative curvature besides; the note fires on 7 of the 18 fits (T-49).
+        A trust radius of 0.05 or 0.2 instead of 0.1 moved such answers up to
+        1.5 of their reported widths (T-48), so neither the split posterior nor any
+        linear response describes the answer or its spread (a coupling-only
+        response matched T-40's refit clouds no better than the posterior).
+        Zero where the step's null space is empty or its gradient spent.
         """
         if (self.spectral_only or self.quantum is None
                 or self.optimizer.objective_mode == "joint"):
             return None
+        out = self._split_step_newton()
+        if out is None:
+            return None
+        dx, n_neg, _dq = out
         x = np.asarray(self.coords, dtype=float)
-        dn, B = self._split_null_newton(x)
-        if dn is None:
-            return 0.0, 0.0
+        if not np.any(dx):
+            return 0.0, 0.0, n_neg
+        B = self.physical_basis(coords=x, n=x.size)
         H_spec, H_prior = self._posterior_blocks(x)[:2]
         M = B.T @ (H_spec + H_prior) @ B
         wm, Vm = np.linalg.eigh(0.5 * (M + M.T))
-        widths = float(np.max(np.abs(Vm.T @ dn) * np.sqrt(np.maximum(wm, 0.0) + 1e-8)))
-        atom = float(np.abs((B @ dn).reshape(-1, 3)).max())
-        return widths, atom
+        db = B.T @ dx       # its physical part: rigid motion is no distance
+        widths = float(np.max(np.abs(Vm.T @ db) * np.sqrt(np.maximum(wm, 0.0) + 1e-8)))
+        atom = float(np.abs((B @ db).reshape(-1, 3)).max())
+        return widths, atom, n_neg
 
     #: A split fit further than this from the mode its posterior describes,
     #: in posterior widths (the bootstrap's default refusal limit), is one
@@ -2358,16 +2422,27 @@ class MolecularOptimizer:
         term = (getattr(self, "termination", None) or {}).get("reason")
         # Checked first: a stalled fit is also off its posterior's mode, and
         # the coupling can read zero while it stalls (every direction on the
-        # energy's side: one-constant water at sigma_x 0.5 mA, 31 widths).
+        # energy's side: one-constant water at sigma_x 0.5 mA). Measured on
+        # the step's own null space, so a fit at its own fixed point whose
+        # posterior reads another null space keeps the off-mode note.
         stall = self.split_stall()
-        if stall is not None and stall[0] > self.SPLIT_STALL_LIMIT and term != "max_iter":
+        mismatch = self._split_null_mismatch()
+        # Where the step and its posterior read different null spaces, that
+        # is the larger gap (two-isotopologue C-only water: 3.8 widths off
+        # the posterior's mode, 1.3 short of its own null-space minimum), and
+        # the off-mode note below says so.
+        agree = mismatch is not None and mismatch < self.SPLIT_NULL_AGREE
+        if (stall is not None and agree and stall[0] > self.SPLIT_STALL_LIMIT
+                and term != "max_iter"):
+            neg = (f"; along {stall[2]} more the quantum model has no minimum at all"
+                   if stall[2] else "")
             return (f"the split fit stopped {stall[0]:.2g} posterior widths ({1e3 * stall[1]:.2g} mA "
-                    f"on its largest atom) short of the minimum of its null-space energy: the "
-                    f"split step leaves directions the data still weigh to the quantum surface, "
-                    f"its acceptance test refuses the moves there, and the fit stops where they "
-                    f"are refused, so its answer depends on the step schedule (formyl fluoride, "
-                    f"HF/6-31G: up to 1.5 widths between trust radii) and these widths describe "
-                    f"neither this answer nor its spread")
+                    f"on its largest atom) short of the minimum of its null-space energy{neg}: "
+                    f"the split step leaves directions the data still weigh to the quantum "
+                    f"surface, its acceptance test refuses the moves there, and the fit stops "
+                    f"where they are refused, so its answer depends on the step schedule "
+                    f"(formyl fluoride, HF/6-31G: up to 1.5 widths between trust radii) and "
+                    f"these widths describe neither this answer nor its spread")
         off = self.split_off_mode()
         if off is not None:
             return off
@@ -3506,6 +3581,14 @@ class MolecularOptimizer:
                 weight_hessian=(H if self.coordinate_mode == "internal"
                                 and not self.spectral_only else None))
             self._last_alpha_q_eff = float(alpha_q_eff)
+            if self.optimizer.objective_mode != "joint":
+                # What the split step solved with at this geometry, in its own
+                # parameters (q-space in internal mode), for split_stall.
+                self._last_split_step = dict(
+                    coords=np.asarray(self.coords, dtype=float).copy(), Vt=np.asarray(Vt, dtype=float),
+                    rank=int(rank), g=np.asarray(_ic_g, dtype=float).ravel(),
+                    H=np.asarray(_ic_H, dtype=float),
+                    Bplus=None if _ic_Bplus is None else np.asarray(_ic_Bplus, dtype=float))
 
             # ── Back-transform and compute trial geometry ─────────────────────
             _orig_coords = self.coords  # reference before update (never mutated here)

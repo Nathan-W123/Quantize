@@ -131,3 +131,47 @@ def test_a_spectral_only_dimer_keeps_its_hydrogen_bond():
         x = np.asarray(opt.run(), float)
     # Measured: 1.9491 A against 1.9530 (with the covalent prior: 1.459).
     assert abs(np.linalg.norm(x[0] - x[4]) - np.linalg.norm(truth[0] - truth[4])) < 0.02
+
+
+@pytest.mark.parametrize("dihedrals", [False, True])
+def test_every_coordinate_through_a_join_is_a_contact(dihedrals):
+    # Bonds, angles and dihedrals alike: a coordinate is a contact exactly
+    # when one of its bonds is the joining pair (T-49 verifier: without the
+    # angle flags the rule book put 109.5 +- 2 deg on the dimer's 127.7 deg
+    # angles 2-1-5 and 3-1-5).
+    from backend.internal.internal_fit import build_internal_priors
+    from backend.internal.internal_prior_library import resolve_default_prior
+    x = _dimer()
+    elems = ["O", "H", "H", "O", "H", "H"]
+    cs = InternalCoordinateSet(x, elems, dihedrals)
+    joins = {frozenset((0, 4))}
+    kinds = set()
+    for ic in cs.active_coords():
+        a = list(ic.atoms)
+        links = {frozenset(p) for p in zip(a, a[1:])}
+        assert ic.contact == bool(links & joins), ic.name
+        if ic.contact:
+            kinds.add(ic.kind)
+    assert kinds == ({"bond", "angle", "dihedral"} if dihedrals else {"bond", "angle"})
+    meta = build_internal_priors(cs, x, elems=elems, return_metadata=True)[-1]
+    names = cs.active_names()
+    k = names.index("angle 2-1-5")
+    ic = cs.active_coords()[k]
+    assert resolve_default_prior(ic, elems, float(cs.active_values(x)[k])) is not None, \
+        "premise: the rule book has a value for this angle"
+    assert meta[k]["source"] == "geometry_initial"
+
+
+def test_the_bootstrap_summary_gives_a_contact_in_milliangstrom():
+    from backend.uncertainty_v2.models import BootstrapConfig, BootstrapRunSummary
+    from backend.uncertainty_v2.reporting import format_bootstrap_summary
+    names = ["bond 1-2", "contact 1-5", "angle 2-1-3"]
+    a = {"target": "t", "names": names, "kinds": ["bond", "bond", "angle"],
+         "units": ["angstrom", "angstrom", "degree"], "target_std": [1e-3] * 3,
+         "posterior_std": [1e-3] * 3, "bootstrap_std": None, "objective": "split",
+         "mode_shift": {"bond 1-2": 1e-4, "contact 1-5": 0.012, "angle 2-1-3": 0.5}}
+    s = BootstrapRunSummary(config=BootstrapConfig(n_samples=0), total_samples=0, successful_samples=0,
+                            failed_samples=0, mean_rms_mhz=None, analytic=a)
+    txt = format_bootstrap_summary(s)
+    # 12 mA outranks 0.5 deg and 0.1 mA, and is printed as a length.
+    assert "moves contact 1-5 by +12 mA" in txt, txt

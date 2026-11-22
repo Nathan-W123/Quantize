@@ -288,27 +288,32 @@ determine it.
 
 The alternative `split` objective partitions the parameter space hard: whatever
 survives the SVD rank cutoff is handed **entirely** to the spectral data, and the
-quantum surface governs only the null space. The cutoff is the larger of
-`sv_threshold × s_max` and `sv_min_abs`, which defaults to $1/\sigma_x$ (0 in
-spectral-only fits): a direction the data resolve less well than the quantum
-prior goes to theory, all or nothing.
+quantum surface governs only the null space. That works when the retained
+directions are well determined — but in the config runner's split set-up the
+cutoff is *relative* (`sv_threshold × s_max`, with `sv_min_abs` 0), so a
+direction the data resolves only loosely is still treated as fully constrained
+and theory gets no vote in it. Water's bond angle is such a direction, and under
+`split` it comes out worse than either theory or experiment alone would give.
+The Python API instead defaults `sv_min_abs` to $1/\sigma_x$ when the quantum
+prior is on, which hands a direction the data resolve less well than the prior
+to theory.
 
 | Control | Effect |
 |---------|--------|
 | `optimizer.objective_mode: joint` with `optimizer.quantum_prior_sigma_ang` | The default. Solves $`(J^TJ + \alpha_q H + \lambda I)\,\Delta p = J^T r - \alpha_q g`$, leaving every direction contested and weighted by how well each source knows it. `quantum_prior_sigma_ang` is the displacement over which the quantum surface is trusted, roughly the geometry error of the method, which is what makes $\alpha_q$ interpretable rather than an arbitrary knob. |
 | `optimizer.objective_mode: split` with `optimizer.sv_min_abs` | The SVD partition. `sv_min_abs` is an absolute floor on the singular value. The Jacobian is σ-weighted, so $1/s$ is the parameter uncertainty along a direction — the floor means "only trust what the data resolves this well". All-or-nothing per direction. |
 
-> **Split fits can stop short of their own answer.** The directions the cutoff
-> gives to theory are often ones the data still weigh, and the step's acceptance
-> test still scores the data there, so it refuses the quantum surface's moves and
-> the fit stops where they are refused. On the benchmark molecules (HF/6-31G)
-> every one with a null space stopped short of its null-space energy's minimum:
-> by 2.9–16.6 mÅ (largest atom) on five, and by over an ångström, past what the
-> quadratic model describes, on acetyl fluoride and isocyanic acid. A different
-> trust radius moved formyl fluoride's answer by 1.5 of its widths, so the split
-> widths describe neither the answer nor its bootstrap spread. The report says so
-> when the gap passes 0.25 posterior widths (`split_stall`). The `joint` objective
-> has no such stall.
+> **Split fits can stop short of their own answer.** With the Python API's
+> `sv_min_abs`, the directions the cutoff gives to theory are often ones the data
+> still weigh, and the step's acceptance test still scores the data there, so it
+> refuses the quantum surface's moves and the fit stops where they are refused.
+> On the benchmark molecules (HF/6-31G) that stop lay 2.9–16.6 mÅ (largest atom)
+> short of the null-space energy's minimum in Cartesian coordinates and 0.8–8.8
+> mÅ in internal ones, 28 mÅ on isocyanic acid; a different trust radius moved
+> formyl fluoride's answer by 1.5 of its widths, so the split widths describe
+> neither the answer nor its bootstrap spread. The report says so when the gap
+> passes 0.25 posterior widths (`split_stall`, 7 of the 18 fits). The `joint`
+> objective has no such stall.
 
 > **Note.** The config-driven runner (`python -m cli run`) fits the same
 > objective as the API and the benchmark: `joint`, with `quantum_prior_sigma_ang`
@@ -700,7 +705,8 @@ On Windows, you can instead set `orca_exe` in `BASE_SETTINGS` to your `orca.exe`
 > coordinates are listed as `contact i-j` and get no rule-book prior: where
 > the internal prior is on (spectral-only fits, by default) they are held to
 > their starting value instead. A water dimer's hydrogen bond (1.95 Å) was
-> pulled to 1.46 Å by the O–H rule; it now fits to 1.949 Å. The printed bond
+> pulled to 1.46 Å by the O–H rule; it now fits to 1.949 Å (the monomers'
+> own bonds and angles keep their rule-book priors). The printed bond
 > table applies the rule to the final geometry, so it lists a contact only
 > if the fit ends it within bonding distance.
 

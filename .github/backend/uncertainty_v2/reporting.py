@@ -120,8 +120,12 @@ def format_bootstrap_summary(summary: BootstrapRunSummary) -> str:
                 lines.extend(_wrap(note[:1].upper() + note[1:] + "."))
             shift = a.get("mode_shift")
             if shift:
-                name, v = max(shift.items(), key=lambda kv: abs(kv[1]) * (1e3 if "bond" in kv[0] else 1.0))
-                unit = "mA" if "bond" in name else "deg"
+                # By kind, not name: a coordinate joining two fragments is a
+                # bond named "contact i-j", in Angstrom like any other.
+                kind = dict(zip(a.get("names") or [], a.get("kinds") or []))
+                is_len = lambda n: kind.get(n, "angle" if ("angle" in n or "dihedral" in n) else "bond") == "bond"
+                name, v = max(shift.items(), key=lambda kv: abs(kv[1]) * (1e3 if is_len(kv[0]) else 1.0))
+                unit = "mA" if is_len(name) else "deg"
                 val = v * 1e3 if unit == "mA" else v
                 lines.extend(_wrap(f"One Newton step toward the posterior's mode moves {name} by "
                                    f"{val:+.3g} {unit}: the posterior is centred there, not at this fit."))
