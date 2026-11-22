@@ -11,4 +11,5 @@ Request: T-48 (D-114): why split-objective widths depart from the split estimato
 ## Observations
 - 2026-11-22 · my first hypothesis (the coupling N7 named) was refuted by computing it, not argued; the fixed-point residuals found the real cause
 ## Pending question
+- Q-74 (asked 21:38 UTC, deadline 21:53 UTC): what to do about the split stall? 1 (Recommended) per-fit check + honest split warning (reporting only, split answers unchanged); 2 also withhold split widths when it fires; 3 fix the split solver (changes split answers: your call); 4 Done for now. Deadline takes 1.
 ## Handoff
