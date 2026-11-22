@@ -1106,3 +1106,10 @@
 - Alternatives considered: none (measurement only).
 - Source: assumption, unconfirmed (measurement within D-112's scope)
 - Revisit if: the user switches either default.
+
+### D-114 · Next task: split-objective widths against the split estimator's spread (N7) (2026-11-22)
+- Decision: T-48 diagnoses why split-objective widths depart from the split estimator's bootstrap spread (T-40: 7 of 9 molecules, ratios 0.05-58.7), then proposes; no change before the cause is shown.
+- Why: Q-73's recommended option; the largest confirmed width error left in the backlog.
+- Alternatives considered: ozone's 0.006-width stop; N34 dimer in joint mode; done for now.
+- Source: auto-picked, no answer in 15 min (Q-73)
+- Revisit if: the user answers the decision page or picks another option.
