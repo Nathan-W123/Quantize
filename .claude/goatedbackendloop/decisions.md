@@ -902,3 +902,10 @@
 - Alternatives considered: diagnose why steps beyond ~2 mA fail on distortion-row fits; N3 references; done for now.
 - Source: auto-picked, no answer in 15 min (Q-50)
 - Revisit if: a fit without distortion rows is seen crawling at a shrunken radius (fluoroacetylene crawls at ~95% of its radius and is the nearest case).
+
+### D-85 · Next task: why distortion-row steps beyond ~2 mA fail the ratio test (2026-11-22)
+- Decision: along the steps a distortion-row fit takes and refuses, split the objective change into the rotational rows, the distortion rows and the quantum term, and compare each with its Gauss-Newton prediction; check the rows' curvature; then propose.
+- Why: Q-51 option 1 (recommended). T-33/T-34 ruled out the Hessian refresh, the rows' Jacobian and the trust bookkeeping; the step model failing beyond ~2 mA is what is left.
+- Alternatives considered: N7 split widths; N3 references; done for now.
+- Source: auto-picked, no answer in 15 min (Q-51)
+- Revisit if: -
