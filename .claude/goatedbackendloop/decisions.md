@@ -832,3 +832,10 @@
 - Alternatives considered: docstring only; a continuous rescale (flagged, not recommended); done for now.
 - Source: auto-picked, no answer in 15 min (Q-41)
 - Revisit if: a rerun's chi2_rescale_checks show a check in [3, 5] or [1/5, 1/3] whose rescale-off row differs by more than 1e-3 mA.
+
+### D-75 · Next task: the rescale's high-side widening while the sigma floor binds (N25) -- measure, then propose (2026-11-22)
+- Decision: measure on real fits how often a widening refit runs on unchanged weights and how far the widening falls short, then propose (skip a refit whose weights did not change; or widen the weighting sigma); no behaviour change without a proposal; flag any accuracy/efficiency trade-off.
+- Why: Q-42 option 1 (recommended).
+- Alternatives considered: embed the multireference test geometries; model_error.auto as default, N22, N23 (user's call); done for now.
+- Source: auto-picked, no answer in 15 min (Q-42)
+- Revisit if: -
