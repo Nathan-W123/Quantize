@@ -134,6 +134,11 @@ class QuantumBackend(ABC):
 
     name: ClassVar[str]
     supports_parallel: ClassVar[bool] = True
+    #: Whether the calculation runs inside this Python process (pyscf, Psi4)
+    #: rather than in a program it starts (ORCA). An in-process backend's
+    #: threads live in this process, so a worker forked from it can inherit
+    #: their locks and hang (registry.fork_hang_warning).
+    runs_in_process: ClassVar[bool] = True
 
     @abstractmethod
     def run_hessian(self, coords_ang: np.ndarray) -> HessianResult:

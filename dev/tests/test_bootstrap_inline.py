@@ -63,3 +63,47 @@ def test_one_worker_forks_nothing_and_matches_the_pool(tmp_path, monkeypatch):
         np.testing.assert_array_equal(np.asarray(a.coords), np.asarray(b.coords))
     # The refits work on copies: the base fit is untouched.
     np.testing.assert_array_equal(np.asarray(opt.coords, float), base)
+
+
+# ── Several workers still fork: say so when that can hang (D-103) ────────────
+
+def test_the_warning_names_the_cases_that_can_hang(monkeypatch):
+    import backend.orca.orca_backend  # noqa: F401  (registers orca)
+    from backend.registry import fork_hang_warning
+    monkeypatch.setenv("OMP_NUM_THREADS", "4")
+    assert "OMP_NUM_THREADS=4" in fork_hang_warning("analytic_water", 2)
+    monkeypatch.delenv("OMP_NUM_THREADS")
+    assert "OMP_NUM_THREADS=unset" in fork_hang_warning("analytic_water", 2)
+    assert fork_hang_warning("analytic_water", 1) is None          # in-process, no fork
+    assert fork_hang_warning("orca", 4) is None                    # a separate program
+    assert fork_hang_warning("no_such_backend", 4) is None
+    monkeypatch.setenv("OMP_NUM_THREADS", "1")
+    assert fork_hang_warning("analytic_water", 4) is None
+
+
+def test_a_forked_bootstrap_says_so(tmp_path, monkeypatch):
+    opt = _fit()
+    cfg = BootstrapConfig(n_samples=2, max_workers=2, seed=5, strategy="error-model", persist_samples=False)
+    for omp, expect in (("4", True), ("1", False)):
+        monkeypatch.setenv("OMP_NUM_THREADS", omp)
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            BS.BootstrapEngine(opt, cfg).run(base_workdir=str(tmp_path / omp))
+        assert ("can hang" in out.getvalue()) is expect, out.getvalue()[-400:]
+
+
+def test_a_forked_multistart_says_so(monkeypatch):
+    import backend.multistart as MS
+
+    class Pool:
+        def __init__(self, *a, **k):
+            raise RuntimeError("stop before forking")
+
+    monkeypatch.setattr(MS, "ProcessPoolExecutor", Pool)
+    monkeypatch.setenv("OMP_NUM_THREADS", "4")
+    kw = dict(quantum_backend="analytic_water", use_autoconfig=False)
+    with contextlib.redirect_stdout(io.StringIO()) as out:
+        try:
+            MS.run_multistart([_x0(), _x0()], ["O", "H", "H"], _isos(None), kw, max_workers=2)
+        except RuntimeError:
+            pass
+    assert "can hang" in out.getvalue()

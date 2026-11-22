@@ -1,5 +1,5 @@
 # Current task
-Status: blocked
+Status: done
 Request: T-42 (N30, D-102): measure, then run bootstrap refits without forking a multi-threaded process
 ## Brief
 - Outcome: no bootstrap refit (or other pool) forked from a process whose
@@ -13,7 +13,8 @@ Request: T-42 (N30, D-102): measure, then run bootstrap refits without forking a
 ## Progress
 - N1 · measure · pools, fork vs inline vs spawn · done (t42 pools.py; t40 spread_pool.py)
 - N2 · build · one worker refits inline (bootstrap.py); test + mutation; README note · done; CI selection 1688 passed (37 warnings remain: they come from 2-worker tests)
-- N3 · propose · Q-65 (multi-worker pools) · asked
+- N3 · propose · Q-65 (multi-worker pools) · deadline: option 1 (D-103)
+- N4 · build · fork_hang_warning (registry), runs_in_process on backends (ORCA False), printed by the bootstrap and multistart pools; 3 tests, 3 mutations each fail one; CI selection 1691 passed · done
 ## Observations
 - N1: two pools fork (bootstrap; multistart with > 1 worker -- its 1-worker
   path already runs inline). Clouds bit-identical fork / inline / spawn /
@@ -24,6 +25,10 @@ Request: T-42 (N30, D-102): measure, then run bootstrap refits without forking a
   3/3 inline (6-7 s); pools.py's simpler configuration did not hang in 4.
   spawn/forkserver re-import the caller's main module: a script without a
   __main__ guard breaks (my own harness did).
+
+- 2026-11-22 · my spawn harness broke because the script had no __main__
+  guard -- the same thing would break a user's script, which is why
+  forkserver became the user's call rather than a fix.
 
 ## Pending question
 ## Handoff

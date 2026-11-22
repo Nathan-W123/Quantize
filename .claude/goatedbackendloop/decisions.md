@@ -1029,3 +1029,10 @@
 - Source: auto-picked, no answer in 15 min (Q-64)
 - Revisit if: the measurement shows a time cost (then propose before committing).
 
+### D-103 · Warn before forking several workers from a threaded in-process backend (2026-11-22)
+- Decision: when a bootstrap or multistart pool forks more than one worker, the backend runs in-process and OMP_NUM_THREADS is not 1, print a warning naming the hang and the remedy; behaviour unchanged.
+- Why: T-42: a forked refit hung 3/3 with pyscf at four threads; one worker now runs in-process (4f23b17), several still fork; forkserver costs +0.5 s and needs a __main__ guard (the user's call).
+- Alternatives considered: forkserver pools (Q-65 option 2, not auto-picked); README only.
+- Source: auto-picked, no answer in 15 min (Q-65)
+- Revisit if: the user picks forkserver, or Python's default start method changes (3.14: forkserver).
+

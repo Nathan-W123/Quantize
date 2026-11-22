@@ -201,6 +201,11 @@ def run_multistart(starts, elems, isotopologues, optimizer_kwargs, max_workers=1
     if max_workers <= 1:
         return [_run_one_start(p) for p in payloads]
 
+    if not spectral_only:
+        from backend.registry import fork_hang_warning
+        why = fork_hang_warning(qb, max_workers)
+        if why:
+            print(f"[multistart] warning: {why}")
     results = []
     with ProcessPoolExecutor(max_workers=max_workers) as ex:
         fut_map = {ex.submit(_run_one_start, p): p["idx"] for p in payloads}

@@ -419,6 +419,11 @@ class BootstrapEngine:
             for job in jobs:
                 _done(_run_bootstrap_worker(job))
         else:
+            if not self.optimizer.spectral_only:
+                from backend.registry import fork_hang_warning
+                why = fork_hang_warning(self.optimizer.quantum_backend, self.config.max_workers)
+                if why:
+                    print(f"  [bootstrap-v2] warning: {why}")
             with ProcessPoolExecutor(max_workers=self.config.max_workers) as pool:
                 futures = [pool.submit(_run_bootstrap_worker, job) for job in jobs]
                 for fut in as_completed(futures):

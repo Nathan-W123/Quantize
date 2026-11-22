@@ -61,6 +61,7 @@ class OrcaBackend(QuantumBackend):
 
     name = "orca"
     supports_parallel = False
+    runs_in_process = False            # a separate program
 
     def __init__(
         self,
