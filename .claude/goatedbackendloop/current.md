@@ -18,8 +18,8 @@ Request: (D-75, auto-picked at Q-42) N25: the chi-square rescale's high-side wid
 
 ## Graph
 - N1 · diagnose · reach of the rescale · after: none · done · handoff: -
-- N2 · measure · instrumented runs (hh, hb, uh, ub, mh) · after: N1 · running (mh rerun) · handoff: -
-- N3 · gate · proposal (Q-43) · after: N2 · pending · handoff: -
+- N2 · measure · instrumented runs (hh, hb, uh, ub, mh) · after: N1 · done · handoff: -
+- N3 · gate · proposal (Q-43) · after: N2 · asked · handoff: -
 
 ## Progress
 - 2026-11-22 · first batch (4 parallel, then mh) hit the 2 h background limit.
@@ -33,7 +33,19 @@ Request: (D-75, auto-picked at Q-42) N25: the chi-square rescale's high-side wid
   ub 6 fits: 3 below, 3 in band (max 1.65), 0 above; move max 1.3e-10 Å.
   So far 0 of 77 real fits widen; the unchanged-weight case is only the
   synthetic 5 MHz water test. Benchmark: 0 of 362 (T-15, T-29).
+- mh 9 fits (exit 0): 8 below 1/4, 1 in band (max 1.03), 0 above 4; 8 tighten
+  refits, all weights changed; move max 9.3e-6 Å.
+  Total: 0 of 86 script fits and 0 of 362 benchmark fits widen.
 
 ## Observations
 
 ## Pending question
+Q-43 · asked 2026-11-22T04:09Z · deadline 04:24Z · auto-pick 1
+1. (Recommended) Make the existing "at floor" stop compare the weighting
+   sigmas (_effective_sigma), not only the stated ones: a widening that
+   changes no weight stops instead of refitting identically. No result
+   changes (same weights give the same fit); saves up to 3 refits.
+2. Widen the weighting sigma itself on the high side. Changes opt-in fits
+   with chi2 > 4 (none measured). Accuracy-side change: not auto-picked.
+3. Docstring note only; close N25 as measured-never in real fits.
+4. Done for now.
