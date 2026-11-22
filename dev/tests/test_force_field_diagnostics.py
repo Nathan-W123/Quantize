@@ -98,21 +98,27 @@ class TestMultireferenceDiagnostic:
 
     @staticmethod
     def _geom(key):
-        cache = json.loads(
-            (_ROOT / "output" / "theory_geometries_hf_6-31g.json").read_text())
+        """The molecule's cached HF/6-31G geometry, or a skip.
+
+        The cache is the benchmark's gitignored output, written one molecule
+        at a time, so an interrupted benchmark leaves a file without this
+        molecule: skip then too, rather than fail on a KeyError.
+        """
+        path = _ROOT / "output" / "theory_geometries_hf_6-31g.json"
+        if not path.exists():
+            pytest.skip(f"needs the cached theory geometries ({path.name})")
+        cache = json.loads(path.read_text())
+        if key not in cache:
+            pytest.skip(f"{path.name} has no {key!r} (an interrupted benchmark run?)")
         return np.asarray(cache[key]["coords"], dtype=float)
 
     def test_flags_ozone(self):
-        if not (_ROOT / "output" / "theory_geometries_hf_6-31g.json").exists():
-            pytest.skip("needs the cached theory geometries")
         d = multireference_diagnostic(["O", "O", "O"], self._geom("ozone"))
         assert d["max_t2"] == pytest.approx(0.1794, abs=0.01)
         assert d["flagged"] is True
         assert "multireference" in d["reason"]
 
     def test_does_not_flag_water(self):
-        if not (_ROOT / "output" / "theory_geometries_hf_6-31g.json").exists():
-            pytest.skip("needs the cached theory geometries")
         d = multireference_diagnostic(["O", "H", "H"], self._geom("water"))
         assert d["max_t2"] == pytest.approx(0.0471, abs=0.01)
         assert d["flagged"] is False

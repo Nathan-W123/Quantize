@@ -811,3 +811,10 @@
 - Alternatives considered: N19 chi-square rescale switch; model_error.auto as default, N22, N23 (user's call); done for now.
 - Source: auto-picked, no answer in 15 min (Q-38)
 - Revisit if: -
+
+### D-72 · Next task: test-suite hygiene (writes into the repo, force-field tests' partial file) (2026-11-22)
+- Decision: find every test that writes into the repository instead of tmp_path and make it write to tmp_path; make the force-field multireference tests skip, not KeyError, on a partial gitignored output/theory_geometries_hf_6-31g.json.
+- Why: Q-39 option 1 (recommended). F3: the suite left 21 run directories in output/runs on the T-27 run alone.
+- Alternatives considered: N19 chi-square rescale switch; model_error.auto as default, N22, N23 (user's call); done for now.
+- Source: auto-picked, no answer in 15 min (Q-39)
+- Revisit if: -
