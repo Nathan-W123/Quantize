@@ -1,0 +1,163 @@
+diff --git a/.github/backend/quantize.py b/.github/backend/quantize.py
+index 9dcd83e..725493f 100644
+--- a/.github/backend/quantize.py
++++ b/.github/backend/quantize.py
+@@ -533,7 +533,7 @@ class MolecularOptimizer:
+         cd_weight=0.0,
+         coordinate_mode="internal",
+         ic_damping=1e-6,
+-        ic_use_dihedrals=False,
++        ic_use_dihedrals="auto",
+         ic_micro_iter=20,
+         ic_prior_weight=None,
+         ic_prior_sigma_bond=None,
+@@ -1221,7 +1221,19 @@ class MolecularOptimizer:
+                 smoothing=float(autoconfig_smoothing),
+             )
+         self._ic_damping = max(float(ic_damping), 1e-14)
+-        self._ic_use_dihedrals = bool(ic_use_dihedrals)
++        # Bonds and angles, plus dihedrals: True or False as stated, or "auto"
++        # (the default) -- bonds and angles, with dihedrals added only when
++        # those do not reach every direction the fit can move, decided once
++        # below (_resolve_ic_dihedrals).
++        if isinstance(ic_use_dihedrals, str):
++            _d = ic_use_dihedrals.strip().lower()
++            if _d not in ("auto", "true", "false"):
++                raise ValueError(f"ic_use_dihedrals must be True, False or 'auto', got {ic_use_dihedrals!r}")
++            self._ic_dihedrals_setting = "auto" if _d == "auto" else (_d == "true")
++        else:
++            self._ic_dihedrals_setting = bool(ic_use_dihedrals)
++        self._ic_use_dihedrals = self._ic_dihedrals_setting is True
++        self._ic_dihedrals_reason = None
+         self._ic_micro_iter = max(1, int(ic_micro_iter))
+         # THE INTERNAL-COORDINATE PRIOR IS A THIRD TERM, so by default it is
+         # only there when nothing else holds the undetermined directions.
+@@ -1278,6 +1290,8 @@ class MolecularOptimizer:
+             m = np.asarray(self.spectral.isotopologues[0]["masses"], dtype=float)
+             if m.size == len(self.elems):
+                 self._rigid_ref_masses = m.copy()
++        if self.coordinate_mode == "internal" and self._ic_dihedrals_setting == "auto":
++            self._resolve_ic_dihedrals()
+         self.quantum = None
+         self._backend = None
+         self._orca_ref_coords = None
+@@ -2383,6 +2397,47 @@ class MolecularOptimizer:
+         x = self.coords if coords is None else np.asarray(coords, dtype=float)
+         return float(np.sqrt(np.mean((np.asarray(x, dtype=float) - ref) ** 2)))
+ 
++    def _resolve_ic_dihedrals(self):
++        """Add dihedrals when bonds and angles miss a direction the fit can move.
++
++        Internal mode steps in bonds and angles. Those do not reach every
++        internal motion: a methyl group's rotation changes no bond and no
++        angle, so a step in them cannot turn it. Acetyl fluoride (HF/6-31G)
++        reached 14 of its 15 directions and fluoroethane 17 of 18; their fits
++        stopped 0.90 and 0.16 posterior widths from their own optimum, 94% and
++        99.9% of the remaining step along the missing torsion, and the
++        bootstrap kept 0/50 and 4/50 refits. With dihedrals both reach the
++        optimum (1.7e-6 and 1.6e-7 widths), and acetyl fluoride agrees with
++        the Cartesian fit of the same objective (14.584 vs 14.602 mA bond RMS)
++        (T-41, D-99).
++
++        Decided once, at the start geometry: the count is set by the bonding,
++        and a set that changed during a fit would change the objective's
++        coordinates under its step. Molecules whose bonds and angles already
++        reach every direction -- every one without a free torsion -- keep
++        them alone, so their fits are unchanged. Directions the imposed point
++        group forbids are not counted (physical_basis leaves them out).
++        """
++        x = np.asarray(self.coords, dtype=float)
++        try:
++            basis = np.asarray(self.physical_basis(coords=x), dtype=float)
++            B = np.asarray(InternalCoordinateSet(x, self.elems, False).active_B_matrix(x),
++                           dtype=float)
++        except Exception:  # an unusual geometry keeps the stated set
++            return
++        if basis.size == 0 or B.size == 0 or B.shape[1] != basis.shape[0]:
++            return
++        s = np.linalg.svd(B @ basis, compute_uv=False)
++        reach = int((s > 1e-6 * s[0]).sum()) if s.size and s[0] > 0 else 0
++        n = int(basis.shape[1])
++        if reach < n:
++            self._ic_use_dihedrals = True
++            self._ic_dihedrals_reason = (
++                f"bonds and angles reach {reach} of the {n} directions the fit can move "
++                f"(a torsion has no bond or angle of its own)")
++            print(f"  [internal] dihedrals added: {self._ic_dihedrals_reason}; "
++                  f"state internal_coordinates.use_dihedrals to choose.")
++
+     def _rigid_mode_projector(self, coords, masses):
+         """
+         Build Cartesian projector that removes rigid-body translation/rotation modes.
+@@ -4114,6 +4169,10 @@ class MolecularOptimizer:
+                 provenance = None
+         return {
+             "names": list(cs.active_names()),
++            # Whether the set includes dihedrals (stated, or added because
++            # bonds and angles missed a direction: dihedrals_reason).
++            "use_dihedrals": bool(self._ic_use_dihedrals),
++            "dihedrals_reason": self._ic_dihedrals_reason,
+             "kinds": [ic.kind for ic in cs.active_coords()],
+             "values": q.tolist(),
+             "covariance": C_q.tolist(),
+diff --git a/runner/config_schema.py b/runner/config_schema.py
+index f159877..0b073f3 100644
+--- a/runner/config_schema.py
++++ b/runner/config_schema.py
+@@ -31,7 +31,10 @@ def normalize_config(cfg: dict[str, Any]) -> dict[str, Any]:
+         c["coordinate_mode"] = "internal"
+ 
+     ic = c.setdefault("internal_coordinates", {}) or {}
+-    ic.setdefault("use_dihedrals", False)
++    # "auto": bonds and angles, with dihedrals added only when those miss a
++    # direction the fit can move (a free torsion; MolecularOptimizer
++    # ._resolve_ic_dihedrals). true / false are used as stated.
++    ic.setdefault("use_dihedrals", "auto")
+     ic.setdefault("damping", 1e-6)
+     ic.setdefault("microiterations", 20)
+     # No prior_weight, prior_sigma_bond or prior_sigma_angle_deg: an unstated
+diff --git a/runner/run_generic.py b/runner/run_generic.py
+index bdfa26c..17efa0f 100644
+--- a/runner/run_generic.py
++++ b/runner/run_generic.py
+@@ -2044,7 +2044,8 @@ def build_run_inputs(cfg: dict[str, Any], *, verbose: bool = True) -> dict[str,
+     # null reads as absent (it became 'none', which the constructor refused).
+     coordinate_mode = str(cfg.get("coordinate_mode") or "internal").strip().lower()
+     internal_cfg = cfg.get("internal_coordinates", {}) or {}
+-    ic_use_dihedrals = bool(internal_cfg.get("use_dihedrals", False))
++    _dih = internal_cfg.get("use_dihedrals", "auto")
++    ic_use_dihedrals = "auto" if (isinstance(_dih, str) and _dih.strip().lower() == "auto") else bool(_dih)
+     ic_damping = float(internal_cfg.get("damping", 1e-6))
+     ic_micro_iter = int(internal_cfg.get("microiterations", 20))
+     # Unstated means the engine's rule: no rule-library prior while the
+diff --git a/runner/usability.py b/runner/usability.py
+index 3aa0759..ffd0d51 100644
+--- a/runner/usability.py
++++ b/runner/usability.py
+@@ -383,6 +383,11 @@ def _validate_run_controls(cfg: dict[str, Any], elements: list[Any]) -> None:
+     if ic is not None:
+         if not isinstance(ic, dict):
+             raise ConfigError("'internal_coordinates' must be a mapping/object.")
++        _dih = ic.get("use_dihedrals")
++        if _dih is not None and not (isinstance(_dih, bool)
++                                     or (isinstance(_dih, str) and _dih.strip().lower() == "auto")):
++            raise ConfigError(
++                f"'internal_coordinates.use_dihedrals' must be true, false or auto (got {_dih!r}).")
+         for key, integer in (("damping", False), ("microiterations", True)):
+             if ic.get(key) is not None:
+                 why = _number_problem(ic.get(key), f"internal_coordinates.{key}", integer=integer)
+@@ -2534,8 +2539,13 @@ def write_outputs(result: dict[str, Any]) -> dict[str, Path | list[Path]]:
+         # prior widths it is scored against are the fit's own, or none.
+         ic_cfg = cfg.get("internal_coordinates", {}) or {}
+         coords_best = np.asarray(result["best"]["coords"], dtype=float)
++        # The set the fit used: the config's, or with dihedrals added because
++        # bonds and angles missed a direction (the posterior records which).
++        _dih = posterior.get("use_dihedrals")
++        if _dih is None:
++            _dih = ic_cfg.get("use_dihedrals", False) is True
+         coord_set = InternalCoordinateSet(
+-            coords_best, result["elems"], use_dihedrals=bool(ic_cfg.get("use_dihedrals", False)))
++            coords_best, result["elems"], use_dihedrals=bool(_dih))
+         B_active = coord_set.active_B_matrix(coords_best)
+         if B_active.shape[0] > 0 and list(coord_set.active_names()) == names:
+             damping = max(float(ic_cfg.get("damping", 1e-6)), 1e-14)
