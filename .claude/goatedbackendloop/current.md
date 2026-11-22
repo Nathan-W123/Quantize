@@ -24,8 +24,9 @@ Request: (D-82, auto-picked at Q-48) Diagnose why fits with distortion rows do n
 - N3 · measure · rows' Jacobian vs FD · after: N1 · done: not the cause · handoff: -
 - N3b · measure · trust radius: autoconfig on / growth prototype, 9 cases + no-row · after: N3 · done · handoff: -
 - N3c · build · correct T-32's README note and comment (my own wrong figures) · after: N3b · done · handoff: -
-- N3d · verify · independent fact-check of the corrected note · after: N3c · pending · handoff: -
-- N4 · gate · proposal (Q-49) · after: N2, N3 · pending · handoff: -
+- N3d · verify · independent fact-check of the corrected note · after: N3c · done: 1 wrong, conclusion overstated · handoff: -
+- N3e · build · note rewritten: no fit shown at an optimum; 0.2-29 mA · after: N3d · done · handoff: -
+- N4 · gate · proposal (Q-49) · after: N3e · pending · handoff: -
 
 ## Progress
 - N1 (t33/h10.json): formyl fluoride, floor, x1.0, 200 iterations: rejections
@@ -57,6 +58,19 @@ Request: (D-82, auto-picked at Q-48) Diagnose why fits with distortion rows do n
 - N3c: README note and the comment at the floor rewritten on both settings'
   numbers (each recomputed by script).
 
+- N3d (fc33/check.py): figures reproduce except floor removal 0.2-29 (not
+  31: 30.6 only with CH2ClF's two C-H taken separately). 8 of the 11 "stopped"
+  row fits hit the 40-flat-iteration plateau fallback while still taking
+  full-radius steps; only 3 of 18 ended with a step under 1e-3 A. The note
+  led with autoconfig's small moves as if they were the effect; the growth
+  prototype puts CH2ClF x1.3 at 38.9 mA, near the autoconfig-off answer.
+- N3e: README note says no mismatched fit is shown at an optimum and how to
+  tell (step_norm); comment 0.2-29 mA.
+
 ## Observations
+- 2026-11-22 · correcting my own prose twice in one task: each rewrite
+  replaced one unsupported framing with another (first "rows move 42 mA",
+  then "with the default only 1-3.5 mA"). The data only support "where a
+  run stops depends on the settings". Say what is unknown before what is.
 
 ## Pending question

@@ -778,10 +778,10 @@ class SpectralEngine:
         # constant is smaller: of nine reference molecules' HF/6-31G harmonic
         # constants (T-32), 13 of 27 rows -- every DJ but water's, and five
         # DJK / DK -- at 1.4-8.7x the model error. Measured with synthetic
-        # data on three of them, removing it moved bonds 0.2-31 mA with no
+        # data on three of them, removing it moved bonds 0.2-29 mA with no
         # consistent gain (bond RMS closer to the reference in 3 of 9), in fits
-        # that often did not converge (T-33: with autoconfig off the trust
-        # radius only shrinks) -- so it is kept, and the README says so.
+        # that mostly did not settle (T-33) -- so it is kept, and the README
+        # says so.
         meas = iso.get("cd_sigma") or {}
         model = iso.get("cd_model_sigma") or self._default_cd_sigma(obs)
         sigma = np.array(

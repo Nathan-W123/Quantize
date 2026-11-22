@@ -248,19 +248,20 @@ constraints, and published CO/H₂O constants — no Psi4 or ORCA needed).
 >
 > Measured 2026-11-22 before relying on it (HF/6-31G; formyl fluoride, vinyl fluoride and
 > chlorofluoromethane; synthetic `cd_observed` at 0.7, 1.0 and 1.3 times the harmonic prediction at
-> the reference structure; `cd_weight` 1). The rows make the fit hard to converge: without them the
-> fits stopped after 11–12 iterations; with them 2 of 9 had not stopped at 200 with the optimizer's
-> autoconfig on (the default), and 5 of 9 with it off, as the benchmark scripts run it, where the
-> trust radius only ever shrinks. Where the answer lands then depends on the settings. With
-> autoconfig on, observed constants 30% off the prediction (0.6–1.1 times the rows' stated model
-> sigma) moved the bonds 1.1–3.5 mÅ and the angles at most 0.15° from the fit without rows; with it
-> off, up to 42 mÅ and 2.2°, and in two of those six cases the two settings ended 37–44 mÅ apart on
-> the same data. Matching data moved the bonds by at most 3.2 mÅ either way. For these molecules
-> $\Delta_J$ is 3–8 kHz, so 40% of it is below the rows' 0.01 MHz sigma floor, which then sets the
-> sigma 3–8 times above the model error. Removing the floor (autoconfig off) changed the bonds by
-> 0.2–31 mÅ and brought the bond RMS closer to the reference structures in 3 of 9 cases (two of them
-> by under 0.4 mÅ), so it stays. Compare a distortion-row fit with one without, and check that it
-> stopped on its own rather than at `max_iter`.
+> the reference structure; `cd_weight` 1). Without the rows these fits stop after 11–12 iterations.
+> With them they mostly do not settle: of 18 fits, with the optimizer's autoconfig on (the default)
+> and off (as the benchmark scripts run it), 7 reached `max_iter` 200 and 8 of the other 11 stopped
+> on the plateau rule while still taking full trust-radius steps. Where a run ends then depends on
+> the settings. With observed constants 30% off the prediction, the bonds ended 1.1–3.5 mÅ from the
+> fit without rows with autoconfig on and up to 42 mÅ with it off, and the two settings ended up to
+> 44 mÅ apart on the same data; none of these is shown to be the optimum. With matching data the
+> bonds moved at most 3.2 mÅ. With autoconfig off the trust radius only shrinks within a fit, one
+> cause of the crawl but not the only one. For these molecules $\Delta_J$ is 3–8 kHz, so 40% of it is
+> below the rows' 0.01 MHz sigma floor, which then sets the sigma 3–8 times above 40% of the predicted
+> constant. Removing the floor (autoconfig off) changed the bonds by 0.2–29 mÅ and brought the bond
+> RMS closer to the reference structures in 3 of 9 cases (two of them by under 0.4 mÅ), so it stays.
+> Treat a fit with distortion rows as unconverged unless its last steps (`step_norm` in its history)
+> are small, and compare it with one without.
 
 > **Model error.** The reported widths include the $B_0$-versus-$B_e$ model
 > error, propagated as shared across isotopologues, only where a row carries it:
