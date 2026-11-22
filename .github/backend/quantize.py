@@ -608,6 +608,12 @@ class MolecularOptimizer:
         self.chi2_rescale = bool(chi2_rescale)
         self.chi2_rescale_threshold = float(chi2_rescale_threshold)
         self.chi2_rescale_max_passes = int(chi2_rescale_max_passes)
+        #: One record per rescale check of the last run() (empty when the
+        #: rescale is off): reduced chi-square, effective dof, what the check
+        #: did, and the factor when it refitted. Kept so a caller can see a
+        #: fit that sits near a switch point (N19) without instrumenting run().
+        self.chi2_rescale_checks = []
+        self._last_chi2_dof = None
         self._cd_sigma_fraction = max(float(cd_sigma_fraction), 1e-6)
         self._fit_cd_constants = bool(fit_cd_constants)
         self._cd_weight = max(float(cd_weight), 0.0)
@@ -2802,8 +2808,12 @@ class MolecularOptimizer:
         _, rw = self.spectral.stacked(self.coords)
         n_obs = int(rw.size)
         if n_obs == 0:
+            self._last_chi2_dof = 0.0
             return 0.0
         nu_eff = self._chi2_dof()
+        # Kept for run(): its dof gate and its check record read this instead
+        # of computing the hat-matrix trace a second time at the same point.
+        self._last_chi2_dof = float(nu_eff)
         if nu_eff > 1e-9:
             return float(np.dot(rw, rw)) / nu_eff
         try:
@@ -2853,6 +2863,7 @@ class MolecularOptimizer:
         -------
         coords : (N, 3) ndarray   Final optimised coordinates in Angstroms.
         """
+        self.chi2_rescale_checks = []
         coords = self._optimise_once()
         if not self.chi2_rescale:
             return coords
@@ -2864,10 +2875,17 @@ class MolecularOptimizer:
         # several times too wide -- and the one-sided test could never fire.
         lo = 1.0 / float(self.chi2_rescale_threshold)
         for _pass in range(int(self.chi2_rescale_max_passes)):
+            self._last_chi2_dof = None
             chi2_nu = self.reduced_chi_square()
+            dof = (self._last_chi2_dof if self._last_chi2_dof is not None
+                   else float(self._chi2_dof()))
+            check = {"chi2_nu": float(chi2_nu), "dof": dof, "outcome": None}
+            self.chi2_rescale_checks.append(check)
             if not np.isfinite(chi2_nu) or chi2_nu <= 0.0:
+                check["outcome"] = "no finite chi-square"
                 break
             if lo <= chi2_nu <= self.chi2_rescale_threshold:
+                check["outcome"] = "in band"
                 break
             # A near-zero chi-square is not evidence that the sigmas are
             # enormously too large; it is what a model with enough freedom does
@@ -2878,7 +2896,8 @@ class MolecularOptimizer:
             #
             # So the adjustment is clamped, and only made when there are enough
             # degrees of freedom for the ratio to mean anything.
-            if self._chi2_dof() < CHI2_RESCALE_MIN_DOF:
+            if dof < CHI2_RESCALE_MIN_DOF:
+                check["outcome"] = "too few dof"
                 break
             factor = float(np.clip(np.sqrt(chi2_nu),
                                    1.0 / CHI2_RESCALE_MAX_FACTOR,
@@ -2902,7 +2921,10 @@ class MolecularOptimizer:
                     f"sigma is already at its model-error floor, which a small "
                     f"chi-square cannot lower; not refitting."
                 )
+                check["outcome"] = "at floor"
                 break
+            check["outcome"] = "refit"
+            check["factor"] = factor
             print(
                 f"\n  [chi2-rescale] reduced chi-square = {chi2_nu:.3g}, outside "
                 f"[{lo:.3g}, {self.chi2_rescale_threshold:g}].\n"

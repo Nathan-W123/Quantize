@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 _HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))
@@ -82,3 +83,70 @@ def test_a_real_tightening_still_refits_every_pass():
     assert log.count("and refitting") >= 1 and n == 1 + log.count("and refitting"), (n, log)
     for iso in opt.spectral.isotopologues:
         assert np.all(np.asarray(iso["sigma_constants"], float) < 0.5e4)
+
+
+# -- The checks are kept (N19, T-29) -----------------------------------------
+#
+# run() keeps one record per rescale check, so a fit near a switch point (a
+# reduced chi-square near 4 or 1/4) can be seen without instrumenting it. The
+# record's dof is the one reduced_chi_square() computed; the dof gate reads the
+# same number instead of computing the hat-matrix trace a second time.
+
+def _checks(opt):
+    return [(c["outcome"], c["chi2_nu"], c["dof"]) for c in opt.chi2_rescale_checks]
+
+
+def test_each_check_is_kept_with_what_it_did():
+    # Measured: floored 0.1579 -> refit (factor 0.397) -> 0.1579 at floor;
+    # measurement-only 0.1579 -> refit -> 1.0426 in band.
+    floored, _, _ = _run(_isos(float(np.hypot(1e4, 0.2)), systematic=1e4))
+    assert [c[0] for c in _checks(floored)] == ["refit", "at floor"]
+    assert floored.chi2_rescale_checks[0]["factor"] == pytest.approx(np.sqrt(0.1579), rel=1e-3)
+    tight, _, _ = _run(_isos(1e4))
+    assert [c[0] for c in _checks(tight)] == ["refit", "in band"]
+    # The last check was made at the answer: recomputing there gives it back.
+    last = tight.chi2_rescale_checks[-1]
+    assert last["chi2_nu"] == tight.reduced_chi_square()
+    assert last["dof"] == tight._chi2_dof()
+
+
+def test_an_in_band_fit_records_one_check_and_an_off_rescale_none():
+    one, n, _ = _run(_isos(1e4)[:1])          # 0.4322 on 1.27 dof: in band
+    assert n == 1 and [c[0] for c in _checks(one)] == ["in band"]
+    assert 0.25 <= one.chi2_rescale_checks[0]["chi2_nu"] <= 4.0
+    one.chi2_rescale = False                  # a later run keeps only its own checks
+    with contextlib.redirect_stdout(io.StringIO()):
+        one.run()
+    assert one.chi2_rescale_checks == []
+    off = MolecularOptimizer(elems=["O", "H", "H"], coords=_coords(), isotopologues=_isos(1e4),
+                             quantum_backend="analytic_water", use_autoconfig=False,
+                             max_iter=60, chi2_rescale=False)
+    with contextlib.redirect_stdout(io.StringIO()):
+        off.run()
+    assert off.chi2_rescale_checks == []
+
+
+def test_too_few_dof_is_recorded_and_still_stops_the_rescale(monkeypatch):
+    # The gate now reads the dof reduced_chi_square() kept. Force it below
+    # CHI2_RESCALE_MIN_DOF (1) at a chi-square far out of band -- 5 MHz on
+    # this fixture is 202 at dof 4, so ~900 at 0.9 -- and the fit must stop
+    # without a refit, the record saying why.
+    import backend.quantize as Q
+    monkeypatch.setattr(Q.MolecularOptimizer, "_chi2_dof", lambda self: 0.9)
+    opt, n, log = _run(_isos(5.0))
+    first = opt.chi2_rescale_checks[0]
+    assert first["chi2_nu"] > 4.0, first                  # premise: out of band
+    assert n == 1 and "refitting" not in log
+    assert _checks(opt) == [("too few dof", first["chi2_nu"], 0.9)]
+
+
+def test_a_replaced_reduced_chi_square_still_gets_its_dof(monkeypatch):
+    # A wrapper that does not set the kept dof (a test double, an instrument)
+    # must not break the gate: run() computes the dof itself then.
+    opt = MolecularOptimizer(elems=["O", "H", "H"], coords=_coords(), isotopologues=_isos(1e4)[:1],
+                             quantum_backend="analytic_water", use_autoconfig=False,
+                             max_iter=60, chi2_rescale=True)
+    monkeypatch.setattr(opt, "reduced_chi_square", lambda: 0.4322)
+    with contextlib.redirect_stdout(io.StringIO()):
+        opt.run()
+    assert opt.chi2_rescale_checks[0]["dof"] == pytest.approx(opt._chi2_dof())

@@ -110,7 +110,13 @@ threshold; on the low side only two B3LYP fits have checks between 1/5 and
 1/3, water's base family (0.218) and ozone's offsets family (0.227), where the
 extra refit stops at the row's model-error floor and moves it by < 1e-5 mA
 (measured at thresholds 3.0 and 5.0 before D-52, at chi-squares within 1e-3;
-the sum rule, D-55, leaves those checks where they were).
+the sum rule, D-55, leaves those checks where they were). Rechecked at
+03e7d03 (T-29): isocyanic acid's RHF offsets fit reads 1.853, water's
+B3LYP base 0.2175 and ozone's B3LYP offsets 0.2267, and with the rescale
+off altogether those two B3LYP rows move by 9e-10 and 1e-5 mA. Rows from a
+rerun at or after T-29's commit carry their checks (chi2_rescale_checks:
+reduced chi-square, dof, and what each check did), so a fit near 4 or 1/4
+shows in the results file without instrumenting the engine.
 
 The sum rule matters at B3LYP only. pyscf's analytic RKS Hessian has no
 grid-weight response, so at its default grid every B3LYP Hessian here
@@ -675,8 +681,12 @@ class _CachedHessianBackend:
 
 
 def hybrid_fit(mol, isos, prior_coords, ctbl, sigma_x_ang,
-               defect_scale=False, fit_cd=False, cd_weight=1.0, hessian_fn=None):
+               defect_scale=False, fit_cd=False, cd_weight=1.0, hessian_fn=None,
+               info=None):
     """The engine's answer, with the prior centred and widened as handed.
+
+    ``info``, a dict if given, receives the fit's chi-square rescale checks
+    (MolecularOptimizer.chi2_rescale_checks) under "chi2_rescale_checks".
 
     ``prior_target_coords`` is what makes the prior's centre follow
     ``prior_coords``. Without it the quantum term is the level of theory's own
@@ -710,7 +720,12 @@ def hybrid_fit(mol, isos, prior_coords, ctbl, sigma_x_ang,
         # The geometry level's Hessians, cached: see _CachedHessianBackend.
         opt._backend = _CachedHessianBackend(opt._backend, hessian_fn)
     with contextlib.redirect_stdout(io.StringIO()):
-        return opt.run()
+        coords = opt.run()
+    if info is not None:
+        # The rescale's checks (reduced chi-square, dof, what each did), so a
+        # row near one of its switch points shows in the results file (N19).
+        info["chi2_rescale_checks"] = [dict(c) for c in opt.chi2_rescale_checks]
+    return coords
 
 
 def torsion_replacement_for(mol, coords_ang, backend, freq_cm=LAM_FREQ_CM,
@@ -1170,11 +1185,11 @@ def main() -> None:
                 at = np.asarray(corr_geom if cfg["corr"] else prior, dtype=float)
                 hfn_track = corr_hessian_fn if cfg["corr"] else hessian_fn
 
-                def _fit(table, _p=prior, _s=sigma_x, _c=cfg):
+                def _fit(table, _p=prior, _s=sigma_x, _c=cfg, info=None):
                     return hybrid_fit(mol, isos, _p, table, _s,
                                       defect_scale=_c["defect_scale"],
                                       fit_cd=_c["fit_cd"], cd_weight=CD_WEIGHT,
-                                      hessian_fn=hessian_fn)
+                                      hessian_fn=hessian_fn, info=info)
 
                 with contextlib.redirect_stdout(io.StringIO()):
                     tracked, track_info = self_consistent_correction_table(
@@ -1188,14 +1203,16 @@ def main() -> None:
                         harmonic_scheme=HARMONIC_SCHEME,
                         torsion_replacement=(torsion_for(prior, cfg["corr"])[0]
                                              if cfg["torsion"] else None))
-                hyb = _fit(tracked)
+                fit_info = {}
+                hyb = _fit(tracked, info=fit_info)
                 ctbl = tracked
             else:
                 track_info = None
+                fit_info = {}
                 hyb = hybrid_fit(mol, isos, prior, ctbl, sigma_x,
                                  defect_scale=cfg["defect_scale"],
                                  fit_cd=cfg["fit_cd"], cd_weight=CD_WEIGHT,
-                                 hessian_fn=hessian_fn)
+                                 hessian_fn=hessian_fn, info=fit_info)
 
             _re_geom = getattr(mol, "equilibrium_geometry", None)
             entry = {
@@ -1208,6 +1225,9 @@ def main() -> None:
                 "theory_rms_deg": rms_angle_error(mol, prior)[0],
                 "me_rms_deg": rms_angle_error(mol, me_geom)[0],
                 "hybrid_rms_deg": rms_angle_error(mol, hyb)[0],
+                # The hybrid fit's chi-square rescale checks: a check near 4
+                # or 1/4 means the threshold could decide this row (N19).
+                "chi2_rescale_checks": fit_info.get("chi2_rescale_checks"),
                 # WHAT THE ERROR IS MEASURED AGAINST. Only an r_e reference
                 # scores the engine alone: it is the quantity the engine
                 # targets. An r_s or effective reference carries a

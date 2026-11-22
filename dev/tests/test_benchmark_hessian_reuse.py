@@ -74,3 +74,35 @@ def test_the_fit_takes_its_hessians_from_the_run_s_cached_function():
     got = fit(wrapped)
     assert calls["hessian"] == 0 and calls["fn"] >= 1
     np.testing.assert_array_equal(got, plain)
+
+
+def test_hybrid_fit_hands_back_the_rescale_checks_when_asked(monkeypatch):
+    """A row records its fit's chi-square rescale checks (N19, T-29): hybrid_fit
+    copies MolecularOptimizer.chi2_rescale_checks into ``info`` and returns the
+    same coordinates either way."""
+    mod = _bench()
+    made = []
+
+    class Stub:
+        def __init__(self, **kw):
+            self.kw, self._backend = kw, None
+            self.chi2_rescale_checks = []
+            made.append(self)
+
+        def run(self):
+            self.chi2_rescale_checks = [{"chi2_nu": 0.2267, "dof": 13.2, "outcome": "refit",
+                                         "factor": 0.476}, {"chi2_nu": 0.2267, "dof": 13.2,
+                                                            "outcome": "at floor"}]
+            return np.zeros((3, 3))
+
+    class Mol:
+        elems = ["O", "H", "H"]
+
+    monkeypatch.setattr(mod, "MolecularOptimizer", Stub)
+    info = {}
+    out = mod.hybrid_fit(Mol(), [], np.zeros((3, 3)), None, 0.02, info=info)
+    assert made[-1].kw["chi2_rescale"] is True                 # premise: the benchmark's switch
+    assert [c["outcome"] for c in info["chi2_rescale_checks"]] == ["refit", "at floor"]
+    info["chi2_rescale_checks"][0]["outcome"] = "edited"        # a copy, not the optimizer's list
+    assert made[-1].chi2_rescale_checks[0]["outcome"] == "refit"
+    np.testing.assert_array_equal(out, mod.hybrid_fit(Mol(), [], np.zeros((3, 3)), None, 0.02))
