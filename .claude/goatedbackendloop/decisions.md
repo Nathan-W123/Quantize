@@ -881,3 +881,10 @@
 - Alternatives considered: measure where the pull goes and what sigma keeps a model-sized mismatch inside the widths (accuracy-side, the user's call); remove the floor (accuracy change, not auto-picked); done for now.
 - Source: auto-picked, no answer in 15 min (Q-47)
 - Revisit if: published distortion constants for a reference molecule are added, or a user fits distortion rows on a heavy molecule.
+
+### D-82 · Next task: why distortion-row fits do not converge (2026-11-22)
+- Decision: diagnose the non-convergence T-32 found (as shipped 5 of 9 fits with distortion rows still taking full steps at 200 iterations, 11-12 without rows): the rows' Jacobian against finite differences, the prediction moving at Hessian refreshes, oscillation; then propose.
+- Why: Q-48 option 1 (recommended). A fit that does not reach its own optimum makes every number it reports a stopping point, not an answer.
+- Alternatives considered: N3 references; N7 split widths; done for now.
+- Source: auto-picked, no answer in 15 min (Q-48)
+- Revisit if: -
