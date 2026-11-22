@@ -41,3 +41,10 @@ Q-65 (asked 17:30 UTC, deadline 17:45 UTC): several workers still fork -- what t
    __main__ guard (a cost and a usability change: your call)
 3. Leave it at the README note
 4. Done for now
+Q-66 (asked 17:52 UTC, deadline 18:07 UTC): what next after T-42?
+1. N31 rest: diagnose why fluoroacetylene's internal-mode bootstrap keeps
+   27/50 refits (its coordinate set spans; not the torsion), then propose
+   (Recommended)
+2. N7: the split estimator's covariance from its linear response
+3. N3: search again for semi-experimental references
+4. Done for now
