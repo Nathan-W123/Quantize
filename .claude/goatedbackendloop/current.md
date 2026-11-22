@@ -18,10 +18,21 @@ Request: (D-75, auto-picked at Q-42) N25: the chi-square rescale's high-side wid
 
 ## Graph
 - N1 · diagnose · reach of the rescale · after: none · done · handoff: -
-- N2 · measure · instrumented runs (hh, hb, uh, ub, mh) · after: N1 · running · handoff: -
+- N2 · measure · instrumented runs (hh, hb, uh, ub, mh) · after: N1 · running (mh rerun) · handoff: -
 - N3 · gate · proposal (Q-43) · after: N2 · pending · handoff: -
 
 ## Progress
+- 2026-11-22 · first batch (4 parallel, then mh) hit the 2 h background limit.
+  hh, uh, ub finished (exit 0); hb stopped at 30 of 35 molecules (log written
+  per run, so the 30 stand); mh never started, rerun alone at 4 threads.
+- Counts (first check of each fit, engine's own chi2_rescale_checks):
+  hh 35 fits: 35 below 1/4 (max chi2 0.085), 0 above 4; 35 tighten refits,
+  all weights changed, then "at floor"; geometry move max 2.5e-4 Å.
+  hb 30 fits: 30 below 1/4 (max 0.063), 0 above 4; move max 3.2e-4 Å.
+  uh 6 fits: 4 below, 2 in band, 0 above; move max 5.7e-6 Å.
+  ub 6 fits: 3 below, 3 in band (max 1.65), 0 above; move max 1.3e-10 Å.
+  So far 0 of 77 real fits widen; the unchanged-weight case is only the
+  synthetic 5 MHz water test. Benchmark: 0 of 362 (T-15, T-29).
 
 ## Observations
 
