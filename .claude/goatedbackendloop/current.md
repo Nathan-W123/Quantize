@@ -18,7 +18,8 @@ Request: (D-80, auto-picked at Q-46) N8 (b): measure whether the 0.01 MHz distor
 
 ## Graph
 - N1 · measure · predicted CD constants vs the floor · after: none · done · handoff: -
-- N1b · measure · geometry with / without the floor, synthetic CD data · after: N1 · running · handoff: -
+- N1b · measure · geometry with / without the floor, synthetic CD data · after: N1 · done (unconverged) · handoff: -
+- N1c · measure · same at max_iter 200 (FF, VF, CH2ClF), history kept · after: N1b · running · handoff: -
 - N2 · gate · proposal (Q-47) · after: N1 · pending · handoff: -
 
 ## Progress
@@ -32,6 +33,11 @@ Request: (D-80, auto-picked at Q-46) N8 (b): measure whether the 0.01 MHz distor
   The floor dates from 5f1842a (2026-11-13), no stated reason; a zero guard.
 - N1b: fits with synthetic cd_observed = 0.7 / 1.0 / 1.3 x prediction,
   cd_weight 1, floor vs 1e-9 floor (t32/wt_floor, wt_nofloor), plus no rows.
+  6 molecules x (none + 3 scales x 2 trees) = 42 fits (t32/fits, compare.py).
+  With rows, 34 of 36 fits stopped on max_iter 40 (without rows all plateau
+  in 11-20 iterations; fluoroacetylene, linear, is erratic both ways). Their
+  geometries sit 0.5-47 mA from the no-row fit (bond max) and floor vs no
+  floor 0.4-29 mA apart -- but unconverged, so not answers. Rerunning at 200.
 
 ## Observations
 
