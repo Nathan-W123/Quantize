@@ -867,3 +867,10 @@
 - Alternatives considered: docstring only; records only; done for now.
 - Source: auto-picked, no answer in 15 min (Q-45)
 - Revisit if: a run lists a start whose shift is above 1 sigma (then the reported width does not cover the ambiguity).
+
+### D-80 · Next task: does the 0.01 MHz distortion sigma floor swamp heavy molecules' rows? (N8 (b)) (2026-11-22)
+- Decision: measure, for the reference molecules, the harmonic DJ / DJK / DK the engine predicts (HF/6-31G Hessian) against the row sigma's 0.01 MHz floor: how many rows the floor sets, and by what factor it cuts their weight; then propose; no behaviour change without a proposal.
+- Why: Q-46 option 1 (recommended). No reference molecule carries observed distortion constants (the benchmark docstring says the gate is data), so the predicted constants stand in for the observed ones the floor is applied to.
+- Alternatives considered: N3 references; N7 split widths; done for now.
+- Source: auto-picked, no answer in 15 min (Q-46)
+- Revisit if: -
