@@ -839,3 +839,10 @@
 - Alternatives considered: embed the multireference test geometries; model_error.auto as default, N22, N23 (user's call); done for now.
 - Source: auto-picked, no answer in 15 min (Q-42)
 - Revisit if: -
+
+### D-76 · Chi-square rescale: a pass that moves no weight does not refit (N25 (a)) (2026-11-22)
+- Decision: after scale_sigma, if the stated sigmas changed but every weighting sigma (_effective_sigma) is bit-identical, record "weights unchanged" and go to the next pass without refitting; keep scaling exactly as before. Only when nothing else in the fit reads the stated sigma (autoconfig off, no mass-dependent correction).
+- Why: Q-43 option 1 (recommended). Departure from its wording, which said "stops": a stop would change answers (5 MHz water: the third x4 pass crosses C's 278 MHz floor; stopping at pass 1 would lose it). Skip-and-continue keeps "no result change", which the option promised: 17 analytic-water cases bit-identical (coords, sigmas, chi2 sequence, widths), 0-3 fewer fits each. Real fits: 0 of 86 script fits and 0 of 362 benchmark fits widen, so their answers cannot change.
+- Alternatives considered: widen the weighting sigma itself (accuracy change, user's call, still open as N25 (b)); docstring only; done for now.
+- Source: auto-picked, no answer in 15 min (Q-43); the skip-and-continue refinement is an assumption, unconfirmed
+- Revisit if: a fit path reads the stated sigma outside _effective_sigma (the guard must then include it).

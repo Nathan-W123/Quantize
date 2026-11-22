@@ -167,3 +167,82 @@ def test_a_replaced_reduced_chi_square_still_gets_its_dof(monkeypatch):
     opt, seen = make(0.01)                         # out of band: the gate asks once
     assert len(seen) == 1 and opt.chi2_rescale_checks[0]["dof"] == seen[0]
     assert opt.chi2_rescale_checks[0]["outcome"] == "refit"
+
+
+# -- A pass that moves no weight does not refit (N25, T-30) -------------------
+#
+# The fit reads the stated sigma only through the weighting sigma,
+# max(stated, 0.1% of the constant, ...). At 5 MHz stated on this fixture the
+# floors (836, 435, 278 MHz) hold every row: chi-square is 202 at each check,
+# the factor clips to 4, and the stated sigma goes 5 -> 20 -> 80 -> 320 MHz.
+# Only the last crosses a floor (C, 278). The first two passes used to refit an
+# identical objective; now they go straight on to the next pass, and the answer
+# is the same to the bit.
+
+def _always_refit(monkeypatch):
+    # The weights never compare equal (nan != nan), so every pass refits: the
+    # behaviour before the skip, as the reference.
+    monkeypatch.setattr(MolecularOptimizer, "_weighting_sigmas",
+                        lambda self: [np.array([np.nan])])
+
+
+def _answer(opt):
+    return (np.asarray(opt.coords, float).tobytes(),
+            [np.asarray(i["sigma_constants"], float).tobytes() for i in opt.spectral.isotopologues],
+            [c["chi2_nu"] for c in opt.chi2_rescale_checks],
+            opt.reduced_chi_square())
+
+
+def test_a_widening_that_moves_no_weight_skips_the_refit_and_keeps_scaling(monkeypatch):
+    opt, n, log = _run(_isos(5.0))
+    assert [c[0] for c in _checks(opt)] == ["weights unchanged", "weights unchanged", "refit"]
+    assert n == 2 and log.count("not refitting this pass") == 2, (n, log)
+    assert [c["factor"] for c in opt.chi2_rescale_checks] == [4.0, 4.0, 4.0]
+    for iso in opt.spectral.isotopologues:     # three passes of x4, as before
+        np.testing.assert_allclose(np.asarray(iso["sigma_constants"], float), 320.0, rtol=1e-12)
+    # Same answer as refitting every pass, to the bit, with two fits fewer.
+    _always_refit(monkeypatch)
+    ref, n_ref, _ = _run(_isos(5.0))
+    assert n_ref == 4 and [c[0] for c in _checks(ref)] == ["refit"] * 3
+    assert _answer(opt) == _answer(ref)
+
+
+def test_a_tightening_held_by_a_floor_skips_too(monkeypatch):
+    # The low side: a 1e4 MHz absolute floor holds the weights while chi-square
+    # is ~0.02, so each pass lowers the stated 5 MHz but moves no weight.
+    def run_floor():
+        o = MolecularOptimizer(elems=["O", "H", "H"], coords=_coords(), isotopologues=_isos(5.0),
+                               quantum_backend="analytic_water", use_autoconfig=False,
+                               max_iter=60, chi2_rescale=True, chi2_rescale_max_passes=3,
+                               sigma_floor_mhz=1e4)
+        calls = {"n": 0}
+        inner = o._optimise_once
+
+        def counted():
+            calls["n"] += 1
+            return inner()
+        o._optimise_once = counted
+        with contextlib.redirect_stdout(io.StringIO()):
+            o.run()
+        return o, calls["n"]
+    opt, n = run_floor()
+    assert opt.chi2_rescale_checks[0]["chi2_nu"] < 0.25        # premise: tightening
+    assert n == 1 and [c[0] for c in _checks(opt)] == ["weights unchanged"] * 3
+    _always_refit(monkeypatch)
+    ref, n_ref = run_floor()
+    assert n_ref == 4 and _answer(opt) == _answer(ref)
+
+
+@pytest.mark.parametrize("kw", [{"use_autoconfig": True}, {"mass_dependent_model": "rm1"}])
+def test_no_skip_when_something_else_reads_the_stated_sigma(kw):
+    # Autoconfig takes the stated sigmas' median and the mass-dependent
+    # correction weights by them, so there a refit on unchanged weights is not
+    # the same objective: it must still run.
+    opt = MolecularOptimizer(elems=["O", "H", "H"], coords=_coords(), isotopologues=_isos(5.0),
+                             quantum_backend="analytic_water", max_iter=60, chi2_rescale=True,
+                             chi2_rescale_max_passes=3, **{"use_autoconfig": False, **kw})
+    with contextlib.redirect_stdout(io.StringIO()):
+        opt.run()
+    outcomes = [c[0] for c in _checks(opt)]
+    assert outcomes and "weights unchanged" not in outcomes, outcomes
+    assert outcomes[0] == "refit", outcomes

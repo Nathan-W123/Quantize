@@ -2916,6 +2916,7 @@ class MolecularOptimizer:
             # passes after the first moved the fit by under 2e-7 A.
             before = [np.array(iso["sigma_constants"], dtype=float)
                       for iso in self.spectral.isotopologues]
+            w_before = self._weighting_sigmas()
             self.spectral.scale_sigma(factor)
             after = [np.asarray(iso["sigma_constants"], dtype=float)
                      for iso in self.spectral.isotopologues]
@@ -2927,8 +2928,38 @@ class MolecularOptimizer:
                 )
                 check["outcome"] = "at floor"
                 break
-            check["outcome"] = "refit"
             check["factor"] = factor
+            # The stated sigmas moved, but the fit reads them only through the
+            # weighting sigma, max(stated, 0.1% of the constant, ...), and where
+            # a floor holds every row that is the same before and after. The
+            # refit would then solve the same objective from where the last one
+            # stopped: measured 2026-11-22 on water at 5 MHz stated (floors 836,
+            # 435, 278 MHz), passes 1 and 2 refitted on identical weights and
+            # moved the fit by 0.0 A; pass 3 widened C past its floor. So skip
+            # the refit and go on to the next pass, which sees the same
+            # chi-square and scales again exactly as it did after the no-op
+            # refit: same sigmas and geometry at the end, without the wasted
+            # fits (17 analytic-water cases, 0.05 MHz to 1e5 MHz stated, 1 to 5
+            # passes: coordinates, sigmas, chi-square sequence and reported
+            # widths identical to the bit, 0 to 3 fewer fits each).
+            #
+            # Only when nothing else in the fit reads the stated sigma. The
+            # mass-dependent correction weights by it directly: skipping there
+            # moved the 5 MHz water answer by 5.2e-6 A. Autoconfig reads its
+            # median; skipping there moved nothing on that case, but its
+            # controls can depend on it, so it keeps the refit too.
+            if (self.autoconfig is None and self._mass_dependent_model is None
+                    and all(np.array_equal(a, b) for a, b in
+                            zip(self._weighting_sigmas(), w_before))):
+                print(
+                    f"\n  [chi2-rescale] reduced chi-square = {chi2_nu:.3g}; "
+                    f"{verb} the stated sigmas by {max(factor, 1 / factor):.1f}x "
+                    f"leaves every weight where a floor holds it, so a refit "
+                    f"would not move; not refitting this pass."
+                )
+                check["outcome"] = "weights unchanged"
+                continue
+            check["outcome"] = "refit"
             print(
                 f"\n  [chi2-rescale] reduced chi-square = {chi2_nu:.3g}, outside "
                 f"[{lo:.3g}, {self.chi2_rescale_threshold:g}].\n"
@@ -2937,6 +2968,12 @@ class MolecularOptimizer:
             )
             coords = self._optimise_once()
         return coords
+
+    def _weighting_sigmas(self):
+        """Per isotopologue, the sigma the spectral rows are weighted by."""
+        sp = self.spectral
+        return [np.array(sp._effective_sigma(iso["sigma_constants"], iso=iso), dtype=float)
+                for iso in sp.isotopologues]
 
     def _optimise_once(self):
         """
