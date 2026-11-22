@@ -930,3 +930,10 @@
 - Alternatives considered: project rigid modes out of the rows' Jacobian (leaves the prediction orientation-dependent); leave it documented; done for now.
 - Source: auto-picked, no answer in 15 min (Q-53)
 - Revisit if: the distortion fits still crawl after the fix.
+
+### D-89 · Next task: linear molecules' distortion prediction (N27) (2026-11-22)
+- Decision: measure what compute_cd_constants and the distortion rows do for a linear molecule (at linear and slightly bent geometries), and what the rows should be (a linear molecule has one quartic constant, D); then propose; no behaviour change without a proposal.
+- Why: Q-54 option 1 (recommended). T-36's verifier: fluoroacetylene's predicted DJ ~1e8 MHz at bent geometries, and rotation-dependent by up to 35x with an exactly linear reference.
+- Alternatives considered: N7 split widths; N3 references; done for now.
+- Source: auto-picked, no answer in 15 min (Q-54)
+- Revisit if: -
