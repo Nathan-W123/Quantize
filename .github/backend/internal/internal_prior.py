@@ -106,6 +106,14 @@ class InternalPriorEngine:
                     np.zeros(0, dtype=float))
         xyz = np.asarray(coords, dtype=float)
         q = _internal_values(xyz, self.labels)
+        # KNOWN DEFECT (T-39, backlog N29, not fixed): angle and dihedral
+        # values and sigmas are in degrees, so rw is dimensionless, but the
+        # Jacobian below is Wilson B (radians) over the same degree sigmas --
+        # 57.3x too small for those rows. The step, the posterior and the
+        # objective gradient see the angle prior that much weaker than the
+        # residuals (and the acceptance test) do. Fixing it moves accuracy both
+        # ways on the benchmark, so it waits for a decision. Dihedral residuals
+        # are also not wrapped to +-180.
         rw = (self.prior_targets - q) / self.prior_sigmas
         if not want_jacobian:
             return None, rw

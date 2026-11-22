@@ -980,3 +980,10 @@
 - Source: auto-picked, no answer in 15 min (Q-58)
 - Revisit if: the user picks another option.
 
+### D-96 · The internal prior's angle units: documented, not fixed (2026-11-22)
+- Decision: document the defect (README note under Running, a comment at InternalPriorEngine.stacked, backlog N29 open and flagged); leave the code.
+- Why: T-39 measured it (Cartesian spectral-only with the BALANCED/STRICT prior, 9 molecules): the angle rows' Jacobian is 57.3x too small, 58-67 rejected steps, no uncertainty for 3/9 fits, angle widths 38-64 deg for 3 others; the fix gives 2-4 rejections and 0.3-2.1 deg widths but moves accuracy both ways (noisy starts, autoconfig off: bonds 24.16 -> 23.00 mA, angles 1.578 -> 1.922 deg; reference starts: 2.92 -> 3.27 mA, 0.217 -> 0.193 deg), which is the user's call.
+- Alternatives considered: fix the units (Q-59 option 1, recommended, left for the user); move on to N7.
+- Source: auto-picked, no answer in 15 min (Q-59); option 1 left for the user
+- Revisit if: the user decides on option 1, or a calibration of the preset's angle sigma is wanted.
+

@@ -644,6 +644,19 @@ python -m cli run configs/example_water.yaml
 
 On Windows, you can instead set `orca_exe` in `BASE_SETTINGS` to your `orca.exe` path. If you do not have ORCA, either install it, point `ORCA_EXE` at it, or switch to **Psi4** (`quantum.backend: psi4` in the config and a Conda environment with `psi4` installed), or set `quantum.backend: none` for spectral-only mode.
 
+> **Known defect, not yet fixed: spectral-only Cartesian fits.** With
+> `quantum.backend: none` and `coordinate_mode: cartesian`, the `BALANCED`
+> (default) and `STRICT` presets add a prior that holds each fit near its
+> start geometry (0.04 Å per bond, 2° per angle). Its angle rows take their
+> residuals in degrees but their derivatives in radians, so the step and the
+> reported uncertainty see the angle prior 57.3 times weaker than the residuals
+> do. On the nine benchmark molecules (starts displaced from the reference) that
+> meant 58–67 rejected steps over the nine fits, no uncertainty at all for 3 of
+> them and angle widths of 38–64° for 3 others (5–7° for a fourth). The default
+> `coordinate_mode: internal` is not affected. Correcting it moves accuracy both
+> ways (autoconfig off: mean bond error 24.2 → 23.0 mÅ, mean angle error
+> 1.58 → 1.92°), so it waits for a decision.
+
 **Parallel multistart + ORCA:** many licenses allow only one ORCA job at a time. `run_multistart` therefore defaults to **`max_workers=1`** when `quantum_backend="orca"`. If your license allows multiple processes, set **`QUANTIZE_ALLOW_PARALLEL_ORCA=1`** before running to use the preset worker count.
 
 **Paths with spaces:** older ORCA builds can mishandle absolute paths that contain spaces; the driver runs ORCA with `cwd` set to the job directory and passes **`quantize_orca.inp`** by filename only. If you still see startup errors, move the project to a directory whose full path has no spaces.
