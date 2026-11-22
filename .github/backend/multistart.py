@@ -331,8 +331,10 @@ def near_tied_starts(results, best, spectral_gate_abs=0.05, spectral_gate_rel=2.
     was between starts within 1.4e-6 Ha), so the reported geometry is one of
     several the fit does not decide between -- along a flat direction such
     as a methyl torsion or a CH2 twist. Returns dicts (idx, energy difference,
-    distance, freq_rms), farthest first; empty when there is nothing to say
-    (also when a start's model energy could not be formed).
+    distance, freq_rms, and max_shift_in_sigma / max_shift_coordinate: the
+    largest change in a reported coordinate over its width, from the two
+    starts' posteriors, None without them), farthest first; empty when there
+    is nothing to say (also when a start's model energy could not be formed).
 
     The model energy can miss by more than the tie: checked on ten CLI runs
     against true SCF energies, every start listed was near-tied and 8.6-20.6
@@ -361,22 +363,64 @@ def near_tied_starts(results, best, spectral_gate_abs=0.05, spectral_gate_rel=2.
             continue
         dist = float(np.linalg.norm(_kabsch_align(x, x_best) - x_best, axis=1).max())
         if dist > float(distance_ang):
+            z, name = _reported_shift_in_sigma(best.get("posterior"), r.get("posterior"))
             out.append({"idx": r.get("idx"), "energy_difference_ha": de,
                         "max_atom_distance_ang": dist,
-                        "freq_rms": float(r.get("freq_rms", np.inf))})
+                        "freq_rms": float(r.get("freq_rms", np.inf)),
+                        "max_shift_in_sigma": z, "max_shift_coordinate": name})
     return sorted(out, key=lambda d: -d["max_atom_distance_ang"])
+
+
+def _reported_shift_in_sigma(post_best, post_other):
+    """How far another start's answer is from the reported one, in the
+    reported coordinates and in their own widths: the largest
+    |q_other - q_best| / sigma_best over the bonds, angles and dihedrals both
+    posteriors carry, and the coordinate where it falls. (None, None) when
+    either posterior is missing or failed.
+
+    The atom distance alone overstates what a near-tie changes. Measured
+    through `cli run` (T-31: ten runs at HF/6-31G, the seven near-tied pairs
+    8.6-20.6 mA apart at the largest atom): the reported bonds and angles moved
+    by at most 0.29 of their sigma (median 0.11) -- 2.9 mA on a 10.2 mA bond,
+    0.35 deg on a 1.83 deg angle -- since the spread is along torsions, which
+    move hydrogens. That is the number a reader of the structure needs.
+    """
+    try:                                   # None, or {"error": ...}, lands in except
+        other = {n: float(v) for n, v in zip(post_other["names"], post_other["values"])}
+        best_z, best_name = None, None
+        for n, k, v, s in zip(post_best["names"], post_best["kinds"],
+                              post_best["values"], post_best["std_err"]):
+            s = float(s)
+            if n not in other or not np.isfinite(s) or s <= 0.0:
+                continue
+            dq = other[n] - float(v)
+            if k == "dihedral":                       # radians, periodic
+                dq = (dq + np.pi) % (2.0 * np.pi) - np.pi
+            z = abs(dq) / s
+            if np.isfinite(z) and (best_z is None or z > best_z):
+                best_z, best_name = float(z), str(n)
+        return best_z, best_name
+    except (KeyError, TypeError, ValueError):
+        return None, None
 
 
 def near_tie_note(near):
     """One line for the report, or None."""
     if not near:
         return None
+    def _shift(d):
+        z = d.get("max_shift_in_sigma")
+        if z is None:
+            return ""
+        return f", {z:.2f} sigma at most in a reported coordinate ({d.get('max_shift_coordinate')})"
     parts = ", ".join(f"start {d['idx']} ({d['energy_difference_ha']:+.1e} Eh, "
-                      f"{1000.0 * d['max_atom_distance_ang']:.1f} mA)" for d in near)
+                      f"{1000.0 * d['max_atom_distance_ang']:.1f} mA{_shift(d)})" for d in near)
     return (f"near-tied starts: {parts} -- within {NEAR_TIE_ENERGY_HA:.0e} Eh of this one "
             f"in the fit's model energy at their answers but more than "
             f"{1000.0 * NEAR_TIE_DISTANCE_ANG:.0f} mA away (largest atom, aligned), so the "
-            f"fit does not decide between them; this geometry is one of them")
+            f"fit does not decide between them; this geometry is one of them. The sigma "
+            f"figure is the largest difference in a reported bond, angle or dihedral, "
+            f"over this geometry's own width there")
 
 
 def _infer_internal_dof(coords):

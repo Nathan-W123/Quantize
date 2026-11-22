@@ -20,7 +20,10 @@ Request: (D-78, auto-picked at Q-44) N24: measure how far the reported answer de
 ## Graph
 - N1 · measure · rerun 10 configs instrumented · after: none · done · handoff: -
 - N2 · analyse · |dq| / sigma per near-tied pair · after: N1 · done · handoff: -
-- N3 · gate · proposal (Q-45) · after: N2 · asked · handoff: -
+- N3 · gate · proposal (Q-45) · after: N2 · done (D-79, auto-picked 1) · handoff: -
+- N4 · build · shift in sigma on each near-tied start + note · after: N3 · done · handoff: -
+- N5 · verify · tests + mutations, replay of t31 data, CI selection · after: N4 · done · handoff: -
+- N6 · verify · independent verifier · after: N4 · pending · handoff: -
 
 ## Progress
 - N1: 10 `cli run`s at 62beb3f (t31/logs), rc 0, 3 starts each; the runs'
@@ -37,13 +40,15 @@ Request: (D-78, auto-picked at Q-44) N24: measure how far the reported answer de
   (formyl fluoride cold, start 2: bond 1-2 1.07) is 6.9e-4 Ha higher and
   correctly not selected or listed.
 
+- N4: multistart._reported_shift_in_sigma; near_tied_starts carries
+  max_shift_in_sigma / max_shift_coordinate; near_tie_note prints them.
+- N5: 3 tests; mutations no dihedral wrap, other start's sigma, smallest
+  instead of largest, note without the shift, zero width not skipped: each
+  fails a test. A guard for a missing posterior survived (equivalent: the
+  except already returns None) and was removed. Replaying the t31 logs through
+  the helper gives analyse.py's figures (max 0.287, fluoroethane warm bond
+  2-8). CI selection 1639 passed, 15 skipped.
+
 ## Observations
 
 ## Pending question
-Q-45 · asked 2026-11-22T05:18Z · deadline 05:33Z · auto-pick 1
-1. (Recommended) Put the measure in the near-tie note: per listed start, the
-   largest |dq| / sigma over the reported bonds and angles, from the two
-   starts' own posteriors (no extra compute); answers and ranking unchanged.
-2. Docstring only: T-31's numbers beside near_tied_starts; close N24.
-3. Close N24 in the records only.
-4. Done for now.

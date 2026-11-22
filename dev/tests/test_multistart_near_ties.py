@@ -108,3 +108,59 @@ def test_the_report_line_comes_from_the_stored_near_ties():
     assert _near_tie_note(best) is None
     assert _near_tie_note({}) is None
 
+
+
+# -- How far the reported coordinates move (T-31, D-79) -----------------------
+#
+# The atom distance overstates what a near-tie changes: through `cli run` the
+# seven near-tied pairs (8.6-20.6 mA apart) moved the reported bonds and angles
+# by at most 0.29 of their own sigma, the spread being along torsions. Each
+# listed start now carries that figure, from the two starts' posteriors.
+
+def _post(values, sigmas):
+    names = ["bond 1-2", "angle 2-1-3", "dihedral 1-2-3-4", "bond 1-3"]
+    kinds = ["bond", "angle", "dihedral", "bond"]
+    return {"names": names, "kinds": kinds, "values": list(values), "std_err": list(sigmas)}
+
+
+def _pair(post_best, post_other):
+    best = _res(1, _X, -100.0); best["posterior"] = post_best
+    far = _X.copy(); far[3] += [0.0, 0.0, 0.010]
+    other = _res(2, far, -100.0 + 1e-5); other["posterior"] = post_other
+    return near_tied_starts([best, other], best)
+
+
+def test_each_listed_start_carries_its_shift_in_the_reported_sigma():
+    # bond +3 mA on 10 mA: 0.3; angle +0.01 rad on 0.02: 0.5; the dihedral
+    # crosses +-pi, 3.10 -> -3.10 rad, really 0.083 rad on 0.5: 0.17 (12.4 if
+    # it were not wrapped); bond 1-3 has no width and is skipped. Each is
+    # measured against the SELECTED start's sigma, not the other's.
+    best = _post([1.000, 2.000, 3.10, 1.5], [0.010, 0.020, 0.5, 0.0])
+    other = _post([1.003, 2.010, -3.10, 9.9], [1.0, 1.0, 1.0, 1.0])
+    got = _pair(best, other)
+    assert len(got) == 1
+    assert got[0]["max_shift_coordinate"] == "angle 2-1-3"
+    assert abs(got[0]["max_shift_in_sigma"] - 0.5) < 1e-9
+    note = near_tie_note(got)
+    assert "0.50 sigma at most in a reported coordinate (angle 2-1-3)" in note
+    assert "over this geometry's own width" in note
+
+
+def test_a_coordinate_only_one_start_has_is_left_out():
+    best = _post([1.000, 2.000, 0.0, 1.5], [0.010, 0.020, 0.5, 0.1])
+    other = _post([1.001, 2.000, 0.0, 1.5], [0.010, 0.020, 0.5, 0.1])
+    other["names"] = ["bond 1-2", "angle 2-1-3", "dihedral 1-2-3-4", "bond 2-4"]
+    other["values"][3] = 99.0                 # different coordinate, not compared
+    got = _pair(best, other)
+    assert got[0]["max_shift_coordinate"] == "bond 1-2"
+    assert abs(got[0]["max_shift_in_sigma"] - 0.1) < 1e-9
+
+
+def test_without_both_posteriors_the_shift_is_none_and_the_note_says_less():
+    for best_p, other_p in ((None, _post([1, 2, 0, 1], [1, 1, 1, 1])),
+                            (_post([1, 2, 0, 1], [1, 1, 1, 1]), {"error": "LinAlgError: x"}),
+                            ({"error": "boom"}, None)):
+        got = _pair(best_p, other_p)
+        assert got[0]["max_shift_in_sigma"] is None and got[0]["max_shift_coordinate"] is None
+        note = near_tie_note(got)
+        assert note.startswith("near-tied starts: start 2") and "sigma at most" not in note
