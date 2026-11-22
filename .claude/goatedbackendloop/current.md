@@ -17,10 +17,21 @@ Request: (D-80, auto-picked at Q-46) N8 (b): measure whether the 0.01 MHz distor
   geometry effect is worth measuring next.
 
 ## Graph
-- N1 · measure · predicted CD constants vs the floor · after: none · pending · handoff: -
+- N1 · measure · predicted CD constants vs the floor · after: none · done · handoff: -
+- N1b · measure · geometry with / without the floor, synthetic CD data · after: N1 · running · handoff: -
 - N2 · gate · proposal (Q-47) · after: N1 · pending · handoff: -
 
 ## Progress
+- N1 (t32/cdfloor.py, cd.json, floor_table.txt): harmonic constants at the
+  reference geometry, HF/6-31G, reduction auto, parent isotopologue. Water
+  DJ 28.9 MHz (obs 37.59). Heavy molecules' DJ 0.0029-0.0083 MHz, so
+  0.4 |DJ| = 1.2-3.3 kHz against the 10 kHz floor. 13 of 27 rows floored
+  (every DJ except water's, plus HNCO DJK, acetyl fluoride DJK and DK, all
+  of fluoroacetylene -- linear, its DJK / DK are not meaningful); their
+  weight cut 1.9x to 75x below what the 40% model error implies.
+  The floor dates from 5f1842a (2026-11-13), no stated reason; a zero guard.
+- N1b: fits with synthetic cd_observed = 0.7 / 1.0 / 1.3 x prediction,
+  cd_weight 1, floor vs 1e-9 floor (t32/wt_floor, wt_nofloor), plus no rows.
 
 ## Observations
 
