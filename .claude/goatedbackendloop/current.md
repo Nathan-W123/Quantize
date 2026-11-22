@@ -32,7 +32,7 @@ Request: (D-89, auto-picked at Q-54) N27: what the distortion prediction and row
 ## Observations
 
 ## Pending question
-Q-55 · asked 2026-11-22T10:31Z · deadline 10:46Z · auto-pick 1
+Q-55 · asked 2026-11-22T10:19Z · deadline 10:34Z · auto-pick 1
 1. (Recommended) Linear branch: when the Hessian's geometry is linear,
    predict only D = -(tau'_bb + tau'_cc)/8 from the two perpendicular axes
    (smooth through small bends; the rigid-mode count taken from the
