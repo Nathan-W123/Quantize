@@ -43,7 +43,7 @@ once by a container swap).
 
 ### L-15 · A green test must be shown to fail, for every branch it claims
 - Adjustment: break the guarded property in the code and see the test fail, once per branch its docstring names, with a fixture that exercises it; assert work skipped (call counts), not speed ratios; compare against an inlined old formula, never the function's wrapper; assert the fixture's premise in the test.
-- Evidence: 2026-11-17 · round 10 A-4 / A-5 (a residual-only file passing, a sampler compared with itself); +2026-11-19 (a rescale test that widened, not tightened). +2026-11-21 (T-20: each new branch removed in turn failed exactly its own test). +T-27 (leaky physical_basis monkeypatch: the old assertion passed, the new one fails). +T-29 (a removed reset passed its test until the test ran a second run(); every mutation caught after). · Scope: project · Status: validated +T-31 (a surviving mutant showed a guard was dead code; the verifier found the one note branch no assertion covered, the explanation sentence with no figure).
+- Evidence: 2026-11-17 · round 10 A-4 / A-5 (a residual-only file passing, a sampler compared with itself); +2026-11-19 (a rescale test that widened, not tightened). +2026-11-21 (T-20: each new branch removed in turn failed exactly its own test). +T-27 (leaky physical_basis monkeypatch: the old assertion passed, the new one fails). +T-29 (a removed reset passed its test until the test ran a second run(); every mutation caught after). · Scope: project · Status: validated +T-31 (a surviving mutant showed a guard was dead code; the verifier found the one note branch no assertion covered, the explanation sentence with no figure). +T-36 (three hand-off mutations survived the first tests -- two paths the fixture never took, a Jacobian test too loose on a planar fixture; the target-prior test first ran with the target prior off; each found by mutating and fixed).
 
 ### L-16 · Break an aggregate diagnostic down by row before naming its cause
 - Adjustment: before attributing a failed check or ratio to a cause, print it per species and component and check whether the outliers share a property (precision, source, site).
@@ -74,4 +74,10 @@ once by a container swap).
 - Evidence: 2026-11-21 · T-21 fact-check (t21/factcheck/extend_split*.py): 10.78 -> 10.99 and 10.63 -> 10.76 over 4-5 more restarts.
 - Adjustment: certify stationarity by the trend of the score over three or more restarts, not one pass under a threshold; report a drifting fit as unsettled, with its range. Before claiming a refit (or restart) is a no-op, run it from a start that is not already a minimum, and check the stop reason.
 - Scope: project · Status: provisional · Outcomes: -2026-11-22 (T-30: not applied; I called a refit on identical weights a no-op because the fixture starts at an exact minimum; the verifier's shifted start stopped on plateau and the refits kept moving chi2 201.96614 -> 201.96874; D-76 reverted)
+
+### L-23 · Split a step pathology into rigid and internal motion before naming its cause
+- Observation: T-35 named "the rotational rows' curvature" from a nonlinearity statistic; the steps were rigid rotations driven by an orientation-dependent prediction (fact-check fc35), and the fix (D-88) removed the crawl.
+- Evidence: 2026-11-22 · rigid-body share of the steps >= 0.9998; a 0.01 rad turn moved the distortion prediction 0.5%; after the fix all 18 fits stop in 11-12 iterations.
+- Adjustment: before attributing a refused or crawling step to curvature, project it onto the rigid-body directions and check that every row is invariant under rigid motion.
+- Scope: project · Status: provisional · Outcomes: -
 
