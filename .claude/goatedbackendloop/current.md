@@ -107,3 +107,10 @@ Request: (D-89, auto-picked at Q-54) N27: what the distortion prediction and row
   will do.
 
 ## Pending question
+Q-56 (asked 11:37 UTC, deadline 11:52 UTC): what's next after T-37?
+1. N28: diagnose fluoroacetylene's crawl (does the solver treat a linear
+   molecule's 5 rigid modes as 6?), then propose a fix (Recommended)
+2. N7: measure the split estimator's widths against its spread, then propose
+3. N3: search again for semi-experimental references (HCOF, fluoroethane,
+   acetyl fluoride)
+4. Done for now
