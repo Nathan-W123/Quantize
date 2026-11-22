@@ -1898,6 +1898,10 @@ class MolecularOptimizer:
             print("  [harmonic-cd] Warning: no CD values computed; skipping update.")
             return
         for iso_name, cd in cd_table.items():
+            if getattr(cd, "reduction", None) == "linear":
+                print(f"  [harmonic-cd]   {iso_name}: D={cd.DJ:.6f} MHz (linear molecule: "
+                      f"DJK and DK do not exist)")
+                continue
             parts = ", ".join(f"{k}={cd.as_dict()[k]:.4f}" for k in ("DJ", "DJK", "DK"))
             print(f"  [harmonic-cd]   {iso_name}: {parts} MHz (…)")
         iso_by_name = {str(iso.get("name", "iso")): iso for iso in self.spectral.isotopologues}
@@ -2126,6 +2130,12 @@ class MolecularOptimizer:
                 for iso in sp.isotopologues for k in CD_FIT_KEYS):
             return []
         out = []
+        for iso in sp.isotopologues:
+            dropped = [k for k in ("DJK", "DK") if k in (iso.get("cd_observed") or {})]
+            if iso.get("cd_reduction") == "linear" and dropped:
+                out.append(f"{iso.get('name', 'iso')} is predicted as a linear molecule, "
+                           f"which has one quartic constant, D (fitted as DJ); the stated "
+                           f"{', '.join(dropped)} are not fitted.")
         w = float(sp.cd_weight)
         # The model part each row actually carries, per key, as a share of
         # the observed value: 40% by default, the larger cd_sigma_fraction

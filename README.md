@@ -244,7 +244,7 @@ constraints, and published CO/H₂O constants — no Psi4 or ORCA needed).
 > The three constants differ between the A and S reductions (water: 3.8%, 3.7%,
 > 0.8%); state the observed block's with `cd_reduction: A` or `S`, otherwise the
 > fit picks one from the asymmetry of the observed A, B, C (S when $|\kappa| \ge 0.9$;
-> the start geometry only when no isotopologue observes all three) and keeps it. $\delta_J$ and $\delta_K$ are not fitted. A linear molecule has one quartic constant, $D$: give it as `DJ`; its prediction comes from the two perpendicular axes, so it stays smooth as the geometry bends (fluoroacetylene and HCN, HF/6-31G: under 0.4% at 5°), and `DJK` or `DK` stated for it are not fitted. `fit_cd_constants` defaults to off.
+> the start geometry only when no isotopologue observes all three) and keeps it. $\delta_J$ and $\delta_K$ are not fitted. A linear molecule has one quartic constant, $D$: give it as `DJ`; its prediction comes from the two perpendicular axes, so it stays smooth as the geometry bends (fluoroacetylene and HCN, HF/6-31G: under 0.4% at 5°), and `DJK` or `DK` stated for it are not fitted. It is recognised once per isotopologue -- no isotopologue observes A and the start geometry's $I_{min}/I_{max}$ is under 0.02 -- or stated with `cd_reduction: linear`; a long symmetric top that would pass that test (CH₃(C≡C)₅CN sits near 8e-4) needs `cd_reduction: A` or `S`. `fit_cd_constants` defaults to off.
 >
 > Measured 2026-11-22 (HF/6-31G; formyl fluoride, vinyl fluoride and chlorofluoromethane;
 > synthetic `cd_observed` at 0.7, 1.0 and 1.3 times the harmonic prediction at the reference

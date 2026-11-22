@@ -281,10 +281,11 @@ def validate_config(cfg: dict[str, Any]) -> None:
             if why:
                 raise ConfigError(why)
         red = iso.get("cd_reduction")
-        if red is not None and str(red).strip().upper() not in ("A", "S", "AUTO"):
+        if red is not None and str(red).strip().upper() not in ("A", "S", "AUTO", "LINEAR"):
             raise ConfigError(f"'{prefix} ({iso_name}).cd_reduction' is {red!r}; it names the "
                               f"Watson reduction the observed distortion constants are quoted "
-                              f"in, 'A' or 'S' (or 'auto': chosen from the observed A, B, C).")
+                              f"in, 'A' or 'S' (or 'auto': chosen from the observed A, B, C; "
+                              f"or 'linear' for a linear molecule, whose D is given as DJ).")
 
     if "spectral_model" in cfg and cfg.get("spectral_model") is not None:
         try:

@@ -118,6 +118,7 @@ def default_sigma_constants(obs_constants, component_indices=None):
     return out
 
 from backend.spectral.centrifugal_distortion import (
+    CD_LINEAR_PIN_REL_TOL,
     reduction_for_asymmetry,
     rotational_constants_mhz,
     CD_NAMES,
@@ -140,6 +141,17 @@ CD_FIT_KEYS = ("DJ", "DJK", "DK")
 #: fit, per restart and per bootstrap worker, and the same line each time
 #: buried the first one.
 _CD_PRINTED: set = set()
+
+
+def _inertia_ratio(coords, masses) -> float:
+    """I_min / I_max of the principal moments (0 for an exactly linear chain)."""
+    x = np.asarray(coords, dtype=float)
+    m = np.asarray(masses, dtype=float)
+    r = x - (m[:, None] * x).sum(0) / m.sum()
+    inertia = (np.einsum("i,jk->jk", m * np.einsum("ia,ia->i", r, r), np.eye(3))
+               - np.einsum("i,ij,ik->jk", m, r, r))
+    ev = np.sort(np.abs(np.linalg.eigvalsh(inertia)))
+    return float(ev[0] / ev[-1]) if ev[-1] > 0.0 else 0.0
 
 
 def _abc_from(component_indices, obs_constants):
@@ -629,12 +641,12 @@ class SpectralEngine:
                 red = None
             if red is not None:
                 red = str(red).strip().upper()
-                if red not in ("A", "S"):
+                if red not in ("A", "S", "LINEAR"):
                     raise ValueError(
                         f"cd_reduction on {entry.get('name', 'iso')} is {entry['cd_reduction']!r}; "
                         f"it names the Watson reduction the observed distortion constants "
-                        f"are quoted in, 'A' or 'S'")
-                entry["cd_reduction"] = red
+                        f"are quoted in, 'A' or 'S' (or 'linear' for a linear molecule's D)")
+                entry["cd_reduction"] = "linear" if red == "LINEAR" else red
                 entry.setdefault("cd_reduction_source", "stated")
             unfitted.update(k for k in cd_obs if k not in CD_FIT_KEYS)
         #: Observed distortion constants no row is built for (reported by
@@ -763,6 +775,22 @@ class SpectralEngine:
         red = iso.get("cd_reduction")
         if red:
             return str(red)
+        # A linear molecule: decided here, once, like the reduction, so every
+        # prediction of the fit -- and each finite-difference step of the
+        # rows' Jacobian -- takes the same branch (CD_LINEAR_PIN_REL_TOL).
+        ratio = _inertia_ratio(coords, iso["masses"])
+        a_seen = any(0 in [int(i) for i in np.ravel(e.get("component_indices", []))]
+                     for e in self.isotopologues)
+        if not a_seen and ratio < CD_LINEAR_PIN_REL_TOL:
+            iso["cd_reduction"] = "linear"
+            iso["cd_reduction_source"] = (f"auto (linear: I_min/I_max {ratio:.1e} at the start "
+                                          f"geometry, no A observed)")
+            if self._cd_rows_active():
+                _cd_print_once(
+                    f"[cd-note] {iso.get('name', 'iso')}: predicted as a linear molecule (D "
+                    f"only, fitted as DJ; I_min/I_max {ratio:.1e}, no A observed); state "
+                    f"cd_reduction 'A' or 'S' if it is a symmetric top.")
+            return "linear"
         abc, where = self._observed_abc(iso)
         if abc is None:
             abc, where = rotational_constants_mhz(coords, iso["masses"]), "at the start geometry"

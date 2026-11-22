@@ -19,7 +19,9 @@ Request: (D-89, auto-picked at Q-54) N27: what the distortion prediction and row
 - N2 · gate · proposal (Q-55) · after: N1 · done (D-90, auto-picked 1) · handoff: -
 - N3 · build · linear branch + D-only rows · after: N2 · done · handoff: -
 - N4 · verify · tests + mutations, fixed-Hessian identity, FA fits, CI · after: N3 · done · handoff: -
-- N5 · verify · independent verifier · after: N4 · pending · handoff: -
+- N5 · verify · independent verifier · after: N4 · done: REFUTED (crash at the threshold) · handoff: -
+- N6 · build · pin the branch once per isotopologue (D-91) · after: N5 · done · handoff: -
+- N7 · verify · re-run the verifier's reproducers on the fix · after: N6 · pending · handoff: -
 
 ## Progress
 - N1 (t37/linear.py): HF/6-31G Hessian at the linear reference. At the linear
@@ -50,7 +52,28 @@ Request: (D-89, auto-picked at Q-54) N27: what the distortion prediction and row
   0.01 MHz floor; but FA crawls with or without rows (N28). CI selection
   1651 passed, 15 skipped; all 139 distortion tests incl. slow pass.
 
+- N5 (t37v): physics holds (HCN D 73.3165 kHz by code, closed form and full HF
+  PES under centrifugal load; experiment 87.24(6) kHz, NIST). Refuted: the
+  per-geometry 1e-3 switch -- just past it the asymmetric-top rows (DJ, DJK,
+  DK) met linear-branch FD steps (NaN), SVD failed, a CLI HCN+DCN fit aborted
+  (parent completes); HNCO at its HF minimum is 3.1e-3, not 13x away; long
+  polyyne symmetric tops sit at 8e-4. Non-linear bit-identical holds.
+- N6: _cd_reduction pins "linear" (no A observed, first geometry < 2e-2);
+  stated cd_reduction: linear accepted (engine and CLI validator);
+  compute_cd_constants switches only for "auto" or "linear"; report warning
+  for dropped DJK/DK; harmonic printout gives D. The verifier's nanjac.py
+  now gives a (1, 9) finite J and SVD ok at the threshold; its hcn_lin.yaml
+  completes (report: both isotopologues "linear (auto ...)", the warning, D
+  rows at +0.41 / +0.40 sigma). 3 more tests; mutations (no pin, A observed
+  ignored, any reduction switching by geometry, stated linear not
+  normalised) each fail. CI selection 1654 passed; 213 distortion + CLI tests
+  incl. slow pass.
+
 ## Observations
+- 2026-11-22 · I introduced a crash with a per-geometry branch inside a
+  finite-difference loop; my own tests sat away from the boundary. A branch
+  a derivative can cross must be decided once outside it -- test at the
+  boundary itself.
 - 2026-11-22 · a test fixture that runs pyscf at module scope changed other
   tests' warnings (forks of a multi-threaded process); embedding the
   Hessian removed it. Tests should not start quantum chemistry when data

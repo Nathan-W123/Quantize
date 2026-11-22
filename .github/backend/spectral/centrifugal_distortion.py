@@ -83,14 +83,24 @@ def is_linear(coords_ang, masses_amu, rel_tol: float = 1e-6) -> bool:
     return bool(eigvals[0] / eigvals[-1] < rel_tol)
 
 
-#: Below this I_min / I_max a geometry is treated as linear for the distortion
-#: constants, far looser than is_linear's default: a linear molecule's trial
-#: geometries are slightly bent (a fit's start, its finite-difference steps),
-#: and there the asymmetric-top reduction ran on an enormous A and returned
-#: DJ ~1e11-1e13 MHz (fluoroacetylene and HCN bent 0.5-3 deg, HF/6-31G). The
-#: ratio is <= 5.6e-4 for those two bent by up to 5 deg and >= 1.3e-2 (HNCO)
-#: for every bent molecule in the reference set.
+#: compute_cd_constants with reduction "auto" takes the linear branch below
+#: this I_min / I_max (looser than is_linear's default: a slightly bent linear
+#: molecule put through the asymmetric-top reduction gave DJ ~1e11-1e13 MHz,
+#: fluoroacetylene and HCN bent 0.5-3 deg, HF/6-31G). It is a per-geometry
+#: test, so a fit must not rely on it: one whose geometry crosses it mid-way
+#: would switch branches between a prediction and its finite-difference
+#: steps (NaN in the Jacobian). The distortion rows pin the branch once per
+#: isotopologue instead (SpectralEngine._cd_reduction, CD_LINEAR_PIN_REL_TOL).
 CD_LINEAR_REL_TOL = 1e-3
+
+#: SpectralEngine pins an isotopologue's distortion prediction as "linear"
+#: when no isotopologue observes A and the first geometry predicted has
+#: I_min / I_max below this. Measured: jittered multistart starts of HCN and
+#: fluoroacetylene reach 5.2e-3; the B-only symmetric top in the reference
+#: set, methyl chloride, sits at 8.5e-2; 2e-2 leaves about 4x either side.
+#: Long symmetric tops can sit lower (CH3(C#C)5CN about 8e-4): state
+#: cd_reduction "S" for those.
+CD_LINEAR_PIN_REL_TOL = 2e-2
 
 
 def rigid_mode_count(coords_ang, masses_amu) -> int:
@@ -481,7 +491,10 @@ def compute_cd_constants(
     """
     masses = np.asarray(masses_amu, dtype=float)
     coords = np.asarray(coords_ang, dtype=float)
-    if coords.shape[0] >= 3 and is_linear(coords, masses, rel_tol=CD_LINEAR_REL_TOL):
+    red_in = str(reduction or "auto").strip().upper()
+    if coords.shape[0] >= 3 and (
+            red_in == "LINEAR"
+            or (red_in == "AUTO" and is_linear(coords, masses, rel_tol=CD_LINEAR_REL_TOL))):
         return _linear_cd_constants(hess_bohr, coords, masses, min_freq_cm, fd_delta,
                                     sigma_fraction)
     omega_cm, L_mw = normal_modes(

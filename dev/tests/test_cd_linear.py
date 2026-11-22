@@ -100,7 +100,8 @@ def test_d_stays_smooth_as_the_molecule_bends(hess, monkeypatch):
 
 
 def test_a_bent_molecule_takes_the_asymmetric_top_path(hess):
-    # Bent past the threshold (HNCO's I_a / I_b is 1.3e-2): the usual path,
+    # Bent past the threshold (HNCO's I_a / I_b is 1.3e-2 at its reference
+    # structure, 3.1e-3 at its HF/6-31G minimum): the usual path,
     # finite DJK and DK.
     x = _bend(_hcn(), 30.0)
     assert not C.is_linear(x, MASSES, rel_tol=C.CD_LINEAR_REL_TOL)
@@ -133,3 +134,61 @@ def test_the_rows_fit_d_alone_and_say_so(hess):
     assert np.abs(J).max() < 10.0
     Jall, r = se.stacked(_hcn())
     assert r.size == Jall.shape[0] == 1 + 1          # one rotational row, one D row
+
+
+# -- The branch is pinned once per isotopologue (T-37 verifier) ----------------
+#
+# Deciding linear-or-not per geometry made a fit whose geometry sat just past
+# the threshold predict DJ, DJK and DK on the asymmetric-top path while some
+# finite-difference steps of the rows' Jacobian fell in the linear branch,
+# where DJK and DK are NaN: the Jacobian filled with NaN and the SVD failed
+# (a CLI HCN + DCN fit aborted at its third start). The engine now pins the
+# branch with the reduction, once (CD_LINEAR_PIN_REL_TOL).
+
+def _past_the_threshold():
+    from scipy.optimize import brentq
+    def ratio(x):
+        ev = np.sort(np.abs(C.inertia_paf(x, MASSES)[0]))
+        return ev[0] / ev[-1]
+    def disp(t):
+        y = _hcn()
+        y[1, 0] += t
+        return y
+    t = brentq(lambda t: ratio(disp(t)) - C.CD_LINEAR_REL_TOL, 1e-4, 0.5)
+    return disp(1.0001 * t)
+
+
+def test_a_fit_just_past_the_threshold_stays_linear(hess):
+    se = _engine(hess, {"DJ": 0.08, "DJK": 0.3, "DK": 1.0})
+    iso = se.isotopologues[0]
+    x = _past_the_threshold()
+    with contextlib.redirect_stdout(io.StringIO()):
+        J = se._cd_jacobian(x, iso)
+        Jall, r = se.stacked(x)
+    assert iso["cd_reduction"] == "linear" and iso["cd_reduction_source"].startswith("auto (linear")
+    assert J.shape == (1, 9) and np.all(np.isfinite(J))
+    assert np.all(np.isfinite(Jall)) and np.all(np.isfinite(r)) and r.size == 2
+    np.linalg.svd(Jall)                               # raised before the pin
+
+
+def test_a_molecule_that_observes_a_is_never_pinned_linear(hess):
+    se = _engine(hess, {"DJ": 0.08})
+    iso = se.isotopologues[0]
+    iso["component_indices"] = [0, 1, 2]
+    iso["obs_constants"] = [900000.0, 44500.0, 44000.0]
+    iso.pop("cd_reduction", None)
+    with contextlib.redirect_stdout(io.StringIO()):
+        red = se._cd_reduction(iso, _bend(_hcn(), 2.0))
+    assert red in ("A", "S")
+
+
+def test_a_stated_reduction_is_kept(hess):
+    se = _engine(hess, {"DJ": 0.08})
+    assert SpectralEngine([dict(se.isotopologues[0], cd_reduction="Linear")],
+                          cd_weight=1.0, fit_cd_constants=True).isotopologues[0]["cd_reduction"] == "linear"
+    with pytest.raises(ValueError, match="'A' or 'S'"):
+        SpectralEngine([dict(se.isotopologues[0], cd_reduction="Ir")], cd_weight=1.0,
+                       fit_cd_constants=True)
+    # An explicit asymmetric-top reduction is honoured even near-linear.
+    cd = C.compute_cd_constants(hess, _bend(_hcn(), 0.5), MASSES, reduction="S", with_residual=False)
+    assert cd.reduction == "S"
