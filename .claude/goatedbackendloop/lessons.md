@@ -91,5 +91,5 @@ once by a container swap).
 - Observation: T-38 claimed J = J P for every Cartesian row; I checked rotational constants, distortion rows and the internal prior, not the conformer mixture, whose lab-frame offsets make its rows orientation-dependent. The verifier's mixture fit stopped at chi-square 718 instead of 58.
 - Evidence: 2026-11-22 · 7d8c068 -> fixed by skipping the projection for a conformer mixture (test with a premise).
 - Adjustment: list every block stacked before the change (grep the call site's builders) and measure each one's invariance; any I skip goes into the docstring as unchecked.
-- Scope: project · Status: provisional · Outcomes: -
+- Scope: project · Status: provisional · Outcomes: -2026-11-22 (T-41: not applied to consumers -- I checked the coordinate set, not every reader of it; the verifier found the acceptance test, the bootstrap reference and multistart each mishandling it)
 

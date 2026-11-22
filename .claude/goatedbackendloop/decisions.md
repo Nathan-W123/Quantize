@@ -1015,3 +1015,10 @@
 - Source: auto-picked, no answer in 15 min (Q-63); default change left for the user
 - Revisit if: the user wants "auto" as the default.
 
+### D-101 · Dihedral follow-ups from the T-41 verifier (2026-11-22)
+- Decision: (A) the acceptance test's q-space prior rows wrap dihedral differences (_ic_prior_trial_rows); (B) the bootstrap's analytic reference takes dihedral spreads as wrapped deviations from the base; (C) multistart resolves "auto" once on the first start and passes the bool to every start; (D) "auto" counts a direction reached only where the damped inverse realises over half a step (s^2 > ic_damping), and adds dihedrals only when they reach more. Docstring figure corrected (AF 0.19, not 0.90).
+- Why: the verifier of 4209882 (default path bit-identical on 6 molecules + a CLI run) found: crossing steps refused (spectral-only FE with dihedrals, 17/17), dihedral cloud spreads of 98-181 deg near +-180, per-start sets in a fluorobenzene multistart (24 vs 0 dihedrals), fluorobenzene's barely reached direction (stall at 0.056 widths), and notes/posteriors for dihedrals that reach nothing (linear FA "0.0 +- 0.0", planar HCOF). A and B were already wrong for use_dihedrals: true.
+- Alternatives considered: decide the set from the bonding graph (not attempted); leave A/B as pre-existing.
+- Source: assumption, unconfirmed (verifier findings on a change already chosen; each fix exact or opt-in only)
+- Revisit if: "auto" with symmetry off on a near-linear molecule (FA start adds a dihedral of an almost linear chain) shows nonsense widths.
+

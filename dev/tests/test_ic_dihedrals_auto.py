@@ -2,7 +2,7 @@
 
 Internal mode steps in bonds and angles. A torsion changes neither, so a fit
 in them cannot turn one: acetyl fluoride and fluoroethane (HF/6-31G) stopped
-0.90 and 0.16 posterior widths from their own optimum, almost all of it along
+0.19 and 0.16 posterior widths from their own optimum, almost all of it along
 the missing methyl torsion. ic_use_dihedrals="auto" (opt-in; the default
 stays False) adds dihedrals exactly when bonds and angles do not reach every
 direction the fit can move, decided once at the start geometry (decisions
@@ -114,11 +114,12 @@ class _PeroxideField(QuantumBackend):
 _TRUE = _hooh(dih=115.0)
 
 
-def _isotopologues():
+def _isotopologues(true=None):
+    true = _TRUE if true is None else true
     out = []
     for name, m in (("HOOH", "OOHH"), ("DOOD", "OODD"), ("HOOD", "OOHD")):
         masses = [_M[k] for k in m]
-        abc = SP._rotational_constants(_TRUE, np.array(masses))
+        abc = SP._rotational_constants(true, np.array(masses))
         out.append(dict(name=name, masses=masses, obs_constants=[float(v) for v in abc],
                         sigma_constants=[float(v) * 1e-4 for v in abc],
                         alpha_constants=[0.0, 0.0, 0.0], component_indices=[0, 1, 2]))
@@ -139,6 +140,7 @@ def test_a_torsion_without_a_coordinate_gets_dihedrals():
     opt, printed = _optimizer()
     assert opt._ic_use_dihedrals is True
     assert "reach 5 of the 6 directions" in opt._ic_dihedrals_reason
+    assert "with dihedrals 6" in opt._ic_dihedrals_reason
     assert "dihedrals added" in printed
 
 
@@ -221,3 +223,113 @@ def test_the_config_accepts_true_false_or_auto(value, ok):
 def test_the_config_default_is_unchanged():
     from runner.config_schema import normalize_config
     assert normalize_config({})["internal_coordinates"]["use_dihedrals"] is False
+
+
+# --- T-41 verifier follow-ups -------------------------------------------------
+
+def _single(x, elems, masses):
+    abc = SP._rotational_constants(x, np.array(masses))
+    return [dict(name="a", masses=masses, obs_constants=[float(abc[1])], sigma_constants=[1.0],
+                 alpha_constants=[0.0], component_indices=[1])]
+
+
+def _spectral_only(x, elems, masses):
+    from backend.internal.internal_fit import InternalCoordinateSet
+    with contextlib.redirect_stdout(io.StringIO()) as out:
+        opt = Q.MolecularOptimizer(elems=elems, coords=x, isotopologues=_single(x, elems, masses),
+                                   spectral_only=True, quantum_backend="none", coordinate_mode="internal",
+                                   ic_use_dihedrals="auto", symmetry=None, use_autoconfig=False)
+    basis = opt.physical_basis(coords=x)
+    reach = lambda d: int((np.linalg.svd(np.asarray(InternalCoordinateSet(x, elems, d).active_B_matrix(x))
+                                         @ basis, compute_uv=False) ** 2 > 1e-6).sum())
+    return opt, out.getvalue(), basis.shape[1], reach(False)
+
+
+def test_dihedrals_that_reach_nothing_more_are_not_added():
+    # A linear chain's dihedral is undefined (its row is zero) and a molecule
+    # with no four-atom chain has none: adding them reached nothing, yet the
+    # note said they were added and the posterior quoted "dihedral 0 +- 0".
+    lin = np.array([[0, 0, -1.06], [0, 0, 0], [0, 0, 1.20], [0, 0, 2.48]], float)
+    opt, printed, n, r0 = _spectral_only(lin, ["H", "C", "C", "F"], [1.0078, 12.0, 12.0, 18.998])
+    assert r0 < n, "premise: bonds and angles miss directions of a linear molecule"
+    assert opt._ic_use_dihedrals is False and "dihedrals added" not in printed
+    planar = np.array([[0, 0, 0], [0, 0, 1.18], [1.0, 0, -0.6], [-1.1, 0, -0.7]], float)
+    opt, printed, n, r0 = _spectral_only(planar, ["C", "O", "H", "F"], [12.0, 15.995, 1.0078, 18.998])
+    assert r0 < n, "premise: bonds and angles cannot move a planar molecule out of plane"
+    assert opt._ic_use_dihedrals is False and "dihedrals added" not in printed
+
+
+def test_a_barely_reached_direction_counts_as_missed():
+    # Fluorobenzene from the benchmark's displaced start, no symmetry imposed:
+    # bonds and angles reach all 30 directions above a relative 1e-6, but the
+    # weakest so faintly that the damped step realises a few % of a move along
+    # it, and the fit stalled 0.056 widths short (T-41 verifier). It counts as
+    # missed, and dihedrals (which reach it) are added.
+    from backend.internal.internal_fit import InternalCoordinateSet
+    from dev.monofluoro_references import FLUOROBENZENE
+    from scripts.monofluoro_benchmark import build_isotopologues, start_geometry
+    x = start_geometry(FLUOROBENZENE)
+    with contextlib.redirect_stdout(io.StringIO()):
+        opt = Q.MolecularOptimizer(elems=list(FLUOROBENZENE.elems), coords=x,
+                                   isotopologues=build_isotopologues(FLUOROBENZENE, None),
+                                   spectral_only=True, quantum_backend="none", coordinate_mode="internal",
+                                   ic_use_dihedrals="auto", symmetry=None, use_autoconfig=False)
+    basis = opt.physical_basis(coords=x)
+    sv = np.linalg.svd(np.asarray(InternalCoordinateSet(x, opt.elems, False).active_B_matrix(x)) @ basis,
+                       compute_uv=False)
+    assert (sv > 1e-6 * sv[0]).sum() == basis.shape[1], "premise: reached above a relative 1e-6"
+    assert opt._ic_use_dihedrals is True, opt._ic_dihedrals_reason
+
+
+def test_the_trial_prior_rows_wrap_dihedrals():
+    from backend.internal.internal_fit import InternalCoordinateSet
+    elems = ["O", "O", "H", "H"]
+    x_ref, x_try = _hooh(dih=179.5), _hooh(dih=-179.5)
+    cs = InternalCoordinateSet(x_ref, elems, True)
+    q_ref = np.asarray(cs.active_values(x_ref), dtype=float)
+    sig = np.ones(q_ref.size) * 0.2
+    J = np.diag(1.0 / sig)
+    r_ref = np.zeros(q_ref.size)
+    r = Q.MolecularOptimizer._ic_prior_trial_rows((J, r_ref, q_ref, 1.0), cs, x_try)
+    k = [ic.kind for ic in cs.active_coords()].index("dihedral")
+    # A 1 deg step across 180, not a 359 deg one.
+    assert abs(abs(r[k]) * sig[k] - np.radians(1.0)) < 1e-9, r[k] * sig[k]
+
+
+def test_the_bootstrap_spread_of_a_dihedral_near_180_is_wrapped():
+    from backend.uncertainty_v2 import BootstrapEngine
+    from backend.uncertainty_v2.models import BootstrapConfig, BootstrapSampleResult
+    with contextlib.redirect_stdout(io.StringIO()):
+        opt = Q.MolecularOptimizer(
+            elems=["O", "O", "H", "H"], coords=_hooh(dih=179.0), isotopologues=_isotopologues(_hooh(dih=180.0)),
+            quantum_backend="test_peroxide_field", use_autoconfig=False, max_iter=60, coordinate_mode="internal",
+            symmetry=None, ic_use_dihedrals=True)
+        opt.run()
+    rng = np.random.default_rng(3)
+    res = []
+    for i in range(12):
+        d = 180.0 + rng.normal(0.0, 0.5)
+        d = (d + 180.0) % 360.0 - 180.0
+        res.append(BootstrapSampleResult(idx=i, seed=i, success=True, coords=_hooh(dih=d), usable=True))
+    with contextlib.redirect_stdout(io.StringIO()):
+        ref = BootstrapEngine(opt, BootstrapConfig(n_samples=2)).analytic_reference(res)
+    k = [n for n in ref["names"]].index(next(n for n in ref["names"] if n.startswith("dihedral")))
+    # Premise: the draws straddle +-180.
+    assert max(abs(_dihedral(r.coords)) for r in res) > 179.0 and min(_dihedral(r.coords) for r in res) < 0 < max(
+        _dihedral(r.coords) for r in res)
+    assert ref["bootstrap_std"][k] < 2.0, ref["bootstrap_std"][k]
+
+
+def test_every_multistart_start_gets_the_same_set(monkeypatch):
+    import backend.multistart as MS
+    seen = []
+    monkeypatch.setattr(MS, "_run_one_start", lambda p: seen.append(p["optimizer_kwargs"]["ic_use_dihedrals"]) or None)
+    starts = [_hooh(dih=100.0), _hooh(dih=100.0) + 0.03, _hooh(dih=100.0) - 0.02]
+    kw = dict(quantum_backend="test_peroxide_field", use_autoconfig=False, coordinate_mode="internal",
+              symmetry=None, ic_use_dihedrals="auto")
+    with contextlib.redirect_stdout(io.StringIO()):
+        try:
+            MS.run_multistart(starts, ["O", "O", "H", "H"], _isotopologues(), kw, max_workers=1)
+        except Exception:
+            pass  # the patched worker returns no result; only its inputs matter here
+    assert seen == [True, True, True], seen

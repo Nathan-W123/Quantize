@@ -620,6 +620,14 @@ class BootstrapEngine:
         if len(use) > 2:
             q = np.array([np.asarray(cs.active_values(np.asarray(r.coords, dtype=float)), dtype=float)
                           for r in use])
+            # Dihedrals as deviations from the base, wrapped: a cloud around
+            # +-180 deg otherwise has a spread of ~180 deg (fluoroethane with
+            # dihedrals: 181.1 against 0.87 wrapped, T-41 verifier).
+            dih = np.array([k == "dihedral" for k in kinds], dtype=bool)
+            if dih.any():
+                q0 = np.asarray(cs.active_values(x), dtype=float)
+                d = q[:, dih] - q0[dih]
+                q[:, dih] = q0[dih] + (d + np.pi) % (2.0 * np.pi) - np.pi
             out["bootstrap_std"] = (q.std(axis=0, ddof=1) * conv).tolist()
             out["check"] = self._cloud_check(out["names"], out["bootstrap_std"],
                                              out["target_std"], out["posterior_std"], q)

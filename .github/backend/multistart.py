@@ -131,6 +131,30 @@ def _run_one_start(payload):
     }
 
 
+def _shared_dihedral_choice(starts, elems, isotopologues, kwargs):
+    """Resolve ic_use_dihedrals="auto" once, on the first start, for every start.
+
+    Each start decided for itself, at its own geometry, so a planar molecule
+    without imposed symmetry gave the exact start 24 dihedrals and the
+    jittered starts none (fluorobenzene, T-41 verifier): the reported
+    coordinate set then depended on which start won. The first start is the
+    configured geometry; the others are its jitters.
+    """
+    mode = str(kwargs.get("coordinate_mode", "internal")).strip().lower()
+    dih = kwargs.get("ic_use_dihedrals")
+    if mode != "internal" or not (isinstance(dih, str) and dih.strip().lower() == "auto") or not starts:
+        return kwargs
+    import contextlib
+    import io
+    probe_kw = {k: v for k, v in kwargs.items() if k not in ("base_workdir", "job_name")}
+    with contextlib.redirect_stdout(io.StringIO()):
+        probe = MolecularOptimizer(coords=np.asarray(starts[0], dtype=float), elems=list(elems),
+                                   isotopologues=isotopologues, **probe_kw)
+    if probe._ic_dihedrals_reason:
+        print(f"[multistart] dihedrals added for every start: {probe._ic_dihedrals_reason}")
+    return {**kwargs, "ic_use_dihedrals": bool(probe._ic_use_dihedrals)}
+
+
 def run_multistart(starts, elems, isotopologues, optimizer_kwargs, max_workers=1, job_name="job"):
     """
     Parallel workers run independent ORCA/Psi4 jobs. Many ORCA installations (especially
@@ -162,13 +186,15 @@ def run_multistart(starts, elems, isotopologues, optimizer_kwargs, max_workers=1
         )
         max_workers = 1
 
+    start_kwargs = {**optimizer_kwargs, "job_name": job_name}
+    start_kwargs = _shared_dihedral_choice(starts, elems, isotopologues, start_kwargs)
     payloads = [
         {
             "idx": i + 1,
             "coords": np.asarray(c, dtype=float),
             "elems": list(elems),
             "isotopologues": isotopologues,
-            "optimizer_kwargs": {**optimizer_kwargs, "job_name": job_name},
+            "optimizer_kwargs": start_kwargs,
         }
         for i, c in enumerate(starts)
     ]

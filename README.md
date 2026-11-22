@@ -663,8 +663,9 @@ On Windows, you can instead set `orca_exe` in `BASE_SETTINGS` to your `orca.exe`
 > fluoroethane (HF/6-31G) stopped 0.19 and 0.16 posterior widths short of
 > their optimum and kept 0 and 4 of 50 bootstrap refits. Set
 > `internal_coordinates.use_dihedrals: auto` to add dihedrals exactly when
-> bonds and angles miss a direction (it says so when it does; molecules
-> without a free torsion are unchanged), or `true`. It is not the default
+> bonds and angles miss a direction and dihedrals reach it (it says so when
+> it does; a molecule whose bonds and angles reach every direction is
+> unchanged), or `true`. It is not the default
 > because it moves those two answers (bond RMS against their references
 > −0.19 and +0.22 mÅ, autoconfig off; −0.08 and +0.37 on) and costs acetyl
 > fluoride one more Hessian.

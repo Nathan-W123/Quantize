@@ -2398,6 +2398,23 @@ class MolecularOptimizer:
         x = self.coords if coords is None else np.asarray(coords, dtype=float)
         return float(np.sqrt(np.mean((np.asarray(x, dtype=float) - ref) ** 2)))
 
+    @staticmethod
+    def _ic_prior_trial_rows(rows, coord_set, trial_coords):
+        """The q-space prior's residuals at a trial geometry, from this step's rows.
+
+        The prior is linear in q, r = r_ref - J (q_trial - q_ref), with the
+        dihedral differences wrapped to (-pi, pi] as the rows themselves were
+        built: a step across +-180 deg otherwise reads as a 360 deg move away
+        from the prior, and every such step was refused (spectral-only
+        fluoroethane with dihedrals: 17 of 17 crossing steps, T-41 verifier).
+        """
+        J, r_ref, q_ref, _w = rows
+        dq = np.asarray(coord_set.active_values(trial_coords), dtype=float) - np.asarray(q_ref, dtype=float)
+        for k, ic in enumerate(coord_set.active_coords()):
+            if ic.kind == "dihedral":
+                dq[k] = (dq[k] + np.pi) % (2.0 * np.pi) - np.pi
+        return np.asarray(r_ref, dtype=float) - np.asarray(J, dtype=float) @ dq
+
     def _resolve_ic_dihedrals(self):
         """Add dihedrals when bonds and angles miss a direction the fit can move.
 
@@ -2405,7 +2422,7 @@ class MolecularOptimizer:
         internal motion: a methyl group's rotation changes no bond and no
         angle, so a step in them cannot turn it. Acetyl fluoride (HF/6-31G)
         reached 14 of its 15 directions and fluoroethane 17 of 18; their fits
-        stopped 0.90 and 0.16 posterior widths from their own optimum, 94% and
+        stopped 0.19 and 0.16 posterior widths from their own optimum, 94% and
         99.9% of the remaining step along the missing torsion, and the
         bootstrap kept 0/50 and 4/50 refits. With dihedrals both reach the
         optimum (1.7e-6 and 1.6e-7 widths), and acetyl fluoride agrees with
@@ -2425,20 +2442,39 @@ class MolecularOptimizer:
         x = np.asarray(self.coords, dtype=float)
         try:
             basis = np.asarray(self.physical_basis(coords=x), dtype=float)
-            B = np.asarray(InternalCoordinateSet(x, self.elems, False).active_B_matrix(x),
-                           dtype=float)
+            B0 = np.asarray(InternalCoordinateSet(x, self.elems, False).active_B_matrix(x),
+                            dtype=float)
+            B1 = np.asarray(InternalCoordinateSet(x, self.elems, True).active_B_matrix(x),
+                            dtype=float)
         except Exception:  # an unusual geometry keeps the stated set
             return
-        if basis.size == 0 or B.size == 0 or B.shape[1] != basis.shape[0]:
+        if basis.size == 0 or B0.size == 0 or B0.shape[1] != basis.shape[0]:
             return
-        s = np.linalg.svd(B @ basis, compute_uv=False)
-        reach = int((s > 1e-6 * s[0]).sum()) if s.size and s[0] > 0 else 0
+        # A direction counts as reached only where the step's damped inverse
+        # realises at least half of a move along it (s^2 > ic_damping): a
+        # direction bonds and angles barely see is as unreachable as one they
+        # cannot see. Fluorobenzene's benchmark start (no symmetry) reaches all
+        # 30 directions above a relative 1e-6, but its weakest at 7.2e-5 is
+        # realised 5%, and the fit stalled 0.056 widths short (T-41 verifier).
+        damp = float(self._ic_damping)
+
+        def reach(B):
+            sv = np.linalg.svd(B @ basis, compute_uv=False)
+            return int((sv * sv > damp).sum())
+
         n = int(basis.shape[1])
-        if reach < n:
+        r0 = reach(B0)
+        if r0 >= n:
+            return
+        # Only when dihedrals reach more: a linear chain's dihedrals are
+        # undefined (fluoroacetylene's added row is zero) and a molecule with
+        # no four-atom chain has none (formyl fluoride).
+        r1 = reach(B1) if B1.size and B1.shape[1] == basis.shape[0] else r0
+        if r1 > r0:
             self._ic_use_dihedrals = True
             self._ic_dihedrals_reason = (
-                f"bonds and angles reach {reach} of the {n} directions the fit can move "
-                f"(a torsion has no bond or angle of its own)")
+                f"bonds and angles reach {r0} of the {n} directions the fit can move, "
+                f"with dihedrals {r1} (a torsion has no bond or angle of its own)")
             print(f"  [internal] dihedrals added: {self._ic_dihedrals_reason}; "
                   f"state internal_coordinates.use_dihedrals to choose.")
 
@@ -3386,10 +3422,8 @@ class MolecularOptimizer:
                 # carries them in the step while self.internal_prior is None.
                 # The first version of this fix sat under that engine's
                 # branch and so left exactly the default path mismatched.
-                _Jp, _rp_ref, _q_ref, _wp_acc = _ic_prior_rows
-                _q_trial = np.asarray(
-                    _ic_coord_set.active_values(trial_coords), dtype=float)
-                _rp_trial = _rp_ref - _Jp @ (_q_trial - _q_ref)
+                _wp_acc = _ic_prior_rows[3]
+                _rp_trial = self._ic_prior_trial_rows(_ic_prior_rows, _ic_coord_set, trial_coords)
                 residual_w_trial = np.concatenate(
                     [residual_w_trial, _wp_acc * _rp_trial])
                 prior_wrms_after = (
