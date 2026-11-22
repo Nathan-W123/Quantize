@@ -1099,3 +1099,10 @@
 - Alternatives considered: N7 split-objective widths; N34 dimer in joint mode; done for now.
 - Source: auto-picked, no answer in 15 min (Q-72)
 - Revisit if: the user answers the decision page.
+
+### D-113 · Automatic dihedrals and the Cartesian fallback do not interact (2026-11-22)
+- Decision: no code change. Decision page items 2-4 updated with T-47's numbers; item 3's "after one check" condition is met (recommend yes for 2 and 3 together, still the user's call).
+- Why: T-47 (nine molecules, HF/6-31G, joint, internal; t47/): with both on, every molecule's answer is bit-identical to the setting that acts -- dihedrals on AF and FE (the fallback takes 0 steps there), the fallback on FA (no dihedrals added); the other six bit-identical in all four settings, autoconfig off and on. Hessians and bootstraps equal the single setting's (AF 42/50, FE 50/50, FA 50/50; neither 0, 4, 27). The remaining 0.3-4.7 mA (worst atom) between the dihedral, fallback and Cartesian answers is the Hessian's expansion point: refreshed at each answer they agree to 0.01-0.15 mA (<= 1.2e-3 widths), bond RMS AF 14.5956 / 14.5954 / 14.5954, FE 12.502 / 12.504; so dihedrals' bond moves are the fit reaching the coordinate-free answer.
+- Alternatives considered: none (measurement only).
+- Source: assumption, unconfirmed (measurement within D-112's scope)
+- Revisit if: the user switches either default.
