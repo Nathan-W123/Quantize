@@ -43,3 +43,12 @@ Q-67 (asked 18:12 UTC, deadline 18:27 UTC): fix the near-linear stall?
    remedy; changes the reported coordinate names for those molecules)
 3. Document it (FA's bootstrap keeps about half its refits)
 4. Done for now
+Q-68 (asked 18:45 UTC, deadline 19:00 UTC): what next after T-43?
+1. N33: diagnose why internal-mode water from a far start refuses
+   zero-length steps and ends 820 widths from its mode (default path)
+   (Recommended)
+2. One page listing the decisions waiting for you (auto dihedrals and the
+   Cartesian fallback as defaults, forkserver, the internal prior's units,
+   N22, N23, N25b, N16), each with its numbers
+3. N7: the split estimator's covariance from its linear response
+4. Done for now
