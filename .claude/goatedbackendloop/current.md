@@ -69,3 +69,13 @@ Request: (D-80, auto-picked at Q-46) N8 (b): measure whether the 0.01 MHz distor
   configuration's figures would have avoided both.
 
 ## Pending question
+Q-48 · asked 2026-11-22T07:07Z · deadline 07:22Z · auto-pick 1
+1. (Recommended) Why distortion-row fits do not converge (as shipped 5 of 9
+   still taking full trust-radius steps at 200 iterations, against 11-12
+   without rows): diagnose (Jacobian of the rows vs finite differences, the
+   moving prediction at Hessian refreshes, oscillation), then propose.
+2. N3: look again for published r_e^SE references (sd <= 0.5 mA, D-35) for
+   HNCO, fluoroacetylene, HCOF; nothing guessed.
+3. N7: measure how much split-mode widths miss the step's range-null
+   coupling, then propose.
+4. Done for now.
