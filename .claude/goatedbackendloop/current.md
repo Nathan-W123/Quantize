@@ -1,18 +1,15 @@
 # Current task
-Status: done
-Request: T-57 (D-129): measure the water dimer's second minimum (seed 23: two answers at their mode, 23.5 mA apart)
+Status: clarifying
+Request: T-58 (D-131): why a refreshed fit can stand 0.5 widths from its mode while the refresh reports settled
 ## Brief
-- Outcome: whether the joint objective has two minima for the C1 dimer, which is lower (real HF/6-31G energies, not each fit's own quadratic model), how often starts land in each, and what the report says. No code change before the measurement.
-- Method: evaluate both answers on one objective; refit each mode from the other's answer; compare internal coordinates; survey starts.
-- Success: a measured statement for each question, with the script and figures.
+- Outcome: a measured reason (dimer seed 3, Cartesian, joint HF/6-31G) and a proposal. No code change before the measurement.
+- Questions: what "settled" checks; how the fit terminated and what its last steps were; how far the Newton step to the mode is in A; whether continuing (same Hessian) reaches the mode; how common it is across the T-57 fits.
 ## Progress
-- N1 · seed 23 (t57/minima.py, minima23.txt): not two minima. C is below A on both terms (E_HF by 2.7e-5 Eh, 1/2|r|^2 by 0.0045), so for any alpha; refits from A move to 1.2 (internal) and 4.1 mA (Cartesian) from C, refits from C stay. alpha differs per fit (3111 A, 3050 C, refits 3332/3045): calibrated alpha = 1/(1/2 mean positive curvature sigma_x^2) follows the Hessian, so each refresh changes the objective.
-- N2 · refresh (t57/refresh.txt): Hessian age 4.5-40.6 mA, alpha 3035-3712 by start; one refresh_hessian_at_answer: A moved 0.6-14.4 mA, C 0.2-5.7; A-C 0.3-23.5 -> 0.7-2.6 mA; alpha 3036-3048; truth 13.1-13.6 mA for all
-- N3 · report (t57/age_note.txt): the posterior's Hessian-age warning fires (40.61 vs 5 mA) but speaks of widths only; the Laplace summary has no age warning
-- N4 · warning (D-130, auto-picked Q-86): hessian_age_warnings in both channels, wording names the answer and the remedy, README sentence; test extended; 7/7 mutations; CI 1759 passed
+- N1 · how it stopped (t58/settled.py): plateau, trust radius 0.78 mA; the 0.505 lies along one direction whose GN width is 11.4 A (Newton step 1.36 A rms); continuing 0.17 mA moved it to 0.148
+- N2 · the direction (t58/soft.py): the H-bond torsion; raw HF Hessian negative there at all 4 answers (-0.0007..-0.0017), floored; GN curvature = data's only (0.0077 seed 3; 1.5-3.0 others); exact 188-252 (omitted residual term)
+- N3 · the report (t58/report.py): widths angle 2-1-5/3-1-5 227 deg (seed 3), 17.6 (seed 23); exact-curvature ~1.3-1.6 deg; warning says 'order-of-magnitude' for 181x and 11x; 'settled' = Hessian age, not the mode; D-04 revisit condition met
 ## Observations
-- 2026-11-23 · fact-check caught my alpha range (3035-3712 read off the A fits only; C seed 11 was 2999)
-- 2026-11-23 · my T-56 note named a 'second minimum' from two fits' distance_to_mode (each fit's own quadratic model); one objective with real energies refuted it (L-27 revised)
+- 2026-11-23 · my Q-87 framing ('the fit stands 0.5 widths off its mode') read a Gauss-Newton distance as the fit's; exact curvature says 0.003 (L-27 again: the diagnostic measured GN widths, not the mode)
 ## Pending question
-- Q-87 (asked 04:43 UTC, deadline 04:58 UTC): 1 (Recommended) measure why a refreshed fit can still stand 0.5 widths from its mode while the refresh reports settled (dimer seed 3, Cartesian; no code change before); 2 report on the 13 never-passed MolecularOptimizer settings (nothing deleted); 3 refresh the Hessian in the plain fit or on drift (user's call: changes answers, costs a Hessian; never auto-picked); 4 Done for now. Deadline takes 1.
+- Q-88 (asked 05:05 UTC, deadline 05:20 UTC): 1 (Recommended) wording only, D-04 stands: the Gauss-Newton 'doubtful' warning says by what factor and which way the width is off (sqrt(exact/GN): 181x too wide at seed 3, 11x at seed 23) instead of 'order-of-magnitude'; the refresh docstring says 'settled' is the Hessian's age, not the mode; 2 revisit D-04 (its revisit condition is met): exact-curvature widths, or 'prior-limited', along flagged directions (user's call: changes reported widths; never auto-picked); 3 report on the 13 never-passed settings; 4 Done for now. Deadline takes 1.
 ## Handoff
