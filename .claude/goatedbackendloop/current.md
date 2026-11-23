@@ -1,12 +1,12 @@
 # Current task
 Status: done
-Request: T-51 (D-120): make the two multireference tests run in a fresh clone (F3)
+Request: T-52 (D-121): remove unused imports and dead locals (F3)
 ## Brief
-- Outcome: the tests read embedded geometries instead of the gitignored cache, still pass, and fail when the threshold is broken.
+- Outcome: a linter finds them; anything re-exported or used elsewhere stays.
 ## Progress
-- N1 · regenerate geometries (t51/geoms.py) · max T2 0.17935 / 0.04713 reproduce the tests' values
-- N2 · embed, drop the cache reader · 17 passed; threshold 0.04 / 0.2 each fail one test; CI 1742 passed, 13 skipped
+- N1 · lint (ruff 0.17, F401/F841 and all F rules) · nothing found in .github, runner, cli.py, scripts, dev; a planted unused import is found
+- N2 · history · efabab3 (2026-11-19) already removed the 7 genuine ones and kept 71 on purpose; backlog row updated
 ## Observations
+- 2026-11-23 · the backlog row was stale: the commit that acted on it did not update it (L-26)
 ## Pending question
-- Q-78 (asked 00:25 UTC, deadline 00:40 UTC): what next? 1 (Recommended) F3 continued: remove the unused imports and dead locals the 2026-11-19 audit listed (mechanical; checked by a linter and the CI selection); 2 a narrow check of c4eb2b6; 3 N34 dimer in joint mode; 4 Done for now. Deadline takes 1.
 ## Handoff

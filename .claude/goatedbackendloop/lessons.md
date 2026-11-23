@@ -93,3 +93,7 @@ once by a container swap).
 - Adjustment: list every block stacked before the change (grep the call site's builders) and measure each one's invariance; any I skip goes into the docstring as unchecked.
 - Scope: project · Status: provisional · Outcomes: -2026-11-22 (T-41: not applied to consumers -- I checked the coordinate set, not every reader of it; the verifier found the acceptance test, the bootstrap reference and multistart each mishandling it) +2026-11-22 (T-45: grepping every reader of the fallback's split fields before committing found the convergence check and the iteration print crash on None, and the bootstrap's trust-capped test silently reading 0) -2026-11-22 (T-49: I 'corrected' the README's sv_min_abs default from the API's constructor; the config runner, which the README's table names, passes 0. Check every entry path -- API, config runner, CLI -- before writing a default)
 
+### L-26 · Check a backlog item is still open before starting it
+- Adjustment: before starting a backlog item, check the log and the code for work that already did it (git log --grep, a linter, a grep); when a commit acts on an item, update its row in the same commit.
+- Evidence: 2026-11-23 · T-52 started F3's "79 unused imports" eleven days after efabab3 had handled them; the row still listed them. Scope: project · Status: provisional
+

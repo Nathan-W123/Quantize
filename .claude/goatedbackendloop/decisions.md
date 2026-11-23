@@ -1161,3 +1161,12 @@
 - Revisit if: the user answers the decision page.
 - Outcome (2026-11-23, T-51): the ozone and water HF/6-31G minima regenerated exactly as the benchmark caches them (pyscf_hf optimise from start_geometry; O-O 1.25067, O-H 0.94963 A) give max T2 0.17935 and 0.04713 against the tests' 0.1794 and 0.0471, and are now written in the test; the cache reader is gone. Both tests run (0.5 s, 0.06 s); a threshold of 0.04 or 0.2 fails one each. CI selection 1742 passed, 13 skipped (was 1740 / 15).
 
+
+### D-121 · Next task: unused imports and dead locals (F3) (2026-11-23)
+- Decision: T-52 removes unused imports and dead local assignments in .github/backend, runner and cli.py (not scripts/archive, not tests), found with a linter; anything another module, a test or a script imports from there, or a test monkeypatches, stays; a dead assignment whose right side has effects keeps its call.
+- Why: Q-78's recommended option; F3 lists 79 unused imports and ~15 dead locals from the 2026-11-19 audit.
+- Alternatives considered: a narrow check of c4eb2b6; N34 dimer in joint mode; done for now.
+- Source: auto-picked, no answer in 15 min (Q-78)
+- Revisit if: the user answers the decision page.
+- Outcome (2026-11-23, T-52): nothing to remove. ruff 0.17 (rules F401/F841, and the whole F set) finds no unused import or dead local in .github, runner, cli.py, scripts or dev; a planted unused import is found, so the check works. efabab3 (2026-11-19, "Remove dead code found by the bloat audit") had already acted on this audit: seven genuinely unused imports and the dead locals removed, the other 71 "unused" imports kept on purpose (backend registration, re-exports; marked noqa). The backlog row had not been updated; it is now.
+
