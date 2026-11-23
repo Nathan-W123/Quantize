@@ -1152,3 +1152,12 @@
 - Source: assumption, unconfirmed (defect fixes within T-50's scope)
 - Revisit if: a fit ends several accepted steps from a refusal while still stalled (the carry covers one step), or the user wants split widths withheld.
 
+
+### D-120 · Next task: make the multireference tests run in a fresh clone (F3) (2026-11-23)
+- Decision: T-51 embeds the 3-atom geometries the two multireference tests read from the gitignored benchmark cache, so they run in CI; they must still pass and must fail when the property they test is broken.
+- Why: Q-77's recommended option; the tests always skip in a fresh clone (F3), so CI never runs them.
+- Alternatives considered: a narrow check of c4eb2b6; N34 dimer in joint mode; done for now.
+- Source: auto-picked, no answer in 15 min (Q-77)
+- Revisit if: the user answers the decision page.
+- Outcome (2026-11-23, T-51): the ozone and water HF/6-31G minima regenerated exactly as the benchmark caches them (pyscf_hf optimise from start_geometry; O-O 1.25067, O-H 0.94963 A) give max T2 0.17935 and 0.04713 against the tests' 0.1794 and 0.0471, and are now written in the test; the cache reader is gone. Both tests run (0.5 s, 0.06 s); a threshold of 0.04 or 0.2 fails one each. CI selection 1742 passed, 13 skipped (was 1740 / 15).
+

@@ -12,8 +12,6 @@ four-atom molecules at cc-pVDZ, which is a few seconds.
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
 
 import numpy as np
 import pytest
@@ -24,8 +22,6 @@ from scripts.force_field_diagnostics import (
     frequency_disagreement,
     multireference_diagnostic,
 )
-
-_ROOT = Path(__file__).resolve().parents[2]
 
 #: The measured force fields that motivated the module (cm^-1).
 _OZONE_HF = [730.2, 850.7, 1266.9]
@@ -96,21 +92,21 @@ class TestFrequencyDisagreement:
 class TestMultireferenceDiagnostic:
     """Two pyscf runs, three and four atoms at cc-pVDZ."""
 
-    @staticmethod
-    def _geom(key):
-        """The molecule's cached HF/6-31G geometry, or a skip.
+    #: The HF/6-31G minima the benchmark caches (scripts/accuracy_upgrades_
+    #: benchmark.theory_geometries: pyscf_hf's optimise from start_geometry),
+    #: written here so these run in a fresh clone; the cache is gitignored
+    #: output, and without it both tests skipped everywhere, CI included.
+    #: Regenerated 2026-11-23 (O-O 1.25067 A; O-H 0.94963 A), Angstrom.
+    _GEOMETRIES = {
+        "ozone": [[2.9e-05, 0.035355, 0.037053], [1.081902, 0.660573, -0.016238],
+                  [-1.079123, 0.667328, 0.022512]],
+        "water": [[4.7e-05, 0.045637, 0.036467], [0.786279, 0.575542, -0.016855],
+                  [-0.783518, 0.581983, 0.023715]],
+    }
 
-        The cache is the benchmark's gitignored output, written one molecule
-        at a time, so an interrupted benchmark leaves a file without this
-        molecule: skip then too, rather than fail on a KeyError.
-        """
-        path = _ROOT / "output" / "theory_geometries_hf_6-31g.json"
-        if not path.exists():
-            pytest.skip(f"needs the cached theory geometries ({path.name})")
-        cache = json.loads(path.read_text())
-        if key not in cache:
-            pytest.skip(f"{path.name} has no {key!r} (an interrupted benchmark run?)")
-        return np.asarray(cache[key]["coords"], dtype=float)
+    @classmethod
+    def _geom(cls, key):
+        return np.asarray(cls._GEOMETRIES[key], dtype=float)
 
     def test_flags_ozone(self):
         d = multireference_diagnostic(["O", "O", "O"], self._geom("ozone"))
