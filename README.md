@@ -619,7 +619,21 @@ far away it was, and that the answer itself was fitted on it: the Hessian sets
 the quantum weight, so on a hydrogen-bonded water dimer (HF/6-31G, eight starts)
 one refresh moved the answer by up to 14 mÅ (RMS) and the weight by up to 18%,
 and brought the internal- and Cartesian-coordinate answers from up to 23.5 mÅ
-apart to within 2.6 mÅ. The interval table, the
+apart to within 2.6 mÅ.
+
+The widths are not always Gauss-Newton's (JᵀJ). The fit probes its three
+softest physical directions by finite differences, and along one where the
+exact curvature is over 50% from Gauss-Newton's, the reported widths, the
+distance to the optimum and the bootstrap's refusal limit use the exact
+value, and so does the fit's step where the exact value is the larger
+(`exact_curvature_where_flagged=False` turns this off). Beyond two widths from
+its optimum a fit keeps Gauss-Newton's widths, and the report says why. On the
+water dimer above (eight starts with no point group, both coordinate modes),
+Gauss-Newton keeps at most 2.2% of the curvature along the hydrogen-bond torsion: at
+the same answers it would report the widest angle at 13.5–331°, depending on
+the start; the reported widths are now 6.6–9.6°, every answer stands within
+0.052 widths of its optimum, and its 16-refit bootstrap keeps all 16 refits
+(8–13 before). The interval table, the
 predictive check and the plots describe a sample of it: the MCMC chains when
 they pass their convergence checks, an `rto` bootstrap when one was run,
 otherwise draws from the reported posterior itself; clouds are never pooled.

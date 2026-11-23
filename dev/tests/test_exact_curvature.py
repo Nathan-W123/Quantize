@@ -50,15 +50,19 @@ def _row(v, c_gn=1.0, c_ex=5.0, index=0, **over):
     return row
 
 
-@pytest.mark.parametrize("over, applies", [
-    ({}, True),
-    ({"fd_stable": False}, False),
-    ({"sign_flipped": True}, False),
-    ({"relative_discrepancy": 0.4}, False),
-    ({"curvature_exact": 0.5, "relative_discrepancy": 0.5 / 1.0}, False),   # exact the smaller
+@pytest.mark.parametrize("over, report, step", [
+    ({}, True, True),
+    ({"fd_stable": False}, False, False),
+    ({"sign_flipped": True}, False, False),
+    ({"relative_discrepancy": 0.4}, False, False),
+    # The exact curvature the smaller: the report uses it, the step does not.
+    ({"curvature_exact": 0.4, "relative_discrepancy": 0.6}, True, False),
+    ({"curvature_exact": -0.6, "relative_discrepancy": 1.6}, False, False),
 ])
-def test_which_probed_directions_take_the_exact_curvature(over, applies):
-    assert Q.MolecularOptimizer._exact_curvature_applies(_row(np.ones(9), **over)) is applies
+def test_which_probed_directions_take_the_exact_curvature(over, report, step):
+    row = _row(np.ones(9), **over)
+    assert Q.MolecularOptimizer._exact_curvature_applies(row) is report
+    assert Q.MolecularOptimizer._exact_curvature_applies(row, step=True) is step
 
 
 def test_the_joint_step_adds_the_term_after_the_floor_and_the_damping():
@@ -154,7 +158,7 @@ def _planted(opt, factor=100.0, k=0):
         r = dict(r)
         if r["index"] == k:
             r.update(curvature_exact=factor * r["curvature_gauss_newton"], fd_stable=True,
-                     sign_flipped=False, relative_discrepancy=factor - 1.0)
+                     sign_flipped=False, relative_discrepancy=abs(factor - 1.0))
         else:
             r.update(curvature_exact=r["curvature_gauss_newton"], relative_discrepancy=0.0)
         out.append(r)
@@ -185,6 +189,24 @@ def test_the_widths_and_the_distance_use_the_exact_curvature_and_the_check_does_
     assert np.array_equal(hp1, hp0) and parts1.keys() == parts0.keys()
     dH = hs1 - hs0
     assert np.allclose(dH, 99.0 * c_gn * np.outer(v, v), atol=1e-9 * np.abs(hs0).max())
+
+
+def test_an_overstated_curvature_widens_the_width_but_not_the_step(monkeypatch):
+    # The water dimer from one start (internal, seed 4, T-71): 64 by
+    # Gauss-Newton against an exact 31 along a direction carrying 18% of an
+    # angle's variance.
+    opt = _optimizer()
+    rows = _planted(opt, factor=0.25)
+    v, c_gn = rows[0]["direction"], rows[0]["curvature_gauss_newton"]
+    monkeypatch.setattr(opt, "gauss_newton_discrepancy", lambda *a, **k: [dict(r) for r in rows])
+    monkeypatch.setattr(opt, "_posterior_gradient", lambda *a, **k: np.zeros(opt.coords.size))
+    cov, _ = opt.laplace_approximation(check_gauss_newton=False)
+    assert float(v @ cov @ v) == pytest.approx(1.0 / (0.25 * c_gn + 1e-8), rel=1e-6)
+    assert opt._step_curvature_correction(opt.coords) is None
+    msgs = opt.gauss_newton_warnings()
+    assert len(msgs) == 1 and "overstates the curvature" in msgs[0], msgs
+    assert "the fit's step keeps Gauss-Newton's" in msgs[0]
+    assert "Gauss-Newton's width is 2 times narrower" in msgs[0], msgs[0]
 
 
 def test_far_from_the_mode_the_widths_stay_gauss_newton_s(monkeypatch):

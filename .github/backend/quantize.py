@@ -1246,10 +1246,11 @@ class MolecularOptimizer:
         # (_cartesian_fallback_step). Off by default: it moves acetyl
         # fluoride's answer and costs it a Hessian (D-106).
         self._ic_cartesian_fallback = bool(ic_cartesian_fallback)
-        # Where the Gauss-Newton check finds the exact curvature well above
-        # Gauss-Newton's along a soft direction, the joint step, the reported
-        # widths, the distance to the mode and the bootstrap gate use the
-        # exact one (D-145; _exact_curvature_correction). Off reproduces the
+        # Where the Gauss-Newton check finds the exact curvature over 50% from
+        # Gauss-Newton's along a soft direction, the reported widths, the
+        # distance to the mode and the bootstrap gate use the exact one, and
+        # the joint step does where it is the larger (D-145;
+        # _exact_curvature_correction, _step_curvature_correction). Off reproduces the
         # Gauss-Newton fit and report, with the check's warnings only.
         self._exact_curvature = bool(exact_curvature_where_flagged)
         self._exact_curvature_steps = 0
@@ -5653,18 +5654,21 @@ class MolecularOptimizer:
         z = float(np.max(np.abs(gp) / np.sqrt(w))) if gp.size else 0.0
         return z, basis, w, V
     @staticmethod
-    def _exact_curvature_applies(row, rel_warn=0.5):
+    def _exact_curvature_applies(row, rel_warn=0.5, step=False):
         """Does the exact curvature replace Gauss-Newton's along this probed
-        direction? Where the finite difference is stable, the sign agrees, the
-        two differ by more than ``rel_warn`` and the exact curvature is the
-        larger -- Gauss-Newton has missed curvature the residuals carry (water
-        dimer: 0.0077 of an exact 252 along the hydrogen-bond torsion, T-61).
-        Where the exact curvature is the smaller, Gauss-Newton stays and the
-        check says by how much its width is short (_gn_width_factor); a sign
-        flip is a saddle, which geometry_uncertainty refuses."""
+        direction? For the report, where the finite difference is stable, the
+        sign agrees (a flip is a saddle, which geometry_uncertainty refuses)
+        and the two differ by more than ``rel_warn``: Gauss-Newton has missed
+        curvature the residuals carry (water dimer: 0.0077 of an exact 252
+        along the hydrogen-bond torsion, T-61) or credited them with some they
+        lack (the same dimer from one start: 64 against 31, T-71). For the
+        step (``step=True``) only where the exact curvature is the larger:
+        taking curvature out of the step's matrix could leave it indefinite,
+        and only the larger case was measured (T-62 to T-69)."""
+        c_gn, c_ex = float(row["curvature_gauss_newton"]), float(row["curvature_exact"])
         return bool(row["fd_stable"] and not row["sign_flipped"]
-                    and row["relative_discrepancy"] > rel_warn
-                    and row["curvature_exact"] > row["curvature_gauss_newton"])
+                    and row["relative_discrepancy"] > rel_warn and c_ex > 0.0
+                    and (c_ex > c_gn or not step))
 
     def _exact_curvature_correction(self, x, gn_blocks=None):
         """The spectral curvature Gauss-Newton misses where the check flags it,
@@ -5672,7 +5676,8 @@ class MolecularOptimizer:
 
         Returns ``{"correction", "rows", "distance"}`` or None. ``correction``
         is sum_k (c_exact - c_gn) v_k v_k^T over the probed directions where
-        :meth:`_exact_curvature_applies`: each v_k is an eigenvector of the
+        :meth:`_exact_curvature_applies` (either way: the exact curvature
+        above Gauss-Newton's narrows the width, below it widens it): each v_k is an eigenvector of the
         physical Gauss-Newton block, so adding it replaces that eigenvalue by
         the exact curvature and leaves the others alone. ``distance`` is the
         distance to the mode with it. None when nothing applies, when the
@@ -5738,7 +5743,7 @@ class MolecularOptimizer:
             return None
         add = None
         for r in rows:
-            if not self._exact_curvature_applies(r):
+            if not self._exact_curvature_applies(r, step=True):
                 continue
             v = np.asarray(r["direction"], dtype=float).ravel()
             if Bplus is not None:
@@ -5760,23 +5765,26 @@ class MolecularOptimizer:
 
     @staticmethod
     def _gn_width_ratio(row):
-        """How much wider Gauss-Newton's width is along a direction whose
-        exact curvature the report uses: sqrt(exact / Gauss-Newton curvature)
-        (a water dimer's hydrogen-bond torsion: 181, T-58)."""
+        """How Gauss-Newton's width compares along a direction whose exact
+        curvature the report uses: sqrt(exact / Gauss-Newton curvature) times
+        wider (a water dimer's hydrogen-bond torsion: 181, T-58), or its
+        inverse times narrower."""
         c_gn, c_ex = float(row["curvature_gauss_newton"]), float(row["curvature_exact"])
         if not c_gn > 0.0:
             return "Gauss-Newton gives no finite width"
-        return f"Gauss-Newton's width is {float(np.sqrt(c_ex / c_gn)):.3g} times wider"
+        f = float(np.sqrt(c_ex / c_gn))
+        if f >= 1.0:
+            return f"Gauss-Newton's width is {f:.3g} times wider"
+        return f"Gauss-Newton's width is {1.0 / f:.3g} times narrower"
 
     @staticmethod
     def _gn_width_factor(row):
         """How the Gauss-Newton width along a flagged direction compares with
-        the exact Hessian's: sqrt(exact / Gauss-Newton curvature), for the
-        directions where Gauss-Newton stays the reported basis -- the exact
-        curvature is the smaller, or the correction is off
-        (exact_curvature_where_flagged=False). Where the exact curvature is
-        the larger the report uses it (D-145, superseding D-04's
-        Gauss-Newton-and-warn) and the warning says so instead."""
+        the exact Hessian's: sqrt(exact / Gauss-Newton curvature), where
+        Gauss-Newton stays the reported basis -- the correction is off
+        (exact_curvature_where_flagged=False). Otherwise the report uses the
+        exact curvature there (D-145, superseding D-04's Gauss-Newton-and-warn)
+        and the warning says so instead (_gn_width_ratio)."""
         c_gn, c_ex = float(row["curvature_gauss_newton"]), float(row["curvature_exact"])
         if not (c_gn > 0.0 and c_ex > 0.0):
             return "the exact Hessian gives no finite width to compare that one with"
@@ -5891,18 +5899,22 @@ class MolecularOptimizer:
                     f"coordinate here, and geometry_uncertainty returns None."
                     + self._symmetry_hint(x))
             elif row["index"] in applied:
+                more = float(row["curvature_exact"]) > float(row["curvature_gauss_newton"])
                 msgs.append(
-                    f"Gauss-Newton misses most of the curvature along physical "
-                    f"direction {row['index']}: "
+                    f"Gauss-Newton {'misses most of' if more else 'overstates'} the "
+                    f"curvature along physical direction {row['index']}: "
                     f"{row['curvature_gauss_newton']:.3e} against an exact "
                     f"{row['curvature_exact']:.3e} "
                     f"({100 * row['relative_discrepancy']:.0f}% discrepancy), "
                     f"because the term Gauss-Newton omits is "
                     f"{row['omitted_term']:.3e}. By Gauss-Newton that direction "
                     f"carries {100 * share:.0f}% of {which}'s variance; the "
-                    f"reported widths, the distance to the mode and the fit's "
-                    f"step use the exact curvature along it, where "
-                    f"{self._gn_width_ratio(row)}.")
+                    + ("reported widths, the distance to the mode and the fit's "
+                       "step use the exact curvature along it, where "
+                       if more else
+                       "reported widths and the distance to the mode use the exact "
+                       "curvature along it (the fit's step keeps Gauss-Newton's), where ")
+                    + f"{self._gn_width_ratio(row)}.")
             else:
                 msgs.append(
                     f"Gauss-Newton is doubtful along physical direction "

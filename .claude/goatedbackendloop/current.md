@@ -10,7 +10,8 @@ Request: T-71 (D-145): exact curvature where Gauss-Newton is flagged, in the ste
 - N1 · step (SVD._joint_step/step curvature_correction; quantize._step_curvature_correction, main loop + Cartesian fallback) and report (_posterior_blocks/_mode_decomposition/distance_to_mode/laplace exact_curvature; _exact_curvature_correction; warning wording) done; option exact_curvature_where_flagged (default True)
 - N2 · L-28 check: dimer seed 4 plain and refreshed answers bit-identical to the T-68 prototype runs, both modes
 - N3 · tests: test_exact_curvature.py (16), wording test updated, two step spies pass **kw; CI selection 1788 passed, 13 skipped
-- N4 · running: eight dimer starts x two modes (t71/dimer), HF base+offsets with the correction on/off (t71/on, t71/off)
+- N4 · dimer, 8 starts x 2 modes: kept 16/16 everywhere; widths 6.6-9.6 deg (Gauss-Newton 13.5-331); one exact-below-Gauss-Newton direction (internal seed 4) -> report rule made two-way (D-145 refined); README note added
+- N5 · running: HF base+offsets with the correction on/off (t71/on, t71/off)
 ## Observations
 - The 227 -> ~1.5 deg figure I gave the user was T-58's old answer; at the corrected, refreshed answer seed 3's widest angle goes 14.2 -> 6.65 deg. Correct it in the wrap-up.
 ## Pending question
