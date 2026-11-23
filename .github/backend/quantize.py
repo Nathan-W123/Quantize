@@ -5728,7 +5728,8 @@ class MolecularOptimizer:
         Hessian refresh 0.016-0.062 -> 0.002-0.013 exact widths from the
         mode, internal 0.007-0.066 -> 0.00006-0.052; the bootstrap keeps
         13-15 of 16 refits instead of 8 (Cartesian) and 14 instead of 8-13
-        (internal). Nine benchmark molecules (HF/6-31G, internal mode): it
+        (internal) with the gate still on Gauss-Newton's distance, and 16 of
+        16 on every start in both modes with it on the exact one (T-71). Nine benchmark molecules (HF/6-31G, internal mode): it
         acts on acetyl fluoride, formyl fluoride and fluoroacetylene (bond
         RMS -0.20, +0.09 and +0.04 mA), costing -5% to +22% per fit (T-69).
         The ratio test still judges the step on the Gauss-Newton model, as
