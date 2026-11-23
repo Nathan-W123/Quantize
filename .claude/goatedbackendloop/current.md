@@ -14,5 +14,5 @@ Request: T-57 (D-129): measure the water dimer's second minimum (seed 23: two an
 - 2026-11-23 · fact-check caught my alpha range (3035-3712 read off the A fits only; C seed 11 was 2999)
 - 2026-11-23 · my T-56 note named a 'second minimum' from two fits' distance_to_mode (each fit's own quadratic model); one objective with real energies refuted it (L-27 revised)
 ## Pending question
-- none (Q-86 auto-picked option 1 at 04:37 UTC)
+- Q-87 (asked 04:43 UTC, deadline 04:58 UTC): 1 (Recommended) measure why a refreshed fit can still stand 0.5 widths from its mode while the refresh reports settled (dimer seed 3, Cartesian; no code change before); 2 report on the 13 never-passed MolecularOptimizer settings (nothing deleted); 3 refresh the Hessian in the plain fit or on drift (user's call: changes answers, costs a Hessian; never auto-picked); 4 Done for now. Deadline takes 1.
 ## Handoff
