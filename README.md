@@ -307,18 +307,21 @@ to theory.
 > `sv_min_abs`, the directions the cutoff gives to theory are often ones the data
 > still weigh, and the step's acceptance test still scores the data there, so it
 > refuses the quantum surface's moves and the fit stops where they are refused.
-> On the benchmark molecules (HF/6-31G) the report says so on 9 of the 18 fits
-> (both coordinate modes): their null-space energy's minimum lies 9–44 mÅ
-> (largest atom) away in Cartesian coordinates, two of them with a direction of
-> negative curvature besides, and 4–28 mÅ in internal ones (mapped linearly;
-> fluoroacetylene's linearised 115 mÅ is far from what back-transforms). A
+> On the benchmark molecules (HF/6-31G, from their start geometries) the report
+> says so on 9 of the 18 fits (both coordinate modes): their null-space energy's
+> minimum lies 9–44 mÅ (largest atom) away in Cartesian coordinates, two of them
+> with a direction of negative curvature besides, and 4–28 mÅ in internal ones
+> (mapped linearly; fluoroacetylene's 115 mÅ). A
 > different trust radius
 > moved formyl fluoride's answer by 1.5 of its widths, so the split widths
 > describe neither the answer nor its bootstrap spread. The note appears when
 > the gap passes 0.25 posterior widths (`split_stall`) and the step reads the
 > same null space as its posterior; where they differ (fluoroethane in internal
-> coordinates, whose bonds and angles cannot turn its torsion) the report's
-> off-mode note says that instead. The `joint` objective has no such stall.
+> coordinates from its start geometry, whose bonds and angles cannot turn its
+> torsion) the report's off-mode note says that instead. The check reads the
+> quantum side only: a fit can also stop before it has finished fitting the data,
+> and still depend on the schedule, without the note (ozone at a trust radius of
+> 0.2). The `joint` objective has no such stall.
 
 > **Note.** The config-driven runner (`python -m cli run`) fits the same
 > objective as the API and the benchmark: `joint`, with `quantum_prior_sigma_ang`

@@ -1177,3 +1177,11 @@
 - Alternatives considered: a status check of F3's remaining audit items; N34 dimer in joint mode; done for now.
 - Source: auto-picked, no answer in 15 min (Q-79)
 - Revisit if: the user answers the decision page.
+
+### D-123 · T-53 verifier: the off-mode note names no cause it has not measured (2026-11-23)
+- Decision: (1) split_off_mode, when the two null spaces agree, says the posterior is not centred on the fit and names no cause. (2) Docs: the carry is exact in Cartesian coordinates and first-order in internal ones; "ten refused steps, the last accepted 1e-4 A step at the trust floor" (c4eb2b6's commit message said eleven refusals at the floor); the unconverged back-transform figures (6.8, 186 mA) removed; the 9-of-18 count is from start_geometry (7 from the benchmark's warm starts); the check reads the quantum side only (ozone at trust radius 0.2 moves 0.63 widths with a stall of 0.001). (3) Tests for the carry over a range-and-null step in both modes, the dihedral wrap, and the wording.
+- Why: T-53 verifier (report: scratchpad t53v/REPORT.md). Held: the one-rule cut (HDO reads 0, Cartesian fresh records <= 4.4e-14), 9 of 18, the mA ranges, AF Cartesian 4.03 / 43.8, FA internal 1.34, the record never from another quantum point (144+ fits). Refuted: the coupling attribution (it explained 1 of 11 off-mode cases; a prior target's unprojected pull and an unfinished range explained the others), "exact" in internal mode (AF 0.028 carried vs 0.015 fresh), the back-transform figures and the refusal count; 6 of 18 mutations survived (now 5 of 6 retested caught; the 0.99-cut one needs a null vector between 50 and 99% physical, which no fixture has). CI 1745 passed, 13 skipped.
+- Alternatives considered: decompose the posterior gradient to name the cause (more machinery on a secondary objective, the user's call); drop the split diagnostics.
+- Source: assumption, unconfirmed (defect fixes within T-53's scope)
+- Revisit if: the user wants the off-mode cause measured, or the split diagnostics simplified.
+

@@ -97,3 +97,7 @@ once by a container swap).
 - Adjustment: before starting a backlog item, check the log and the code for work that already did it (git log --grep, a linter, a grep); when a commit acts on an item, update its row in the same commit.
 - Evidence: 2026-11-23 · T-52 started F3's "79 unused imports" eleven days after efabab3 had handled them; the row still listed them. Scope: project · Status: provisional
 
+### L-27 · Do not name a cause in a diagnostic that it does not measure
+- Adjustment: a warning states what it measured; where it names a cause, measure that cause's share (decompose the quantity) first, or leave the cause out.
+- Evidence: 2026-11-23 · T-53: the new off-mode wording blamed the range-null coupling; decomposed, the coupling explained 1 of 11 cases (a prior target's pull, an unfinished range the others). Scope: project · Status: provisional
+

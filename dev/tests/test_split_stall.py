@@ -241,14 +241,73 @@ def test_a_prior_row_counts_in_the_recorded_rank():
     assert opt._last_split_step["rank"] == 2
 
 
-def test_off_its_posterior_s_mode_with_one_null_space_the_note_names_the_coupling():
+def test_off_its_posterior_s_mode_with_one_null_space_the_note_names_no_cause():
+    # Same null space, no stall: the note says the posterior is not centred
+    # on the fit and names no cause it has not measured (here the target's
+    # pull along the data's directions moves the mode, not the coupling;
+    # T-53 verifier).
     opt = _split_water((2,), coordinate_mode="cartesian", sigma=0.005,
                        prior_target_coords=_coords(r=0.98785, deg=107.508))
     assert opt._split_null_mismatch() < opt.SPLIT_NULL_AGREE, "premise: one null space"
     assert opt.split_stall()[0] < opt.SPLIT_STALL_LIMIT, "premise: no stall"
     note = opt.split_off_mode()
-    assert note and "same null space" in note and "range-null coupling" in note
-    assert "disagree" not in note
+    assert note and "same null space" in note and "not centred on this fit" in note
+    assert "disagree" not in note and "coupling" not in note
+
+
+@pytest.mark.parametrize("mode", ["cartesian", "internal"])
+def test_the_carry_adds_the_model_s_change_over_any_step(mode):
+    # Range and null parts alike: g + H d, d the step in the step's own
+    # parameters (the change in the active internal coordinates in internal
+    # mode, not a map through B+).
+    opt = _split_water((1, 2), sigma=0.0005, coordinate_mode=mode)
+    rec = opt._last_split_step
+    x0 = np.asarray(rec["coords"], dtype=float)
+    # A step along the record's range and along its null-space Newton step.
+    u_r = rec["Vt"][0]
+    u_n = opt._split_step_newton()[2]
+    u = u_r / np.linalg.norm(u_r) + u_n / np.linalg.norm(u_n)
+    step = 1e-3 * (u if rec["Bplus"] is None else rec["Bplus"] @ u)
+    delta = step.reshape(-1, 3)
+    opt.coords = x0 + delta
+    if mode == "cartesian":
+        d = delta.ravel()
+    else:
+        cs = rec["coord_set"]
+        d = np.asarray(cs.active_values(opt.coords)) - np.asarray(cs.active_values(x0))
+    carried = opt._split_record()["g"]
+    np.testing.assert_allclose(carried, rec["g"] + rec["H"] @ d, rtol=1e-12, atol=1e-15)
+    Vn = rec["Vt"][rec["rank"]:].T
+    Vr = rec["Vt"][:rec["rank"]].T
+    assert np.linalg.norm(Vr.T @ (rec["H"] @ d)) > 1e-6, "premise: the step has a range part"
+    assert np.linalg.norm(Vn.T @ (rec["H"] @ d)) > 1e-6, "premise: and a null part"
+
+
+def test_a_dihedral_carried_across_180_degrees_is_wrapped():
+    # A trans dihedral stepping from +179.9 to -179.9 deg moves 0.2 deg, not
+    # -359.8: carried unwrapped, the gradient would jump by 2 pi H.
+    opt = _split_water((2,), sigma=0.0005)
+    rec = dict(opt._last_split_step)
+    x0 = np.asarray(rec["coords"], dtype=float)
+    x1 = x0 + 1e-4
+
+    class _Dihedral:
+        kind = "dihedral"
+
+    class _Set:
+        def active_coords(self):
+            return [_Dihedral()]
+
+        def active_values(self, x):
+            near = np.allclose(np.asarray(x, dtype=float), x0)
+            return np.array([np.radians(179.9) if near else np.radians(-179.9)])
+
+    rec.update(coord_set=_Set(), Bplus=np.ones((x0.size, 1)), g=np.zeros(1), H=np.eye(1),
+               Vt=np.eye(1), rank=0)
+    opt._last_split_step = rec
+    opt.coords = x1
+    g = opt._split_record()["g"]
+    np.testing.assert_allclose(g, [np.radians(0.2)], rtol=1e-9)
 
 
 def test_off_the_split_objective_there_is_no_stall():

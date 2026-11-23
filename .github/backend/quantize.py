@@ -2257,10 +2257,14 @@ class MolecularOptimizer:
         on a refused step, at that geometry, or on an accepted one, a step
         away from it: the quadratic model's gradient is then carried here
         exactly (g + H d, d that step in the step's own parameters), and the
-        null space, a Jacobian's, is taken as unchanged over one step.
+        null space, a Jacobian's, is taken as unchanged over one step. The
+        carry is exact for the quadratic model in Cartesian coordinates; in
+        internal ones H and B+ move with the geometry, so it holds to first
+        order (acetyl fluoride: 0.028 widths carried against 0.015 from a
+        record made at the end, both far inside the limit; T-53 verifier).
         Asking for the record's own geometry instead hid stalls: acetyl
-        fluoride (HF/6-31G, Cartesian) ends on an accepted 1e-4 A step after
-        eleven refusals at the trust floor, 4.0 widths short, and
+        fluoride (HF/6-31G, Cartesian) ends on an accepted 1e-4 A step at
+        the trust floor after ten refused ones, 4.0 widths short, and
         fluoroacetylene (internal) likewise (T-50 verifier)."""
         rec = getattr(self, "_last_split_step", None)
         x = np.asarray(self.coords, dtype=float)
@@ -2298,10 +2302,10 @@ class MolecularOptimizer:
         and left out, where an eigenvalue floor would have set the length
         (acetyl fluoride and isocyanic acid, Cartesian: 1.5-2.2 A at a floor
         of 1e-8, 0.05-1.7 A for floors of 1e-4 to 1e-2; T-49 verifier). In
-        internal mode the step reaches Cartesians through B+, linearly:
-        formyl fluoride's 8.8 mA realises as 6.8 by back-transformation, and
-        fluoroacetylene's step as 186 mA in norm against 278 linearised
-        (T-50 verifier)."""
+        internal mode the step reaches Cartesians through B+, linearly; the
+        micro-iteration back-transform does not converge on these steps
+        (formyl fluoride, fluoroacetylene), so no realised figure is given
+        (T-53 verifier)."""
         rec = self._split_record()
         x = np.asarray(self.coords, dtype=float)
         if rec is None:
@@ -2392,8 +2396,12 @@ class MolecularOptimizer:
         step's null space is its posterior's, it read 2.9-44 mA (largest atom)
         in Cartesian coordinates -- acetyl fluoride's 44 and isocyanic acid's
         28 with a direction of negative curvature besides -- and 0.8-28 in
-        internal ones, through B+ (fluoroacetylene's 115, linearised, is far
-        from what back-transforms); the note fires on 9 of the 18 fits (T-50).
+        internal ones, through B+ (fluoroacetylene's 115, linearised); the
+        note fires on 9 of the 18 fits from start_geometry (T-50; 7 from the
+        benchmark script's warm starts, T-53). It reads the null side only:
+        a fit can also stop with its range unfinished, and its answer depend
+        on the step schedule, while this reads nothing (ozone, Cartesian,
+        trust radius 0.2: 0.63 widths with a stall of 0.001; T-53).
         A trust radius of 0.05 or 0.2 instead of 0.1 moved such answers up to
         1.5 of their reported widths (T-48), so neither the split posterior nor any
         linear response describes the answer or its spread (a coupling-only
@@ -2448,13 +2456,15 @@ class MolecularOptimizer:
         if d > self.SPLIT_MODE_LIMIT and term != "max_iter":
             mismatch = self._split_null_mismatch()
             if mismatch is not None and mismatch < self.SPLIT_NULL_AGREE:
-                # Same null space, no stall left: what moves the posterior's
-                # mode is the coupling its quantum term leaves out (a prior
-                # target at sigma_x 5 mA: 1.0 widths; T-50 verifier).
+                # Same null space: no cause is measured here, so none is named.
+                # Measured ones (T-53 verifier): a prior target's pull along
+                # the data's directions, which the split posterior's gradient
+                # keeps unprojected (sigma_x 5 mA: 1.0 of 1.0 widths), and a
+                # range the fit did not finish (ozone at trust radius 0.2:
+                # 0.64); the coupling explained it in 1 of 11 cases.
                 return (f"the converged split fit stands {d:.2g} posterior widths from the mode "
-                        f"its posterior describes: the step and its posterior read the same null "
-                        f"space, but the posterior leaves out the step's range-null coupling "
-                        f"(null response {self.split_coupling():.2g}), which moves its mode")
+                        f"its posterior describes, although the step and its posterior read the "
+                        f"same null space: the posterior is not centred on this fit")
             how = ("decides which directions are null on its own q-space stack"
                    if self.coordinate_mode == "internal"
                    else "decides the data's rank with its own cutoff")
