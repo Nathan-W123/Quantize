@@ -1266,3 +1266,10 @@
 - Source: auto-picked, no answer in 15 min (Q-89)
 - Revisit if: the user answers any of them.
 - Outcome (2026-11-23, T-59): page version 3 (https://claude.ai/artifact/144eMMauzGEeS3WLmW51Db; source scratchpad t46/quantize-open-decisions.html): twelve items. New: 6 multistart dihedrals (recommend yes, with item 2), 9 revisit D-04 (your call). Water-dimer rows added to item 2 (auto dihedrals) and item 4 (Hessian refresh in quantize run); items renumbered; footer sources D-04, D-59 to D-132. Checked: tags balanced, numbering 1-12, no horizontal scroll at 390 px.
+
+### D-134 · Next task: does the bootstrap's gate refuse refits at their exact mode? (2026-11-23)
+- Decision: T-60 runs error-model bootstraps of the refreshed water-dimer fits (seeds 3 and 23, Cartesian, joint HF/6-31G) and records each refit's Gauss-Newton distance_to_mode (what the 0.25-width gate reads) and its exact-Hessian distance, and how many refits the gate keeps. No code change before the measurement.
+- Why: Q-90's recommended option; T-58 found the Gauss-Newton distance 0.505 where the exact one is 0.003, along the hydrogen-bond torsion.
+- Alternatives considered: a report on the 13 never-passed settings; done for now.
+- Source: auto-picked, no answer in 15 min (Q-90)
+- Revisit if: the user revisits D-04.
