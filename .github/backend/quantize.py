@@ -5743,8 +5743,10 @@ class MolecularOptimizer:
         Hessian refresh 0.016-0.062 -> 0.002-0.013 exact widths from the
         mode, internal 0.007-0.066 -> 0.00006-0.052; the bootstrap keeps
         13-15 of 16 refits instead of 8 (Cartesian) and 14 instead of 8-13
-        (internal) with the gate still on Gauss-Newton's distance, and 16 of
-        16 on every start in both modes with it on the exact one (T-71). Nine benchmark molecules (HF/6-31G, internal mode): it
+        (internal) with the gate still on Gauss-Newton's distance, and 14-16
+        of 16 in both modes with it on the exact one and its cloud target
+        without the exact-curvature term (T-72; the refused refits stop
+        0.30-0.31 of the cloud's own width short, over the gate's 0.25). Nine benchmark molecules (HF/6-31G, internal mode): it
         acts on acetyl fluoride, formyl fluoride and fluoroacetylene (bond
         RMS -0.20, +0.09 and +0.04 mA, T-69, with dihedrals off). Cost,
         on and off interleaved, median of three (T-71, dihedrals auto): -4%
