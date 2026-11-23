@@ -333,3 +333,78 @@ def test_every_multistart_start_gets_the_same_set(monkeypatch):
         except Exception:
             pass  # the patched worker returns no result; only its inputs matter here
     assert seen == [True, True, True], seen
+
+
+# --- A set that misses a direction is reported (T-56, D-128) -------------------
+#
+# With dihedrals off (the default) nothing is added, but a fit whose bonds and
+# angles miss a direction says so: on the water dimer the gap to the mode (0.068
+# to 4.0 widths over eight starts with no point group) lay along the two missing
+# hydrogen-bond torsions, and the report said nothing below 2 widths.
+
+def test_a_missed_direction_is_reported_when_dihedrals_are_off():
+    opt, printed = _optimizer(dihedrals=False)
+    assert opt._ic_use_dihedrals is False
+    assert opt._ic_unreached == (5, 6, 6)
+    assert "reach 5 of the 6 directions" in printed
+    assert "use_dihedrals: auto adds dihedrals, which reach 6" in printed
+
+
+def test_the_note_reaches_both_warning_lists_with_the_distance_to_the_mode():
+    from backend.uncertainty_v2.posterior import laplace_approximation
+    opt, x = _fit(False)
+    d = opt.distance_to_mode()
+    assert d > 1.0, "premise: the torsion was left short (measured 20.8 widths)"
+    with contextlib.redirect_stdout(io.StringIO()):
+        lists = {"posterior": opt.internal_coordinate_posterior().get("warnings", []),
+                 "laplace": laplace_approximation(opt, coords=x).warnings}
+    for where, ws in lists.items():
+        notes = [w for w in ws if w.startswith("internal coordinates:")]
+        assert len(notes) == 1, (where, ws)
+        assert "reach 5 of the 6" in notes[0] and "use_dihedrals: auto" in notes[0], notes[0]
+        assert f"stands {d:.2g} posterior widths" in notes[0], notes[0]
+
+
+@pytest.mark.parametrize("stated", ["auto", True])
+def test_no_note_when_the_fit_has_dihedrals(stated):
+    opt, printed = _optimizer(dihedrals=stated)
+    assert opt._ic_use_dihedrals is True
+    assert opt._ic_unreached is None and opt.ic_reach_warnings() == []
+    assert "does not reach" not in printed
+
+
+def test_a_set_dihedrals_cannot_complete_names_no_dihedral_remedy():
+    lin = np.array([[0, 0, -1.06], [0, 0, 0], [0, 0, 1.20], [0, 0, 2.48]], float)
+    opt, printed, n, r0 = _spectral_only(lin, ["H", "C", "C", "F"], [1.0078, 12.0, 12.0, 18.998])
+    assert r0 < n, "premise: bonds and angles miss directions of a linear molecule"
+    assert opt._ic_unreached == (r0, r0, n)
+    for text in [printed] + opt.ic_reach_warnings():
+        assert "dihedrals reach no more of them" in text and "use_dihedrals: auto" not in text, text
+
+
+def _water_dimer(seed):
+    from test_ic_fragments import _dimer
+    truth = _dimer()
+    m_o, m_h, m_d = 15.9949146196, 1.00782503207, 2.0141017778
+    isos = []
+    for name, m in (("p", [m_o, m_h, m_h, m_o, m_h, m_h]), ("a", [m_o, m_d, m_d, m_o, m_h, m_h]),
+                    ("b", [m_o, m_h, m_h, m_o, m_d, m_d]), ("ab", [m_o, m_d, m_d, m_o, m_d, m_d]),
+                    ("h5", [m_o, m_h, m_h, m_o, m_d, m_h])):
+        abc = SP._rotational_constants(truth, np.array(m))
+        isos.append({"name": name, "masses": m, "obs_constants": [float(v) for v in abc],
+                     "sigma_constants": [0.05] * 3, "component_indices": [0, 1, 2]})
+    x = truth + np.random.default_rng(seed).normal(0.0, 0.02, truth.shape)
+    with contextlib.redirect_stdout(io.StringIO()):
+        opt = Q.MolecularOptimizer(elems=["O", "H", "H", "O", "H", "H"], coords=x, isotopologues=isos,
+                                   spectral_only=True, quantum_backend="none", use_autoconfig=False,
+                                   coordinate_mode="internal")
+    return opt, x
+
+
+@pytest.mark.parametrize("seed, directions, unreached", [(4, 12, (10, 12, 12)), (2, 8, None)])
+def test_the_water_dimer_is_reported_only_where_its_torsions_can_move(seed, directions, unreached):
+    opt, x = _water_dimer(seed)
+    # Premise: the start decides the point group -- none (12 directions, the
+    # two hydrogen-bond torsions among them) or Cs, which forbids both.
+    assert opt.physical_basis(coords=x).shape[1] == directions
+    assert opt._ic_unreached == unreached

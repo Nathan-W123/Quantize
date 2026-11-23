@@ -201,6 +201,7 @@ def laplace_approximation(
     warnings.extend(optimizer.gauss_newton_warnings(coords=coords))
     # The CLI prints this summary, not internal_coordinate_posterior's, and
     # its bundle keeps these warnings.
+    warnings.extend(optimizer.ic_reach_warnings(coords=coords))
     warnings.extend(optimizer.distortion_warnings())
     warnings.extend(optimizer.model_error_warnings())
     try:

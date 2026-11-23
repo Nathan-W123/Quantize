@@ -1236,6 +1236,9 @@ class MolecularOptimizer:
             self._ic_dihedrals_setting = bool(ic_use_dihedrals)
         self._ic_use_dihedrals = self._ic_dihedrals_setting is True
         self._ic_dihedrals_reason = None
+        # (reached, reached with dihedrals, directions) when the fit steps in
+        # bonds and angles that miss a direction; ic_reach_warnings reports it.
+        self._ic_unreached = None
         self._ic_micro_iter = max(1, int(ic_micro_iter))
         # Opt-in: retake in Cartesians an internal step the back-transform
         # could not realise, and step in Cartesians for the rest of the pass
@@ -1299,7 +1302,7 @@ class MolecularOptimizer:
             m = np.asarray(self.spectral.isotopologues[0]["masses"], dtype=float)
             if m.size == len(self.elems):
                 self._rigid_ref_masses = m.copy()
-        if self.coordinate_mode == "internal" and self._ic_dihedrals_setting == "auto":
+        if self.coordinate_mode == "internal" and self._ic_dihedrals_setting is not True:
             self._resolve_ic_dihedrals()
         self.quantum = None
         self._backend = None
@@ -2761,6 +2764,15 @@ class MolecularOptimizer:
         reach every direction -- every one without a free torsion -- keep
         them alone, so their fits are unchanged. Directions the imposed point
         group forbids are not counted (physical_basis leaves them out).
+
+        With dihedrals off (the default), or on "auto" when dihedrals reach
+        no more, nothing is added, and a set that misses a direction is
+        recorded for ic_reach_warnings instead (T-56, D-128). At the
+        benchmark starts that is acetyl fluoride (14 of 15), fluoroethane (17
+        of 18) and a water dimer whose start has no point group (10 of 12:
+        the two torsions about its hydrogen bond); its fits ended 0.068 to
+        4.0 posterior widths from their mode, against 0.003 to 0.080 with
+        dihedrals.
         """
         x = np.asarray(self.coords, dtype=float)
         try:
@@ -2793,13 +2805,52 @@ class MolecularOptimizer:
         # undefined (fluoroacetylene's added row is zero) and a molecule with
         # no four-atom chain has none (formyl fluoride).
         r1 = reach(B1) if B1.size and B1.shape[1] == basis.shape[0] else r0
-        if r1 > r0:
+        if r1 > r0 and self._ic_dihedrals_setting == "auto":
             self._ic_use_dihedrals = True
             self._ic_dihedrals_reason = (
                 f"bonds and angles reach {r0} of the {n} directions the fit can move, "
                 f"with dihedrals {r1} (a torsion has no bond or angle of its own)")
             print(f"  [internal] dihedrals added: {self._ic_dihedrals_reason}; "
                   f"state internal_coordinates.use_dihedrals to choose.")
+            return
+        self._ic_unreached = (int(r0), int(r1), int(n))
+        print(f"  [internal] {self._ic_reach_sentence()}.")
+
+    def _ic_reach_sentence(self):
+        """What _ic_unreached says, without the fit's distance to its mode."""
+        r0, r1, n = self._ic_unreached
+        out = (f"bonds and angles reach {r0} of the {n} directions the fit can move, so "
+               f"its internal-coordinate step does not reach the other {n - r0}")
+        if r1 > r0:
+            return (out + f" (a torsion has no bond or angle of its own); "
+                    f"use_dihedrals: auto adds dihedrals, which reach {r1}")
+        return (out + "; dihedrals reach no more of them, and the Cartesian "
+                "coordinate mode moves every direction")
+
+    def ic_reach_warnings(self, coords=None) -> list[str]:
+        """The internal-coordinate step's missing directions, as a warning.
+
+        Empty unless the fit stepped in bonds and angles that reach fewer
+        directions than it can move (_resolve_ic_dihedrals). Those it does
+        not reach move only as the coordinates it reaches carry them: on the
+        water dimer its two hydrogen-bond torsions moved 8 to 168 degrees from
+        the start yet ended 0.8 to 42 degrees from the Cartesian fit's (three
+        starts). The fit's distance to its own mode -- the objective the
+        widths describe moves every direction -- says how much that matters:
+        on the dimer the whole gap lay along the missing torsions (0.068 to
+        4.0 widths; 5e-5 to 0.041 within the directions reached, in 7 of 8
+        starts).
+        """
+        if self._ic_unreached is None:  # set only for an internal fit without dihedrals
+            return []
+        msg = "internal coordinates: " + self._ic_reach_sentence()
+        try:
+            d = float(self.distance_to_mode(coords=coords))
+        except Exception:  # a note must not cost the report
+            d = None
+        if d is not None:
+            msg += f". The fit stands {d:.2g} posterior widths from its own optimum"
+        return [msg + "."]
 
     def _rigid_mode_projector(self, coords, masses):
         """
@@ -4478,7 +4529,8 @@ class MolecularOptimizer:
                 f"refreshes its quantum point: the widths and the quantum prior's "
                 f"weight carry that curvature, not the curvature here (formyl "
                 f"fluoride: a Hessian at the answer moves its widths by up to 3%)"]
-        gn = gn + self.distortion_warnings() + self.model_error_warnings()
+        gn = (gn + self.ic_reach_warnings(coords=x) + self.distortion_warnings()
+              + self.model_error_warnings())
         try:
             split_gap = self.split_inconsistency()
         except Exception as exc:  # a diagnostic must not cost the report
