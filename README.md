@@ -615,7 +615,11 @@ molecules, widths up to 7% off). That costs one Hessian (up to three where the
 corrections are built from the Hessian and so move with it; the summary records
 whether the answer settled); `--no-hessian-refresh` skips it. A fit that stops
 at `max_iter` is warned about: its widths describe where it stopped. `quantize run` keeps the fit's own Hessian and its report says how
-far away it was. The interval table, the
+far away it was, and that the answer itself was fitted on it: the Hessian sets
+the quantum weight, so on a hydrogen-bonded water dimer (HF/6-31G, eight starts)
+one refresh moved the answer by up to 14 mÅ (RMS) and the weight by up to 18%,
+and brought the internal- and Cartesian-coordinate answers from up to 23.5 mÅ
+apart to within 2.6 mÅ. The interval table, the
 predictive check and the plots describe a sample of it: the MCMC chains when
 they pass their convergence checks, an `rto` bootstrap when one was run,
 otherwise draws from the reported posterior itself; clouds are never pooled.

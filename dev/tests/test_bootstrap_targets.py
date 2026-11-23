@@ -683,7 +683,23 @@ def test_the_report_says_how_old_its_hessian_is(config_fit, tmp_path):
     assert d > opt.orca_update_thresh > opt._orca_drift(), "premise: an old Hessian"
     post = opt.internal_coordinate_posterior()
     assert post["hessian_distance_ang"] == pytest.approx(d)
-    assert any("Hessian behind these widths" in w for w in post["warnings"])
+    ages = [w for w in post["warnings"] if "Hessian behind this fit" in w]
+    assert len(ages) == 1 and f"computed {1e3 * d:.2f} mA" in ages[0], post["warnings"]
+    # The answer, not only its widths, was fitted on that curvature (T-57:
+    # one refresh moved a water dimer's answer up to 14 mA).
+    assert "The answer was fitted on that curvature" in ages[0]
+    # The Laplace summary (what the CLI prints) says so too, and both read the
+    # age at the geometry asked about: none where the Hessian was computed.
+    from backend.uncertainty_v2.posterior import laplace_approximation
+    with contextlib.redirect_stdout(io.StringIO()):
+        lap = laplace_approximation(opt, coords=np.asarray(opt.coords, dtype=float))
+    assert [w for w in lap.warnings if "Hessian behind this fit" in w] == ages
+    assert opt.hessian_age_warnings(coords=opt._hessian_ref_coords) == []
+    bare = deepcopy(opt)
+    bare.laplace_approximation = lambda **_k: (None, None)
+    with contextlib.redirect_stdout(io.StringIO()):
+        none = laplace_approximation(bare, coords=np.asarray(bare.coords, dtype=float))
+    assert none.n_params == 0 and [w for w in none.warnings if "Hessian behind this fit" in w] == ages
     s = _cloud(opt, "error-model", 4, 3, tmp_path)
     assert "cannot detect error in it" in " ".join(format_bootstrap_summary(s).split())
     with contextlib.redirect_stdout(io.StringIO()):
@@ -692,7 +708,7 @@ def test_the_report_says_how_old_its_hessian_is(config_fit, tmp_path):
     with contextlib.redirect_stdout(io.StringIO()):
         opt._run_hessian()                       # a Hessian here: no warning
     assert opt.hessian_distance() == 0.0
-    assert not any("Hessian behind these widths" in w
+    assert not any("Hessian behind this fit" in w
                    for w in opt.internal_coordinate_posterior()["warnings"])
 
 

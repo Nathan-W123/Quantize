@@ -137,7 +137,8 @@ def laplace_approximation(
             std_err=np.zeros(0), covariance=np.zeros((0, 0)),
             warnings=["Posterior covariance could not be formed; "
                       "see the optimizer's own warning for why.",
-                      *optimizer.ic_reach_warnings(coords=coords)],
+                      *optimizer.ic_reach_warnings(coords=coords),
+                      *optimizer.hessian_age_warnings(coords=coords)],
         )
     # GAUGE DIRECTIONS OUT BEFORE ANY WIDTH IS REPORTED.
     #
@@ -203,6 +204,7 @@ def laplace_approximation(
     # The CLI prints this summary, not internal_coordinate_posterior's, and
     # its bundle keeps these warnings.
     warnings.extend(optimizer.ic_reach_warnings(coords=coords))
+    warnings.extend(optimizer.hessian_age_warnings(coords=coords))
     warnings.extend(optimizer.distortion_warnings())
     warnings.extend(optimizer.model_error_warnings())
     try:

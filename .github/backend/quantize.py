@@ -2607,6 +2607,32 @@ class MolecularOptimizer:
                 "moved_ang": moved, "last_move_ang": last, "termination": ended,
                 "settled": settled}
 
+    def hessian_age_warnings(self, coords=None) -> list[str]:
+        """The quantum Hessian's distance from a geometry, as a warning.
+
+        Empty within orca_update_thresh of where the Hessian was computed.
+        Beyond it, the answer -- not only its widths -- was fitted on that
+        curvature and on the quantum weight it sets (alpha_q follows the
+        Hessian's mean positive curvature). A hydrogen-bonded water dimer
+        (HF/6-31G, joint, eight starts with no point group) ended with
+        Hessians 4.5 to 40.6 mA from its answers and alpha_q 2999 to 3712
+        by start; one refresh_hessian_at_answer moved the answers by up to
+        14.4 mA (RMS) and alpha_q by up to 18%, and brought the internal-
+        and Cartesian-coordinate answers from up to 23.5 mA apart to within
+        2.6 (T-57, D-130). Formyl fluoride: its widths by up to 3%.
+        """
+        x = self.coords if coords is None else np.asarray(coords, dtype=float)
+        hess_d = self.hessian_distance(x)
+        if hess_d is None or hess_d <= float(self.orca_update_thresh):
+            return []
+        return [f"the quantum Hessian behind this fit was computed {1e3 * hess_d:.2f} mA (RMS) "
+                f"from this geometry, beyond the {1e3 * float(self.orca_update_thresh):.2f} mA at "
+                f"which the fit refreshes its quantum point. The answer was fitted on that "
+                f"curvature and on the quantum weight it sets, not only these widths: recomputing "
+                f"it at the answer (refresh_hessian_at_answer, which quantize uncertainty runs) "
+                f"moved a hydrogen-bonded water dimer's answer by up to 14 mA (RMS) and its "
+                f"weight by up to 18%, and formyl fluoride's widths by up to 3%"]
+
     def hessian_distance(self, coords=None):
         """RMS distance (Angstrom, the _orca_drift metric) from ``coords`` to
         where the quantum Hessian was computed, or None without one.
@@ -4543,15 +4569,7 @@ class MolecularOptimizer:
         if saddle is not None and saddle[0] == x.tobytes():
             return {"error": "no Laplace width exists at this geometry -- " + saddle[1],
                     "warnings": gn}
-        hess_d = self.hessian_distance(x)
-        if hess_d is not None and hess_d > float(self.orca_update_thresh):
-            gn = gn + [
-                f"the quantum Hessian behind these widths was computed "
-                f"{1e3 * hess_d:.2f} mA (RMS) from this geometry, beyond the "
-                f"{1e3 * float(self.orca_update_thresh):.2f} mA at which the fit "
-                f"refreshes its quantum point: the widths and the quantum prior's "
-                f"weight carry that curvature, not the curvature here (formyl "
-                f"fluoride: a Hessian at the answer moves its widths by up to 3%)"]
+        gn = gn + self.hessian_age_warnings(coords=x)
         gn = gn + self.distortion_warnings() + self.model_error_warnings()
         try:
             split_gap = self.split_inconsistency()
@@ -4659,7 +4677,7 @@ class MolecularOptimizer:
             "labels": labels,
             "blocks": blocks,
             "objective_mode": str(self.optimizer.objective_mode),
-            "hessian_distance_ang": hess_d,
+            "hessian_distance_ang": self.hessian_distance(x),
             "alpha_q": (None if self.spectral_only or self.quantum is None
                         else float(self.quantum_prior_weight(refresh=True))),
             "chi2_per_observation": float(rw @ rw) / max(rw.size, 1),
