@@ -11,5 +11,5 @@ Request: T-71/T-72 (D-145 to D-149): exact curvature where Gauss-Newton is flagg
 - My "waiting on you" list missed 8 page items; corrected in chat.
 - L-25 missed the bootstrap target's assumption; the review caught it.
 ## Pending question
-- Q-102: what's next (asked in chat; no auto-pick: options are the user's calls or need their go-ahead on cost).
+- Q-102 (asked 19:26 UTC, deadline 19:41, reminder trig_01Kd7baJHNnDnWm51ZF9fUhe): at the deadline auto-pick option 1 (scratch measurement of judging the corrected step on its own model, isocyanic acid); never 2 or 3.
 ## Handoff
