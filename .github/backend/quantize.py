@@ -5750,9 +5750,12 @@ class MolecularOptimizer:
         acts on acetyl fluoride, formyl fluoride and fluoroacetylene (bond
         RMS -0.20, +0.09 and +0.04 mA, T-69, with dihedrals off). Cost,
         on and off interleaved, median of three (T-71, dihedrals auto): -4%
-        to +5% per fit where it acts; +0.1% to +5% where it does not, which
-        is the check itself, run every step; the dimer's 16-refit bootstrap
-        +1% (Cartesian) and +63% (internal, 16 refits kept against 13). In
+        to +5% per fit where it acts; +0.1% to +5% where it does not, most
+        of which is not the check: profiled, the check itself is 0.3-2.2%
+        of a benchmark molecule's fit and 4% of the dimer's, two thirds of
+        it the finite-difference residuals (T-74); the dimer's 16-refit
+        bootstrap +1% (Cartesian) and +63% (internal, 16 refits kept
+        against 13; timed once). In
         the RHF benchmark rows (Cartesian, prior target) it moves isocyanic
         acid by +0.26 and +0.45 mA onto another stationary point 1.4-2.0 mA
         away whose objective is higher by about 0.05 (T-72); the other rows

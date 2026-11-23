@@ -636,9 +636,10 @@ Gauss-Newton keeps at most 2.2% of the curvature along the hydrogen-bond torsion
 the same answers it would report the widest angle at 13.5–331°, depending on
 the start; the reported widths are now 6.6–9.6°, every answer stands within
 0.052 widths of its optimum, and its 16-refit bootstrap keeps 14–16 refits
-(8–13 before). The check runs at every step and costs up to 5% of a fit; in
-the RHF benchmark rows it moves only isocyanic acid, by 0.26–0.45 mÅ onto
-another stationary point of nearly the same objective. The interval table, the
+(8–13 before). The check runs at every step; profiled, it takes 0.3–2% of a
+benchmark molecule's fit and 4% of the dimer's. In the RHF benchmark rows it
+moves only isocyanic acid, by 0.26–0.45 mÅ onto another stationary point of
+nearly the same objective. The interval table, the
 predictive check and the plots describe a sample of it: the MCMC chains when
 they pass their convergence checks, an `rto` bootstrap when one was run,
 otherwise draws from the reported posterior itself; clouds are never pooled.
