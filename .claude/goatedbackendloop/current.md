@@ -16,5 +16,5 @@ Request: T-56 (D-127, D-128): measure why the water dimer in joint internal mode
 - 2026-11-23 · my first split of the gap (M-norm shares, then widths of each part of the gradient) did not add up (162%; 14.5 + 13.4 against 1.1): the parts are not M-orthogonal. The distance to the mode within the reached directions is the measure that holds.
 - 2026-11-23 · the dimer's start noise decides its point group (Cs in 7 of 15), and with it whether the torsions exist for the fit: one seed would have hidden or exaggerated the effect
 ## Pending question
-- none (Q-84 auto-picked option 1 at 03:26 UTC)
+- Q-85 (asked 03:57 UTC, deadline 04:12 UTC): 1 (Recommended) measure the water dimer's second minimum (seed 23: auto and Cartesian both at their mode, 23.5 mA apart; which is lower, how often, does the report say anything; no code change before); 2 report on the 13 MolecularOptimizer settings nothing outside quantize.py passes (nothing deleted); 3 multistart adds dihedrals when any start needs them (user's call: changes fits; never auto-picked); 4 Done for now. Deadline takes 1.
 ## Handoff
