@@ -1258,3 +1258,11 @@
 - Source: auto-picked, no answer in 15 min (Q-88)
 - Revisit if: the user revisits D-04.
 - Outcome (2026-11-23, T-58): _gn_width_factor gives sqrt(exact/Gauss-Newton) and its direction in the doubtful warning (a no-finite-width case kept); refresh_hessian_at_answer's docstring says settled is not the mode. Existing test asserts the factor; a parametrised test covers narrower, wider, the dimer's 181x and the guard. 5 of 6 mutations caught; the sixth was an equivalent mutant (no behaviour change). CI 1763 passed; lint unchanged.
+
+### D-133 · The open-decisions page carries the calls T-56 to T-58 left (2026-11-23)
+- Decision: update the open-decisions page (artifact 144eMMauzGEeS3WLmW51Db) with four calls for the user, each with its measured evidence and trade-off: revisit D-04 (Gauss-Newton widths), refresh the Hessian in the plain fit, use_dihedrals auto as the default, multistart adding dihedrals when any start needs them. No code change.
+- Why: Q-89's recommended option; four user calls had accumulated in the records only.
+- Alternatives considered: a report on the 13 never-passed settings; revisit D-04 now (user's call; never auto-picked); done for now.
+- Source: auto-picked, no answer in 15 min (Q-89)
+- Revisit if: the user answers any of them.
+- Outcome (2026-11-23, T-59): page version 3 (https://claude.ai/artifact/144eMMauzGEeS3WLmW51Db; source scratchpad t46/quantize-open-decisions.html): twelve items. New: 6 multistart dihedrals (recommend yes, with item 2), 9 revisit D-04 (your call). Water-dimer rows added to item 2 (auto dihedrals) and item 4 (Hessian refresh in quantize run); items renumbered; footer sources D-04, D-59 to D-132. Checked: tags balanced, numbering 1-12, no horizontal scroll at 390 px.
