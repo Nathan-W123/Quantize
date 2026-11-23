@@ -99,5 +99,5 @@ once by a container swap).
 
 ### L-27 · Do not name a cause in a diagnostic that it does not measure
 - Adjustment: a warning states what it measured; where it names a cause, measure that cause's share (decompose the quantity) first, or leave the cause out.
-- Evidence: 2026-11-23 · T-53: the new off-mode wording blamed the range-null coupling; decomposed, the coupling explained 1 of 11 cases (a prior target's pull, an unfinished range the others). Scope: project · Status: provisional
+- Evidence: 2026-11-23 · T-53: the new off-mode wording blamed the range-null coupling; decomposed, the coupling explained 1 of 11 cases (a prior target's pull, an unfinished range the others). Scope: project · Status: provisional -T-56 (I called seed 23's 23.5 mA between two fits 'a second minimum' from their distance_to_mode, which reads each fit's own quadratic model and so cannot tell two minima from one point on a stale Hessian; T-57 measured the stale Hessian on one objective with real energies).
 
