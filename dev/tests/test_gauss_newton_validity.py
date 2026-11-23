@@ -403,8 +403,16 @@ def test_a_direction_no_reported_width_depends_on_is_not_reported(monkeypatch):
     assert opt.gauss_newton_warnings() == []
     monkeypatch.setattr(opt, "gauss_newton_discrepancy", lambda *a, **k: rows(inplane))
     msgs = opt.gauss_newton_warnings()
+    # The exact curvature is the larger, so the widths use it (D-145) and the
+    # note says how much wider Gauss-Newton's was: sqrt(2.27/1.0).
+    assert len(msgs) == 1 and "misses most of the curvature" in msgs[0], msgs
+    assert "use the exact curvature along it" in msgs[0]
+    assert "Gauss-Newton's width is 1.51 times wider" in msgs[0], msgs[0]
+    # With the correction off, Gauss-Newton stays the basis and the note says
+    # by how much, and which way, that width is off.
+    opt._exact_curvature = False
+    msgs = opt.gauss_newton_warnings()
     assert len(msgs) == 1 and "doubtful" in msgs[0]
-    # It says by how much, and which way, that width is off: sqrt(2.27/1.0).
     assert "1.51 times narrower than reported" in msgs[0], msgs[0]
     assert "order-of-magnitude" not in msgs[0]
 

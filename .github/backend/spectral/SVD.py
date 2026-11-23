@@ -230,13 +230,20 @@ class SubspaceOptimizer:
         return evecs @ np.diag(np.maximum(evals, floor)) @ evecs.T
 
     def _joint_step(self, J, residual, gradient, hessian, alpha_q,
-                    prior_displacement=None):
-        """MAP step: (JᵀJ + α_q H + P + λI) dp = Jᵀr − α_q g − P (x − x_target).
+                    prior_displacement=None, curvature_correction=None):
+        """MAP step: (JᵀJ + α_q H + P + λI + K) dp = Jᵀr − α_q g − P (x − x_target).
 
         Unlike the split step this has no hard range/null partition, so the
         quantum surface retains influence over every direction in proportion to
         its curvature and the spectral block's weight. That is what lets the
         result fall back toward theory as the spectral targets lose credibility.
+
+        ``curvature_correction`` (K) is the spectral curvature JᵀJ misses along
+        the directions the Gauss-Newton check flags
+        (MolecularOptimizer._step_curvature_correction), in this step's
+        parameters. It is added after the eigenvalue floor and outside the
+        damping's scale, so it changes neither: added before the floor it
+        also lifted the floor and inflated the damping (T-65).
         """
         JTJ = J.T @ J
         rhs = J.T @ residual - alpha_q * gradient
@@ -327,6 +334,8 @@ class SubspaceOptimizer:
         if not np.isfinite(scale) or scale <= 0.0:
             scale = 1.0
         A = A + self.lambda_damp * scale * np.eye(A.shape[0])
+        if curvature_correction is not None and np.shape(curvature_correction) == A.shape:
+            A = A + np.asarray(curvature_correction, dtype=float)
         try:
             return np.linalg.solve(A, rhs)
         except np.linalg.LinAlgError:
@@ -397,7 +406,8 @@ class SubspaceOptimizer:
         return float(self.alpha_quantum / e_scale)
 
     def step(self, J, residual, gradient, hessian, B=None,
-             prior_displacement=None, weight_hessian=None):
+             prior_displacement=None, weight_hessian=None,
+             curvature_correction=None):
         """
         Full hybrid step in whatever parameter space J is defined over.
 
@@ -437,7 +447,8 @@ class SubspaceOptimizer:
             J, rank, hessian=hessian if weight_hessian is None else weight_hessian)
         if self.objective_mode == "joint":
             dp = self._joint_step(J, residual, gradient, hessian, alpha_q_eff,
-                                  prior_displacement=prior_displacement)
+                                  prior_displacement=prior_displacement,
+                                  curvature_correction=curvature_correction)
         else:
             dp_range = self.range_step(U, s, Vt, rank, residual)
             dp_null = self.null_step(Vt, rank, gradient, hessian)

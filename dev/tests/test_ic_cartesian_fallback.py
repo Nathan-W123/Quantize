@@ -162,9 +162,9 @@ def test_the_fallback_uses_the_internal_steps_quantum_weight(monkeypatch):
     seen = []
     real = SubspaceOptimizer._joint_step
 
-    def spy(self, J, r, g, H, a, prior_displacement=None):
+    def spy(self, J, r, g, H, a, prior_displacement=None, **kw):
         seen.append((J.shape[1], float(a)))
-        return real(self, J, r, g, H, a, prior_displacement=prior_displacement)
+        return real(self, J, r, g, H, a, prior_displacement=prior_displacement, **kw)
 
     monkeypatch.setattr(SubspaceOptimizer, "_joint_step", spy)
     start = TRUE + np.random.default_rng(2).normal(0, 0.03, TRUE.shape)

@@ -599,7 +599,7 @@ class BootstrapEngine:
             target_cov = c_total
             label = "posterior (reported covariance)"
         elif strategy == "error-model":
-            _hs, h_prior, _parts = opt._posterior_blocks(x)
+            _hs, h_prior, _parts = opt._posterior_blocks(x, exact_curvature=False)
             target_cov = c_total - cov @ h_prior @ cov
             label = "data and model error alone (reported covariance less its prior part)"
         else:

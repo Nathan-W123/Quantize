@@ -121,8 +121,8 @@ def _fit(seed, monkeypatch, fixed=True):
     rigid = []
     joint_step = SubspaceOptimizer._joint_step
 
-    def watched(self, J, r, g, H, a, prior_displacement=None):
-        dp = joint_step(self, J, r, g, H, a, prior_displacement=prior_displacement)
+    def watched(self, J, r, g, H, a, prior_displacement=None, **kw):
+        dp = joint_step(self, J, r, g, H, a, prior_displacement=prior_displacement, **kw)
         P = opt._rigid_mode_projector(np.asarray(opt.coords, float), opt._rigid_ref_masses)
         rigid.append(float(np.linalg.norm(dp - P @ dp) / max(np.linalg.norm(dp), 1e-300)))
         return dp

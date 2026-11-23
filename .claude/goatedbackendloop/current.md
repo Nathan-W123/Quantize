@@ -1,13 +1,17 @@
 # Current task
-Status: done
-Request: T-70 (D-144): fact-check of page item 9's T-68/T-69 figures
+Status: verifying
+Request: T-71 (D-145): exact curvature where Gauss-Newton is flagged, in the step and in the report
 ## Brief
-- A fresh subagent checked the rows against the outputs and scripts; report in scratchpad t70v/REPORT.md.
+- Outcome: the joint step and the reported widths/distance/gate use the exact curvature along flagged soft directions.
+- Approach: one correction builder from gauss_newton_discrepancy rows; _posterior_blocks(exact_curvature=True) adds it to the spectral block (the prior part untouched, so the error-model target stays right); the check reads Gauss-Newton blocks; the step gets it through SubspaceOptimizer.step(curvature_correction=...), q-space image with the reach rule in internal mode; the Cartesian fallback step too.
+- Trade-off: -5% to +22% per fit where it acts (T-69), answers move on three benchmark molecules by <= 0.2 mA bond RMS (internal mode).
+- Success: dimer reproduces T-68's prototype numbers; benchmark rows bit-identical where it does not act; tests for the step, the widths, the gate and the wording; CI selection green.
 ## Progress
-- N1 · checker done; every material finding reproduced in the main session
-- N2 · page item 9 rows "Seven more starts" and the cost sentence rewritten (version 12)
+- N1 · step (SVD._joint_step/step curvature_correction; quantize._step_curvature_correction, main loop + Cartesian fallback) and report (_posterior_blocks/_mode_decomposition/distance_to_mode/laplace exact_curvature; _exact_curvature_correction; warning wording) done; option exact_curvature_where_flagged (default True)
+- N2 · L-28 check: dimer seed 4 plain and refreshed answers bit-identical to the T-68 prototype runs, both modes
+- N3 · tests: test_exact_curvature.py (16), wording test updated, two step spies pass **kw; CI selection 1788 passed, 13 skipped
+- N4 · running: eight dimer starts x two modes (t71/dimer), HF base+offsets with the correction on/off (t71/on, t71/off)
 ## Observations
-- The checker found a noise band computed against the wrong run, a mixed-mode label and an unstated RMS convention (L-18 outcome).
+- The 227 -> ~1.5 deg figure I gave the user was T-58's old answer; at the corrected, refreshed answer seed 3's widest angle goes 14.2 -> 6.65 deg. Correct it in the wrap-up.
 ## Pending question
-- Q-101 (asked 10:10 UTC): item 9 decision. All three options are the user's call (D-04 revisit / accuracy-efficiency trade-off), so no auto-pick and no reminder; wait for the answer.
 ## Handoff

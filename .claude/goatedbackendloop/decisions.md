@@ -1,4 +1,4 @@
-### D-04 · Gauss-Newton stays the reported basis, but must announce itself (2026-11-10)
+### D-04 · Gauss-Newton stays the reported basis, but must announce itself (2026-11-10) · superseded by D-145 where the exact curvature is the larger
 - Decision: keep JtJ as the Hessian behind reported uncertainties, and add a
   directional check that warns when the omitted sum_i r_i Hess(r_i) dominates
   the curvature it perturbs or flips its sign. Separately, refuse MCMC
@@ -1354,3 +1354,10 @@
 - Source: auto-picked, no answer in 15 min (Q-100)
 - Revisit if: the check finds an error (then the page is corrected).
 - Outcome (T-70): the checker confirmed the distances, kept counts, GN 'up to 0.53' and the +17-22%; found the +45% was the Cartesian dimer under an 'internal mode' label, the bootstrap timed once, fluoroacetylene (-5%) left out, the 10-20% noise band taken against a later run (adjacent runs -9% to +2%, water +62%), the spread quoted per component without saying so (per atom: Cartesian 0.21-5.2 -> 0.05-1.8 mA), 8 of 42 pairs moving apart, and every corrected refit within 0.019 exact widths (refusals on the GN reading only). Main session reproduced each (t70v/REPORT.md); page item 9 rewritten (version 12).
+
+### D-145 · Exact curvature where Gauss-Newton is flagged: in the step and in the report (2026-11-23)
+- Decision: T-71. Along the probed soft directions the Gauss-Newton check flags (finite difference stable, no sign flip, discrepancy over 50%, exact curvature above Gauss-Newton), the joint step adds the difference to its matrix after the floor and the damping (internal mode: the q-space image B+^T v, only where the step reaches the direction, v^T B+ B v > 0.5), and the reported widths, the distance to the mode and the bootstrap gate use the exact curvature there, while the geometry stands within 2 widths of its mode. The check itself keeps comparing against Gauss-Newton. Supersedes D-04.
+- Why: water dimer (T-58 to T-70): Gauss-Newton kept 0.0077 of an exact 252 along the H-bond torsion; widths 181 and 11 times too wide; refits refused on the Gauss-Newton reading only; with the step fix the answers settle (exact distance 0.002-0.013, kept 13-15 of 16).
+- Alternatives considered: the step fix only (widths stay Gauss-Newton); leave it open.
+- Source: recommended and approved ("okay go ahead", after "My recommendation is both")
+- Revisit if: a flagged direction with the exact curvature below Gauss-Newton turns up (kept on Gauss-Newton with the existing warning), or the cost per fit exceeds the measured -5% to +22%.
