@@ -1,11 +1,14 @@
 # Current task
-Status: building
+Status: done
 Request: T-73 (D-150): scratch measurement, ratio test on the corrected model
 ## Brief
-- Patch a scratch copy: stash the step's K, subtract 1/2 dp^T K dp from the ratio test's predicted reduction. Run the HF base+offsets benchmark rows and the dimer (8 starts x 2 modes). Compare with t71/on (current) and t71/off, and log p at isocyanic acid's answers.
+- Patch a scratch copy so the ratio test's predicted reduction includes the step's curvature term; run the HF base+offsets rows and the dimer 8 x 2.
 ## Progress
-- N1 · HF base+offsets with the patch: all 18 rows identical to today's code to 4 decimals, isocyanic acid 24.2325 / 29.0037 (not back to 23.98 / 28.56). Probe: the patch fired on both of HNCO's corrected steps (ratio_k 2), both accepted either way, so acceptance is not what steers it: the step direction is. Hypothesis refuted.
-- N2 · dimer 8 x 2 with the patch: running (t73/dimer)
+- N1 · HF rows: all 18 identical to 4 decimals; isocyanic acid not moved (the patch fired on both its corrected steps, both accepted either way).
+- N2 · dimer: 16 of 16 runs bit-identical (answers, iterations, kept), the patch firing on 13-97 steps per fit.
+- Outcome: inert where measured, not proposed; isocyanic acid's landing is the step direction's (backlog N36).
 ## Observations
+- L-28 applied: confirmed the patch fired (counter) before reading "no change" as a result.
 ## Pending question
+- Q-103 (asked 19:47 UTC, deadline 20:02): at the deadline auto-pick option 1 (scratch timing breakdown of the per-step check); never 2 or 3.
 ## Handoff
