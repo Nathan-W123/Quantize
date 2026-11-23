@@ -11,4 +11,5 @@ Request: T-54 (D-124): status of F3's remaining audit items (report only)
 ## Observations
 - 2026-11-23 · L-26 applied: three commits had already acted on the "open" audit list
 ## Pending question
+- Q-81 (asked 02:03 UTC, deadline 02:18 UTC): what next? 1 (Recommended) measure the split posterior's unprojected prior-target pull (T-53) -- how far it moves the split posterior's mode and widths -- then propose; 2 N34 dimer in joint mode; 3 review whether the 13 never-passed optimizer settings earn their place (report only); 4 Done for now. Deadline takes 1.
 ## Handoff
