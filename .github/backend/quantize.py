@@ -2581,9 +2581,10 @@ class MolecularOptimizer:
 
         ``settled`` is about the Hessian and the answer's last move, not about
         the distance to the mode: a water dimer settled 0.505 Gauss-Newton
-        widths from its mode (0.003 by the exact Hessian), along a torsion
-        where Gauss-Newton keeps 0.0077 of an exact 252 (T-58). distance_to_mode
-        and gauss_newton_warnings say that.
+        widths from its mode, all of it along a torsion where Gauss-Newton
+        keeps 0.0077 of an exact 252 (T-58); with the exact curvature there
+        that component is 0.003, and a stiffer direction's 0.054 is the
+        distance (T-60). distance_to_mode and gauss_newton_warnings say that.
         """
         if self.spectral_only or self.quantum is None or self._backend is None:
             return None
