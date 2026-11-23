@@ -1403,3 +1403,10 @@
 - Source: auto-picked, no answer in 15 min (Q-102)
 - Revisit if: it moves the dimer or other rows, or does not change isocyanic acid.
 - Outcome (T-73, scratch t73/): the patched ratio test fired on the corrected steps everywhere (isocyanic acid 2 of 2, dimer 13-97 per fit) and flipped no acceptance: all 18 RHF benchmark rows identical to 4 decimals (isocyanic acid 24.2325 / 29.0037), the dimer answers, iteration counts and kept counts bit-identical on every start measured. Isocyanic acid's landing comes from the step's direction, not its acceptance; the patch is inert where measured, so it is not proposed. Backlog N36 keeps the question open.
+
+### D-151 · Where the exact-curvature check's per-step time goes (2026-11-23)
+- Decision: T-74. Profile, in scratch only, the per-step check (_step_curvature_correction -> gauss_newton_discrepancy -> _posterior_blocks, finite-difference residuals, eigen-decompositions) on HF/6-31G fits where it acts and where it does not, and estimate what a bit-identical reuse of the step's own quantities would save. No repository change.
+- Why: Q-103's recommended option; T-71 measured +0.1% to +5% per fit from the check, a cost on every joint fit.
+- Alternatives considered: decide more page items (user's call); rebuild the results table (user: wait); done for now.
+- Source: auto-picked, no answer in 15 min (Q-103)
+- Revisit if: the check is under 1% of a fit (nothing to save), or a saving needs a non-identical change (then it is the user's call).
