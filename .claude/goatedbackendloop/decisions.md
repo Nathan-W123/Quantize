@@ -1353,3 +1353,4 @@
 - Alternatives considered: adopting the step fix (user's call); removing null_convergence_requires_energy (user's call); done for now.
 - Source: auto-picked, no answer in 15 min (Q-100)
 - Revisit if: the check finds an error (then the page is corrected).
+- Outcome (T-70): the checker confirmed the distances, kept counts, GN 'up to 0.53' and the +17-22%; found the +45% was the Cartesian dimer under an 'internal mode' label, the bootstrap timed once, fluoroacetylene (-5%) left out, the 10-20% noise band taken against a later run (adjacent runs -9% to +2%, water +62%), the spread quoted per component without saying so (per atom: Cartesian 0.21-5.2 -> 0.05-1.8 mA), 8 of 42 pairs moving apart, and every corrected refit within 0.019 exact widths (refusals on the GN reading only). Main session reproduced each (t70v/REPORT.md); page item 9 rewritten (version 12).
