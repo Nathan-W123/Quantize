@@ -1330,3 +1330,10 @@
 - Source: auto-picked, no answer in 15 min (Q-97)
 - Revisit if: a test shows the guardrails misbehave (then it is a fix, and asked).
 - Outcome (2026-11-23, T-67): dev/tests/test_geometry_guardrails.py, 9 tests (each rule and its scale, the violation allowance, off by default, bonds from the start only, a refused trial in the loop with the boost and shrink against factors of 1 and of 3/0.5, accept_requires_geometry_valid both ways); 13 of 13 mutations caught (t67/mutations.txt); CI 1772 passed; lint clean. No behaviour change. Backlog N35 done.
+
+### D-142 · The exact-correction trial on seven more dimer starts (scratchpad only) (2026-11-23)
+- Decision: T-68 runs the reviewer's exact-correction prototypes (t65v/ideal, t65v/ideal63) on the other seven no-point-group water-dimer starts (seeds 4, 5, 6, 8, 11, 12, 23), Cartesian and internal with dihedrals auto, off against on: iterations, exact-corrected distance after the refresh, bootstrap kept. Nothing goes into the repository.
+- Why: Q-98's recommended option; page item 9 rested on seed 3 alone.
+- Alternatives considered: removing null_convergence_requires_energy (user's call: an API change); adopting the step fix (user's call); done for now.
+- Source: auto-picked, no answer in 15 min (Q-98)
+- Revisit if: the user decides page item 9.

@@ -1,13 +1,10 @@
 # Current task
-Status: done
-Request: T-67 (D-141): tests for the geometry guardrails (N35); test-only
+Status: building
+Request: T-68 (D-142): exact-correction trial on seven more dimer starts, both modes; nothing in the repository
 ## Brief
-- Unit: _geometry_validity at a sound geometry, a crushed bond, a stretched bond, a clash, the violation allowance, guardrails off.
-- Loop: a forced invalid trial is refused (history), damping and trust radius move by the configured factors (against factors of 1), accept_requires_geometry_valid=False accepts it.
-- Mutations on each rule.
+- Per seed and mode, off and on: plain-fit iterations, exact-corrected distance after the refresh, bootstrap kept of 16.
 ## Progress
-- N1 · dev/tests/test_geometry_guardrails.py: 9 tests; 13/13 mutations; CI 1772 passed; lint clean
+- N1 · running: t68/dimer_cart.py and dimer_int.py (seed from SEED), prototype t65v/ideal/proto.py (exact correction, reach rule), four streams over seeds 4 5 6 8 11 12 23
 ## Observations
 ## Pending question
-- Q-98 (asked 08:49 UTC, deadline 09:04 UTC): 1 (Recommended) the exact-correction trial (the reviewer's t65v ideal prototype, with the reach rule) on the other seven no-point-group dimer starts, Cartesian and internal, off against on, so page item 9 rests on more than seed 3; scratchpad only; 2 remove null_convergence_requires_energy (user's call: an API change); 3 adopt the step fix (user's call: changes answers); 4 Done for now. Deadline takes 1; never 2 or 3.
 ## Handoff
