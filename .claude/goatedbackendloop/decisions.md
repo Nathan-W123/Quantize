@@ -1170,3 +1170,10 @@
 - Revisit if: the user answers the decision page.
 - Outcome (2026-11-23, T-52): nothing to remove. ruff 0.17 (rules F401/F841, and the whole F set) finds no unused import or dead local in .github, runner, cli.py, scripts or dev; a planted unused import is found, so the check works. efabab3 (2026-11-19, "Remove dead code found by the bloat audit") had already acted on this audit: seven genuinely unused imports and the dead locals removed, the other 71 "unused" imports kept on purpose (backend registration, re-exports; marked noqa). The backlog row had not been updated; it is now.
 
+
+### D-122 · Next task: a narrow check of c4eb2b6 (2026-11-23)
+- Decision: T-53 runs a fresh independent verifier on c4eb2b6 only (one cut rule for both null spaces, the record carried over the last accepted step, the off-mode note naming the coupling, the docs' figures); defects found are then fixed.
+- Why: Q-79's recommended option; c4eb2b6 is a code change nobody but me has checked (L-10).
+- Alternatives considered: a status check of F3's remaining audit items; N34 dimer in joint mode; done for now.
+- Source: auto-picked, no answer in 15 min (Q-79)
+- Revisit if: the user answers the decision page.
