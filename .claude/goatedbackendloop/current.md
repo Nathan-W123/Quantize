@@ -8,4 +8,5 @@ Request: T-51 (D-120): make the two multireference tests run in a fresh clone (F
 - N2 · embed, drop the cache reader · 17 passed; threshold 0.04 / 0.2 each fail one test; CI 1742 passed, 13 skipped
 ## Observations
 ## Pending question
+- Q-78 (asked 00:25 UTC, deadline 00:40 UTC): what next? 1 (Recommended) F3 continued: remove the unused imports and dead locals the 2026-11-19 audit listed (mechanical; checked by a linter and the CI selection); 2 a narrow check of c4eb2b6; 3 N34 dimer in joint mode; 4 Done for now. Deadline takes 1.
 ## Handoff
