@@ -13,5 +13,5 @@ Request: T-58 (D-131): why a refreshed fit can stand 0.5 widths from its mode wh
 - 2026-11-23 · one of my mutants was equivalent (.replace('', '') changes nothing): a 'missed' needs checking that the mutant changes behaviour before it counts as a test gap
 - 2026-11-23 · my Q-87 framing ('the fit stands 0.5 widths off its mode') read a Gauss-Newton distance as the fit's; exact curvature says 0.003 (L-27 again: the diagnostic measured GN widths, not the mode)
 ## Pending question
-- none (Q-88 auto-picked option 1 at 05:23 UTC)
+- Q-89 (asked 05:27 UTC, deadline 05:42 UTC): 1 (Recommended) update the open-decisions page with the calls T-56 to T-58 left for the user (revisit D-04, refresh the Hessian in the plain fit, use_dihedrals auto as default, multistart dihedrals), each with its measured evidence and trade-off; no code change; 2 report on the 13 never-passed settings; 3 revisit D-04 now (user's call: changes reported widths; never auto-picked); 4 Done for now. Deadline takes 1.
 ## Handoff
