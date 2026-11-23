@@ -136,7 +136,8 @@ def laplace_approximation(
             regularization=float(max(regularization, 0.0)),
             std_err=np.zeros(0), covariance=np.zeros((0, 0)),
             warnings=["Posterior covariance could not be formed; "
-                      "see the optimizer's own warning for why."],
+                      "see the optimizer's own warning for why.",
+                      *optimizer.ic_reach_warnings(coords=coords)],
         )
     # GAUGE DIRECTIONS OUT BEFORE ANY WIDTH IS REPORTED.
     #

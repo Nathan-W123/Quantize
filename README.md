@@ -695,10 +695,13 @@ On Windows, you can instead set `orca_exe` in `BASE_SETTINGS` to your `orca.exe`
 > unchanged), or `true`. It is not the default
 > because it moves those two answers (bond RMS against their references
 > −0.19 and +0.22 mÅ, autoconfig off; −0.08 and +0.37 on) and costs acetyl
-> fluoride one more Hessian. Without dihedrals, the run and the uncertainty
-> warnings say when bonds and angles miss a direction, how many they reach and
-> how far the fit stands from its own optimum. A hydrogen-bonded water dimer
-> whose start has no point group is one: bonds, angles and the O···H contact
+> fluoride one more Hessian. Whenever the coordinate set misses a direction
+> (bonds and angles without dihedrals, or an exactly linear chain even with
+> them), the run and the uncertainty warnings say how many directions it
+> reaches and how far the fit stands from its own optimum. At the benchmark
+> starts that is acetone, acetyl fluoride, fluorobenzene and fluoroethane.
+> A hydrogen-bonded water dimer whose start has no point group is another:
+> bonds, angles and the O···H contact
 > reach 10 of its 12 directions, missing the two torsions about the hydrogen
 > bond. From eight such starts its fits ended 0.07 to 4.0 widths from their
 > optimum, against 0.003 to 0.08 with `auto`.

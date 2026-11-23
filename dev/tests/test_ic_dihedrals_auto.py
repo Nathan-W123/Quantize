@@ -337,17 +337,29 @@ def test_every_multistart_start_gets_the_same_set(monkeypatch):
 
 # --- A set that misses a direction is reported (T-56, D-128) -------------------
 #
-# With dihedrals off (the default) nothing is added, but a fit whose bonds and
-# angles miss a direction says so: on the water dimer the gap to the mode (0.068
-# to 4.0 widths over eight starts with no point group) lay along the two missing
-# hydrogen-bond torsions, and the report said nothing below 2 widths.
+# Wherever the set the fit steps in misses a direction -- dihedrals off (the
+# default), "auto" when dihedrals reach no more, dihedrals on and still short --
+# the run and the uncertainty warnings say so: on the water dimer the gap to the
+# mode (0.068 to 4.0 widths over eight starts with no point group) lay along the
+# two missing hydrogen-bond torsions, and the report said nothing below 2 widths.
+
+def _note(opt, coords=None):
+    notes = [w for w in opt.ic_reach_warnings(coords=coords) if w.startswith("internal coordinates:")]
+    assert len(notes) == 1, notes
+    return notes[0]
+
 
 def test_a_missed_direction_is_reported_when_dihedrals_are_off():
     opt, printed = _optimizer(dihedrals=False)
     assert opt._ic_use_dihedrals is False
-    assert opt._ic_unreached == (5, 6, 6)
-    assert "reach 5 of the 6 directions" in printed
-    assert "use_dihedrals: auto adds dihedrals, which reach 6" in printed
+    assert opt._ic_unreached == {"reached": 5, "directions": 6, "dihedrals": False, "with_dihedrals": 6}
+    for text in (printed, _note(opt)):
+        assert "bonds and angles reach 5 of the 6 directions" in text, text
+        assert "does not reach the other 1 " in text, text
+        # use_dihedrals: true, not auto -- multistart turns auto into the first
+        # start's True/False, so "auto adds them" can be false for a later start.
+        assert "with dihedrals (use_dihedrals: true) the set reaches 6" in text, text
+        assert "auto" not in text and "Cartesian" not in text, text
 
 
 def test_the_note_reaches_both_warning_lists_with_the_distance_to_the_mode():
@@ -361,12 +373,48 @@ def test_the_note_reaches_both_warning_lists_with_the_distance_to_the_mode():
     for where, ws in lists.items():
         notes = [w for w in ws if w.startswith("internal coordinates:")]
         assert len(notes) == 1, (where, ws)
-        assert "reach 5 of the 6" in notes[0] and "use_dihedrals: auto" in notes[0], notes[0]
+        assert "reach 5 of the 6" in notes[0], notes[0]
         assert f"stands {d:.2g} posterior widths" in notes[0], notes[0]
 
 
+def test_the_distance_is_taken_where_it_is_asked_for():
+    opt, x = _fit(False)
+    start = _hooh(dih=100.0)
+    d_fit, d_start = opt.distance_to_mode(coords=x), opt.distance_to_mode(coords=start)
+    assert f"{d_fit:.2g}" != f"{d_start:.2g}", "premise: the two distances read differently"
+    assert f"stands {d_start:.2g} posterior widths" in _note(opt, coords=start)
+    assert f"stands {d_fit:.2g} posterior widths" in _note(opt, coords=x)
+
+
+def test_a_distance_that_cannot_be_formed_leaves_the_note(monkeypatch):
+    opt, _ = _optimizer(dihedrals=False)
+
+    def fail(*_a, **_k):
+        raise np.linalg.LinAlgError("singular")
+
+    monkeypatch.setattr(opt, "distance_to_mode", fail)
+    text = _note(opt)
+    assert "reach 5 of the 6" in text and "stands" not in text, text
+
+
+def test_the_note_survives_a_refused_posterior(monkeypatch):
+    from backend.uncertainty_v2.posterior import laplace_approximation
+    opt, x = _fit(False)
+
+    def saddle(coords=None, **_k):
+        opt._gn_saddle = (np.asarray(coords, dtype=float).tobytes(), "a stationary saddle")
+        return []
+
+    monkeypatch.setattr(opt, "gauss_newton_warnings", saddle)
+    post = opt.internal_coordinate_posterior()
+    assert "error" in post and any(w.startswith("internal coordinates:") for w in post["warnings"]), post
+    monkeypatch.setattr(opt, "laplace_approximation", lambda **_k: (None, None))
+    lap = laplace_approximation(opt, coords=x)
+    assert lap.n_params == 0 and any(w.startswith("internal coordinates:") for w in lap.warnings), lap.warnings
+
+
 @pytest.mark.parametrize("stated", ["auto", True])
-def test_no_note_when_the_fit_has_dihedrals(stated):
+def test_no_note_when_the_fit_has_dihedrals_that_reach_every_direction(stated):
     opt, printed = _optimizer(dihedrals=stated)
     assert opt._ic_use_dihedrals is True
     assert opt._ic_unreached is None and opt.ic_reach_warnings() == []
@@ -377,9 +425,58 @@ def test_a_set_dihedrals_cannot_complete_names_no_dihedral_remedy():
     lin = np.array([[0, 0, -1.06], [0, 0, 0], [0, 0, 1.20], [0, 0, 2.48]], float)
     opt, printed, n, r0 = _spectral_only(lin, ["H", "C", "C", "F"], [1.0078, 12.0, 12.0, 18.998])
     assert r0 < n, "premise: bonds and angles miss directions of a linear molecule"
-    assert opt._ic_unreached == (r0, r0, n)
-    for text in [printed] + opt.ic_reach_warnings():
-        assert "dihedrals reach no more of them" in text and "use_dihedrals: auto" not in text, text
+    assert opt._ic_unreached == {"reached": r0, "directions": n, "dihedrals": False, "with_dihedrals": r0}
+    for text in (printed, _note(opt)):
+        assert "dihedrals reach no more of them" in text and "use_dihedrals" not in text, text
+        assert f"does not reach the other {n - r0} " in text, text
+
+
+def _hoocch():
+    """H-O-O-C#C-H with an exactly linear O-C#C-H: a torsion and linear bends."""
+    o1, o2 = np.zeros(3), np.array([1.45, 0.0, 0.0])
+    a, d = np.radians(100.0), np.radians(115.0)
+    h = o1 + 0.97 * np.array([np.cos(np.pi - a), np.sin(np.pi - a), 0.0])
+    u = np.array([np.cos(a), np.sin(a) * np.cos(d), np.sin(a) * np.sin(d)])
+    c1 = o2 + 1.36 * u
+    c2 = c1 + 1.20 * u
+    return np.array([h, o1, o2, c1, c2, c2 + 1.06 * u])
+
+
+@pytest.mark.parametrize("stated", [False, "auto", True])
+def test_dihedrals_that_reach_more_but_not_all_are_said_to_fall_short(stated):
+    x, elems = _hoocch(), ["H", "O", "O", "C", "C", "H"]
+    masses = {"H": 1.00782503207, "O": 15.99491461956, "C": 12.0}
+    abc = SP._rotational_constants(x, np.array([masses[e] for e in elems]))
+    iso = [{"name": "p", "masses": [masses[e] for e in elems], "obs_constants": [float(v) for v in abc],
+            "sigma_constants": [0.05] * 3, "component_indices": [0, 1, 2]}]
+    with contextlib.redirect_stdout(io.StringIO()) as out:
+        opt = Q.MolecularOptimizer(elems=elems, coords=x, isotopologues=iso, spectral_only=True,
+                                   quantum_backend="none", coordinate_mode="internal", symmetry=None,
+                                   use_autoconfig=False, ic_use_dihedrals=stated)
+    n = opt.physical_basis(coords=x).shape[1]
+    u = opt._ic_unreached
+    # Measured: bonds and angles 9 of 12, with dihedrals 10 (T-56 verifier).
+    assert n == 12 and u["with_dihedrals"] == 10, u
+    text = _note(opt)
+    assert "the Cartesian coordinate mode" in text and text in out.getvalue() + text, text
+    if stated is False:
+        assert u["dihedrals"] is False and u["reached"] == 9
+        assert "with dihedrals (use_dihedrals: true) the set reaches 10" in text, text
+    else:
+        assert opt._ic_use_dihedrals is True and u["dihedrals"] is True and u["reached"] == 10
+        assert "bonds, angles and dihedrals reach 10 of the 12" in text and "use_dihedrals" not in text, text
+
+
+def test_a_degenerate_start_is_left_for_the_fit_to_refuse():
+    # Two atoms at one position: the reach test cannot be made, and the
+    # constructor must not be where that fails (it built the object before).
+    x = _hooh(dih=100.0)
+    x[3] = x[1]
+    with contextlib.redirect_stdout(io.StringIO()), np.errstate(invalid="ignore", divide="ignore"):
+        opt = Q.MolecularOptimizer(elems=["O", "O", "H", "H"], coords=x, isotopologues=_isotopologues(),
+                                   quantum_backend="test_peroxide_field", use_autoconfig=False,
+                                   coordinate_mode="internal", symmetry=None)
+    assert opt._ic_unreached is None
 
 
 def _water_dimer(seed):
@@ -401,10 +498,14 @@ def _water_dimer(seed):
     return opt, x
 
 
-@pytest.mark.parametrize("seed, directions, unreached", [(4, 12, (10, 12, 12)), (2, 8, None)])
-def test_the_water_dimer_is_reported_only_where_its_torsions_can_move(seed, directions, unreached):
+@pytest.mark.parametrize("seed, directions, reached", [(4, 12, 10), (2, 8, None)])
+def test_the_water_dimer_is_reported_only_where_its_torsions_can_move(seed, directions, reached):
     opt, x = _water_dimer(seed)
     # Premise: the start decides the point group -- none (12 directions, the
     # two hydrogen-bond torsions among them) or Cs, which forbids both.
     assert opt.physical_basis(coords=x).shape[1] == directions
-    assert opt._ic_unreached == unreached
+    if reached is None:
+        assert opt._ic_unreached is None
+    else:
+        assert opt._ic_unreached == {"reached": reached, "directions": directions, "dihedrals": False,
+                                     "with_dihedrals": directions}

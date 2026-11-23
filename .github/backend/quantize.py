@@ -1236,8 +1236,8 @@ class MolecularOptimizer:
             self._ic_dihedrals_setting = bool(ic_use_dihedrals)
         self._ic_use_dihedrals = self._ic_dihedrals_setting is True
         self._ic_dihedrals_reason = None
-        # (reached, reached with dihedrals, directions) when the fit steps in
-        # bonds and angles that miss a direction; ic_reach_warnings reports it.
+        # What the fit's coordinate set reaches, when it misses a direction
+        # (_resolve_ic_dihedrals); ic_reach_warnings reports it.
         self._ic_unreached = None
         self._ic_micro_iter = max(1, int(ic_micro_iter))
         # Opt-in: retake in Cartesians an internal step the back-transform
@@ -1302,7 +1302,7 @@ class MolecularOptimizer:
             m = np.asarray(self.spectral.isotopologues[0]["masses"], dtype=float)
             if m.size == len(self.elems):
                 self._rigid_ref_masses = m.copy()
-        if self.coordinate_mode == "internal" and self._ic_dihedrals_setting is not True:
+        if self.coordinate_mode == "internal":
             self._resolve_ic_dihedrals()
         self.quantum = None
         self._backend = None
@@ -2761,30 +2761,23 @@ class MolecularOptimizer:
         Decided once, at the start geometry: the count is set by the bonding,
         and a set that changed during a fit would change the objective's
         coordinates under its step. Molecules whose bonds and angles already
-        reach every direction -- every one without a free torsion -- keep
-        them alone, so their fits are unchanged. Directions the imposed point
+        reach every direction keep them alone, so their fits are unchanged. Directions the imposed point
         group forbids are not counted (physical_basis leaves them out).
 
-        With dihedrals off (the default), or on "auto" when dihedrals reach
-        no more, nothing is added, and a set that misses a direction is
-        recorded for ic_reach_warnings instead (T-56, D-128). At the
-        benchmark starts that is acetyl fluoride (14 of 15), fluoroethane (17
-        of 18) and a water dimer whose start has no point group (10 of 12:
-        the two torsions about its hydrogen bond); its fits ended 0.068 to
-        4.0 posterior widths from their mode, against 0.003 to 0.080 with
-        dihedrals.
+        Wherever the set the fit steps in still misses a direction -- dihedrals
+        off (the default), "auto" when dihedrals reach no more, or dihedrals on
+        and short (an exactly linear chain) -- it is recorded for
+        ic_reach_warnings instead (T-56, D-128). At the benchmark starts with
+        dihedrals off that is acetone (22 of 24), acetyl fluoride (14 of 15),
+        fluorobenzene (29 of 30, its weakest direction seen, but faintly),
+        fluoroethane (17 of 18) and a water dimer whose start has no point
+        group (10 of 12: the two torsions about its hydrogen bond); the
+        dimer's fits ended 0.068 to 4.0 posterior widths from their mode
+        against 0.003 to 0.080 with dihedrals. Multistart resolves "auto" on
+        its first start and passes the result to every start, so the note
+        names use_dihedrals: true, not auto, as the remedy.
         """
         x = np.asarray(self.coords, dtype=float)
-        try:
-            basis = np.asarray(self.physical_basis(coords=x), dtype=float)
-            B0 = np.asarray(InternalCoordinateSet(x, self.elems, False).active_B_matrix(x),
-                            dtype=float)
-            B1 = np.asarray(InternalCoordinateSet(x, self.elems, True).active_B_matrix(x),
-                            dtype=float)
-        except Exception:  # an unusual geometry keeps the stated set
-            return
-        if basis.size == 0 or B0.size == 0 or B0.shape[1] != basis.shape[0]:
-            return
         # A direction counts as reached only where the step's damped inverse
         # realises at least half of a move along it (s^2 > ic_damping): a
         # direction bonds and angles barely see is as unreachable as one they
@@ -2792,46 +2785,75 @@ class MolecularOptimizer:
         # 30 directions above a relative 1e-6, but its weakest at 7.2e-5 is
         # realised 5%, and the fit stalled 0.056 widths short (T-41 verifier).
         damp = float(self._ic_damping)
+        try:
+            basis = np.asarray(self.physical_basis(coords=x), dtype=float)
+            n = int(basis.shape[1])
 
-        def reach(B):
-            sv = np.linalg.svd(B @ basis, compute_uv=False)
-            return int((sv * sv > damp).sum())
+            def reach(dihedrals):
+                B = np.asarray(InternalCoordinateSet(x, self.elems, dihedrals).active_B_matrix(x),
+                               dtype=float)
+                if B.size == 0 or B.shape[1] != basis.shape[0]:
+                    return None
+                sv = np.linalg.svd(B @ basis, compute_uv=False)
+                return int((sv * sv > damp).sum())
 
-        n = int(basis.shape[1])
-        r0 = reach(B0)
-        if r0 >= n:
+            if basis.size == 0:
+                return
+            if self._ic_dihedrals_setting is True:
+                r0, r1 = None, reach(True)
+            else:
+                r0 = reach(False)
+                # Only when dihedrals reach more: a linear chain's dihedrals
+                # are undefined (fluoroacetylene's added row is zero) and a
+                # molecule with no four-atom chain has none (formyl fluoride).
+                r1 = reach(True) if (r0 is not None and r0 < n) else r0
+        except Exception:  # an unusual geometry (coincident atoms, say) keeps the stated set
             return
-        # Only when dihedrals reach more: a linear chain's dihedrals are
-        # undefined (fluoroacetylene's added row is zero) and a molecule with
-        # no four-atom chain has none (formyl fluoride).
-        r1 = reach(B1) if B1.size and B1.shape[1] == basis.shape[0] else r0
+        if self._ic_dihedrals_setting is True:
+            if r1 is not None and r1 < n:
+                self._record_ic_unreached(r1, n, True, r1)
+            return
+        if r0 is None or r0 >= n:
+            return
+        r1 = r0 if r1 is None else r1
         if r1 > r0 and self._ic_dihedrals_setting == "auto":
             self._ic_use_dihedrals = True
             self._ic_dihedrals_reason = (
                 f"bonds and angles reach {r0} of the {n} directions the fit can move, "
-                f"with dihedrals {r1} (a torsion has no bond or angle of its own)")
+                f"with dihedrals {r1}")
             print(f"  [internal] dihedrals added: {self._ic_dihedrals_reason}; "
                   f"state internal_coordinates.use_dihedrals to choose.")
+            if r1 < n:
+                self._record_ic_unreached(r1, n, True, r1)
             return
-        self._ic_unreached = (int(r0), int(r1), int(n))
+        self._record_ic_unreached(r0, n, False, r1)
+
+    def _record_ic_unreached(self, reached, n, dihedrals, with_dihedrals):
+        self._ic_unreached = {"reached": int(reached), "directions": int(n),
+                              "dihedrals": bool(dihedrals), "with_dihedrals": int(with_dihedrals)}
         print(f"  [internal] {self._ic_reach_sentence()}.")
 
     def _ic_reach_sentence(self):
         """What _ic_unreached says, without the fit's distance to its mode."""
-        r0, r1, n = self._ic_unreached
-        out = (f"bonds and angles reach {r0} of the {n} directions the fit can move, so "
-               f"its internal-coordinate step does not reach the other {n - r0}")
-        if r1 > r0:
-            return (out + f" (a torsion has no bond or angle of its own); "
-                    f"use_dihedrals: auto adds dihedrals, which reach {r1}")
-        return (out + "; dihedrals reach no more of them, and the Cartesian "
-                "coordinate mode moves every direction")
+        u = self._ic_unreached
+        r, n, r1 = u["reached"], u["directions"], u["with_dihedrals"]
+        which = "bonds, angles and dihedrals" if u["dihedrals"] else "bonds and angles"
+        out = (f"at the start geometry {which} reach {r} of the {n} directions the fit can "
+               f"move, so its internal-coordinate step does not reach the other {n - r} (it "
+               f"realises at most half of a move along them)")
+        if u["dihedrals"]:
+            return out + "; the Cartesian coordinate mode moves every direction"
+        if r1 <= r:
+            return (out + "; dihedrals reach no more of them, and the Cartesian "
+                    "coordinate mode moves every direction")
+        out += f"; with dihedrals (use_dihedrals: true) the set reaches {r1}"
+        return out if r1 >= n else out + ", and the Cartesian coordinate mode every direction"
 
     def ic_reach_warnings(self, coords=None) -> list[str]:
         """The internal-coordinate step's missing directions, as a warning.
 
-        Empty unless the fit stepped in bonds and angles that reach fewer
-        directions than it can move (_resolve_ic_dihedrals). Those it does
+        Empty unless the fit stepped in a set that reaches fewer directions
+        than it can move (_resolve_ic_dihedrals). Those it does
         not reach move only as the coordinates it reaches carry them: on the
         water dimer its two hydrogen-bond torsions moved 8 to 168 degrees from
         the start yet ended 0.8 to 42 degrees from the Cartesian fit's (three
@@ -2841,7 +2863,7 @@ class MolecularOptimizer:
         4.0 widths; 5e-5 to 0.041 within the directions reached, in 7 of 8
         starts).
         """
-        if self._ic_unreached is None:  # set only for an internal fit without dihedrals
+        if self._ic_unreached is None:  # set only for an internal fit whose set is short
             return []
         msg = "internal coordinates: " + self._ic_reach_sentence()
         try:
@@ -4516,6 +4538,7 @@ class MolecularOptimizer:
             gn = list(self.gauss_newton_warnings(coords=x))
         except Exception as exc:  # a diagnostic must not cost the report
             gn = [f"Gauss-Newton check unavailable: {type(exc).__name__}"]
+        gn = gn + self.ic_reach_warnings(coords=x)
         saddle = getattr(self, "_gn_saddle", None)
         if saddle is not None and saddle[0] == x.tobytes():
             return {"error": "no Laplace width exists at this geometry -- " + saddle[1],
@@ -4529,8 +4552,7 @@ class MolecularOptimizer:
                 f"refreshes its quantum point: the widths and the quantum prior's "
                 f"weight carry that curvature, not the curvature here (formyl "
                 f"fluoride: a Hessian at the answer moves its widths by up to 3%)"]
-        gn = (gn + self.ic_reach_warnings(coords=x) + self.distortion_warnings()
-              + self.model_error_warnings())
+        gn = gn + self.distortion_warnings() + self.model_error_warnings()
         try:
             split_gap = self.split_inconsistency()
         except Exception as exc:  # a diagnostic must not cost the report
