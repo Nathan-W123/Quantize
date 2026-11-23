@@ -1391,3 +1391,4 @@
 - Alternatives considered: keep it.
 - Source: stated by user ("1-4 go", item 4)
 - Revisit if: a caller outside the repository used it.
+- Measured (T-71/T-72, HF/6-31G benchmark rows, Cartesian, base and offsets): 15 of 18 rows identical, acetyl fluoride and fluoroethane base +/-0.003 mA, isocyanic acid +0.26 (base) and +0.45 mA (offsets) against its r_s reference, landing on another stationary point 1.4-2.0 mA away whose objective is higher by 0.044-0.050 in log p (t71/chk/hnco_check.json). Reported to the user as a cost.
