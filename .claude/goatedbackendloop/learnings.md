@@ -70,6 +70,7 @@ Sessions: 0 · Last consolidated: 2026-11-20
 - Evidence: 2026-11-21 · T-19: 7-14% reported; re-timed with exactly the change, 0% (formyl fluoride) and 4.5% (fluoroethane, repeats 4%). The wrong figure had already reached a gate question.
 - Adjustment: before quoting a time as a cost, read what the timed code does per call; time the exact change with nothing recording inside the loop, alternating with the baseline, at least two runs each, and state the repeats' spread beside it.
 - Scope: workflow · Status: provisional · Outcomes: -
+- Outcomes: +2026-11-23 (T-69: bit-identical fits varied 10-20% between sequential runs, so a cost under that is noise)
 
 ### L-12 · Date a change from the full history, not a shallow clone
 - Observation: `git log --follow` in a shallow clone showed a default flipping at a grafted root commit; the real change was a day earlier on GitHub.
