@@ -2249,15 +2249,43 @@ class MolecularOptimizer:
     #: stopped short of the split step's fixed point (split_stall).
     SPLIT_STALL_LIMIT = 0.25
 
+    def _split_record(self):
+        """The split step's last record, carried to this geometry, or None.
+
+        The fit loop records what each split step solved with
+        (_last_split_step, at the geometry it was computed at). A fit ends
+        on a refused step, at that geometry, or on an accepted one, a step
+        away from it: the quadratic model's gradient is then carried here
+        exactly (g + H d, d that step in the step's own parameters), and the
+        null space, a Jacobian's, is taken as unchanged over one step.
+        Asking for the record's own geometry instead hid stalls: acetyl
+        fluoride (HF/6-31G, Cartesian) ends on an accepted 1e-4 A step after
+        eleven refusals at the trust floor, 4.0 widths short, and
+        fluoroacetylene (internal) likewise (T-50 verifier)."""
+        rec = getattr(self, "_last_split_step", None)
+        x = np.asarray(self.coords, dtype=float)
+        if rec is None or rec["coords"].shape != x.shape:
+            return None
+        if np.array_equal(rec["coords"], x):
+            return rec
+        if rec["Bplus"] is None:
+            d = (x - rec["coords"]).ravel()
+        else:
+            cs = rec["coord_set"]
+            d = (np.asarray(cs.active_values(x), dtype=float)
+                 - np.asarray(cs.active_values(rec["coords"]), dtype=float))
+            for k, ic in enumerate(cs.active_coords()):
+                if ic.kind == "dihedral":
+                    d[k] = (d[k] + np.pi) % (2.0 * np.pi) - np.pi
+        return dict(rec, g=rec["g"] + rec["H"] @ d)
+
     def _split_step_newton(self):
         """One Newton step on what the split step last solved with, over its
         own null space and in its own parameters: (Cartesian step, number of
         null directions along which the quadratic model has no minimum, the
-        step in the step's own parameters), or
-        None when that record is not at this geometry (the last step was
-        accepted, so the fit moved after it).
+        step in the step's own parameters), or None without a record.
 
-        The record (_last_split_step) holds the step's stacked Jacobian's
+        The record (_split_record) holds the step's stacked Jacobian's
         right singular vectors and rank, and the gradient and Hessian it was
         handed -- after the pull toward a prior target, in q-space in
         internal mode -- so this reads the null space the step decides, not
@@ -2269,10 +2297,14 @@ class MolecularOptimizer:
         curvature have no minimum to measure a distance to: they are counted
         and left out, where an eigenvalue floor would have set the length
         (acetyl fluoride and isocyanic acid, Cartesian: 1.5-2.2 A at a floor
-        of 1e-8, 0.05-1.7 A for floors of 1e-4 to 1e-2; T-49 verifier)."""
-        rec = getattr(self, "_last_split_step", None)
+        of 1e-8, 0.05-1.7 A for floors of 1e-4 to 1e-2; T-49 verifier). In
+        internal mode the step reaches Cartesians through B+, linearly:
+        formyl fluoride's 8.8 mA realises as 6.8 by back-transformation, and
+        fluoroacetylene's step as 186 mA in norm against 278 linearised
+        (T-50 verifier)."""
+        rec = self._split_record()
         x = np.asarray(self.coords, dtype=float)
-        if rec is None or rec["coords"].shape != x.shape or not np.array_equal(rec["coords"], x):
+        if rec is None:
             return None
         Vn = rec["Vt"][rec["rank"]:].T
         if Vn.shape[1] == 0:
@@ -2292,31 +2324,43 @@ class MolecularOptimizer:
         """How far the null space the split step last decided is from the
         one its posterior reads, as the sine of their largest principal angle
         over the physical directions (1 when their dimensions differ, 0 when
-        they agree), or None without a record at this geometry. They differ
-        where the step's own cutoff, or its q-space stack in internal mode,
-        sees the data differently from the posterior (split_off_mode); equal
-        ranks are not enough in internal mode (one-constant water with an
-        internal prior: both rank 2, 2.2 widths off the posterior's mode)."""
-        rec = getattr(self, "_last_split_step", None)
+        they agree), or None without a record. They differ where the step's
+        own cutoff, or its q-space stack in internal mode, sees the data
+        differently from the posterior (split_off_mode); equal ranks are not
+        enough in internal mode (one-constant water with an internal prior:
+        rank 2 of 3 on the step's q-space stack against 3 of 9 in
+        Cartesians, null spaces of different dimension, 2.2 widths off the
+        posterior's mode). Both sides are cut by one rule -- the eigenvalues
+        of B^T P B above 0.5, P the null space's projector in Cartesians --
+        so that where the step and the posterior decompose one Jacobian
+        (Cartesian mode) they read the same null space: cut differently, a
+        null vector mixing symmetry-allowed and forbidden parts counted on
+        one side only, and water with an HDO constant under C2v read 1.0 for
+        projectors equal to 2e-16 (T-50 verifier)."""
+        rec = self._split_record()
         x = np.asarray(self.coords, dtype=float)
-        if rec is None or rec["coords"].shape != x.shape or not np.array_equal(rec["coords"], x):
+        if rec is None:
             return None
         B = self.physical_basis(coords=x, n=x.size)
-        Pn = self._split_energy_projector()
-        N = B.T @ Pn @ B
-        w, V = np.linalg.eigh(0.5 * (N + N.T))
-        Vp = V[:, w > 0.5]
+
+        def cut(P):
+            N = B.T @ P @ B
+            w, V = np.linalg.eigh(0.5 * (N + N.T))
+            return V[:, w > 0.5]
+
+        Vp = cut(self._split_energy_projector())
         Vn = rec["Vt"][rec["rank"]:].T
         if rec["Bplus"] is not None:
             Vn = rec["Bplus"] @ Vn
         if Vn.size == 0:
-            Vs = np.zeros((B.shape[1], 0))
+            Q = np.zeros((x.size, 0))
         else:
-            # Relative to the columns' own length: rigid motion (Cartesian)
-            # and redundant combinations (q-space) have no physical part.
+            # Its span in Cartesians, relative to the columns' own length:
+            # redundant combinations (q-space) have no image.
             ref = max(float(np.linalg.norm(Vn, axis=0).max()), 1e-300)
-            U, sv, _ = np.linalg.svd(B.T @ Vn, full_matrices=False)
-            Vs = U[:, sv > 1e-6 * ref]
+            U, sv, _ = np.linalg.svd(Vn, full_matrices=False)
+            Q = U[:, sv > 1e-6 * ref]
+        Vs = cut(Q @ Q.T)
         if Vs.shape[1] != Vp.shape[1]:
             return 1.0
         if Vp.shape[1] == 0:
@@ -2330,9 +2374,8 @@ class MolecularOptimizer:
     def split_stall(self):
         """How far the split fit stopped from the minimum of its null-space
         energy: (posterior widths, largest atom move in Angstrom, null
-        directions with no minimum), or None off the split objective or when
-        the last split step was accepted (the fit moved after it, so it did
-        not stop on a refusal).
+        directions with no minimum), or None off the split objective or
+        without a record of its last step.
 
         The split step fits the data on the range of its stacked Jacobian
         and lets the quantum surface alone decide the rest, so its fixed point
@@ -2345,11 +2388,12 @@ class MolecularOptimizer:
         -- so the step is refused, the trust radius falls to its floor, and
         the fit stops with that gradient unspent. One Newton step on what the
         step last solved with (_split_step_newton) measures how far. On the
-        benchmark molecules (HF/6-31G, Python API defaults), where the last
-        step was refused and the step's null space is its posterior's, it
-        read 2.9-16.6 mA (largest atom) in Cartesian coordinates and 0.8-8.8
-        in internal ones, and 28 mA on isocyanic acid with one direction of
-        negative curvature besides; the note fires on 7 of the 18 fits (T-49).
+        benchmark molecules (HF/6-31G, Python API defaults), where the
+        step's null space is its posterior's, it read 2.9-44 mA (largest atom)
+        in Cartesian coordinates -- acetyl fluoride's 44 and isocyanic acid's
+        28 with a direction of negative curvature besides -- and 0.8-28 in
+        internal ones, through B+ (fluoroacetylene's 115, linearised, is far
+        from what back-transforms); the note fires on 9 of the 18 fits (T-50).
         A trust radius of 0.05 or 0.2 instead of 0.1 moved such answers up to
         1.5 of their reported widths (T-48), so neither the split posterior nor any
         linear response describes the answer or its spread (a coupling-only
@@ -2402,6 +2446,15 @@ class MolecularOptimizer:
                     f"can be certified")
         term = (getattr(self, "termination", None) or {}).get("reason")
         if d > self.SPLIT_MODE_LIMIT and term != "max_iter":
+            mismatch = self._split_null_mismatch()
+            if mismatch is not None and mismatch < self.SPLIT_NULL_AGREE:
+                # Same null space, no stall left: what moves the posterior's
+                # mode is the coupling its quantum term leaves out (a prior
+                # target at sigma_x 5 mA: 1.0 widths; T-50 verifier).
+                return (f"the converged split fit stands {d:.2g} posterior widths from the mode "
+                        f"its posterior describes: the step and its posterior read the same null "
+                        f"space, but the posterior leaves out the step's range-null coupling "
+                        f"(null response {self.split_coupling():.2g}), which moves its mode")
             how = ("decides which directions are null on its own q-space stack"
                    if self.coordinate_mode == "internal"
                    else "decides the data's rank with its own cutoff")
@@ -3588,7 +3641,8 @@ class MolecularOptimizer:
                     coords=np.asarray(self.coords, dtype=float).copy(), Vt=np.asarray(Vt, dtype=float),
                     rank=int(rank), g=np.asarray(_ic_g, dtype=float).ravel(),
                     H=np.asarray(_ic_H, dtype=float),
-                    Bplus=None if _ic_Bplus is None else np.asarray(_ic_Bplus, dtype=float))
+                    Bplus=None if _ic_Bplus is None else np.asarray(_ic_Bplus, dtype=float),
+                    coord_set=_ic_coord_set)
 
             # ── Back-transform and compute trial geometry ─────────────────────
             _orig_coords = self.coords  # reference before update (never mutated here)

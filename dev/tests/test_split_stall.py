@@ -103,6 +103,13 @@ def test_a_direction_without_a_minimum_is_counted_not_measured():
     assert abs(v @ dq) < 1e-12 * max(1.0, np.linalg.norm(dq))
     # The other directions are measured as before.
     np.testing.assert_allclose(dq, before[2] - (v @ before[2]) * v, atol=1e-12)
+    # A weak but positive curvature is still a minimum, measured.
+    rec["H"] = rec["H"] + (1.0 + 1e-3) * w[k] * np.outer(v, v)    # -w[k] -> 1e-3 w[k]
+    wk = float(v @ rec["H"] @ v)
+    assert 0 < wk < 1e-2 * w[k]
+    dx, n_neg, dq = opt._split_step_newton()
+    assert n_neg == 0
+    assert v @ dq == pytest.approx(-(v @ rec["g"]) / wk, rel=1e-6)
 
 
 def test_a_fit_at_its_own_fixed_point_keeps_the_off_mode_note():
@@ -160,13 +167,88 @@ def test_the_step_s_gradient_is_the_pull_toward_a_prior_target():
     np.testing.assert_allclose(rec["g"], pull, rtol=1e-8, atol=1e-12 * np.linalg.norm(pull))
 
 
-def test_without_a_null_space_or_after_an_accepted_step_there_is_no_stall():
-    full = _split_water((1, 2))                       # the data reach every direction
-    assert full.split_stall() in (None, (0.0, 0.0, 0))
+def test_with_the_data_reaching_every_direction_the_stall_reads_zero():
+    full = _split_water((1, 2))
+    assert full.split_stall()[0] < 1e-12
     assert full.split_inconsistency() is None
-    one = _split_water((2,))                          # its last step was accepted
-    assert one.history[-1]["accepted"] and one.split_stall() is None
+
+
+def test_a_fit_that_ends_on_an_accepted_step_is_measured_from_its_last_record():
+    one = _split_water((2,))
+    assert one.history[-1]["accepted"], "premise: the last step was accepted"
+    assert not np.array_equal(one._last_split_step["coords"], one.coords), "premise: a step behind"
+    widths, _atom, _n = one.split_stall()
+    assert widths < one.SPLIT_STALL_LIMIT            # measured 0.0185
     assert "null response" in one.split_inconsistency()
+
+
+@pytest.mark.parametrize("mode", ["cartesian", "internal"])
+def test_the_record_is_carried_over_the_last_step(mode):
+    # A fit that ends on an accepted step is a step from its record: the
+    # model's gradient is carried there exactly, so the null-space minimum
+    # it points to does not move (acetyl fluoride, Cartesian, ends so after
+    # eleven refusals, 4.0 widths short; T-50 verifier).
+    opt = _split_water((2,), sigma=0.0005, coordinate_mode=mode)
+    x0 = np.asarray(opt.coords, dtype=float).copy()
+    dx0 = opt._split_step_newton()[0]
+    opt.coords = x0 + (1e-3 * dx0 / np.linalg.norm(dx0)).reshape(-1, 3)
+    dx1 = opt._split_step_newton()[0]
+    assert np.linalg.norm(dx1) < np.linalg.norm(dx0), "premise: the gradient was carried"
+    np.testing.assert_allclose(np.asarray(opt.coords).ravel() + dx1, x0.ravel() + dx0,
+                               atol=(1e-12 if mode == "cartesian" else 2e-6) * max(1.0, np.linalg.norm(dx0)) + 1e-9)
+
+
+def _hdo():
+    from backend.spectral.centrifugal_distortion import rotational_constants_mhz
+    masses = [15.9949146196, 1.00782503207, 2.0141017778]
+    return masses, rotational_constants_mhz(_coords(0.9600, 104.3), masses)
+
+
+@pytest.mark.parametrize("case", ["H2O C + HDO A", "HDO B only"])
+def test_under_symmetry_one_null_space_reads_as_one(case):
+    # An HDO constant sees a symmetry-forbidden direction, so the null
+    # vectors under C2v mix allowed and forbidden parts. Cut by two rules
+    # the step's and the posterior's (equal to 2e-16) read 1.0 apart, and a
+    # stall was reported as a disagreement or a coupling (T-50 verifier).
+    m_hdo, b_hdo = _hdo()
+    if case.startswith("H2O"):
+        isos = [_split_iso("H2-16O", MASSES_H2O, B0_H2O, (2,)), _split_iso("HD-16O", m_hdo, b_hdo, (0,))]
+        sigma = 0.0005
+    else:
+        isos, sigma = [_split_iso("HD-16O", m_hdo, b_hdo, (1,))], 0.02
+    opt = _split_water(isotopologues=isos, symmetry="auto", sigma=sigma, coordinate_mode="cartesian")
+    assert str(opt.point_group).upper().startswith("C2V"), "premise: the symmetry is imposed"
+    assert opt._split_null_mismatch() < 1e-10
+    assert opt.split_stall()[0] > opt.SPLIT_STALL_LIMIT     # measured 29.8 and 0.456
+    assert _STALL in opt.split_inconsistency()
+
+
+def test_the_null_spaces_agree_below_the_limit_and_not_above(monkeypatch):
+    opt = _split_water((2,), sigma=0.0005)
+    assert opt.SPLIT_NULL_AGREE == 0.1
+    for mismatch, stall_note in ((0.05, True), (0.3, False)):
+        monkeypatch.setattr(type(opt), "_split_null_mismatch", lambda self, m=mismatch: m)
+        note = opt.split_inconsistency()
+        assert (_STALL in note) == stall_note, (mismatch, note)
+
+
+def test_a_prior_row_counts_in_the_recorded_rank():
+    # Internal prior, one constant: one spectral row, but the step's stack
+    # carries the q-space prior rows, and its rank is the stack's.
+    opt = _split_water((2,), coordinate_mode="internal", ic_prior_weight=1.0)
+    J, _r = opt.spectral.stacked(opt.coords)
+    assert J.shape[0] == 1, "premise: a single spectral row"
+    assert opt._last_split_step["rank"] == 2
+
+
+def test_off_its_posterior_s_mode_with_one_null_space_the_note_names_the_coupling():
+    opt = _split_water((2,), coordinate_mode="cartesian", sigma=0.005,
+                       prior_target_coords=_coords(r=0.98785, deg=107.508))
+    assert opt._split_null_mismatch() < opt.SPLIT_NULL_AGREE, "premise: one null space"
+    assert opt.split_stall()[0] < opt.SPLIT_STALL_LIMIT, "premise: no stall"
+    note = opt.split_off_mode()
+    assert note and "same null space" in note and "range-null coupling" in note
+    assert "disagree" not in note
 
 
 def test_off_the_split_objective_there_is_no_stall():
