@@ -1274,3 +1274,10 @@
 - Source: auto-picked, no answer in 15 min (Q-90)
 - Revisit if: the user revisits D-04.
 - Measured (2026-11-23, T-60; scratchpad t60/gate.py, gate.txt, base_dirs.txt): error-model bootstraps (16 refits, one in-process worker) of the refreshed seed-3 and seed-23 Cartesian fits keep 8 of 16 each, exactly the usable minimum. Gate limits 0.068 and 0.050 (scaled to the cloud). Refused refits read 0.25 to 2.71 Gauss-Newton widths; for every one whose exact-corrected distance was recorded (8 of 8 at seed 3, 4 of 8 at seed 23: the recorder keyed on id(opt), which Python reuses), the exact curvature along the probed directions still puts them 0.18 to 1.39 widths short. So the gate is not refusing refits at their exact mode: half the refits stop short. Correction to T-58: the seed-3 base fit's 0.003 was the torsion's component only; with the exact curvature there the distance is 0.054, a stiffer direction's (docstring, page item 9 corrected; 07ea55c's message stands as pushed).
+
+### D-135 · Next task: why half the dimer refits stop short (2026-11-23)
+- Decision: T-61 measures, for refused error-model refits of the refreshed seed-3 dimer fit, the trust radius, how each loop ended, the last steps, the polish passes, and which direction carries the distance. No code change before the measurement.
+- Why: Q-91's recommended option; T-60 found 8 of 16 refits refused, 0.18-1.39 widths short with the exact curvature too.
+- Alternatives considered: a report on the 13 never-passed settings; done for now.
+- Source: auto-picked, no answer in 15 min (Q-91)
+- Revisit if: the user answers the decision page.
