@@ -1322,3 +1322,11 @@
 - Source: auto-picked, no answer in 15 min (Q-96)
 - Revisit if: the user wants any removed or exposed.
 - Outcome (2026-11-23, T-66; scratchpad t66/REPORT.md, never.txt, guard.txt): still 13 of 144. Keep 11 (isotropic_prior's negative result is documented on purpose; the Jacobian switches and chi2/rm1 knobs are tested at the engine level or at their defaults). null_convergence_requires_energy: candidate for removal (never set, untested). The geometry guardrails, whose six tunables and accept_requires_geometry_valid are in the list, are ON in the config runner, presets and run_water.py but have no test at all; on the nine benchmark fits they refuse 0 steps and change nothing (bit-identical). Backlog N35: a guardrail test. Nothing deleted.
+
+### D-141 · A test of the geometry guardrails (2026-11-23)
+- Decision: T-67 adds tests (dev/tests) for the geometry guardrails: the validity check's three rules (bond too short, too long, non-bonded clash) and its violation allowance, off by default (nothing refused), and in the fit loop a refused step with damping raised and trust radius shrunk by the configured factors, and accept_requires_geometry_valid. Test-only, no behaviour change, mutation-checked.
+- Why: Q-97's recommended option; backlog N35: on in the config runner, no test.
+- Alternatives considered: the corrected trial fix on more dimer starts; removing null_convergence_requires_energy (user's call: an API change); done for now.
+- Source: auto-picked, no answer in 15 min (Q-97)
+- Revisit if: a test shows the guardrails misbehave (then it is a fix, and asked).
+- Outcome (2026-11-23, T-67): dev/tests/test_geometry_guardrails.py, 9 tests (each rule and its scale, the violation allowance, off by default, bonds from the start only, a refused trial in the loop with the boost and shrink against factors of 1 and of 3/0.5, accept_requires_geometry_valid both ways); 13 of 13 mutations caught (t67/mutations.txt); CI 1772 passed; lint clean. No behaviour change. Backlog N35 done.
