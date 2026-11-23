@@ -1,12 +1,11 @@
 # Current task
-Status: done
-Request: T-68 (D-142): exact-correction trial on seven more dimer starts, both modes; nothing in the repository
+Status: building
+Request: T-69 (D-143): the trial fix's real cost, every-step check against once per quantum Hessian; nothing in the repository
 ## Brief
-- Per seed and mode, off and on: plain-fit iterations, exact-corrected distance after the refresh, bootstrap kept of 16.
+- Variants: off (code as it stands), every step (t65v/ideal), once per Hessian (cached rows, reused until the Hessian changes).
+- Sequential, 3 repeats, wall and CPU time; answers of the cached variant against every-step.
 ## Progress
-- N1 · seven seeds (t68/*.txt): gains hold in both modes; bootstrap 13-15 or 14 of 16 everywhere; answers agree better across starts (t68/spread.txt); GN distance larger on most
-- N2 · page item 9 v10
+- N1 · running (t69/timing.py, sequential off -> every -> cached, 3 repeats): nine molecules internal defaults + dimer seed 4 internal/Cartesian with a 16-refit bootstrap
 ## Observations
 ## Pending question
-- Q-99 (asked 09:10 UTC, deadline 09:25 UTC): 1 (Recommended) measure the prototype's real cost with the check done once per Gauss-Newton refresh instead of every step (scratchpad only), since cost is the open trade-off on item 9; 2 adopt the step fix (user's call: changes answers; never auto-picked); 3 remove null_convergence_requires_energy (user's call: an API change); 4 Done for now. Deadline takes 1.
 ## Handoff

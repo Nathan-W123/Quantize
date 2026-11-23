@@ -1338,3 +1338,10 @@
 - Source: auto-picked, no answer in 15 min (Q-98)
 - Revisit if: the user decides page item 9.
 - Measured (2026-11-23, T-68; scratchpad t68/*.txt, spread.txt; prototype t65v/ideal/proto.py: exact correction, reach rule): seven no-point-group dimer starts (4, 5, 6, 8, 11, 12, 23). Cartesian: plain-fit iterations 24-69 -> 13-54; exact-corrected distance after the refresh 0.016-0.062 -> 0.002-0.013; bootstrap 8/16 on every start -> 13-15/16; truth distance 13.21-13.62 -> 13.13-13.16 mA. Internal (dihedrals auto): iterations 33-106 -> 13-106; exact 0.007-0.066 -> 0.0001-0.052; bootstrap 8-13 -> 14/16 on every start. Start-to-start answer spread: Cartesian 0.12-3.00 mA rms (median 0.90) -> 0.03-1.06 (0.48); internal 0.10-0.96 (0.45) -> 0.03-0.77 (0.38); Cartesian vs internal from one start 0.41-1.51 -> 0.03-0.93. The Gauss-Newton distance (reported, gated) is larger with the fix on most starts (up to 0.534). Page item 9 updated (v10).
+
+### D-143 · Measure the trial fix's real cost (scratchpad only) (2026-11-23)
+- Decision: T-69 times the exact-correction prototype (t65v/ideal/proto.py) against the code as it stands, sequentially and repeated, on the nine benchmark molecules and the water dimer, plus a variant that runs the Gauss-Newton check once per quantum Hessian, with that variant's effect on the answers. Nothing goes into the repository.
+- Why: Q-99's recommended option; cost is the open trade-off on page item 9 and the earlier figures came from concurrent runs timed to whole seconds.
+- Alternatives considered: adopting the step fix (user's call); removing null_convergence_requires_energy (user's call); done for now.
+- Source: auto-picked, no answer in 15 min (Q-99)
+- Revisit if: the user decides page item 9.
