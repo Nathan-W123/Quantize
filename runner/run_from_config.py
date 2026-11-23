@@ -133,6 +133,11 @@ def main() -> None:
         action="store_true",
         help="Do not create a managed output run directory.",
     )
+    parser.add_argument(
+        "--no-hessian-refresh",
+        action="store_true",
+        help="Keep each start's own quantum Hessian instead of recomputing it at the answer.",
+    )
     args = parser.parse_args()
     cfg_path = args.config.resolve()
     try:
@@ -146,7 +151,7 @@ def main() -> None:
 
     from runner.run_generic import main as generic_main
 
-    generic_main(cfg)
+    generic_main(cfg, refresh_hessian=not args.no_hessian_refresh)
 
 
 if __name__ == "__main__":

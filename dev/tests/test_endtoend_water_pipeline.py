@@ -40,7 +40,7 @@ def _structure(coords):
     return 0.5 * (r1 + r2), theta
 
 
-def _run(tmp_path, harmonic, anharmonic):
+def _run(tmp_path, harmonic, anharmonic, refresh_hessian=True):
     cfg = copy.deepcopy(yaml.safe_load(_CONFIG.read_text(encoding="utf-8")))
     cfg["rovibrational_corrections"]["harmonic_from_hessian"] = harmonic
     cfg["rovibrational_corrections"]["anharmonic_from_hessian"] = anharmonic
@@ -48,7 +48,7 @@ def _run(tmp_path, harmonic, anharmonic):
     validate_config(cfg)
     prepare_run_directory(cfg, _CONFIG)
     with contextlib.redirect_stdout(io.StringIO()):
-        return run_generic_main(cfg)
+        return run_generic_main(cfg, refresh_hessian=refresh_hessian)
 
 
 # ── Backend registration ─────────────────────────────────────────────────────
@@ -102,12 +102,21 @@ def test_full_chain_improves_the_bond_length_end_to_end(tmp_path):
     surface (no bend anharmonicity) gets wrong either way (target 17.7 GHz
     from B_e(r_e) projected, 15.0 before, B_0 14.7). Bounds: 0.9 on the bond
     ratio (measured 0.81); 0.25 and 0.10 of B_0's miss on B and C (measured
-    0.15 and 0.054; the old B, 1.18, fails by 4.7x).
+    0.15 and 0.054; the old B, 1.18, fails by 4.7x). Those are the fit's own
+    Hessian, which `quantize run --no-hessian-refresh` keeps.
+
+    By default (D-146) every start recomputes the Hessian at its answer and
+    re-converges, and corrections built from the Hessian follow it there
+    (three passes, 1.37 mA): the bond comes out 0.77 mA from r_e against
+    2.42 with the fit's own Hessian, A's target 10.0 GHz from B_e(r_e)
+    (17.7), C's 1082 MHz (382), and B's 4157 MHz, further than B_0's 1724.
+    Measured 2026-11-23 (T-72). Without corrections the refresh moves the
+    bond by 5e-4 mA.
     """
     from backend.spectral.centrifugal_distortion import rotational_constants_mhz
 
-    r_raw, _ = _structure(_run(tmp_path / "a", False, False)["best"]["coords"])
-    full = _run(tmp_path / "b", True, True)
+    r_raw, _ = _structure(_run(tmp_path / "a", False, False, refresh_hessian=False)["best"]["coords"])
+    full = _run(tmp_path / "b", True, True, refresh_hessian=False)
     r_full, _ = _structure(full["best"]["coords"])
     assert abs(r_full - R_E) < 0.9 * abs(r_raw - R_E)
     assert abs(r_full - R_E) < 0.010
@@ -123,6 +132,18 @@ def test_full_chain_improves_the_bond_length_end_to_end(tmp_path):
                         dtype=float)
     assert abs(target[1] - b_e[1]) < 0.25 * abs(b_0[1] - b_e[1])
     assert abs(target[2] - b_e[2]) < 0.10 * abs(b_0[2] - b_e[2])
+
+    # The default, with the Hessian recomputed at the answer.
+    r_raw_d, _ = _structure(_run(tmp_path / "c", False, False)["best"]["coords"])
+    assert abs(r_raw_d - r_raw) < 1e-5
+    dflt = _run(tmp_path / "d", True, True)
+    r_d, _ = _structure(dflt["best"]["coords"])
+    assert abs(r_d - R_E) < 0.5 * abs(r_full - R_E)                     # 0.77 against 2.42 mA
+    assert dflt["best"]["hessian_refresh"]["settled"] is True
+    t_d = np.asarray(dflt["best"]["spectral_isotopologues_snapshot"][0]["obs_constants"], dtype=float)
+    assert abs(t_d[0] - b_e[0]) < abs(target[0] - b_e[0])                # A nearer
+    assert abs(t_d[2] - b_e[2]) < 0.25 * abs(b_0[2] - b_e[2])            # C still corrected
+    assert abs(t_d[1] - b_e[1]) > abs(b_0[1] - b_e[1])                   # B is not (see above)
 
 
 def test_hybrid_beats_both_theory_and_experiment_alone(tmp_path):

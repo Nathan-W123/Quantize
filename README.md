@@ -614,12 +614,15 @@ schedule, usually at the start (4-20 mA from the answer on nine HF/6-31G
 molecules, widths up to 7% off). That costs one Hessian (up to three where the
 corrections are built from the Hessian and so move with it; the summary records
 whether the answer settled); `--no-hessian-refresh` skips it. A fit that stops
-at `max_iter` is warned about: its widths describe where it stopped. `quantize run` keeps the fit's own Hessian and its report says how
-far away it was, and that the answer itself was fitted on it: the Hessian sets
-the quantum weight, so on a hydrogen-bonded water dimer (HF/6-31G, eight starts)
-one refresh moved the answer by up to 14 mÅ (RMS) and the weight by up to 18%,
-and brought the internal- and Cartesian-coordinate answers from up to 23.5 mÅ
-apart to within 2.6 mÅ.
+at `max_iter` is warned about: its widths describe where it stopped.
+`quantize run` does the same for every start, before ranking them
+(`--no-hessian-refresh` skips it, and the report then says how far the
+fit's own Hessian was from the answer). Not only the widths depend on it: the
+Hessian sets the quantum weight, so on a hydrogen-bonded water dimer
+(HF/6-31G, eight starts) one refresh moved the answer by up to 14 mÅ (RMS) and
+the weight by up to 18%, and brought the internal- and Cartesian-coordinate
+answers from up to 23.5 mÅ apart to within 2.6 mÅ. It costs one Hessian per
+start, 15–21% of a run on formyl fluoride and chlorofluoromethane.
 
 The widths are not always Gauss-Newton's (JᵀJ). The fit probes its three
 softest physical directions by finite differences, and along one where the
@@ -706,14 +709,16 @@ On Windows, you can instead set `orca_exe` in `BASE_SETTINGS` to your `orca.exe`
 > default) steps in bonds and angles, and a torsion -- a methyl group's
 > rotation -- changes neither, so the fit cannot turn it: acetyl fluoride and
 > fluoroethane (HF/6-31G) stopped 0.19 and 0.16 posterior widths short of
-> their optimum and kept 0 and 4 of 50 bootstrap refits. Set
-> `internal_coordinates.use_dihedrals: auto` to add dihedrals exactly when
-> bonds and angles miss a direction and dihedrals reach it (it says so when
-> it does; a molecule whose bonds and angles reach every direction is
-> unchanged), or `true`. It is not the default
-> because it moves those two answers (bond RMS against their references
-> −0.19 and +0.22 mÅ, autoconfig off; −0.08 and +0.37 on) and costs acetyl
-> fluoride one more Hessian. Whenever the coordinate set misses a direction
+> their optimum and kept 0 and 4 of 50 bootstrap refits. So by default
+> (`internal_coordinates.use_dihedrals: auto`) the fit adds dihedrals exactly
+> when bonds and angles miss a direction and dihedrals reach it (it says so
+> when it does; a molecule whose bonds and angles reach every direction is
+> unchanged); `false` keeps bonds and angles, `true` always adds dihedrals.
+> With several starts, every start gets dihedrals when any one needs them,
+> so all report the same coordinates. It moves those two answers to their
+> optimum (bond RMS against their references −0.19 and +0.22 mÅ, autoconfig
+> off; −0.08 and +0.37 on) and costs acetyl fluoride one more Hessian.
+> Whenever the coordinate set misses a direction
 > (bonds and angles without dihedrals, or an exactly linear chain even with
 > them), the run and the uncertainty warnings say how many directions it
 > reaches and how far the fit stands from its own optimum. At the benchmark
@@ -722,7 +727,9 @@ On Windows, you can instead set `orca_exe` in `BASE_SETTINGS` to your `orca.exe`
 > bonds, angles and the O···H contact
 > reach 10 of its 12 directions, missing the two torsions about the hydrogen
 > bond. From eight such starts its fits ended 0.07 to 4.0 widths from their
-> optimum, against 0.003 to 0.08 with `auto`.
+> optimum, against 0.003 to 0.08 with `auto`. Some example configs
+> (`configs/benzene.yaml`, `configs/fluorobenzene.yaml` and four small
+> molecules) still state `use_dihedrals: false`.
 
 > **Near-linear chains in internal mode.** Near 180° a valence angle no
 > longer describes the bend (it is not differentiable there and stands for

@@ -1046,6 +1046,9 @@ def main(argv: list[str] | None = None) -> int:
     run_p = sub.add_parser("run", help="Run Quantize from a YAML or JSON config.")
     run_p.add_argument("config", type=Path)
     run_p.add_argument("--no-run-dir", action="store_true")
+    run_p.add_argument("--no-hessian-refresh", action="store_true",
+                       help="Keep each start's own quantum Hessian instead of recomputing it at "
+                            "the answer and re-converging (one Hessian per start).")
 
     # --- validate ---
     check_p = sub.add_parser("validate", help="Validate a YAML or JSON config without running.")
@@ -1227,7 +1230,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "run":
         try:
-            sys.argv = [sys.argv[0], str(args.config)] + (["--no-run-dir"] if args.no_run_dir else [])
+            sys.argv = ([sys.argv[0], str(args.config)] + (["--no-run-dir"] if args.no_run_dir else [])
+                        + (["--no-hessian-refresh"] if args.no_hessian_refresh else []))
             run_from_config_main()
             return 0
         except SystemExit as exc:

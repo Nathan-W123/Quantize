@@ -35,7 +35,7 @@ def normalize_config(cfg: dict[str, Any]) -> dict[str, Any]:
     # bonds and angles miss a direction the fit can move -- a free torsion,
     # which internal mode otherwise cannot turn (MolecularOptimizer
     # ._resolve_ic_dihedrals, D-100).
-    ic.setdefault("use_dihedrals", False)
+    ic.setdefault("use_dihedrals", "auto")     # the default since D-147
     ic.setdefault("damping", 1e-6)
     ic.setdefault("microiterations", 20)
     # No prior_weight, prior_sigma_bond or prior_sigma_angle_deg: an unstated

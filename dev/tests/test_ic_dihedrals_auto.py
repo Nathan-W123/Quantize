@@ -15,6 +15,7 @@ and a torsion), so no quantum chemistry runs.
 from __future__ import annotations
 
 import contextlib
+import copy
 import io
 import sys
 from pathlib import Path
@@ -169,13 +170,18 @@ def test_the_cartesian_mode_is_not_touched():
     assert opt._ic_dihedrals_reason is None
 
 
-def test_the_default_is_unchanged():
+def test_the_default_is_auto():
+    # D-147: bonds and angles cannot turn the O-O torsion, so the default
+    # adds dihedrals, and says so; False keeps bonds and angles.
     with contextlib.redirect_stdout(io.StringIO()) as out:
         opt = Q.MolecularOptimizer(elems=["O", "O", "H", "H"], coords=_hooh(dih=100.0),
                                    isotopologues=_isotopologues(), quantum_backend="test_peroxide_field",
                                    use_autoconfig=False, coordinate_mode="internal", symmetry=None)
+    assert opt._ic_dihedrals_setting == "auto"
+    assert opt._ic_use_dihedrals is True and opt._ic_dihedrals_reason
+    assert "dihedrals added" in out.getvalue()
+    opt, _ = _optimizer(dihedrals=False)
     assert opt._ic_use_dihedrals is False and opt._ic_dihedrals_reason is None
-    assert "dihedrals added" not in out.getvalue()
 
 
 def test_an_unknown_setting_is_refused():
@@ -220,9 +226,26 @@ def test_the_config_accepts_true_false_or_auto(value, ok):
             _validate_run_controls(cfg, ["O", "O", "H", "H"])
 
 
-def test_the_config_default_is_unchanged():
+def test_the_config_default_is_auto():
+    import copy
+    from pathlib import Path
+
+    import yaml
+
+    import dev.analytic_water_backend  # noqa: F401  (registers analytic_water)
     from runner.config_schema import normalize_config
-    assert normalize_config({})["internal_coordinates"]["use_dihedrals"] is False
+    from runner.run_generic import translate_config
+    assert normalize_config({})["internal_coordinates"]["use_dihedrals"] == "auto"
+    # A config that leaves it out reaches the optimizer as "auto"; an explicit
+    # false stays false.
+    path = Path(__file__).resolve().parent.parent / "configs" / "water_analytic_endtoend.yaml"
+    cfg = yaml.safe_load(path.read_text(encoding="utf-8"))
+    (cfg.get("internal_coordinates") or {}).pop("use_dihedrals", None)
+    with contextlib.redirect_stdout(io.StringIO()):
+        assert translate_config(copy.deepcopy(cfg))["optimizer_kwargs"]["ic_use_dihedrals"] == "auto"
+        off = copy.deepcopy(cfg)
+        off.setdefault("internal_coordinates", {})["use_dihedrals"] = False
+        assert translate_config(off)["optimizer_kwargs"]["ic_use_dihedrals"] is False
 
 
 # --- T-41 verifier follow-ups -------------------------------------------------
@@ -479,7 +502,7 @@ def test_a_degenerate_start_is_left_for_the_fit_to_refuse():
     assert opt._ic_unreached is None
 
 
-def _water_dimer(seed):
+def _water_dimer(seed, dihedrals=False):
     from test_ic_fragments import _dimer
     truth = _dimer()
     m_o, m_h, m_d = 15.9949146196, 1.00782503207, 2.0141017778
@@ -494,7 +517,7 @@ def _water_dimer(seed):
     with contextlib.redirect_stdout(io.StringIO()):
         opt = Q.MolecularOptimizer(elems=["O", "H", "H", "O", "H", "H"], coords=x, isotopologues=isos,
                                    spectral_only=True, quantum_backend="none", use_autoconfig=False,
-                                   coordinate_mode="internal")
+                                   coordinate_mode="internal", ic_use_dihedrals=dihedrals)
     return opt, x
 
 
@@ -509,3 +532,49 @@ def test_the_water_dimer_is_reported_only_where_its_torsions_can_move(seed, dire
     else:
         assert opt._ic_unreached == {"reached": reached, "directions": directions, "dihedrals": False,
                                      "with_dihedrals": directions}
+
+
+# --- Multistart: dihedrals for every start when any one needs them (D-148) ----
+
+def _multistart_choice(monkeypatch, seeds, setting="auto"):
+    import backend.multistart as MS
+    seen = []
+    monkeypatch.setattr(MS, "_run_one_start", lambda p: seen.append(p["optimizer_kwargs"]["ic_use_dihedrals"]) or None)
+    starts, isos = [], None
+    for sd in seeds:
+        opt, x = _water_dimer(sd)
+        starts.append(x)
+        isos = opt.spectral.isotopologues
+    kw = {"spectral_only": True, "quantum_backend": "none", "use_autoconfig": False,
+          "coordinate_mode": "internal"}
+    if setting is not None:
+        kw["ic_use_dihedrals"] = setting
+    with contextlib.redirect_stdout(io.StringIO()) as out:
+        # One worker runs in-process, so the patched start returns None and
+        # nothing after it reads a result: only the starts' inputs matter.
+        MS.run_multistart(starts, ["O", "H", "H", "O", "H", "H"], copy.deepcopy(isos), kw, max_workers=1)
+    return seen, out.getvalue()
+
+
+def test_a_later_start_that_needs_dihedrals_gives_them_to_every_start(monkeypatch):
+    # Seed 2 starts in Cs (8 directions, all reached by bonds and angles);
+    # seed 4 has no point group and misses the two hydrogen-bond torsions.
+    # The first start alone decided, and neither got dihedrals (N30).
+    assert _water_dimer(2)[0]._ic_unreached is None                       # premises
+    assert _water_dimer(4)[0]._ic_unreached["reached"] == 10
+    seen, printed = _multistart_choice(monkeypatch, [2, 4])
+    assert seen == [True, True], seen
+    assert "dihedrals added for every start (start 2)" in printed, printed
+
+
+@pytest.mark.parametrize("setting", ["auto", None])
+def test_starts_that_all_reach_every_direction_keep_bonds_and_angles(monkeypatch, setting):
+    # None: the key left out means the constructor's default, auto.
+    seen, printed = _multistart_choice(monkeypatch, [2, 2], setting=setting)
+    assert seen == [False, False], seen
+    assert "dihedrals added" not in printed
+
+
+def test_a_stated_setting_is_passed_through_unchanged(monkeypatch):
+    seen, _ = _multistart_choice(monkeypatch, [2, 4], setting=False)
+    assert seen == [False, False]

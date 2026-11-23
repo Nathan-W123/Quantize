@@ -1,18 +1,13 @@
 # Current task
 Status: verifying
-Request: T-71 (D-145): exact curvature where Gauss-Newton is flagged, in the step and in the report
+Request: T-72 (D-146 to D-149): Hessian refresh in quantize run; use_dihedrals auto default; multistart dihedrals when any start needs them; remove null_convergence_requires_energy. Results table rebuild waits (user: "5 wait on").
 ## Brief
-- Outcome: the joint step and the reported widths/distance/gate use the exact curvature along flagged soft directions.
-- Approach: one correction builder from gauss_newton_discrepancy rows; _posterior_blocks(exact_curvature=True) adds it to the spectral block (the prior part untouched, so the error-model target stays right); the check reads Gauss-Newton blocks; the step gets it through SubspaceOptimizer.step(curvature_correction=...), q-space image with the reach rule in internal mode; the Cartesian fallback step too.
-- Trade-off: -5% to +22% per fit where it acts (T-69), answers move on three benchmark molecules by <= 0.2 mA bond RMS (internal mode).
-- Success: dimer reproduces T-68's prototype numbers; benchmark rows bit-identical where it does not act; tests for the step, the widths, the gate and the wording; CI selection green.
+- Each is a default or API change the user approved; measure each against its page figures after the change.
 ## Progress
-- N1 · step (SVD._joint_step/step curvature_correction; quantize._step_curvature_correction, main loop + Cartesian fallback) and report (_posterior_blocks/_mode_decomposition/distance_to_mode/laplace exact_curvature; _exact_curvature_correction; warning wording) done; option exact_curvature_where_flagged (default True)
-- N2 · L-28 check: dimer seed 4 plain and refreshed answers bit-identical to the T-68 prototype runs, both modes
-- N3 · tests: test_exact_curvature.py (16), wording test updated, two step spies pass **kw; CI selection 1788 passed, 13 skipped
-- N4 · dimer, 8 starts x 2 modes: kept 16/16 everywhere; widths 6.6-9.6 deg (Gauss-Newton 13.5-331); one exact-below-Gauss-Newton direction (internal seed 4) -> report rule made two-way (D-145 refined); README note added
-- N5 · running: HF base+offsets with the correction on/off (t71/on, t71/off)
+- N1 · D-149 option removed; D-147 auto default (constructor, config schema, translate_config); D-148 multistart probes every start; D-146 run_multistart(refresh_hessian) per start, run_generic.main(refresh_hessian=True), --no-hessian-refresh on quantize run and run_from_config; README + docstrings
+- N2 · tests: two default tests now assert auto; dimer note test pins dihedrals=False; 3 multistart tests (Cs then no-point-group -> both get dihedrals); test_run_hessian_refresh.py (2); end-to-end water test pins the no-refresh bounds and checks the refreshed run (bond 2.42 -> 0.77 mA, B target worse than B0 -- flag to user); CI 1796 passed
+- T-71 still open in the background: HF base+offsets on/off comparison (t71/on, t71/off), then the interleaved timing run (t71/timing.py).
 ## Observations
-- The 227 -> ~1.5 deg figure I gave the user was T-58's old answer; at the corrected, refreshed answer seed 3's widest angle goes 14.2 -> 6.65 deg. Correct it in the wrap-up.
+- My "what is waiting" answer listed 4 of the page's 12 items; corrected in chat (items 1, 3, 5, 7, 8 and 10-12 still waiting).
 ## Pending question
 ## Handoff

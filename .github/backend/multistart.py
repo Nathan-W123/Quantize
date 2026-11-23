@@ -51,6 +51,18 @@ def _run_one_start(payload):
 
     opt = MolecularOptimizer(coords=coords, elems=elems, isotopologues=isotopologues, **kwargs)
     final_coords = opt.run()
+    # One more quantum Hessian at the answer, and re-converge on it (D-146):
+    # the fit computes its Hessian on its own schedule, usually near its
+    # start, and the answer is fitted on that curvature and the quantum
+    # weight it sets. Before anything below reads the fit.
+    hessian_refresh = None
+    if payload.get("refresh_hessian"):
+        try:
+            hessian_refresh = opt.refresh_hessian_at_answer()
+        except Exception as exc:  # a failed refresh must not lose the fit
+            hessian_refresh = {"error": f"{type(exc).__name__}: {exc}"}
+        if hessian_refresh is not None and "error" not in hessian_refresh:
+            final_coords = np.asarray(opt.coords, dtype=float).copy()
     last = opt.history[-1] if opt.history else {}
     # The quantum energy at the start's last quantum point, not at
     # final_coords -- see select_best_result.
@@ -128,35 +140,52 @@ def _run_one_start(payload):
         "n_accepted": n_accepted,
         "accept_rate": accept_rate,
         "svd_summary": svd_summary,
+        "hessian_refresh": hessian_refresh,
     }
 
 
 def _shared_dihedral_choice(starts, elems, isotopologues, kwargs):
-    """Resolve ic_use_dihedrals="auto" once, on the first start, for every start.
+    """Resolve ic_use_dihedrals="auto" once for every start: dihedrals for all
+    of them when any one start's bonds and angles miss a direction dihedrals
+    reach (D-148), bonds and angles alone otherwise.
 
-    Each start decided for itself, at its own geometry, so a planar molecule
-    without imposed symmetry gave the exact start 24 dihedrals and the
-    jittered starts none (fluorobenzene, T-41 verifier): the reported
-    coordinate set then depended on which start won. The first start is the
-    configured geometry; the others are its jitters.
+    Each start used to decide for itself, at its own geometry, so a planar
+    molecule without imposed symmetry gave the exact start 24 dihedrals and
+    the jittered starts none (fluorobenzene, T-41 verifier): the reported
+    coordinate set then depended on which start won. One set for every start
+    keeps that fixed. It was then decided on the first start alone, so a
+    later start whose bonds and angles missed a direction the first start's
+    reached ran without dihedrals: a water dimer with a Cs start first and a
+    start with no point group second, which ended 0.44 widths from its
+    optimum (N30). Absent from the keyword arguments, the setting is the
+    constructor's default, "auto".
     """
     mode = str(kwargs.get("coordinate_mode", "internal")).strip().lower()
-    dih = kwargs.get("ic_use_dihedrals")
+    dih = kwargs.get("ic_use_dihedrals", "auto")
     if mode != "internal" or not (isinstance(dih, str) and dih.strip().lower() == "auto") or not starts:
         return kwargs
     import contextlib
     import io
     probe_kw = {k: v for k, v in kwargs.items() if k not in ("base_workdir", "job_name")}
-    with contextlib.redirect_stdout(io.StringIO()):
-        probe = MolecularOptimizer(coords=np.asarray(starts[0], dtype=float), elems=list(elems),
-                                   isotopologues=isotopologues, **probe_kw)
-    if probe._ic_dihedrals_reason:
-        print(f"[multistart] dihedrals added for every start: {probe._ic_dihedrals_reason}")
-    return {**kwargs, "ic_use_dihedrals": bool(probe._ic_use_dihedrals)}
+    for k, start in enumerate(starts):
+        with contextlib.redirect_stdout(io.StringIO()):
+            probe = MolecularOptimizer(coords=np.asarray(start, dtype=float), elems=list(elems),
+                                       isotopologues=isotopologues, **probe_kw)
+        if probe._ic_use_dihedrals:
+            where = "" if len(starts) == 1 else f" (start {k + 1})"
+            print(f"[multistart] dihedrals added for every start{where}: {probe._ic_dihedrals_reason}")
+            return {**kwargs, "ic_use_dihedrals": True}
+    return {**kwargs, "ic_use_dihedrals": False}
 
 
-def run_multistart(starts, elems, isotopologues, optimizer_kwargs, max_workers=1, job_name="job"):
+def run_multistart(starts, elems, isotopologues, optimizer_kwargs, max_workers=1, job_name="job",
+                   refresh_hessian=False):
     """
+    ``refresh_hessian``: after each start's fit, compute the quantum Hessian at
+    its answer and re-converge on it (MolecularOptimizer
+    .refresh_hessian_at_answer); each result carries what it did under
+    "hessian_refresh". ``quantize run`` asks for it (D-146).
+
     Parallel workers run independent ORCA/Psi4 jobs. Many ORCA installations (especially
     academic licenses) allow only **one** ORCA process at a time; parallel runs then exit
     without writing ``.engrad`` / ``.hess``. By default we force ``max_workers=1`` when
@@ -196,6 +225,7 @@ def run_multistart(starts, elems, isotopologues, optimizer_kwargs, max_workers=1
             "elems": list(elems),
             "isotopologues": isotopologues,
             "optimizer_kwargs": start_kwargs,
+            "refresh_hessian": bool(refresh_hessian),
         }
         for i, c in enumerate(starts)
     ]

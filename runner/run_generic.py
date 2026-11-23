@@ -2044,7 +2044,7 @@ def build_run_inputs(cfg: dict[str, Any], *, verbose: bool = True) -> dict[str, 
     # null reads as absent (it became 'none', which the constructor refused).
     coordinate_mode = str(cfg.get("coordinate_mode") or "internal").strip().lower()
     internal_cfg = cfg.get("internal_coordinates", {}) or {}
-    _dih = internal_cfg.get("use_dihedrals", False)
+    _dih = internal_cfg.get("use_dihedrals", "auto")   # the default since D-147
     ic_use_dihedrals = "auto" if (isinstance(_dih, str) and _dih.strip().lower() == "auto") else bool(_dih)
     ic_damping = float(internal_cfg.get("damping", 1e-6))
     ic_micro_iter = int(internal_cfg.get("microiterations", 20))
@@ -2318,7 +2318,13 @@ def translate_config(cfg: dict[str, Any], *, verbose: bool = True) -> dict[str, 
         raise ConfigError(str(exc) or type(exc).__name__) from exc
 
 
-def main(cfg: dict[str, Any]) -> dict[str, Any]:
+def main(cfg: dict[str, Any], refresh_hessian: bool = True) -> dict[str, Any]:
+    """Run a config: multistart fit, selection, report.
+
+    ``refresh_hessian`` (``quantize run --no-hessian-refresh`` turns it off):
+    each start takes one more quantum Hessian at its answer and re-converges
+    on it before it is ranked and reported (D-146).
+    """
     from runner.usability import ConfigError
 
     try:
@@ -2351,6 +2357,7 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
         optimizer_kwargs=optimizer_kwargs,
         max_workers=min(int(preset["max_workers"]), int(preset["n_starts"])),
         job_name=name,
+        refresh_hessian=refresh_hessian,
     )
     for r in results:
         labeled = _compute_metrics(r["coords"], bonds, elems)
@@ -2389,6 +2396,17 @@ def main(cfg: dict[str, Any]) -> dict[str, Any]:
     _note = near_tie_note(best["multistart_near_ties"])
     if _note:
         print(f"[{name}] {_note}")
+    _hr = best.get("hessian_refresh")
+    if isinstance(_hr, dict) and "error" in _hr:
+        print(f"[{name}] warning: the Hessian refresh at the answer failed ({_hr['error']}); "
+              f"the answer is the fit's own")
+    elif isinstance(_hr, dict):
+        print(f"[{name}] quantum Hessian recomputed at each start's answer: the selected start "
+              f"moved {1e3 * float(_hr['moved_ang']):.3g} mA RMS in {_hr['passes']} pass(es)"
+              + ("" if _hr.get("settled", True) else
+                 ", and was still moving when the passes ran out"))
+    elif not refresh_hessian:
+        print(f"[{name}] Hessian refresh at the answer skipped (--no-hessian-refresh)")
     best_metrics = best["metrics_labeled"]
     best_conformer_summary = dict(conformer_workflow["summary"])
     conf_diag = best.get("conformer_diagnostics") or {}

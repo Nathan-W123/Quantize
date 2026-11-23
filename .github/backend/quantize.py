@@ -299,16 +299,12 @@ class MolecularOptimizer:
         Convergence threshold on rotational-constant RMS residual [MHz].
     conv_energy : float
         Convergence threshold on absolute energy change between iterations
-        [Hartree]. Used for hybrid stall detection and optionally for null-space
-        convergence when ``null_convergence_requires_energy`` is True.
+        [Hartree]. Used for hybrid stall detection.
     spectral_analytic_jacobian : bool
         If True (default), ``SpectralEngine`` uses an analytic ∂(A,B,C)/∂x with
         finite-difference fallback for degenerate principal moments.
     spectral_jacobian_degeneracy_tol : float
         Relative moment gap below which the Jacobian falls back to finite differences.
-    null_convergence_requires_energy : bool
-        If True, null-space convergence also requires ``|ΔE| < conv_energy``.
-        Default False avoids stalling when energy differences fluctuate iteration-to-iteration.
     conv_step_range : float
         Convergence threshold on the range-space component of the Cartesian
         step norm [Å].
@@ -445,7 +441,6 @@ class MolecularOptimizer:
         spectral_delta=1e-3,
         spectral_analytic_jacobian=True,
         spectral_jacobian_degeneracy_tol=1e-4,
-        null_convergence_requires_energy=False,
         auto_sanitize_spectral=True,
         sanitize_jacobian_row_norm_max=1e9,
         sanitize_tiny_target_mhz=1e-3,
@@ -533,7 +528,7 @@ class MolecularOptimizer:
         cd_weight=0.0,
         coordinate_mode="internal",
         ic_damping=1e-6,
-        ic_use_dihedrals=False,
+        ic_use_dihedrals="auto",
         ic_micro_iter=20,
         ic_cartesian_fallback=False,
         exact_curvature_where_flagged=True,
@@ -1110,7 +1105,6 @@ class MolecularOptimizer:
         self.conv_step = conv_step
         self.conv_freq = conv_freq
         self.conv_energy = float(conv_energy)
-        self.null_convergence_requires_energy = bool(null_convergence_requires_energy)
         self.spectral_accept_relax = self._base_spectral_accept_relax
         self.conv_step_range = float(conv_step_range)
         self.conv_step_null = float(conv_step_null)
@@ -2557,15 +2551,16 @@ class MolecularOptimizer:
         on nine molecules: 4-20 mA from the answer; recomputing it here moved
         alpha_q by -14..+24% and the widths by up to 7%, the geometry by
         under 0.8 mA, and made a restart from the answer stationary (about
-        0.001 mA against 0.13-0.26 without). It costs one Hessian, so the
-        plain fit does not do it; `quantize uncertainty` does, before any
-        width. Measured again through `cli run` (HF/6-31G, formyl fluoride
-        and chlorofluoromethane, from their RHF minima and 0.03 A-displaced
+        0.001 mA against 0.13-0.26 without). It costs one Hessian, so
+        MolecularOptimizer.run does not do it; `quantize uncertainty` does,
+        before any width, and `quantize run` does for every start (D-146,
+        which reverses D-63; `--no-hessian-refresh` skips both). Measured
+        through `cli run` (HF/6-31G, formyl fluoride and
+        chlorofluoromethane, from their RHF minima and 0.03 A-displaced
         starts): the plain answer is 0.03-0.6 mA rms (1.4 max) from where
         one pass lands, which is the fit's own optimum (a restart chain
         agrees to 1.4e-6 A); the bond RMS moves up to 0.5 mA; the pass adds
-        15-21% to the run. Left out of the plain fit for that cost
-        (decisions D-63).
+        15-21% to the run.
 
         The first pass always runs. Another runs if re-converging carried the
         geometry past orca_update_thresh from the new Hessian, or -- where
@@ -2646,7 +2641,8 @@ class MolecularOptimizer:
                 f"from this geometry, beyond the {1e3 * float(self.orca_update_thresh):.2f} mA at "
                 f"which the fit refreshes its quantum point. The answer was fitted on that "
                 f"curvature and on the quantum weight it sets, not only these widths: recomputing "
-                f"it at the answer (refresh_hessian_at_answer, which quantize uncertainty runs) "
+                f"it at the answer (refresh_hessian_at_answer, which quantize run and quantize "
+                f"uncertainty run unless told not to) "
                 f"moved a hydrogen-bonded water dimer's answer by up to 14 mA (RMS) and its "
                 f"weight by up to 18%, and formyl fluoride's widths by up to 3%"]
 
@@ -2797,10 +2793,11 @@ class MolecularOptimizer:
         bootstrap kept 0/50 and 4/50 refits. With dihedrals both reach the
         optimum (1.7e-6 and 1.6e-7 widths), and acetyl fluoride agrees with
         the Cartesian fit of the same objective (14.584 vs 14.602 mA bond RMS)
-        (T-41, D-99). Opt-in (ic_use_dihedrals="auto"; the default is False),
-        because it moves those answers -- fluoroethane's bond RMS by up to
-        +0.37 mA, acetyl fluoride's by -0.19 -- and costs acetyl fluoride one
-        more Hessian, as its fit now travels the torsion (D-100).
+        (T-41, D-99). The default (ic_use_dihedrals="auto", D-147; it was
+        opt-in under D-100) although it moves those answers -- fluoroethane's
+        bond RMS by up to +0.37 mA, acetyl fluoride's by -0.19 -- and costs
+        acetyl fluoride one more Hessian, as its fit now travels the torsion:
+        without it they stop short of the optimum of their own objective.
 
         Decided once, at the start geometry: the count is set by the bonding,
         and a set that changed during a fit would change the objective's
@@ -4127,8 +4124,6 @@ class MolecularOptimizer:
                     dx_null_norm < self.conv_step_null and
                     g_null_norm is not None and g_null_norm < self.conv_grad_null
                 )
-                if self.null_convergence_requires_energy:
-                    null_ok = null_ok and energy_ok
             if spectral_ok and null_ok:
                 print(f"\nConverged in {it + 1} iterations.")
                 converged = True

@@ -1363,3 +1363,31 @@
 - Revisit if: a flagged direction with the exact curvature below Gauss-Newton turns up (kept on Gauss-Newton with the existing warning), or the cost per fit exceeds the measured -5% to +22%.
 - Refined (T-71): the report uses the exact curvature either way along a flagged direction (the exact one smaller widens the width); the step only where it is the larger. Found on the dimer, internal seed 4: 64 by Gauss-Newton against an exact 31 along direction 1, which kept that start's widest angle at 6.77 deg against 9.58 with it. This is the user's 'the reported uncertainty also uses the true stiffness there'.
 - Measured (T-71, new code, 8 starts x 2 modes): bootstrap keeps 16 of 16 on all 16 runs (8-13 before either change); distance after the refresh 0.002-0.013 (Cartesian), 0.00006-0.052 (internal); widest angle 6.6-9.6 deg against Gauss-Newton's 13.5-331 at the same answers; Gauss-Newton keeps 0.002-2.2% of the exact torsion curvature (~170). Seed 4 plain and refreshed answers bit-identical to the T-68 prototype.
+
+### D-146 · quantize run refreshes the Hessian at its answer (2026-11-23)
+- Decision: T-72. `quantize run` takes one more quantum Hessian at the converged geometry and re-converges on it (refresh_hessian_at_answer), as `quantize uncertainty` does; `--no-hessian-refresh` skips it. Page item 4, backlog N23, revisits D-63.
+- Why: a plain run stops on the Hessian from its start: 0.03-0.6 mA RMS from its own optimum on formyl fluoride and chlorofluoromethane, a 0.5 mA thread-count difference; the water dimer's answers moved up to 14.4 mA and internal/Cartesian answers 23.5 -> 2.6 mA apart.
+- Alternatives considered: keep the age note only (today).
+- Source: stated by user ("1-4 go", item 1 of the list: refresh the quantum Hessian at the end of a plain quantize run fit)
+- Revisit if: the cost (+15-21% wall measured) grows on larger molecules.
+
+### D-147 · use_dihedrals: auto is the default (2026-11-23)
+- Decision: T-72. Internal-coordinate fits add dihedrals when bonds and angles miss a direction the fit can move (D-100's auto) unless the configuration says otherwise. Page item 2.
+- Why: acetyl fluoride 0.19 -> 1.7e-6 widths from its optimum, fluoroethane 0.16 -> 1.6e-7, bootstraps 0 -> 42 and 4 -> 50 of 50; 7 of 9 unchanged; the water dimer 0.07-4.0 -> 0.003-0.08 widths.
+- Alternatives considered: keep false.
+- Source: stated by user ("1-4 go", item 2)
+- Revisit if: an auto-added dihedral set makes a fit worse than bonds and angles alone.
+
+### D-148 · Multistart adds dihedrals when any start needs them (2026-11-23)
+- Decision: T-72. With use_dihedrals: auto, multistart checks every start and gives all starts dihedrals when any one's bonds and angles miss a direction dihedrals reach: still one coordinate set for every start (D-101's reason). Page item 6, backlog N30.
+- Why: a dimer with a Cs start first and a no-point-group start second ran both without dihedrals; the second ended 0.44 widths from its optimum.
+- Alternatives considered: first start decides (today).
+- Source: stated by user ("1-4 go", item 3)
+- Revisit if: starts that did not need dihedrals move materially.
+
+### D-149 · Remove null_convergence_requires_energy (2026-11-23)
+- Decision: T-72. Delete the MolecularOptimizer option (never set by any caller, untested, T-54/T-66) and its branch.
+- Why: dead option on the public constructor.
+- Alternatives considered: keep it.
+- Source: stated by user ("1-4 go", item 4)
+- Revisit if: a caller outside the repository used it.
