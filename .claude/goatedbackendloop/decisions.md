@@ -1185,3 +1185,12 @@
 - Source: assumption, unconfirmed (defect fixes within T-53's scope)
 - Revisit if: the user wants the off-mode cause measured, or the split diagnostics simplified.
 
+
+### D-124 · Next task: status of F3's remaining audit items (report only) (2026-11-23)
+- Decision: T-54 checks which of the 2026-11-19 audit's remaining items (unreferenced defs, unreferenced investigation scripts, backend modules unreachable from the CLI/runner, test/script-only functions, never-passed optimizer kwargs) are still open, with evidence per item; deletes nothing.
+- Why: Q-80's recommended option; L-26 (T-52 found part of this row already done).
+- Alternatives considered: measure the split posterior's unprojected prior-target pull; N34 dimer in joint mode; done for now.
+- Source: auto-picked, no answer in 15 min (Q-80)
+- Revisit if: the user answers the decision page.
+- Outcome (2026-11-23, T-54; scratchpad t54/graph.py, kwargs.py): done -- unused imports and dead locals (efabab3, ruff clean), the five named unreferenced defs (0 references), ten investigation scripts archived (a2aafb9; build_methods_pdf.py kept), five unreachable modules deleted (988bad5: model_selection, prior_sensitivity, geometric_bridge and two more). Still there, by design: a static import graph from cli.py and runner/ reaches 65 of 72 backend modules; the other 7 (1,922 lines) serve benchmark scripts, tests and dev (two engine mentions are comments); 13 of 144 MolecularOptimizer parameters are passed by nothing outside quantize.py (isotropic_prior, chi2_rescale_threshold, spectral_analytic_jacobian, spectral_jacobian_degeneracy_tol, null_convergence_requires_energy, six guardrail tunables, accept_requires_geometry_valid, mass_dependent_frac_sigma). Not re-measured: the 47 test/script-only functions. Nothing deleted.
+
