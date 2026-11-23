@@ -1402,3 +1402,4 @@
 - Alternatives considered: reuse the step's Jacobian in the check (user's call: efficiency change); decide more page items (user's call); done for now.
 - Source: auto-picked, no answer in 15 min (Q-102)
 - Revisit if: it moves the dimer or other rows, or does not change isocyanic acid.
+- Outcome (T-73, scratch t73/): the patched ratio test fired on the corrected steps everywhere (isocyanic acid 2 of 2, dimer 13-97 per fit) and flipped no acceptance: all 18 RHF benchmark rows identical to 4 decimals (isocyanic acid 24.2325 / 29.0037), the dimer answers, iteration counts and kept counts bit-identical on every start measured. Isocyanic acid's landing comes from the step's direction, not its acceptance; the patch is inert where measured, so it is not proposed. Backlog N36 keeps the question open.
