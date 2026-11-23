@@ -1194,3 +1194,12 @@
 - Revisit if: the user answers the decision page.
 - Outcome (2026-11-23, T-54; scratchpad t54/graph.py, kwargs.py): done -- unused imports and dead locals (efabab3, ruff clean), the five named unreferenced defs (0 references), ten investigation scripts archived (a2aafb9; build_methods_pdf.py kept), five unreachable modules deleted (988bad5: model_selection, prior_sensitivity, geometric_bridge and two more). Still there, by design: a static import graph from cli.py and runner/ reaches 65 of 72 backend modules; the other 7 (1,922 lines) serve benchmark scripts, tests and dev (two engine mentions are comments); 13 of 144 MolecularOptimizer parameters are passed by nothing outside quantize.py (isotropic_prior, chi2_rescale_threshold, spectral_analytic_jacobian, spectral_jacobian_degeneracy_tol, null_convergence_requires_energy, six guardrail tunables, accept_requires_geometry_valid, mass_dependent_frac_sigma). Not re-measured: the 47 test/script-only functions. Nothing deleted.
 
+
+### D-125 · Next task: measure the split posterior's prior-target pull (2026-11-23)
+- Decision: T-55 measures how far the split posterior's unprojected prior-target pull (gradient H(x - t) and energy 1/2 d^T H d, against a Pn H Pn curvature) moves its mode, distance_to_mode, the off-mode notes and widths, on analytic water and wherever split runs with a target; then proposes. No code change before the measurement.
+- Why: Q-81's recommended option; T-53 found it (1.0 of 1.0 widths off mode at sigma_x 5 mA).
+- Alternatives considered: N34 dimer in joint mode; a review of the 13 never-passed settings; done for now.
+- Source: auto-picked, no answer in 15 min (Q-81)
+- Revisit if: the user answers the decision page.
+- Measured (2026-11-23, T-55; scratchpad t55/pull.py; analytic one-constant water, Cartesian split, sigma_x 20/10/5 mA, targets 5.6 and 15.5 mA from the fit): distance to the posterior's mode 0.023-0.998 widths as the code stands (full H(x - t)); 0.002-0.030 with the step's own left-projected pull Pn H (x - t); 0.126-1.54 with the split posterior's own definition Pn H Pn (x - t) (the coupling dropped, as without a target). Reported widths identical to 1e-6 in all three (the curvature is Pn H Pn throughout). No script, config or CLI path combines split with prior_target_coords (the benchmark's targets are joint-only). Proposal pending (Q-82).
+
