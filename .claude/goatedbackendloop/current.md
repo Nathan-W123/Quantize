@@ -1,15 +1,9 @@
 # Current task
-Status: done
-Request: T-71/T-72 (D-145 to D-149): exact curvature where Gauss-Newton is flagged; Hessian refresh in quantize run; use_dihedrals auto default; multistart dihedrals over every start; null_convergence_requires_energy removed. Results-table rebuild waits (user).
+Status: building
+Request: T-73 (D-150): scratch measurement, ratio test on the corrected model
 ## Brief
-- Done and verified; see decisions D-145 to D-149 and their measured/reviewed notes.
+- Patch a scratch copy: stash the step's K, subtract 1/2 dp^T K dp from the ratio test's predicted reduction. Run the HF base+offsets benchmark rows and the dimer (8 starts x 2 modes). Compare with t71/on (current) and t71/off, and log p at isocyanic acid's answers.
 ## Progress
-- Implementation reproduces the prototype bit for bit; dimer 8 starts x 2 modes: kept 14-16 of 16, widest angle 6.6-9.6 deg (GN 13.5-331); cost <= 5% per fit; RHF benchmark rows: only isocyanic acid moves (+0.26/+0.45 mA, a near-tied stationary point).
-- Independent review (t72v/REPORT.md): 7 findings, 6 fixed, 1 to backlog (N39); 9 mutations caught; CI 1806 passed.
 ## Observations
-- The 227 -> ~1.5 deg figure I gave the user was from an old answer; corrected (14.2 -> 6.65 deg at seed 3).
-- My "waiting on you" list missed 8 page items; corrected in chat.
-- L-25 missed the bootstrap target's assumption; the review caught it.
 ## Pending question
-- Q-102 (asked 19:26 UTC, deadline 19:41, reminder trig_01Kd7baJHNnDnWm51ZF9fUhe): at the deadline auto-pick option 1 (scratch measurement of judging the corrected step on its own model, isocyanic acid); never 2 or 3.
 ## Handoff
