@@ -1346,3 +1346,10 @@
 - Source: auto-picked, no answer in 15 min (Q-99)
 - Revisit if: the user decides page item 9.
 - Measured (2026-11-23, T-69; scratchpad t69/timing.txt, timing_cached.txt, summary.txt; sequential, median of 3, internal defaults plus dimer seed 4 in both modes): fits whose answers are bit-identical across variants (vinyl fluoride, fluoroethane, chlorofluoromethane, water, ozone, isocyanic acid) vary 10-20% in wall time between runs, so differences below that are noise. Every-step check: acetyl fluoride 13.2 -> 16.2 s (+22%), formyl fluoride 3.35 -> 3.93 s (+17%), fluoroacetylene 7.7 -> 7.3 s; nine molecules 59.1 -> 60.8 s in all; dimer fits 2.3-2.4 -> 1.9-2.2 s (fewer iterations); dimer bootstraps 10.2 -> 12.7 s (internal, kept 13 -> 14) and 4.9 -> 7.1 s (Cartesian, kept 8 -> 15). Once-per-Hessian check (rows cached until the Hessian changes; 41 checks, 2721 reuses): dimer answers 7.1-7.4 mA from the every-step ones, the Cartesian dimer bootstrap keeps 0 of 16, fluoroacetylene moves 1.4 mA: not viable (directions go stale as the fit moves). The first attempt at the cached run failed on a wrong module name and was rerun alone. Page item 9 cost sentence updated (v11).
+
+### D-144 · Fact-check of page item 9's T-68 and T-69 rows (2026-11-23)
+- Decision: T-70: a fresh background subagent checks the "Seven more starts" row and the cost sentence of "A trial fix" on page item 9 against the outputs and scripts in scratchpad t68/ and t69/, reporting any figure that does not follow. No repository change.
+- Why: Q-100's recommended option; L-10/L-18: the T-65 check found five overstated figures.
+- Alternatives considered: adopting the step fix (user's call); removing null_convergence_requires_energy (user's call); done for now.
+- Source: auto-picked, no answer in 15 min (Q-100)
+- Revisit if: the check finds an error (then the page is corrected).
