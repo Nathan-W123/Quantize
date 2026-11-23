@@ -1306,3 +1306,10 @@
 - Source: auto-picked, no answer in 15 min (Q-94)
 - Revisit if: the user decides page item 9.
 - Measured (2026-11-23, T-64; scratchpad t64/*.txt; nothing in the repository): with the reach rule (correct in q-space only where v^T B+ B v > 0.5): dimer as T-63 (every flagged direction realised 1.0); fluoroacetylene 0.021 mA from the code as it stands, Phi lower by 2e-5, restarts land on both (T-63's harm gone; 6 of 20 steps corrected, 1 skipped); formyl fluoride 13.76 mA as T-63; six unchanged; acetyl fluoride (dihedrals off) Phi +0.0076, 0.84 mA from off, both stopping points (restarts land 3.6 and 4.3 mA away); acetyl fluoride with use_dihedrals auto: 0.29 mA apart, both at their mode (GN 1.7e-6, 1.7e-7), Phi within 0.0003, bond RMS 14.584 -> 14.579 mA, 11 of 19 steps corrected, run time 26.2 -> 24.7 s. Page item 9 updated (v8).
+
+### D-139 · Independent check of the prototype evidence on page item 9 (2026-11-23)
+- Decision: T-65: a fresh background subagent checks the T-62 to T-64 prototype (scratchpad t62/, t63/, t64/): whether the patch does what it claims (the added curvature, the q-space image, the reach rule), whether the comparisons are fair, and whether the figures on page item 9 follow from the outputs. No repository change.
+- Why: Q-95's recommended option; L-10; the user's decision on item 9 would rest on these figures.
+- Alternatives considered: a report on the 13 never-passed settings; adopting the step fix (user's call; never auto-picked); done for now.
+- Source: auto-picked, no answer in 15 min (Q-95)
+- Revisit if: the check finds a defect.
