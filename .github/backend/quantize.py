@@ -2578,6 +2578,12 @@ class MolecularOptimizer:
         with the answer still moving (past orca_update_thresh from its
         Hessian, or past REFRESH_SETTLED_ANG where the corrections follow the
         Hessian) or the last pass stopped at max_iter.
+
+        ``settled`` is about the Hessian and the answer's last move, not about
+        the distance to the mode: a water dimer settled 0.505 Gauss-Newton
+        widths from its mode (0.003 by the exact Hessian), along a torsion
+        where Gauss-Newton keeps 0.0077 of an exact 252 (T-58). distance_to_mode
+        and gauss_newton_warnings say that.
         """
         if self.spectral_only or self.quantum is None or self._backend is None:
             return None
@@ -5609,6 +5615,21 @@ class MolecularOptimizer:
     #: carry for a finding on it to be reported at all.
     _GN_RELEVANT_SHARE = 0.10
 
+    @staticmethod
+    def _gn_width_factor(row):
+        """How the Gauss-Newton width along a flagged direction compares with
+        the exact Hessian's: sqrt(exact / Gauss-Newton curvature). Gauss-Newton
+        stays the reported basis (D-04); this says by how much it is off. A
+        water dimer's hydrogen-bond torsion read 181 and 11 times too wide
+        (T-58), where the warning used to say "order-of-magnitude"."""
+        c_gn, c_ex = float(row["curvature_gauss_newton"]), float(row["curvature_exact"])
+        if not (c_gn > 0.0 and c_ex > 0.0):
+            return "the exact Hessian gives no finite width to compare that one with"
+        f = float(np.sqrt(c_ex / c_gn))
+        if f >= 1.0:
+            return f"by the exact Hessian the width along it is {f:.3g} times narrower than reported"
+        return f"by the exact Hessian the width along it is {1.0 / f:.3g} times wider than reported"
+
     def gauss_newton_warnings(self, coords=None, n_directions=3,
                               rel_warn=0.5, _blocks=None) -> list[str]:
         """Plain-language findings from :meth:`gauss_newton_discrepancy`.
@@ -5714,8 +5735,8 @@ class MolecularOptimizer:
                     f"({100 * row['relative_discrepancy']:.0f}% discrepancy), "
                     f"because the term Gauss-Newton omits is "
                     f"{row['omitted_term']:.3e}. That direction carries "
-                    f"{100 * share:.0f}% of {which}'s variance; treat that "
-                    f"width as order-of-magnitude.")
+                    f"{100 * share:.0f}% of {which}'s variance; "
+                    + self._gn_width_factor(row) + ".")
         if saddle:
             self._gn_saddle = (x.tobytes(), msgs[-1])
         return msgs

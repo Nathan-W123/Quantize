@@ -404,3 +404,20 @@ def test_a_direction_no_reported_width_depends_on_is_not_reported(monkeypatch):
     monkeypatch.setattr(opt, "gauss_newton_discrepancy", lambda *a, **k: rows(inplane))
     msgs = opt.gauss_newton_warnings()
     assert len(msgs) == 1 and "doubtful" in msgs[0]
+    # It says by how much, and which way, that width is off: sqrt(2.27/1.0).
+    assert "1.51 times narrower than reported" in msgs[0], msgs[0]
+    assert "order-of-magnitude" not in msgs[0]
+
+
+@pytest.mark.parametrize("c_gn, c_ex, expected", [
+    (1.0, 2.27, "1.51 times narrower than reported"),
+    # The water dimer's hydrogen-bond torsion (T-58): 0.0077 against 251.6.
+    (0.0077, 251.6, "181 times narrower than reported"),
+    (4.0, 1.0, "2 times wider than reported"),
+    (0.0, 1.0, "no finite width to compare"),
+])
+def test_the_doubtful_note_gives_the_exact_hessian_s_width_factor(c_gn, c_ex, expected):
+    text = MolecularOptimizer._gn_width_factor(
+        {"curvature_gauss_newton": c_gn, "curvature_exact": c_ex})
+    assert expected in text, text
+
