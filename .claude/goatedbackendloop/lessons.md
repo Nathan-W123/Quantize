@@ -101,3 +101,11 @@ once by a container swap).
 - Adjustment: a warning states what it measured; where it names a cause, measure that cause's share (decompose the quantity) first, or leave the cause out.
 - Evidence: 2026-11-23 · T-53: the new off-mode wording blamed the range-null coupling; decomposed, the coupling explained 1 of 11 cases (a prior target's pull, an unfinished range the others). Scope: project · Status: provisional -T-56 (I called seed 23's 23.5 mA between two fits 'a second minimum' from their distance_to_mode, which reads each fit's own quadratic model and so cannot tell two minima from one point on a stale Hessian; T-57 measured the stale Hessian on one objective with real energies).
 
+
+### L-28 · Check a prototype patch computes the change it describes before measuring its effect
+- Observation: T-62 to T-64's step patch added the curvature correction to the Hessian before the step floored it, so it also undid the floor and inflated the damping; the internal-mode gains it measured were partly that side effect.
+- Evidence: 2026-11-23 · T-65 verifier: internal dimer 0.0006 (patch) against 0.0107 (correction added exactly); formyl fluoride 'reaches the restart answer' did not survive.
+- Adjustment: before measuring outcomes, compare the patched step against the intended formula at a few iterations (the step matrix with and without, and their difference against the intended term), and say where the patch enters relative to floors, damping and caps.
+- Scope: project
+- Status: provisional
+- Outcomes:
