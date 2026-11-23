@@ -2443,7 +2443,12 @@ class MolecularOptimizer:
         prior: 2.2 widths; two-isotopologue C-only water, whose step settles
         at rank 1 against a rank-2 posterior: 3.8 widths), so the posterior
         is centred somewhere the fit is not. A fit stopped at max_iter is
-        not counted here; split_inconsistency says it has not converged."""
+        not counted here; split_inconsistency says it has not converged.
+
+        A prior target is one measured way in: the posterior's gradient keeps
+        the target's pull along the data's directions (see
+        _posterior_gradient), which puts its mode 0.02 to 1.0 widths off a
+        split fit on analytic water at sigma_x 20 to 5 mA."""
         if self.split_coupling() is None:
             return None
         try:
@@ -5041,6 +5046,14 @@ class MolecularOptimizer:
         target when there is one; on the split objective only in the data's
         null space). It is what says how far a geometry is from the mode the
         Laplace widths describe.
+
+        With a prior target (Cartesian) the quantum term is the full
+        H (x - target), on the split objective too: there the posterior keeps
+        the target's pull along the data's directions, while its curvature,
+        alpha Pn H Pn, does not. Its mode then lies off the split fit: 0.02 to
+        1.0 widths on analytic one-constant water at sigma_x 20 to 5 mA, with
+        the widths themselves unchanged (T-55). No script or config combines
+        the split objective with prior_target_coords.
         """
         x = self.coords if coords is None else np.asarray(coords, dtype=float)
         x = np.asarray(x, dtype=float)

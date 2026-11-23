@@ -321,7 +321,11 @@ to theory.
 > torsion) the report's off-mode note says that instead. The check reads the
 > quantum side only: a fit can also stop before it has finished fitting the data,
 > and still depend on the schedule, without the note (ozone at a trust radius of
-> 0.2). The `joint` objective has no such stall.
+> 0.2). The `joint` objective has no such stall. With a prior target
+> (`prior_target_coords`), the split posterior keeps the target's pull along
+> the data's directions while its curvature does not, so its mode lies 0.02–1.0
+> widths off the split fit (analytic water, σx 20–5 mÅ); the widths are
+> unaffected. No script or config combines the two.
 
 > **Note.** The config-driven runner (`python -m cli run`) fits the same
 > objective as the API and the benchmark: `joint`, with `quantum_prior_sigma_ang`

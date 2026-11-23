@@ -1203,3 +1203,10 @@
 - Revisit if: the user answers the decision page.
 - Measured (2026-11-23, T-55; scratchpad t55/pull.py; analytic one-constant water, Cartesian split, sigma_x 20/10/5 mA, targets 5.6 and 15.5 mA from the fit): distance to the posterior's mode 0.023-0.998 widths as the code stands (full H(x - t)); 0.002-0.030 with the step's own left-projected pull Pn H (x - t); 0.126-1.54 with the split posterior's own definition Pn H Pn (x - t) (the coupling dropped, as without a target). Reported widths identical to 1e-6 in all three (the curvature is Pn H Pn throughout). No script, config or CLI path combines split with prior_target_coords (the benchmark's targets are joint-only). Proposal pending (Q-82).
 
+
+### D-126 · Prior-target pull on the split posterior: document only (2026-11-23)
+- Decision: no behaviour change. _posterior_gradient's and split_off_mode's docstrings and one README sentence say that with a prior target the split posterior keeps the target's pull along the data's directions while its curvature (alpha Pn H Pn) does not, so its mode lies 0.02-1.0 widths off the split fit (analytic water, sigma_x 20-5 mA), widths unaffected, and that no script or config combines the two.
+- Why: Q-82's recommended option. Nothing in the repo runs split with a target (re-checked: the five scripts that pass prior_target_coords run joint; the config runner never passes one), widths do not move, and the two candidate fixes pull the mode distance opposite ways (0.030 vs 1.54), so neither is plainly right.
+- Alternatives considered: make the target branch follow the split posterior's own definition, Pn H Pn (mode diagnostics move, widths do not); N34 dimer in joint mode; done for now.
+- Source: auto-picked, no answer in 15 min (Q-82)
+- Revisit if: a script or config starts combining split with prior_target_coords, or the user answers the decision page.
