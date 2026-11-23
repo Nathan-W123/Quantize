@@ -1210,3 +1210,11 @@
 - Alternatives considered: make the target branch follow the split posterior's own definition, Pn H Pn (mode diagnostics move, widths do not); N34 dimer in joint mode; done for now.
 - Source: auto-picked, no answer in 15 min (Q-82)
 - Revisit if: a script or config starts combining split with prior_target_coords, or the user answers the decision page.
+
+### D-127 · Next task: measure why the water dimer in joint internal mode stops off its mode (2026-11-23)
+- Decision: T-56 measures why the hydrogen-bonded water dimer, joint objective, internal mode, quantum prior on, ends 0.29 posterior widths from its posterior's mode (backlog N31, ex-N34). No code change before the measurement.
+- Why: Q-83's recommended option; it is the default path (joint), unlike the split work of T-48 to T-55.
+- Alternatives considered: a report on the 13 MolecularOptimizer settings nothing outside quantize.py passes; N29 angle-row units (user's call); done for now.
+- Source: auto-picked, no answer in 15 min (Q-83)
+- Revisit if: the user answers the decision page.
+- Measured (2026-11-23, T-56; scratchpad t56/dimer_reach.py, dimer_dirs.py, dimer_reach_seeds.txt; water dimer, five isotopologues, HF/6-31G pyscf, joint internal, 15 starts at 0.02 A noise): the start decides the point group. 7 of 15 get Cs (8 directions): bonds, angles and the contact reach 8 of 8, the fits end 8e-5 to 0.023 widths from their mode, and auto adds nothing. 8 of 15 get none (12 directions): the 10 coordinates reach 10 of 12 (singular value exactly 0 on the other 2: the torsions about the near-linear O...H-O bond, dihedrals 6-4-5-1 and 2/3-1-5-4); the fits end 0.068 to 4.0 widths from their mode (seed 8 at max_iter), yet within the 10 directions they reach 5e-5 to 0.041 widths (seed 11: 0.32, not explained), and their answers differ from the Cartesian one by 9 to 62 mA, almost all of it along the two torsions. With use_dihedrals auto: 13 coordinates reach 12 of 12, 0.003 to 0.080 widths, within 0.3 to 7.4 mA of the Cartesian answer (seed 23: 23.5 mA with both at their mode, a second minimum). The report says nothing below 2 widths (Gauss-Newton's "not the mode"); the bootstrap would refuse such refits (0.25 limit). Same cause as T-41's free torsions (D-99, D-100). Proposal pending (Q-84).

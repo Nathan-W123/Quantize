@@ -1,13 +1,14 @@
 # Current task
-Status: done
-Request: T-55 (D-125): measure the split posterior's unprojected prior-target pull, then propose
+Status: building
+Request: T-56 (D-127): measure why the water dimer in joint internal mode (quantum on) ends off its posterior's mode
 ## Brief
-- Outcome: how far the pull moves the split posterior's mode, notes and widths; a proposal.
+- Outcome: a measured cause for the dimer's gap to its mode (0.47 widths in the T-49 verifier, 0.29 in N34), then a proposal. No code change before the measurement.
+- Hypothesis to test, not assumed (L-27): without dihedrals the dimer's internal set has 10 coordinates for 12 degrees of freedom, so the step cannot move two directions the posterior weighs.
+- Success: the gap split into the part the internal step can reach and the part it cannot, on the dimer at HEAD; the same split with dihedrals auto.
 ## Progress
-- N1 · measure (t55/pull.py) · distance to mode: current 0.023-0.998, step-consistent Pn H d 0.002-0.030, posterior-consistent Pn H Pn d 0.126-1.54; widths unchanged in all; no in-repo user of split + target
-- N2 · document only (D-126, auto-picked Q-82): _posterior_gradient and split_off_mode docstrings, README split note; no behaviour change
+- N1 · measure (t56/dimer_reach.py, dimer_dirs.py) · C1 starts (8/15): 10 coords reach 10/12, gap 0.068-4.0 widths lies along the two H-bond torsions (within reached 5e-5-0.041; seed 11 0.32); Cs starts (7/15): reach 8/8, <=0.023; auto: 12/12, 0.003-0.080; no report note below 2 widths
 ## Observations
-- 2026-11-23 · the reviewer's "0.030 after removing the range part" was one of two projections; the other (the split posterior's own definition) goes the other way (1.54): measure both before choosing
+- 2026-11-23 · my first split of the gap (M-norm shares, then widths of each part of the gradient) did not add up (162%; 14.5 + 13.4 against 1.1): the parts are not M-orthogonal. The distance to the mode within the reached directions is the measure that holds.
+- 2026-11-23 · the dimer's start noise decides its point group (Cs in 7 of 15), and with it whether the torsions exist for the fit: one seed would have hidden or exaggerated the effect
 ## Pending question
-- Q-83 (asked 02:44 UTC, deadline 02:59 UTC): 1 (Recommended) N31 dimer: measure why the water dimer in joint internal mode ends 0.29 widths from its mode (measure first, no code change before); 2 report on the 13 MolecularOptimizer settings nothing outside quantize.py passes (reachable, tested, worth keeping; nothing deleted); 3 N29 angle-row units in the Cartesian internal prior (user's call: accuracy moves both ways); 4 Done for now. Deadline takes 1.
 ## Handoff
