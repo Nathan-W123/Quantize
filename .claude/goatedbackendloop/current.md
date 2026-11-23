@@ -11,4 +11,5 @@ Request: T-60 (D-134): does the bootstrap's 0.25-width gate refuse water-dimer r
 - 2026-11-23 · fact-check by measurement caught my T-58 '0.003' (one direction's component quoted as a maximum) (L-18)
 - 2026-11-23 · keying a recorder on id(obj) lost entries (ids are reused after garbage collection)
 ## Pending question
+- Q-91 (asked 06:08 UTC, deadline 06:23 UTC): 1 (Recommended) measure why half the water-dimer refits stop 0.18-1.39 widths short even after the polish passes (trust radius, plateau rule, which direction; no code change before); 2 report on the 13 never-passed settings (nothing deleted); 3 Done for now. Deadline takes 1.
 ## Handoff
