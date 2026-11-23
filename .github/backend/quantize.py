@@ -5726,9 +5726,16 @@ class MolecularOptimizer:
         (internal) with the gate still on Gauss-Newton's distance, and 16 of
         16 on every start in both modes with it on the exact one (T-71). Nine benchmark molecules (HF/6-31G, internal mode): it
         acts on acetyl fluoride, formyl fluoride and fluoroacetylene (bond
-        RMS -0.20, +0.09 and +0.04 mA), costing -5% to +22% per fit (T-69).
-        The ratio test still judges the step on the Gauss-Newton model, as
-        measured.
+        RMS -0.20, +0.09 and +0.04 mA, T-69, with dihedrals off). Cost,
+        on and off interleaved, median of three (T-71, dihedrals auto): -4%
+        to +5% per fit where it acts; +0.1% to +5% where it does not, which
+        is the check itself, run every step; the dimer's 16-refit bootstrap
+        +1% (Cartesian) and +63% (internal, 16 refits kept against 13). In
+        the RHF benchmark rows (Cartesian, prior target) it moves isocyanic
+        acid by +0.26 and +0.45 mA onto another stationary point 1.4-2.0 mA
+        away whose objective is higher by about 0.05 (T-72); the other rows
+        move under 0.004 mA. The ratio test still judges the step on the
+        Gauss-Newton model, as measured.
         """
         if (not self._exact_curvature or self.spectral_only
                 or self.optimizer.objective_mode != "joint"):
