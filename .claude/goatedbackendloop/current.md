@@ -9,4 +9,5 @@ Request: T-52 (D-121): remove unused imports and dead locals (F3)
 ## Observations
 - 2026-11-23 · the backlog row was stale: the commit that acted on it did not update it (L-26)
 ## Pending question
+- Q-79 (asked 00:44 UTC, deadline 00:59 UTC): what next? 1 (Recommended) a narrow independent check of c4eb2b6 (unverified code change); 2 check which of F3's remaining audit items (unreferenced defs, scripts, unreachable modules, never-passed kwargs) are still open, report only; 3 N34 dimer in joint mode; 4 Done for now. Deadline takes 1.
 ## Handoff
