@@ -595,13 +595,24 @@ class BootstrapEngine:
         c_total, cov = reported_covariance(opt, x, regularization=self.laplace_regularization)
         J, _r, scale = opt.spectral.stacked(x, return_row_scale=True)
         strategy = self.config.strategy
+        # The curvature the reported widths take from the exact Hessian along
+        # the directions the Gauss-Newton check flags (D-145) is the residuals'
+        # own second derivative, not noise in the data, and no refit spreads
+        # by it: a refit moves by cov J^T dr, so the data cloud is
+        # cov J^T J cov = cov - cov (H_prior + K) cov. Without K in the
+        # subtraction both targets were too wide by cov K cov (T-72 review).
+        _hs, h_prior, _parts = opt._posterior_blocks(x, exact_curvature=False)
+        _K = opt._applied_curvature(x, (_hs, h_prior))
+        _K = np.zeros_like(h_prior) if _K is None else _K
+        _less_k = (" and the exact-curvature part no refit spreads by" if np.any(_K) else "")
         if strategy == "rto":
-            target_cov = c_total
-            label = "posterior (reported covariance)"
+            target_cov = c_total - cov @ _K @ cov
+            label = ("posterior (reported covariance" + (" less the exact-curvature part "
+                     "no refit spreads by" if np.any(_K) else "") + ")")
         elif strategy == "error-model":
-            _hs, h_prior, _parts = opt._posterior_blocks(x, exact_curvature=False)
-            target_cov = c_total - cov @ h_prior @ cov
-            label = "data and model error alone (reported covariance less its prior part)"
+            target_cov = c_total - cov @ (h_prior + _K) @ cov
+            label = ("data and model error alone (reported covariance less its prior part"
+                     + _less_k + ")")
         else:
             sig = np.concatenate([np.asarray(iso["sigma_constants"], dtype=float).ravel()
                                   for iso in opt.spectral.isotopologues])

@@ -2399,7 +2399,7 @@ def main(cfg: dict[str, Any], refresh_hessian: bool = True) -> dict[str, Any]:
     _hr = best.get("hessian_refresh")
     if isinstance(_hr, dict) and "error" in _hr:
         print(f"[{name}] warning: the Hessian refresh at the answer failed ({_hr['error']}); "
-              f"the answer is the fit's own")
+              f"the answer is where the fit stood when it failed")
     elif isinstance(_hr, dict):
         print(f"[{name}] quantum Hessian recomputed at each start's answer: the selected start "
               f"moved {1e3 * float(_hr['moved_ang']):.3g} mA RMS in {_hr['passes']} pass(es)"

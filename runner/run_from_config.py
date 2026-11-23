@@ -78,6 +78,12 @@ def build_optimizer_from_config(
 
     if multistart is None:
         multistart = len(starts) > 1
+    # One coordinate set for every start, decided over all of them, as
+    # quantize run decides it (D-148): left as "auto", the optimizer built
+    # below would decide again at the selected start alone, and a start in a
+    # higher point group could drop the dihedrals the others needed.
+    from backend.multistart import _shared_dihedral_choice
+    kwargs = _shared_dihedral_choice(starts, elems, isotopologues, kwargs)
 
     coords = np.asarray(starts[0], dtype=float)
     if multistart and len(starts) > 1:

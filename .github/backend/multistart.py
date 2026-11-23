@@ -61,8 +61,10 @@ def _run_one_start(payload):
             hessian_refresh = opt.refresh_hessian_at_answer()
         except Exception as exc:  # a failed refresh must not lose the fit
             hessian_refresh = {"error": f"{type(exc).__name__}: {exc}"}
-        if hessian_refresh is not None and "error" not in hessian_refresh:
-            final_coords = np.asarray(opt.coords, dtype=float).copy()
+        # Where the optimizer now stands, also after a pass that moved it
+        # and then a failure: everything below reads the optimizer, so the
+        # reported coordinates have to be its own.
+        final_coords = np.asarray(opt.coords, dtype=float).copy()
     last = opt.history[-1] if opt.history else {}
     # The quantum energy at the start's last quantum point, not at
     # final_coords -- see select_best_result.

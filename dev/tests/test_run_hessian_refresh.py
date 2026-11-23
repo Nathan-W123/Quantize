@@ -28,11 +28,14 @@ from test_cd_rows_sign import _isos, _x0
 
 import dev.analytic_water_backend  # noqa: F401  (registers analytic_water)
 
-_KW = {"quantum_backend": "analytic_water", "use_autoconfig": False, "max_iter": 40}
+_KW = {"quantum_backend": "analytic_water", "use_autoconfig": False, "max_iter": 80}
 
 
 def _start():
-    return _x0(r=0.97, deg=103.0)
+    # Far enough from the surface's minimum that the fit's own Hessian is
+    # 53 mA from its answer and the refresh moves it (2.7e-6 A); nearer
+    # starts move by exactly 0 on this surface, which would test nothing.
+    return _x0(r=1.10, deg=90.0)
 
 
 def test_each_start_refreshes_its_hessian_and_reports_it(tmp_path):
@@ -44,6 +47,7 @@ def test_each_start_refreshes_its_hessian_and_reports_it(tmp_path):
     hr = fresh[0]["hessian_refresh"]
     assert set(hr) >= {"passes", "age_before_ang", "age_after_ang", "moved_ang", "settled"}
     assert hr["passes"] >= 1
+    assert hr["moved_ang"] > 1e-7                                            # premise
     # The fit's own Hessian was away from its answer, the refreshed one is at it.
     assert hr["age_before_ang"] > hr["age_after_ang"]
     # The reported answer is the refreshed fit's, and its history includes
@@ -63,3 +67,43 @@ def test_the_cli_flag_reaches_the_runner(monkeypatch):
         assert cli.main(["run", str(config), "--no-run-dir"]) == 0
         assert cli.main(["run", str(config), "--no-run-dir", "--no-hessian-refresh"]) == 0
     assert seen == [True, False]
+
+
+def test_a_refresh_that_fails_after_moving_reports_where_the_fit_stands(tmp_path, monkeypatch):
+    import backend.quantize as Q
+
+    def moved_then_failed(self, max_passes=3):
+        self.coords = np.asarray(self.coords, dtype=float) + 1e-4
+        raise RuntimeError("second pass failed")
+
+    monkeypatch.setattr(Q.MolecularOptimizer, "refresh_hessian_at_answer", moved_then_failed)
+    kw = dict(_KW, base_workdir=str(tmp_path))
+    with contextlib.redirect_stdout(io.StringIO()):
+        plain = MS.run_multistart([_start()], ["O", "H", "H"], _isos(None), kw)
+        failed = MS.run_multistart([_start()], ["O", "H", "H"], _isos(None), kw, refresh_hessian=True)
+    assert "second pass failed" in failed[0]["hessian_refresh"]["error"]
+    assert np.allclose(np.asarray(failed[0]["coords"]), np.asarray(plain[0]["coords"]) + 1e-4)
+
+
+def test_quantize_uncertainty_decides_dihedrals_over_every_start(monkeypatch):
+    # The optimizer it builds takes the set multistart chose for all starts,
+    # not "auto" decided again at the selected start alone (T-72 review).
+    import copy
+
+    import backend.multistart as MSmod
+    import yaml
+
+    from runner.run_from_config import build_optimizer_from_config
+    seen = []
+
+    def choice(starts, elems, isotopologues, kwargs):
+        seen.append(len(starts))
+        return {**kwargs, "ic_use_dihedrals": True}
+
+    monkeypatch.setattr(MSmod, "_shared_dihedral_choice", choice)
+    cfg = yaml.safe_load((_HERE.parent / "configs" / "water_analytic_endtoend.yaml").read_text(encoding="utf-8"))
+    cfg = copy.deepcopy(cfg)
+    cfg["internal_coordinates"].pop("use_dihedrals", None)
+    with contextlib.redirect_stdout(io.StringIO()):
+        opt = build_optimizer_from_config(cfg, multistart=False, verbose=False)
+    assert seen and opt._ic_dihedrals_setting is True

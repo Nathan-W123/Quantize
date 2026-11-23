@@ -1220,8 +1220,8 @@ class MolecularOptimizer:
         # Bonds and angles, plus dihedrals: True or False as stated, or "auto"
         # -- bonds and angles, with dihedrals added only when those do not
         # reach every direction the fit can move, decided once below
-        # (_resolve_ic_dihedrals). The default stays False: "auto" moves two
-        # benchmark answers (D-100), so it is asked for, not assumed.
+        # (_resolve_ic_dihedrals). "auto" is the default (D-147); it moves
+        # two benchmark answers to their optimum (D-100).
         if isinstance(ic_use_dihedrals, str):
             _d = ic_use_dihedrals.strip().lower()
             if _d not in ("auto", "true", "false"):
@@ -5149,9 +5149,9 @@ class MolecularOptimizer:
         for blk in parts.values():
             H_prior = H_prior + blk
         if exact_curvature:
-            corr = self._exact_curvature_correction(x, (H_spec, H_prior))
-            if corr is not None:
-                H_spec = H_spec + corr["correction"]
+            dH = self._applied_curvature(x, (H_spec, H_prior))
+            if dH is not None:
+                H_spec = H_spec + dH
         return H_spec, H_prior, parts
 
     def _posterior_gradient(self, coords=None):
@@ -5257,9 +5257,9 @@ class MolecularOptimizer:
         # against Gauss-Newton, so it is handed the blocks without it.
         H_spec, H_prior, _parts = self._posterior_blocks(x, exact_curvature=False)
         H_total = H_spec + H_prior
-        _corr = self._exact_curvature_correction(x, (H_spec, H_prior))
-        if _corr is not None:
-            H_total = H_total + _corr["correction"]
+        _dH = self._applied_curvature(x, (H_spec, H_prior))
+        if _dH is not None:
+            H_total = H_total + _dH
 
         reg_scalar = float(max(regularization, 0.0))
         basis = self.physical_basis(coords=x, n=H_total.shape[0])
@@ -5606,7 +5606,7 @@ class MolecularOptimizer:
             })
         return out
 
-    #: Newton distance to the mode, in Gauss-Newton widths, beyond which a
+    #: Newton distance to the mode, in posterior widths, beyond which a
     #: curvature comparison describes a point other than the one the Laplace
     #: widths are about, and is reported as that rather than as a failure.
     _GN_MODE_DISTANCE = 2.0
@@ -5637,17 +5637,28 @@ class MolecularOptimizer:
         the exact-curvature correction is added here when asked for."""
         H_spec, H_prior = (_blocks if _blocks is not None
                            else self._posterior_blocks(x, exact_curvature=False)[:2])
+        far = None
         if exact_curvature:
             corr = self._exact_curvature_correction(x, (H_spec, H_prior))
-            if corr is not None:
+            if corr is not None and corr["applied"]:
                 H_spec = H_spec + corr["correction"]
+            elif corr is not None:
+                far = corr["distance"]
         basis = self.physical_basis(coords=x, n=H_spec.shape[0])
         M = basis.T @ (H_spec + H_prior) @ basis
         w, V = np.linalg.eigh(0.5 * (M + M.T))
         w = np.maximum(w, 0.0) + 1e-8
         gp = V.T @ (basis.T @ self._posterior_gradient(x))
         z = float(np.max(np.abs(gp) / np.sqrt(w))) if gp.size else 0.0
+        if far is not None:
+            # Over 2 widths out by the exact curvature: the widths stay
+            # Gauss-Newton's, and the distance is the larger reading, so a
+            # direction the exact curvature softens cannot read nearer than
+            # one it leaves alone (T-72 review: Gauss-Newton 0.21 against an
+            # exact 2.1 read 0.21 and was kept where 0.19 / 1.9 read 1.9).
+            z = max(z, float(far))
         return z, basis, w, V
+
     @staticmethod
     def _exact_curvature_applies(row, rel_warn=0.5, step=False):
         """Does the exact curvature replace Gauss-Newton's along this probed
@@ -5669,18 +5680,21 @@ class MolecularOptimizer:
         """The spectral curvature Gauss-Newton misses where the check flags it,
         for the reported widths and the distance to the mode (D-145).
 
-        Returns ``{"correction", "rows", "distance"}`` or None. ``correction``
-        is sum_k (c_exact - c_gn) v_k v_k^T over the probed directions where
-        :meth:`_exact_curvature_applies` (either way: the exact curvature
-        above Gauss-Newton's narrows the width, below it widens it): each v_k is an eigenvector of the
-        physical Gauss-Newton block, so adding it replaces that eigenvalue by
-        the exact curvature and leaves the others alone. ``distance`` is the
-        distance to the mode with it. None when nothing applies, when the
-        option is off (exact_curvature_where_flagged=False), when the check
-        cannot run, or when the geometry stands over 2 widths from its mode
-        even with it: the exact curvature at a point the fit has not reached
-        does not describe the mode, Gauss-Newton's does (within 9% in every
-        case measured, item 7), and gauss_newton_warnings says so.
+        Returns ``{"correction", "rows", "distance", "applied"}`` or None.
+        ``correction`` is sum_k (c_exact - c_gn) v_k v_k^T over the probed
+        directions where :meth:`_exact_curvature_applies` (either way: the
+        exact curvature above Gauss-Newton's narrows the width, below it
+        widens it): each v_k is an eigenvector of the physical Gauss-Newton
+        block, so adding it replaces that eigenvalue by the exact curvature
+        and leaves the others alone. ``distance`` is the distance to the mode
+        with it. ``applied`` is False when that distance is over 2 widths:
+        the exact curvature at a point the fit has not reached does not
+        describe the mode, Gauss-Newton's does (within 9% in every case
+        measured, item 7), so the widths stay Gauss-Newton's, the distance
+        is the larger of the two readings (_mode_decomposition) and
+        gauss_newton_warnings says so. None when nothing applies, when the
+        option is off (exact_curvature_where_flagged=False) or when the
+        check cannot run.
 
         ``gn_blocks`` are (H_spec, H_prior) with exact_curvature=False.
         """
@@ -5702,9 +5716,15 @@ class MolecularOptimizer:
             z = self._mode_decomposition(x, (H_spec + dH, H_prior), exact_curvature=False)[0]
         except Exception:                        # a diagnostic must not break a report
             return None
-        if not np.isfinite(z) or z > self._GN_MODE_DISTANCE:
+        if not np.isfinite(z):
             return None
-        return {"correction": dH, "rows": rows, "distance": float(z)}
+        return {"correction": dH, "rows": rows, "distance": float(z),
+                "applied": bool(z <= self._GN_MODE_DISTANCE)}
+
+    def _applied_curvature(self, x, gn_blocks=None):
+        """The correction the widths use at x (D-145), or None."""
+        corr = self._exact_curvature_correction(x, gn_blocks)
+        return corr["correction"] if corr is not None and corr["applied"] else None
 
     def _step_curvature_correction(self, x, Bq=None, Bplus=None):
         """The same curvature for the joint step, in the step's parameters.
@@ -5796,6 +5816,30 @@ class MolecularOptimizer:
             return f"by the exact Hessian the width along it is {f:.3g} times narrower than reported"
         return f"by the exact Hessian the width along it is {1.0 / f:.3g} times wider than reported"
 
+    def _step_exact_note(self, row, x):
+        """Whether the joint step takes the exact curvature along a corrected
+        direction too, as a clause for the warning: it does where it is the
+        larger, in a joint fit with a quantum half, and in internal mode
+        where its step reaches the direction (_step_curvature_correction)."""
+        if float(row["curvature_exact"]) <= float(row["curvature_gauss_newton"]):
+            return " (the fit's step keeps Gauss-Newton's, as it only adds curvature)"
+        if self.spectral_only:
+            return " (a spectral-only fit's step has no quantum half to correct)"
+        if self.optimizer.objective_mode != "joint":
+            return " (the split objective's step keeps Gauss-Newton's)"
+        if self.coordinate_mode == "internal":
+            try:
+                cs = InternalCoordinateSet(x, self.elems, self._ic_use_dihedrals)
+                Bq = np.asarray(cs.active_B_matrix(x), dtype=float)
+                Bp = InternalCoordinateSet.damped_pseudoinverse(Bq, self._ic_damping)
+                v = np.asarray(row["direction"], dtype=float).ravel()
+                if float(v @ (Bp @ (Bq @ v))) <= 0.5:
+                    return (" (the internal-coordinate step barely reaches that "
+                            "direction and keeps Gauss-Newton's)")
+            except Exception:                    # cannot tell: say nothing about the step
+                return ""
+        return ", as does the fit's step"
+
     def gauss_newton_warnings(self, coords=None, n_directions=3,
                               rel_warn=0.5, _blocks=None) -> list[str]:
         """Plain-language findings from :meth:`gauss_newton_discrepancy`.
@@ -5807,7 +5851,7 @@ class MolecularOptimizer:
 
         1. Is this the mode? The check assumes the geometry is the mode of
            the objective the widths describe. Measured as the Newton distance
-           to that mode in Gauss-Newton widths; beyond 2 the residuals there
+           to that mode in posterior widths; beyond 2 the residuals there
            are not the mode's, the omitted term with them, and the finding is
            reported as "not the mode" -- Gauss-Newton transfers to the mode
            (within 9% of the true posterior in every such case measured) and
@@ -5845,7 +5889,8 @@ class MolecularOptimizer:
         # Everything below runs only when something was flagged. The mode
         # test reads the distance the widths are reported with (the exact
         # curvature where it applies, D-145); the relevance filter reads
-        # Gauss-Newton's variances, the ones the gap was found in.
+        # Gauss-Newton's variances, the ones the gap was found in, and for a
+        # corrected direction the reported ones too.
         try:
             z_mode = self._mode_decomposition(x, _blocks)[0]
             _z_gn, basis, w, V = self._mode_decomposition(x, _blocks, exact_curvature=False)
@@ -5853,7 +5898,8 @@ class MolecularOptimizer:
             z_mode, basis, w, V = 0.0, None, None, None
         corr = (self._exact_curvature_correction(x, _blocks)
                 if z_mode <= self._GN_MODE_DISTANCE else None)
-        applied = set() if corr is None else {r["index"] for r in corr["rows"]}
+        applied = ({} if corr is None or not corr["applied"]
+                   else {r["index"]: r for r in corr["rows"]})
         if z_mode > self._GN_MODE_DISTANCE:
             msgs.append(
                 f"the curvature check found Gauss-Newton and the exact Hessian "
@@ -5874,19 +5920,34 @@ class MolecularOptimizer:
             coord_names = list(cs.active_names())
             C = basis @ (V / w) @ V.T @ basis.T
             var = np.einsum("ij,jk,ik->i", Bq, C, Bq)
+            var_rep = var
+            if applied:
+                _z, b2, w2, V2 = self._mode_decomposition(x, _blocks)
+                var_rep = np.einsum("ij,jk,ik->i", Bq, b2 @ (V2 / w2) @ V2.T @ b2.T, Bq)
         except Exception:
-            Bq, var, coord_names = None, None, []
+            Bq, var, var_rep, coord_names = None, None, None, []
+
+        def _shares(v, curvature, variance):
+            load = (Bq @ v) ** 2 / max(float(curvature) + 1e-8, 1e-300)
+            with np.errstate(invalid="ignore", divide="ignore"):
+                return np.where(variance > 0, load / variance, 0.0)
+
         saddle = []
         for row in flagged:
-            share, which = 1.0, ""
+            share, which, share_gn = 1.0, "", None
             if Bq is not None and Bq.size:
                 v = np.asarray(row["direction"], dtype=float)
-                load = (Bq @ v) ** 2 / max(float(row["curvature_gauss_newton"]) + 1e-8, 1e-300)
-                with np.errstate(invalid="ignore", divide="ignore"):
-                    shares = np.where(var > 0, load / var, 0.0)
+                shares = _shares(v, row["curvature_gauss_newton"], var)
                 k = int(np.argmax(shares))
                 share, which = float(shares[k]), coord_names[k]
-            if share < self._GN_RELEVANT_SHARE:
+                if row["index"] in applied:
+                    # Reported with the exact curvature: a direction it
+                    # widens can carry a width Gauss-Newton gave it little of.
+                    share_gn = share
+                    rep_shares = _shares(v, row["curvature_exact"], var_rep)
+                    k = int(np.argmax(rep_shares))
+                    share, which = float(rep_shares[k]), coord_names[k]
+            if max(share, share_gn or 0.0) < self._GN_RELEVANT_SHARE:
                 continue
             if row["sign_flipped"]:
                 saddle.append(row)
@@ -5903,6 +5964,7 @@ class MolecularOptimizer:
                     + self._symmetry_hint(x))
             elif row["index"] in applied:
                 more = float(row["curvature_exact"]) > float(row["curvature_gauss_newton"])
+                step_note = self._step_exact_note(row, x)
                 msgs.append(
                     f"Gauss-Newton {'misses most of' if more else 'overstates'} the "
                     f"curvature along physical direction {row['index']}: "
@@ -5910,14 +5972,11 @@ class MolecularOptimizer:
                     f"{row['curvature_exact']:.3e} "
                     f"({100 * row['relative_discrepancy']:.0f}% discrepancy), "
                     f"because the term Gauss-Newton omits is "
-                    f"{row['omitted_term']:.3e}. By Gauss-Newton that direction "
-                    f"carries {100 * share:.0f}% of {which}'s variance; the "
-                    + ("reported widths, the distance to the mode and the fit's "
-                       "step use the exact curvature along it, where "
-                       if more else
-                       "reported widths and the distance to the mode use the exact "
-                       "curvature along it (the fit's step keeps Gauss-Newton's), where ")
-                    + f"{self._gn_width_ratio(row)}.")
+                    f"{row['omitted_term']:.3e}. That direction carries "
+                    f"{100 * share:.0f}% of {which}'s reported variance"
+                    + ("" if share_gn is None else f" ({100 * share_gn:.0f}% by Gauss-Newton)")
+                    + "; the reported widths and the distance to the mode use the exact "
+                    f"curvature along it" + step_note + f", where {self._gn_width_ratio(row)}.")
             else:
                 msgs.append(
                     f"Gauss-Newton is doubtful along physical direction "

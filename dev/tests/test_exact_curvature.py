@@ -113,8 +113,14 @@ def test_the_internal_step_term_is_its_q_space_image_where_the_step_reaches_it(m
     rot = np.cross([0.0, 0.0, 1.0], x).ravel()
     rot /= np.linalg.norm(rot)
     assert abs(rot @ Bp @ (Bq @ rot)) < 1e-6                     # premise: not realised
+    # Mostly a rotation, partly reached: realised 0.36 < 0.5, with an image
+    # B+^T v that is not small, so the reach rule is what leaves it out.
+    part = 0.6 * reached + 0.8 * rot
+    part /= np.linalg.norm(part)
+    assert 0.1 < part @ Bp @ (Bq @ part) < 0.5 and np.linalg.norm(Bp.T @ part) > 0.1   # premise
     monkeypatch.setattr(opt, "gauss_newton_discrepancy", lambda *a, **k: [_row(reached, 1.0, 5.0),
-                                                                          _row(rot, 1.0, 5.0, index=1)])
+                                                                          _row(rot, 1.0, 5.0, index=1),
+                                                                          _row(part, 1.0, 5.0, index=2)])
     K = opt._step_curvature_correction(x, Bq=Bq, Bplus=Bp)
     u = Bp.T @ reached
     assert K.shape == (Bq.shape[0], Bq.shape[0])
@@ -139,13 +145,16 @@ def test_the_fit_hands_the_term_to_its_step(monkeypatch, mode):
         real = opt.optimizer._joint_step
 
         def spy(*a, _real=real, _on=on, **k):
-            seen.append((_on, k.get("curvature_correction")))
+            seen.append((_on, k.get("curvature_correction"), np.shape(a[0])[1]))
             return _real(*a, **k)
 
         monkeypatch.setattr(opt.optimizer, "_joint_step", spy)
         with contextlib.redirect_stdout(io.StringIO()):
             opt.run()
     assert seen[0][0] is True and seen[0][1] is not None
+    # In the step's own parameters (q-space in internal mode), or the step
+    # would drop it on shape.
+    assert np.shape(seen[0][1]) == (seen[0][2], seen[0][2])
     assert seen[-1][0] is False and seen[-1][1] is None
 
 
@@ -216,10 +225,12 @@ def test_far_from_the_mode_the_widths_stay_gauss_newton_s(monkeypatch):
     monkeypatch.setattr(opt, "gauss_newton_discrepancy", lambda *a, **k: [dict(r) for r in rows])
     # 50 Gauss-Newton widths out, 5 exact ones: past the 2-width limit either way.
     monkeypatch.setattr(opt, "_posterior_gradient", lambda *a, **k: 50.0 * np.sqrt(c_gn) * v)
-    assert opt._exact_curvature_correction(opt.coords) is None
+    corr = opt._exact_curvature_correction(opt.coords)
+    assert corr["applied"] is False and corr["distance"] == pytest.approx(5.0, rel=1e-3)
+    assert opt._applied_curvature(opt.coords) is None
     cov, _ = opt.laplace_approximation(check_gauss_newton=False)
     assert float(v @ cov @ v) == pytest.approx(1.0 / (c_gn + 1e-8), rel=1e-6)
-    assert opt.distance_to_mode() == pytest.approx(50.0, rel=1e-3)
+    assert opt.distance_to_mode() == pytest.approx(50.0, rel=1e-3)        # the larger reading
     msgs = opt.gauss_newton_warnings()
     assert len(msgs) == 1 and "widths from the mode" in msgs[0] and "are kept" in msgs[0], msgs
 
@@ -235,3 +246,96 @@ def test_the_bootstrap_gate_reads_the_corrected_distance(monkeypatch):
     assert B._distance(opt, opt.coords) == pytest.approx(0.05, rel=1e-3)
     opt._exact_curvature = False
     assert B._distance(opt, opt.coords) == pytest.approx(0.5, rel=1e-3)
+
+
+# --- T-72 review follow-ups ----------------------------------------------------
+
+def _plant_correction(monkeypatch, opt, factor):
+    """A correction on the softest Gauss-Newton direction, at the mode."""
+    rows = _planted(opt, factor=factor)
+    monkeypatch.setattr(opt, "gauss_newton_discrepancy", lambda *a, **k: [dict(r) for r in rows])
+    monkeypatch.setattr(opt, "_posterior_gradient", lambda *a, **k: np.zeros(opt.coords.size))
+    return rows[0]["direction"], rows[0]["curvature_gauss_newton"]
+
+
+@pytest.mark.parametrize("strategy", ["error-model", "rto"])
+def test_the_bootstrap_target_leaves_out_the_curvature_no_refit_spreads_by(monkeypatch, strategy):
+    # A refit moves by cov J^T dr, so the data cloud is cov J^T J cov: the
+    # exact-curvature term K is in the reported cov but not in any cloud.
+    from backend.internal.internal_fit import InternalCoordinateSet
+    from backend.uncertainty_v2 import BootstrapEngine
+    from backend.uncertainty_v2.models import BootstrapConfig
+    from backend.uncertainty_v2.posterior import reported_covariance
+    opt = _optimizer()
+    _plant_correction(monkeypatch, opt, factor=100.0)
+    x = opt.coords
+    hs, hp, _ = opt._posterior_blocks(x, exact_curvature=False)
+    K = opt._applied_curvature(x, (hs, hp))
+    assert K is not None and np.abs(K).max() > 0                       # premise
+    c_total, cov = reported_covariance(opt, x)
+    want = c_total - cov @ ((hp + K) if strategy == "error-model" else K) @ cov
+    cs = InternalCoordinateSet(x, opt.elems, opt._ic_use_dihedrals)
+    Bq = np.asarray(cs.active_B_matrix(x), dtype=float)
+    conv = np.array([1.0 if k == "bond" else np.degrees(1.0) for k in (c.kind for c in cs.active_coords())])
+    with contextlib.redirect_stdout(io.StringIO()):
+        ref = BootstrapEngine(opt, BootstrapConfig(n_samples=2, strategy=strategy)).analytic_reference()
+    assert np.allclose(ref["target_std"], np.sqrt(np.clip(np.diag(Bq @ want @ Bq.T), 0, None)) * conv, rtol=1e-9)
+
+
+def test_the_distance_cannot_read_nearer_when_the_exact_curvature_softens(monkeypatch):
+    # Exact curvature 1% of Gauss-Newton's: the exact reading is ten times
+    # the Gauss-Newton one. Beyond 2 exact widths the widths stay
+    # Gauss-Newton's but the distance is the larger reading, so it rises
+    # monotonically with the gradient (T-72 review: 0.21 / 2.1 read 0.21).
+    opt = _optimizer()
+    rows = _planted(opt, factor=0.01)
+    v, c_gn = rows[0]["direction"], rows[0]["curvature_gauss_newton"]
+    monkeypatch.setattr(opt, "gauss_newton_discrepancy", lambda *a, **k: [dict(r) for r in rows])
+    seen = []
+    for z_gn in (0.15, 0.19, 0.21, 0.5):
+        monkeypatch.setattr(opt, "_posterior_gradient", lambda *a, _z=z_gn, **k: _z * np.sqrt(c_gn) * v)
+        seen.append(opt.distance_to_mode())
+    assert seen == sorted(seen), seen
+    assert seen[2] == pytest.approx(2.1, rel=1e-3) and seen[3] == pytest.approx(5.0, rel=1e-3)
+    cov, _ = opt.laplace_approximation(check_gauss_newton=False)
+    assert float(v @ cov @ v) == pytest.approx(1.0 / (c_gn + 1e-8), rel=1e-6)   # widths: Gauss-Newton's
+
+
+@pytest.mark.parametrize("kw, says", [
+    ({}, "as does the fit's step"),
+    ({"objective_mode": "split"}, "the split objective's step keeps Gauss-Newton's"),
+    ({"spectral_only": True}, "a spectral-only fit's step"),
+])
+def test_the_note_says_whether_the_step_takes_the_exact_curvature(monkeypatch, kw, says):
+    opt = _optimizer(**kw)
+    _plant_correction(monkeypatch, opt, factor=100.0)
+    msgs = opt.gauss_newton_warnings()
+    assert len(msgs) == 1 and says in msgs[0], msgs
+
+
+def test_a_direction_the_exact_curvature_widens_is_reported_by_its_reported_share(monkeypatch):
+    # Raise the relevance bar above the direction's Gauss-Newton share: once
+    # the exact curvature widens it, its share of the reported variance clears
+    # the bar, and the note is given (it was judged on Gauss-Newton's alone).
+    opt = _optimizer()
+    _plant_correction(monkeypatch, opt, factor=1e-4)
+    monkeypatch.setattr(type(opt), "_GN_RELEVANT_SHARE", 0.999)
+    msgs = opt.gauss_newton_warnings()
+    assert len(msgs) == 1 and "overstates the curvature" in msgs[0], msgs
+    assert "by Gauss-Newton)" in msgs[0]
+
+
+def test_the_check_compares_against_gauss_newton_even_with_a_correction_in_force(monkeypatch):
+    # The probe's Gauss-Newton curvatures are the Gauss-Newton block's own
+    # eigenvalues, also while a correction is in force for the widths.
+    opt = _optimizer()
+    x = opt.coords
+    hs, hp, _ = opt._posterior_blocks(x, exact_curvature=False)
+    basis = opt.physical_basis(coords=x, n=hs.shape[0])
+    w = np.linalg.eigvalsh(basis.T @ (hs + hp) @ basis)
+    v = basis @ np.linalg.eigh(basis.T @ (hs + hp) @ basis)[1][:, 0]
+    planted = {"correction": 1e6 * np.outer(v, v), "rows": [], "distance": 0.0, "applied": True}
+    monkeypatch.setattr(opt, "_exact_curvature_correction", lambda *a, **k: planted)
+    assert not np.allclose(opt._posterior_blocks(x)[0], hs)                  # premise: in force
+    rows = opt.gauss_newton_discrepancy(coords=x)
+    assert [r["curvature_gauss_newton"] for r in rows] == pytest.approx(list(w[:len(rows)]), rel=1e-9)
