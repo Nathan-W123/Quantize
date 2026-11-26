@@ -97,12 +97,25 @@ def test_a_fit_that_never_stalls_is_unchanged(seed):
     np.testing.assert_array_equal(xa, xb)
 
 
-def test_it_is_off_by_default():
+def test_it_is_on_by_default_and_off_on_request():
+    """On by default since D-163 (the user's call, decision page item 3)."""
     with contextlib.redirect_stdout(io.StringIO()):
         opt = Q.MolecularOptimizer(elems=["H", "C", "C", "F"], coords=TRUE, isotopologues=isos,
                                    quantum_backend="test_linear_tetratomic", use_autoconfig=False,
                                    coordinate_mode="internal")
-    assert opt._ic_cartesian_fallback is False
+        off = Q.MolecularOptimizer(elems=["H", "C", "C", "F"], coords=TRUE, isotopologues=isos,
+                                   quantum_backend="test_linear_tetratomic", use_autoconfig=False,
+                                   coordinate_mode="internal", ic_cartesian_fallback=False)
+    assert opt._ic_cartesian_fallback is True
+    assert off._ic_cartesian_fallback is False
+
+
+def test_the_runner_defaults_to_the_fallback():
+    import inspect
+
+    import runner.run_generic as rg
+    src = inspect.getsource(rg)
+    assert 'internal_cfg.get("cartesian_fallback", True)' in src
 
 
 @pytest.mark.parametrize("value, ok", [(True, True), (False, True), ("yes", False), (1, False)])

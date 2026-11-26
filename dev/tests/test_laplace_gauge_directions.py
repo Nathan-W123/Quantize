@@ -295,8 +295,11 @@ def test_geometry_uncertainty_agrees_on_scale(water_fit):
         unc = water_fit.geometry_uncertainty()
     if unc is None:
         pytest.skip("geometry_uncertainty declined this covariance")
+    # Bonds are named "O1-H2", angles "H2-O1-H3": the filter used to look for
+    # the word "angle", which no key holds, so it compared an angle's width in
+    # degrees with Cartesian widths in Angstrom (T-81).
     bond_sigmas = [v for key, v in _flatten(unc)
-                   if np.isfinite(v) and "angle" not in str(key).lower()]
+                   if np.isfinite(v) and str(key).count("-") == 1]
     if not bond_sigmas:
         pytest.skip("no finite bond widths reported")
     worst_v2 = float(np.max(summary.std_err))

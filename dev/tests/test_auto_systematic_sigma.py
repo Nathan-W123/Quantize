@@ -74,10 +74,14 @@ def _widths(unc):
             max(v for k, v in unc.items() if k.count("-") == 2))
 
 
-def test_off_by_default():
-    """A default that changes every reported interval needs a decision."""
+def test_on_by_default_and_off_on_request():
+    """On by default since D-165 (the user's call, decision page item 7): a
+    species with no stated systematic sigma gets the flat estimate, so a raw
+    B0-as-Be fit does not quote measurement precision as its uncertainty.
+    auto_systematic_sigma=False still gives measurement precision only."""
     opt, _unc = _fit(auto=False)
     assert opt.auto_systematic_sigma is False
+    assert opt.spectral.isotopologues[0].get("sigma_systematic_constants") is None
     isos = [{"name": "H2-16O", "masses": MASSES_H2O,
              "obs_constants": list(B0_H2O), "sigma_constants": [0.2] * 3}]
     with contextlib.redirect_stdout(io.StringIO()):
@@ -85,9 +89,11 @@ def test_off_by_default():
             elems=["O", "H", "H"], coords=_coords(), isotopologues=isos,
             quantum_backend="analytic_water", use_autoconfig=False,
             max_iter=3, quantum_prior_sigma_ang=0.02)
-    assert default.auto_systematic_sigma is False
-    assert default.spectral.isotopologues[0].get(
-        "sigma_systematic_constants") is None
+    assert default.auto_systematic_sigma is True
+    sysg = np.asarray(default.spectral.isotopologues[0]["sigma_systematic_constants"],
+                      dtype=float)
+    # 1% of A, 0.5% of B and C (D-67).
+    assert np.allclose(sysg, np.asarray(B0_H2O) * [0.01, 0.005, 0.005])
 
 
 def test_opt_in_derives_a_systematic_without_touching_the_quoted_sigma():

@@ -1489,3 +1489,21 @@
 - Alternatives considered: leave the README until the rebuild.
 - Source: auto-picked, no answer in 15 min (Q-161, recommended option)
 - Revisit if: the user wants the note removed or the tables rebuilt now.
+
+### D-163 · Cartesian fallback on by default (2026-11-26)
+- Decision: ic_cartesian_fallback / internal_coordinates.cartesian_fallback default true (decision page item 3); false restores D-106's opt-in.
+- Why: the user said yes ("Yes on all suggestions", page items 3, 5, 7). Re-measured at the new defaults (T-81, t81/defaults.py; nine molecules, HF/6-31G, joint, internal, dihedrals auto): acts on fluoroacetylene (9 fallback steps; 3.5e-3 -> 6.9e-7 widths from its optimum, bond RMS 15.3955 -> 15.3849 mA) and formyl fluoride (8 steps; answer 0.50 mA from the fallback-off one without a refresh; with the CLI's Hessian refresh 0.018 mA from the Cartesian fit against 0.072 without, Cartesian restarts differing by 0.053: t81/cart_check.py); the other seven bit-identical, wall time unchanged. The page's 'other seven bit-identical' (T-47) predates formyl fluoride's change.
+- Alternatives considered: keep opt-in.
+- Source: stated by user
+- Revisit if: a fit the fallback acts on lands further from the Cartesian answer than without it.
+
+### D-164 · DFT fits take the gradient with the grid response (2026-11-26)
+- Decision: pyscf_hf's run_gradient and run_hessian's gradient include the grid-weight response for DFT (decision page item 5); supersedes D-59's flag.
+- Why: the user said yes. Measured: on displaced water at B3LYP/sto-3g the gradient matches a central finite difference of the energy to 3.7e-7 Ha/bohr against 4.8e-6 without (6-31G 4.2e-7 / 3.0e-6); dev/tests/test_dft_fit_gradient.py fails on the old code. T-19's CLI figures stand (answers <= 0.14 mA, formyl fluoride no slower, fluoroethane ~4%); not re-timed. Benchmark rows unaffected (target prior). The Hessian itself still has no grid response (D-55).
+- Source: stated by user
+
+### D-165 · Model error in reported widths by default (2026-11-26)
+- Decision: auto_systematic_sigma / model_error.auto default true (decision page item 7): a species with no stated systematic sigma gets the flat estimate (1% A, 0.5% B and C); model_error: {auto: false} for measurement precision only. The config validator treats an absent auto as on.
+- Why: the user said yes. Measured: analytic water raw B0 O-H width 0.20 -> 1.76 mA, angle 0.03 -> 0.32 deg, geometry bit-identical; the nine benchmark molecules' fits unchanged (their inputs state a model error). Found while making it the default and fixed with it: (a) every corrected run warned 'the estimated model error is not used' -- an estimate a correction takes the place of is no longer marked replaced (a stated one still is); (b) an indefinite Laplace covariance was no longer refused once the systematic block was added (29214 A widths on the guard test) -- geometry_uncertainty and internal_coordinate_posterior now check the Laplace part before adding it; (c) test_geometry_uncertainty_agrees_on_scale's bond filter looked for the word 'angle', which no key holds, so it compared degrees with Angstrom.
+- Source: stated by user
+- Revisit if: a molecule class shows the flat estimate badly off (N42: rings at HF are a different cause).

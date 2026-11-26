@@ -305,28 +305,31 @@ class PySCFBackend(QuantumBackend):
     def run_gradient(self, coords_ang) -> GradientResult:
         """Energy and gradient for the fit.
 
-        For DFT this is pyscf's default gradient, without the grid-weight
-        response optimise() uses, so it is not quite the energy's derivative:
+        For DFT this includes the grid-weight response, as optimise() does,
+        so it is the derivative of the energy being fitted; run_hessian
+        returns the same gradient. pyscf's default leaves the response out:
         at the B3LYP/6-31G(d) theory geometries the two differ by up to
-        4.4e-4 Ha/Ang (3.3e-4 without the rigid-motion part). run_hessian
-        returns the same default gradient, and on a fit's first Hessian that
-        is the one the fit uses. A Cartesian-mode fit with a prior target
-        does not use either (the prior takes H (x - target) in their place);
-        one without -- the CLI's -- centres its quantum prior at x - H^-1 g,
-        which the missing term moves by up to 0.27 mAng in a bond. With the
-        response in both, two CLI fits (formyl fluoride, fluoroethane) moved
-        up to 0.14 mAng in a bond, all through run_hessian's gradient. Timed
-        through the CLI: formyl fluoride no slower, fluoroethane 4.5% (its
-        repeats differ by 4%). Flagged, not made (decisions D-59).
+        4.4e-4 Ha/Ang (3.3e-4 without the rigid-motion part), which moves the
+        centre of a fit without a prior target (the CLI's, x - H^-1 g) by up
+        to 0.27 mAng in a bond. With the response, two CLI fits (formyl
+        fluoride, fluoroethane) moved up to 0.14 mAng in a bond; timed
+        through the CLI, formyl fluoride no slower and fluoroethane 4.5%
+        (its repeats differ by 4%). On since D-164 (the user's call; D-59
+        had flagged it). A Cartesian-mode fit with a prior target uses
+        neither gradient (the prior takes H (x - target) in their place).
+        The Hessian itself still has no grid response (see D-55).
         """
-        energy, grad = self._energy_gradient(coords_ang)
+        energy, grad = self._energy_gradient(coords_ang, grid_response=True)
         return GradientResult(energy=energy, gradient_bohr=grad)
 
     def run_hessian(self, coords_ang) -> HessianResult:
         if self.correlated:
             return self._fd_hessian(coords_ang)
         mf = self._mean_field(coords_ang)
-        grad = mf.nuc_grad_method().kernel()
+        gm = mf.nuc_grad_method()
+        if self.is_dft:
+            gm.grid_response = True                   # as run_gradient (D-164)
+        grad = gm.kernel()
         hess = mf.Hessian().kernel()                  # (N, N, 3, 3) Hartree/Bohr^2
         n = len(self.elems)
         hess_flat = np.asarray(hess, dtype=float).transpose(0, 2, 1, 3).reshape(3 * n, 3 * n)

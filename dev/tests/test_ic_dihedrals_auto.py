@@ -376,7 +376,11 @@ def test_a_missed_direction_is_reported_when_dihedrals_are_off():
     opt, printed = _optimizer(dihedrals=False)
     assert opt._ic_use_dihedrals is False
     assert opt._ic_unreached == {"reached": 5, "directions": 6, "dihedrals": False, "with_dihedrals": 6}
-    for text in (printed, _note(opt)):
+    # Only the fit's own [internal] lines: other start-up notes (the model
+    # error's, on by default since D-165, names auto_systematic_sigma) are not
+    # this message.
+    internal = "\n".join(ln for ln in printed.splitlines() if "[internal]" in ln)
+    for text in (internal, _note(opt)):
         assert "bonds and angles reach 5 of the 6 directions" in text, text
         assert "does not reach the other 1 " in text, text
         # use_dihedrals: true, not auto -- multistart turns auto into the first

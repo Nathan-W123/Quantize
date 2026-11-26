@@ -41,6 +41,10 @@ def _coords(r=0.95785, deg=104.508):
 
 
 def _opt(sigma_mhz=0.2, species=1, prior_sigma=0.02, **kw):
+    # These tests are about the Laplace width from the measurement sigmas, so
+    # the model error (on by default since D-165, tested in
+    # test_auto_systematic_sigma) is off unless a test asks for it.
+    kw.setdefault("auto_systematic_sigma", False)
     isos = [{"name": "H2-16O", "masses": MASSES_H2O, "obs_constants": B0_H2O,
              "sigma_constants": [sigma_mhz] * 3}]
     if species > 1:
@@ -143,7 +147,10 @@ def test_an_indefinite_covariance_is_refused_outright():
     independent, and it tests the thing that is supposed to protect the
     caller.
     """
-    opt = _opt()
+    # With the model error on (the default since D-165): the systematic block
+    # added to the Laplace can cover its negative direction, and this guard
+    # once let 29214 A widths through that way.
+    opt = _opt(auto_systematic_sigma=True)
     _run(opt)
     good = opt.geometry_uncertainty()
     assert good is not None and np.isfinite(good["O1-H2"])
@@ -163,6 +170,9 @@ def test_an_indefinite_covariance_is_refused_outright():
         "an indefinite covariance must yield no widths at all, rather than "
         "numbers taken from it"
     )
+    # The posterior the run report quotes refuses it too.
+    post = opt.internal_coordinate_posterior()
+    assert post is not None and "error" in post and "std_err" not in post
 
 
 def test_indefiniteness_on_a_direction_the_model_fixes_is_projected_away():

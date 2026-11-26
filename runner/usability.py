@@ -499,7 +499,8 @@ def _validate_model_error(cfg: dict[str, Any]) -> None:
             if not 0.0 <= float(rho) <= 1.0:
                 raise ConfigError(f"'model_error.isotopologue_correlation' must lie in "
                                   f"[0, 1] (got {rho!r}).")
-    auto = isinstance(me, dict) and me.get("auto") is True
+    # The estimate is on unless the config turns it off (default since D-165).
+    auto = not (isinstance(me, dict) and me.get("auto") is False)
     for i, iso in enumerate(cfg.get("isotopologues") or []):
         if not isinstance(iso, dict):
             continue
@@ -531,7 +532,8 @@ def _validate_model_error(cfg: dict[str, Any]) -> None:
                 f"'sigma_includes_systematic' of {label} says sigma_mhz already holds the "
                 f"model error, but nothing says how much of it: give sigma_systematic_mhz "
                 f"(the model-error part, taken out of sigma_mhz and propagated as shared "
-                f"across isotopologues), or model_error: {{auto: true}}, or drop the flag.")
+                f"across isotopologues), remove model_error: {{auto: false}} so the "
+                f"engine's estimate applies, or drop the flag.")
 
 
 def _validate_optimizer_block(cfg: dict[str, Any]) -> None:

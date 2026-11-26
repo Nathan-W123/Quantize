@@ -836,13 +836,26 @@ def test_a_config_can_state_its_model_error_and_one_without_says_so():
     assert "measurement precision ONLY" not in log
     assert set(shipped.model_error_sources().values()) == {"corrections"}
     assert not shipped.model_error_warnings()
+    # Raw B0 and nothing stated: the engine's estimate, the default since
+    # D-165, and no "no model-error term" warning.
     raw = _water_cfg()
     raw["rovibrational_corrections"] = {"mode": "none"}
-    bare, _ = _fit_cfg(raw)
+    default, _ = _fit_cfg(raw)
+    assert set(default.model_error_sources().values()) == {"estimated"}
+    assert "no model-error term" not in " ".join(
+        default.internal_coordinate_posterior()["warnings"])
+    # model_error: {auto: false} asks for measurement precision only, and the
+    # report says that is what the widths are.
+    off = _water_cfg()
+    off["rovibrational_corrections"] = {"mode": "none"}
+    off["model_error"] = {"auto": False}
+    validate_config(off)
+    bare, _ = _fit_cfg(off)
     assert set(bare.model_error_sources().values()) == {None}
     msg = " ".join(bare.internal_coordinate_posterior()["warnings"])
     assert "no model-error term" in msg
     w_bare = bare.internal_coordinate_posterior()["std_err"][0]
+    assert default.internal_coordinate_posterior()["std_err"][0] > 5.0 * w_bare
     stated = _water_cfg()
     stated["rovibrational_corrections"] = {"mode": "none"}
     obs = stated["isotopologues"][0]["obs_b0_mhz"]
@@ -870,8 +883,11 @@ def test_a_config_can_state_its_model_error_and_one_without_says_so():
     (lambda c: c.__setitem__("model_error", {"isotopologue_correlation": 1.5}), r"\[0, 1\]"),
     (lambda c: c.__setitem__("model_error", {"isotopologue_corelation": 0.5}), "unknown key"),
     # Alone the flag did nothing, and the report then said the widths carry
-    # no model error though sigma_mhz holds it.
-    (lambda c: c["isotopologues"][0].__setitem__("sigma_includes_systematic", True),
+    # no model error though sigma_mhz holds it. Since D-165 the engine's
+    # estimate is on by default, so the flag alone is refused only where the
+    # config turns the estimate off.
+    (lambda c: (c["isotopologues"][0].__setitem__("sigma_includes_systematic", True),
+                c.__setitem__("model_error", {"auto": False})),
      "nothing says how much"),
 ])
 def test_model_error_keys_are_validated(edit, said):
@@ -885,6 +901,7 @@ def test_model_error_keys_are_validated(edit, said):
 @pytest.mark.parametrize("edit", [
     lambda c: c["isotopologues"][0].__setitem__("sigma_systematic_mhz", [1.0, 1.0, 1.0]),
     lambda c: c.__setitem__("model_error", {"auto": True}),
+    lambda c: None,       # the estimate is on by default (D-165)
 ])
 def test_the_includes_flag_with_something_to_act_on_validates(edit):
     from runner.usability import validate_config

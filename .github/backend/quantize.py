@@ -108,6 +108,22 @@ _TINY = 1e-300
 #: arrive from elsewhere rather than something the Laplace can trip.
 _COV_INDEFINITE_REL_TOL = 1e-6
 
+
+def _indefinite_ratio(cov):
+    """min/max eigenvalue of a covariance that is not positive semi-definite
+    beyond _COV_INDEFINITE_REL_TOL, or None when it is (or is empty)."""
+    c = np.asarray(cov, dtype=float)
+    if c.size == 0:
+        return None
+    try:
+        eigs = np.linalg.eigvalsh(0.5 * (c + c.T))
+    except np.linalg.LinAlgError:
+        return None
+    hi, lo = float(np.max(eigs)), float(np.min(eigs))
+    if hi > 0.0 and lo / hi < -_COV_INDEFINITE_REL_TOL:
+        return lo / hi
+    return None
+
 #: Fallback when the level of theory has no calibrated width. See
 #: spectral.prior_widths for the calibrated table and why an unmeasured level
 #: falls back to the loosest value rather than an interpolated one.
@@ -400,7 +416,7 @@ class MolecularOptimizer:
         # systematic weight the fit as well as the report, so the two sigmas
         # cannot disagree by 1e5 in the first place. Until then this is
         # available and verified, and off.
-        auto_systematic_sigma=False,
+        auto_systematic_sigma=True,
         systematic_in_weighting=False,
         # How the model error is shared between the stacked constants, for the
         # reported covariance (the fit's weights stay diagonal). The
@@ -530,7 +546,7 @@ class MolecularOptimizer:
         ic_damping=1e-6,
         ic_use_dihedrals="auto",
         ic_micro_iter=20,
-        ic_cartesian_fallback=False,
+        ic_cartesian_fallback=True,
         exact_curvature_where_flagged=True,
         ic_prior_weight=None,
         ic_prior_sigma_bond=None,
@@ -688,11 +704,12 @@ class MolecularOptimizer:
         # (test_auto_systematic_sigma's water fit) it yields 0.0018 Angstrom
         # and 0.32 degrees with the flat estimate (0.012 and 2.4 with the
         # inertial-defect one it replaced), not 47 and 10975.
-        # Reinstating it is still a change of default -- every user who
-        # quotes only measurement sigmas would start seeing the model-error
-        # term included -- so it is left off pending that decision, and the
-        # user is TOLD rather than handed a number that omits the dominant
-        # term without saying so.
+        # On by default since D-165 (the user's call, decision page item 7):
+        # a species that states no systematic sigma gets the flat estimate,
+        # so a raw B0-as-Be fit no longer quotes measurement precision as its
+        # uncertainty. Widths only; the fitted geometry is unchanged. Pass
+        # auto_systematic_sigma=False (model_error: {auto: false}) for
+        # measurement precision only.
         self.auto_systematic_sigma = bool(auto_systematic_sigma)
         self.systematic_in_weighting = bool(systematic_in_weighting)
         _rho = float(systematic_isotopologue_correlation)
@@ -1235,10 +1252,13 @@ class MolecularOptimizer:
         # (_resolve_ic_dihedrals); ic_reach_warnings reports it.
         self._ic_unreached = None
         self._ic_micro_iter = max(1, int(ic_micro_iter))
-        # Opt-in: retake in Cartesians an internal step the back-transform
-        # could not realise, and step in Cartesians for the rest of the pass
-        # (_cartesian_fallback_step). Off by default: it moves acetyl
-        # fluoride's answer and costs it a Hessian (D-106).
+        # Retake in Cartesians an internal step the back-transform could not
+        # realise, and step in Cartesians for the rest of the pass
+        # (_cartesian_fallback_step). On by default since D-163 (the user's
+        # call, decision page item 3): fluoroacetylene reaches its optimum
+        # (8.0e-3 -> 1.9e-6 widths); with use_dihedrals auto no other
+        # benchmark molecule takes a fallback step (T-47). False restores the
+        # opt-in behaviour of D-106.
         self._ic_cartesian_fallback = bool(ic_cartesian_fallback)
         # Where the Gauss-Newton check finds the exact curvature over 50% from
         # Gauss-Newton's along a soft direction, the reported widths, the
@@ -2063,8 +2083,12 @@ class MolecularOptimizer:
 
     def _model_error_rows(self):
         """Per isotopologue: the kinds of model error its rows carry (see
-        model_error_sources) and the components whose given value -- stated,
-        or the engine's estimate -- a correction's sigma replaced."""
+        model_error_sources) and the components whose stated value a
+        correction's sigma replaced. The engine's own estimate
+        (auto_systematic_sigma, on by default since D-165) is a stand-in for
+        rows nothing else covers; a correction taking its place is the
+        intended order, so it is not marked or warned about -- with the
+        estimate on by default, that warning fired on every corrected run."""
         out = {}
         given = getattr(self, "_model_error_given", {})
         for iso in self.spectral.isotopologues:
@@ -2087,7 +2111,7 @@ class MolecularOptimizer:
                     # _systematic_covariance, and a vibrational correction
                     # writes its own into sigma_systematic_constants.
                     kinds.add("corrections")
-                    if g is not None and g > 0.0:
+                    if g is not None and g > 0.0 and kind_given == "stated":
                         replaced.append(int(c))
                 elif s > 0.0:
                     kinds.add(kind_given)
@@ -4380,6 +4404,20 @@ class MolecularOptimizer:
         # Drop the rigid-body subspace, which no observable constrains.
         cov, _basis, _n_gauge = self.physical_covariance(cov)
 
+        # Checked on the Laplace part alone too: the systematic block
+        # (_systematic_covariance) is a difference added to it, and can cover
+        # a negative direction -- on water a Laplace with a -1 A^2 eigenvalue
+        # came out as 29214 A widths once the model error was on by default
+        # (D-165), with no refusal.
+        if _indefinite_ratio(cov) is not None:
+            self._warn_once(
+                "geometry_uncertainty: the Laplace covariance is not positive "
+                f"semi-definite (min/max eigenvalue = {_indefinite_ratio(cov):.2e}), "
+                "so no width taken from it is meaningful, whatever model error "
+                "is added to it. Returning None rather than numbers.",
+                key="geometry_uncertainty_indefinite_laplace")
+            return None
+
         J, _, row_scale = self.spectral.stacked(self.coords, return_row_scale=True)
         cov = cov + self._systematic_covariance(J, cov, coords=self.coords,
                                                 row_scale=row_scale)
@@ -4597,6 +4635,15 @@ class MolecularOptimizer:
                 f"which need not be the split estimator's spread; the joint objective "
                 f"has no such gap."]
         cov_lap, basis, n_removed = self.physical_covariance(cov_lap, coords=x)
+        # The model error is added below as a difference that can cover a
+        # negative direction (see geometry_uncertainty), so the Laplace part
+        # is checked on its own first.
+        _neg = _indefinite_ratio(cov_lap)
+        if _neg is not None:
+            return {"error": "the Laplace covariance is not positive semi-definite "
+                             f"(min/max eigenvalue = {_neg:.2e}), so no width taken "
+                             "from it is meaningful",
+                    "warnings": gn}
         J, rw, row_scale = self.spectral.stacked(x, return_row_scale=True)
         rw = np.asarray(rw, dtype=float)
         cd_rows = self.distortion_rows(x)

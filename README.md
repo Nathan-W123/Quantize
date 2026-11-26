@@ -142,9 +142,10 @@ three on all four at B3LYP; at RHF mixed estimation is ahead on three.
 > against 6.62; mixed estimation's 6.16 beats both).
 > The RHF geometries were already converged (bonds within 0.008 mÅ).
 >
-> *Flagged, not changed: the fit's own gradient* (D-59). The gradient a fit
+> *The fit's own gradient, now with the grid response* (D-59 flagged it;
+> D-164, 2026-11-26, the user's call). The gradient a fit
 > takes from the `pyscf_hf` backend -- `run_hessian`'s at each Hessian,
-> `run_gradient`'s between them -- is still pyscf's default, without the grid
+> `run_gradient`'s between them -- was pyscf's default, without the grid
 > response: up to 4.4e-4 Ha/Å off at the B3LYP theory geometries (3.3e-4 once
 > the rigid motions the fit projects out are removed). The benchmark cannot
 > see it, because its target prior (Cartesian mode) uses H(x - target) in
@@ -160,8 +161,11 @@ three on all four at B3LYP; at RHF mixed estimation is ahead on three.
 > 6e-6 Å from the benchmark's (1.6e-4 without). Timed through the CLI (two
 > runs each, alternating), the change costs formyl fluoride nothing (55.5 /
 > 55.4 s without, 53.5 / 53.1 with) and fluoroethane 4.5% on the means (122.8
-> / 128.2 s against 126.4 / 135.8), about the spread between repeats. A cost
-> all the same, so the choice is left open (backlog N22).
+> / 128.2 s against 126.4 / 135.8), about the spread between repeats. Both
+> now take the response: on displaced water (B3LYP/sto-3g) the gradient
+> matches a finite difference of the energy to 3.7e-7 Ha/bohr against 4.8e-6
+> without (`dev/tests/test_dft_fit_gradient.py`). The benchmark rows above do
+> not move (their target prior does not use the gradient).
 >
 > Not run: the `elec` and `all` configurations (they need `pyscf.prop`, not
 > installed here), and at B3LYP the `torsion` and `offsets+torsion` rows of
@@ -341,17 +345,22 @@ constraints, and published CO/H₂O constants — no Psi4 or ORCA needed).
 > a $B_0 \to B_e$ correction with a stated sigma (the Hessian-built corrections
 > and `alpha_mhz` both have one), or `sigma_systematic_mhz` on the isotopologue
 > (MHz per component; add `sigma_includes_systematic: true` when `sigma_mhz`
-> already holds it, so it is counted once). `model_error: {auto: true}` fills it
-> in where neither is given with 1% of A and 0.5% of B and C -- within 0.2-2.6x
+> already holds it, so it is counted once). Where neither is given the engine
+> fills it in with 1% of A and 0.5% of B and C (`model_error.auto`, on by
+> default since 2026-11-26, D-165) -- within 0.2-2.6x
 > of the B₀-B_e gaps the benchmark's B3LYP VPT2 corrections give on seven
 > molecules (0.2-2.5x as per-molecule medians), though 8.6x on ozone's A against
 > its r_e; the inertial-defect estimate it replaced ran 0.007-9.1x (medians
 > 0.04-8.9x), too small on B and C everywhere but water -- and `model_error.isotopologue_correlation` (default 0.99)
-> sets how much of it isotopologues share. A run whose rows carry none -- raw
-> $B_0$ fitted as $B_e$ -- reports widths of measurement precision only and
-> says so in its report and uncertainty bundle (`model_error`: null per
-> isotopologue); on analytic water those are 0.28 mÅ against 6.9 with the
-> corrections' sigma.
+> sets how much of it isotopologues share. The fitted structure does not
+> change, only the widths: raw $B_0$ fitted as $B_e$ on analytic water gives an
+> O–H width of 1.76 mÅ (angle 0.32°) with the estimate, 0.20 mÅ (0.03°)
+> without. `model_error: {auto: false}` (`auto_systematic_sigma=False`) asks
+> for measurement precision only; a run whose rows then carry none says so in
+> its report and uncertainty bundle (`model_error`: null per isotopologue). A
+> B₀ → B_e correction with its own sigma takes the estimate's place on its
+> rows without a warning; a stated `sigma_systematic_mhz` it replaces is
+> still named.
 
 ## How data and theory share authority
 
@@ -814,14 +823,17 @@ On Windows, you can instead set `orca_exe` in `BASE_SETTINGS` to your `orca.exe`
 > longer describes the bend (it is not differentiable there and stands for
 > two bend directions), so a fit whose optimum is nearly linear can stop
 > short: fluoroacetylene (HF/6-31G) at 179.995°, 0.008 posterior widths from
-> its optimum (179.98°, 179.96°), and its bootstrap kept 27 of 50 refits. Set
-> `internal_coordinates.cartesian_fallback: true` to retake such a step in
-> Cartesian coordinates on the same objective (and step in Cartesians for
-> the rest of that fit): fluoroacetylene then reaches its optimum and keeps
-> 50 of 50; fits that never refuse such a step are unchanged. It applies to
-> the `joint` objective only. It is not the default because it also moves
-> acetyl fluoride's answer (bond RMS −0.18 mÅ) and costs it one more Hessian. `coordinate_mode: cartesian` avoids both
-> issues.
+> its optimum (179.98°, 179.96°), and its bootstrap kept 27 of 50 refits. By
+> default (`internal_coordinates.cartesian_fallback`, on since 2026-11-26,
+> D-163) such a step is retaken in Cartesian coordinates on the same
+> objective, and the rest of that fit steps in Cartesians: fluoroacetylene
+> then reaches its optimum (3.5e-3 -> 6.9e-7 widths, bond RMS 15.396 ->
+> 15.385 mÅ) and keeps 50 of 50. Of the nine benchmark molecules (HF/6-31G,
+> internal mode, dihedrals auto) it acts on fluoroacetylene and formyl
+> fluoride, whose answer then lands 0.018 mÅ from the Cartesian fit's after
+> the CLI's Hessian refresh (0.072 without the fallback; Cartesian restarts
+> differ by 0.05); the other seven are bit-identical. It applies to the
+> `joint` objective only; `cartesian_fallback: false` turns it off.
 
 > **Pieces the bond rule leaves apart.** Bonds come from the covalent-radii
 > rule (distance under 1.2× the sum of the radii; O–H 1.16 Å). Internal

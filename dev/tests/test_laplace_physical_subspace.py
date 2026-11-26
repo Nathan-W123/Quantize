@@ -42,6 +42,9 @@ def _coords(r=0.95785, deg=104.508):
 
 
 def _fit(sigma_mhz, symmetry="auto", **kw):
+    # The Laplace width from the measurement sigmas: the model error (on by
+    # default since D-165) would put a fixed floor under it.
+    kw.setdefault("auto_systematic_sigma", False)
     opt = MolecularOptimizer(
         elems=["O", "H", "H"], coords=_coords(),
         isotopologues=[{"name": "H2-16O", "masses": MASSES_H2O,

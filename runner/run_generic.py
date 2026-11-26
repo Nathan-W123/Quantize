@@ -2048,7 +2048,7 @@ def build_run_inputs(cfg: dict[str, Any], *, verbose: bool = True) -> dict[str, 
     ic_use_dihedrals = "auto" if (isinstance(_dih, str) and _dih.strip().lower() == "auto") else bool(_dih)
     ic_damping = float(internal_cfg.get("damping", 1e-6))
     ic_micro_iter = int(internal_cfg.get("microiterations", 20))
-    ic_cartesian_fallback = bool(internal_cfg.get("cartesian_fallback", False))
+    ic_cartesian_fallback = bool(internal_cfg.get("cartesian_fallback", True))
     # Unstated means the engine's rule: no rule-library prior while the
     # quantum prior is on (the fit is spectra + quantum, D-09). A stated
     # weight is used as given.
@@ -2243,8 +2243,9 @@ def build_run_inputs(cfg: dict[str, Any], *, verbose: bool = True) -> dict[str, 
         if key in _optimizer_overrides:
             optimizer_kwargs[key] = _optimizer_value(key, value)
     # model_error: how the B0-versus-Be gap enters the reported widths when a
-    # species does not state it (sigma_systematic_mhz): auto -> the engine's
-    # flat estimate (1% of A, 0.5% of B and C); isotopologue_correlation -> how much
+    # species does not state it (sigma_systematic_mhz): auto (the default
+    # since D-165) -> the engine's flat estimate (1% of A, 0.5% of B and C),
+    # auto: false -> measurement precision only; isotopologue_correlation -> how much
     # of it isotopologues share (the engine's 0.99 when unset).
     me_cfg = cfg.get("model_error") or {}
     if me_cfg.get("auto") is not None:
