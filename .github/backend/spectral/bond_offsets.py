@@ -113,8 +113,10 @@ def offset_corrected_geometry(mol, theory_coords, offsets_ang,
     small and change sign within a class).
 
     Each symmetry-equivalent pair (and angle triple) is held separately, to
-    its own theory value, weighted 1/sqrt(n) for a name with n members, so a
-    symmetric solution scores exactly as the symmetry-averaged targets did.
+    its own theory value, weighted 1/sqrt(n) for a name with n members. Per
+    name the objective is then the averaged one plus the within-name variance
+    of (length - theory length + offset), so where the theory geometry is
+    symmetric a symmetric solution scores exactly as the averaged targets did.
     The averaged targets alone left every antisymmetric distortion -- one
     equivalent bond longer, the other shorter by the same amount -- to the
     1e-4 tether: in pyrimidine and thiophene, whose rings have four such pairs,

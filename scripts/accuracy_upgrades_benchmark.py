@@ -630,9 +630,12 @@ def bond_pair_spread_ma(mol, coords) -> float:
 
     Zero for a structure with its reference's symmetry. The bond scores
     (rms_bond_error) average each name's equivalent pairs, so a broken
-    structure can score well; this is the number that shows it.
+    structure can score well; this is the number that shows it. NaN when
+    the structure has a non-finite coordinate (a failed fit), never 0.
     """
     x = np.asarray(coords, dtype=float)
+    if not np.all(np.isfinite(x)):
+        return float("nan")
     spreads = [0.0]
     for pairs in mol.bonds.values():
         lengths = [float(np.linalg.norm(x[j] - x[i])) for i, j in pairs]
@@ -1294,7 +1297,7 @@ def main() -> None:
                 # The bond scores above average each name's symmetry-equivalent
                 # pairs, so they cannot see a structure whose equivalent bonds
                 # differ. This is the largest such difference (mA) in each
-                # leg's structure; the theory geometries' own is <= 0.02.
+                # leg's structure; the theory geometries' own is <= 0.022.
                 # (The offsets prior once broke pyrimidine's and thiophene's
                 # rings by 96-217 mA, unseen by the scores; T-78.)
                 "bond_pair_spread_ma": {

@@ -406,3 +406,6 @@ def test_bond_pair_spread_sees_what_the_averaged_score_cannot():
         broken[h] = broken[a] + u * (1.0 + d / np.linalg.norm(u))
     assert b.rms_bond_error(mol, broken)[0] < 1e-6
     assert b.bond_pair_spread_ma(mol, broken) == pytest.approx(20.0, abs=1e-6)
+    nan = broken.copy()
+    nan[3] = np.nan
+    assert np.isnan(b.bond_pair_spread_ma(mol, nan))
