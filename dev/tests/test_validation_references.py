@@ -125,9 +125,11 @@ def test_thiophene_scores_the_2021_constants_of_the_species_its_structure_used()
 @pytest.mark.parametrize("mol", VAL.VALIDATION_SET, ids=lambda m: m.key)
 def test_every_species_sits_just_off_its_rigid_constants(mol):
     # B0 differs from the r_e rigid-rotor constant by the vibrational
-    # correction, 0.2-1.2% on these molecules. A substitution on the wrong
-    # (non-equivalent) atom moves it by percents, a mistyped digit usually by
-    # more; both would fail here. All are planar, so the inertial defect is
+    # correction, 0.2-1.2% on these molecules. A mistyped digit, or most
+    # substitutions on the wrong atom, move it by percents and fail here; a
+    # swap along the symmetry axis can stay inside (pyrimidine's C2/C5 and
+    # H2/H5: 0.72-1.27%), which the isotope-shift test below catches for heavy
+    # atoms. All are planar, so the inertial defect is
     # small and positive: 0.03-0.14 u A^2 here, the lowest pyrimidine's
     # [2,4-2H] at 0.0287, as its source prints.
     assert not mol.species[0].subs, "the parent comes first"
@@ -137,6 +139,59 @@ def test_every_species_sits_just_off_its_rigid_constants(mol):
         inertia = 505379.009 / np.asarray(sp.abc_mhz, dtype=float)
         defect = inertia[2] - inertia[0] - inertia[1]
         assert 0.01 < defect < 0.2, (sp.label, defect)
+
+
+def _shift_error_pp(mol, sp, subs):
+    """Largest |observed - calculated| isotope shift from the parent, as a
+    percentage of the parent's constant. The vibrational part of B0 nearly
+    cancels in a heavy-atom shift, so a right site leaves almost nothing."""
+    parent = mol.species[0]
+    dobs = np.asarray(sp.abc_mhz, float) - np.asarray(parent.abc_mhz, float)
+    masses = np.asarray(mol.masses, dtype=float)
+    sub = masses.copy()
+    for i, m in subs.items():
+        sub[int(i)] = m
+    dcal = (np.asarray(rotational_constants_mhz(mol.geometry, sub), float)
+            - np.asarray(rotational_constants_mhz(mol.geometry, masses), float))
+    return float(np.max(np.abs(dobs - dcal) / np.asarray(parent.abc_mhz, float)) * 100)
+
+
+def _heavy_atom_species(mol):
+    return [sp for sp in mol.species[1:]
+            if all(abs(m - REF.M_D) > 1e-6 for m in sp.subs.values())]
+
+
+@pytest.mark.parametrize("mol", VAL.VALIDATION_SET, ids=lambda m: m.key)
+def test_heavy_atom_isotope_shifts_match_their_sites(mol):
+    # Right sites: at most 0.063 percentage points of the parent's constant
+    # on this set (H2C18O); the nearest wrong site is 0.298 (pyrimidine
+    # [5-13C] on C2). Deuterium is left out: H/D changes the vibrational
+    # averaging itself (D2CO 0.79 at the right site), so its shifts cannot
+    # tell an axis swap of an H site; the independent re-read checked those.
+    for sp in _heavy_atom_species(mol):
+        assert _shift_error_pp(mol, sp, sp.subs) < 0.15, sp.label
+
+
+def test_every_heavy_atom_wrong_site_fails_the_shift_test():
+    # The premise of the test above, over every single-site heavy-atom
+    # species that has a non-equivalent atom of its element to be put on.
+    tried = 0
+    for mol in VAL.VALIDATION_SET:
+        masses = np.asarray(mol.masses, dtype=float)
+        for sp in _heavy_atom_species(mol):
+            if len(sp.subs) != 1:
+                continue
+            (i, mass), = sp.subs.items()
+            right = rotational_constants_mhz(mol.geometry, np.where(np.arange(len(masses)) == i, mass, masses))
+            for j, el in enumerate(mol.elems):
+                if j == i or el != mol.elems[i]:
+                    continue
+                moved = np.where(np.arange(len(masses)) == j, mass, masses)
+                if np.allclose(rotational_constants_mhz(mol.geometry, moved), right, rtol=1e-9):
+                    continue                      # a symmetry-equivalent atom
+                tried += 1
+                assert _shift_error_pp(mol, sp, {j: mass}) > 0.15, (mol.key, sp.label, j)
+    assert tried >= 10
 
 
 def test_a_wrong_substitution_site_would_fail_that_check():
@@ -278,3 +333,56 @@ def test_the_table_reads_the_validation_file(tmp_path, monkeypatch):
     assert "formaldehyde" in out and "vinyl fluoride" not in out
     assert "9.00  6.00    3.00" in out
 
+
+
+def _run_validation_main(tmp_path, monkeypatch, pool_spy=None):
+    """main() with scored=validation, every validation molecule already on file
+    in the validation results file, the theory cache faked and fitting
+    forbidden (helpers of test_calibration_references). Returns the keys the
+    offsets pool was built from."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import test_calibration_references as TC
+    from backend.spectral.bond_offsets import bond_classes_of
+    b = TC._bench("scored=validation")
+    pool = b.benchmark_pool()
+    fake = {m.key: {"coords": np.asarray(m.geometry, float).tolist(),
+                    "offsets": {c: [0.001] for c in bond_classes_of(m).values()}}
+            for m in pool + list(REF.CALIBRATION_ONLY) + list(VAL.VALIDATION_SET)}
+    seen = {}
+    real_pool = b.offsets_pool
+
+    def spy(theory, keys):
+        seen["keys"] = list(keys)
+        out = real_pool(theory, keys)
+        return pool_spy(out) if pool_spy else out
+    monkeypatch.setattr(b, "_ROOT", tmp_path)
+    monkeypatch.setattr(b, "code_vintage", lambda: "test")
+    monkeypatch.setattr(b, "theory_geometries", lambda mols: {m.key: fake[m.key] for m in mols})
+    monkeypatch.setattr(b, "offsets_pool", spy)
+    monkeypatch.setattr(b, "get_backend", lambda name: TC._NoQuantum)
+    monkeypatch.setattr(b, "RUN_DIAGNOSTICS", False)
+    configs = [c for c in ["base", "offsets", "elec", "lam", "all"] if c in b.CONFIGS]
+    (tmp_path / "output").mkdir(parents=True)
+    # Rows only in the validation file: reading any other file would find
+    # none, and main() would start fitting, which _NoQuantum forbids.
+    (tmp_path / "output" / "accuracy_upgrades_hf_6-31g_validation.json").write_text(json.dumps(
+        {m.key: {c: {"code_vintage": "test"} for c in configs} for m in VAL.VALIDATION_SET}))
+    with contextlib.redirect_stdout(io.StringIO()):
+        b.main()
+    return seen["keys"], [m.key for m in pool]
+
+
+def test_main_scores_the_validation_set_from_the_unchanged_pool(tmp_path, monkeypatch):
+    keys, nine = _run_validation_main(tmp_path, monkeypatch)
+    # The pool is the nine plus the calibration entries (the faked cache puts
+    # each at its reference shape, so all three are usable), exactly as a
+    # default run builds it, and holds no validation molecule.
+    assert keys == nine + [m.key for m in REF.CALIBRATION_ONLY]
+    assert not set(keys) & set(PUBLISHED)
+
+
+def test_main_refuses_a_pool_that_holds_a_validation_molecule(tmp_path, monkeypatch):
+    def leak(pool):
+        return {**pool, "formaldehyde": {"C-O": [0.001]}}
+    with pytest.raises(SystemExit, match="validation molecules in the offsets pool"):
+        _run_validation_main(tmp_path, monkeypatch, pool_spy=leak)
