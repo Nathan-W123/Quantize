@@ -41,6 +41,8 @@ the decisions record; tasks before T-01 live in git history only.
 - T-76 · Cartesian internal prior angle units (focus item 1) · 2026-11-26 · done
 - T-77 · molecules the data cannot pin down: sparse sets + width coverage (focus item 3) · 2026-11-26 · done
 - T-78 · offsets prior broke ring symmetry; fixed, spread recorded per row · 2026-11-26 · done
+- T-79 · mixed-estimation baseline kept symmetry-averaged predicates only; now symmetric · 2026-11-26 · done
+- T-81 · page items 3, 5, 7 made defaults; two exposed defects fixed · 2026-11-26 · done
 
 ## Edges
 - C:quantum-prior --depends-on--> C:joint-optimizer · 2026-11-20
@@ -152,3 +154,15 @@ the decisions record; tasks before T-01 live in git history only.
 - T-78 --taught--> L-29 · 2026-11-26
 - T-75 --taught--> L-30 · 2026-11-26
 - D-160 --governs--> C:bond-offsets · 2026-11-26
+- T-79 --decided--> D-161 · 2026-11-26
+- T-79 --decided--> D-162 · 2026-11-26
+- T-79 --touched--> C:benchmark · 2026-11-26
+- T-79 --touched--> C:readme · 2026-11-26
+- T-81 --decided--> D-163 · 2026-11-26
+- T-81 --decided--> D-164 · 2026-11-26
+- T-81 --decided--> D-165 · 2026-11-26
+- T-81 --touched--> C:internal-coords · 2026-11-26
+- T-81 --touched--> C:uncertainty · 2026-11-26
+- T-81 --touched--> C:cli-config · 2026-11-26
+- D-163 --governs--> C:internal-coords · 2026-11-26
+- D-165 --governs--> C:uncertainty · 2026-11-26
