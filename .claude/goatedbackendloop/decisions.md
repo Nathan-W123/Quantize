@@ -1508,3 +1508,9 @@
 - Source: stated by user
 - Revisit if: a molecule class shows the flat estimate badly off (N42: rings at HF are a different cause).
 - Review (2026-11-26, independent check of 122cc0f, scratchpad review81/): two defects, both fixed in the follow-up commit. (1) The engine wrote its fills into the caller's isotopologue dicts, so the runner's dihedral probe made the real fit see the estimate as stated: every default corrected CLI run warned 'the stated model error is not used' -- fills now work on copies. (2) The geometry claim was false: compute_corrected_targets took the estimate out of a quoted sigma on vibrationally corrected rows (0.98 mA on water with a 2000 MHz quoted sigma) -- an estimate beside a user-quoted sigma is now marked sigma_systematic_estimated and not taken out (where sigma_constants is filled from the same estimate it is, as before). Also: sigma_includes_systematic without a stated split is refused again unless auto: true is explicit (the estimate exceeded a 0.2 MHz sigma_mhz), and the engine skips the default fill for such a species (auto_systematic_sigma=None is the default, True/False explicit); stale opt-in comments rewritten; _indefinite_ratio refuses a matrix with no positive eigenvalue. Remaining measured difference: a fit with no quoted sigma whose chi2 rescale would tighten it stops at the estimate's floor (1.5e-5 A). New tests fail on 122cc0f. CI 1868 passed.
+
+### D-166 · Next: measure fixes for N41 and N42 (2026-11-26)
+- Decision: T-82 measures, in scratch only, remedies for N41 (offsets ignore bond order: pyrimidine's aromatic C-N takes HNCO/HCN's multiple-bond offset at HF) and N42 (ring widths too narrow at HF), and proposes before changing anything; the B3LYP validation ring rows go into the README when they finish.
+- Why: Q-166's recommended option.
+- Source: auto-picked, no answer in 15 min (Q-166)
+- Revisit if: the user picks the table rebuild or ends the loop.
