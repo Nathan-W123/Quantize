@@ -1475,3 +1475,17 @@
 - Alternatives considered: guard only (refuse a broken prior, keep the builder); impose the theory's symmetry after the solve; score per pair instead of averaged (changes every row's convention).
 - Source: assumption (defect fix inside the validation work; no published number moves), unconfirmed
 - Revisit if: ring offsets should be taken in full (would need the angle terms to give way, a calibration question), or the scores should move to per-pair.
+
+### D-161 · Mixed estimation keeps the molecule's symmetry (2026-11-26)
+- Decision: mixed_estimation_fit keeps its symmetry-averaged predicates and adds equality terms (weight 1e4 x the predicate's 1/sigma) holding each equivalent bond and angle at its theory offset from its name's mean -- symmetry imposed, as fitting symmetry-unique parameters does.
+- Why: T-79 (found by the T-78 review): the averaged predicates left antisymmetric distortions to the rotational constants, and the baseline broke symmetry where the isotopologues cannot see it -- chlorofluoromethane's C-H pair 964 mA apart (averaged score 4.26 mA, offsets, the README's 'ME beats the hybrid' there), fluoroethane 63-67, acetyl fluoride 8-17, SO2 591, pyrimidine 79. HF nine (t79/out/me_hf_6-31g_benchmark_all.final.json): CH2ClF 31.38 -> 26.00 / 4.26 -> 6.03, fluoroethane 12.66 -> 11.28 / 8.24 -> 9.07, acetyl within 0.02, six unchanged. A synthetic CH2ClF case with constants from the reference structure breaks the old code too (383 mA; dev/tests/test_mixed_estimation_symmetry.py). The new code reproduces the study's 'sym' variant (t79/me_hf_bench_verify.log).
+- Alternatives considered: soft per-pair predicates (D-160 recipe; equals sym except fluoroethane base 12.00, spread 7 mA); keep the baseline and report the spread beside it.
+- Source: auto-picked, no answer in 15 min (Q-160, recommended option)
+- Revisit if: the user prefers the soft variant or the unchanged baseline.
+
+### D-162 · README: correction note now, table rebuild stays on hold (2026-11-26)
+- Decision: withdraw the 'ME beats the hybrid on chlorofluoromethane' sentence and add a dated correction note with the measured HF changes; the tables themselves keep the old baseline until the rebuild the user put on hold ("5 wait on").
+- Why: the claim rested on a broken structure; a note fixes the false statement without rebuilding tables the user asked to hold.
+- Alternatives considered: leave the README until the rebuild.
+- Source: auto-picked, no answer in 15 min (Q-161, recommended option)
+- Revisit if: the user wants the note removed or the tables rebuilt now.

@@ -45,8 +45,9 @@ C–Cl +7.4 and C–F −7.2 mÅ); started from r_e itself, the fit stays within
 The best-of rows owe most of their margin over the base rows to the bond-class
 offsets: theory corrected by the error each bond class shows in the other
 molecules (leave-one-out). That correction helps all three methods, so at RHF
-mixed estimation now beats the hybrid on chlorofluoromethane (4.26 against
-5.43) and formyl fluoride (by 0.07 mÅ), as it already did on water. A class seen in
+mixed estimation beats the hybrid on formyl fluoride (by 0.07 mÅ), as it
+already did on water (an earlier claim that it also won on chlorofluoromethane
+is withdrawn: see the correction below). A class seen in
 only one molecule cannot be calibrated that way, so the pool also takes three
 equilibrium structures that are measured for their offsets and never fitted or
 scored -- methyl chloride, hydrogen cyanide and hydrogen peroxide
@@ -57,6 +58,21 @@ out at RHF. One known cost: its O–O is a single bond and ozone's is not, so at
 B3LYP the `offsets` fit of ozone moves toward its r_s reference (0.03 mÅ in
 the best-of table) but away from its r_e (1.03 mÅ; 0.37 with the earlier pool,
 at an older code vintage). `calibration=scored` reproduces the earlier pool.
+
+> **Correction (2026-11-26): the mixed-estimation baseline broke symmetry.**
+> Its predicates held only the average of each set of equivalent bonds (and
+> angles), so where the isotopologues cannot see an antisymmetric distortion
+> the fit used it, and the symmetry-averaged score hid it. Chlorofluoromethane's
+> two C–H bonds came out 0.96 Å apart at RHF/6-31G; that structure was the
+> 4.26 mÅ that had mixed estimation ahead of the hybrid's 5.43 there. Mixed
+> estimation now keeps the molecule's symmetry, as fitting symmetry-unique
+> parameters does (decisions D-161). Measured at RHF/6-31G against the same
+> references: chlorofluoromethane base 31.38 -> 26.00 mÅ, `offsets`
+> 4.26 -> 6.03 (the hybrid ahead); fluoroethane base 12.66 -> 11.28, `offsets`
+> 8.24 -> 9.07; acetyl fluoride within 0.02; the other six unchanged, water
+> and ozone included. The mixed-estimation entries in the tables here
+> (best-of means, B3LYP rows, chlorofluoromethane's r_e row) still carry the
+> old baseline until the tables are rebuilt.
 
 Most of these references are r_s or effective structures, which sit several mÅ
 from equilibrium (vinyl fluoride's is 5.7 mÅ from its r_e), so they cannot rank

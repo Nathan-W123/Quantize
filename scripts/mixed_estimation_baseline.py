@@ -40,6 +40,15 @@ The six rigid-body directions are flat in both observation blocks; they leave
 the internal coordinates untouched, and the trust-region solver handles the
 rank deficiency without special casing.
 
+Symmetry is kept, as fitting symmetry-unique parameters keeps it. Each
+predicate is on a name's average over its equivalent bonds (or angles), and
+stiff equality terms hold every member at its theory offset from that
+average. Without them nothing but the rotational constants held an
+antisymmetric distortion, and the fit used it: chlorofluoromethane's two C-H
+bonds came out 0.96 A apart at RHF/6-31G, which the symmetry-averaged score
+read as 4.26 mA (offsets) -- the number that had mixed estimation beating the
+hybrid there (decisions D-161).
+
     python scripts/mixed_estimation_baseline.py [molecule_key ...]
 """
 
@@ -128,6 +137,12 @@ DEFECT_BIAS_SCALE = any(a == "defect_scale=on" for a in sys.argv[1:])
 #: same ratio the reference module uses between its bond and angle widths.
 _ANGLE_SIGMA_PER_ANG = 1.5 / 0.020
 
+#: Weight of the equality terms that keep symmetry-equivalent bonds and angles
+#: equal, relative to their predicate's own 1/sigma. At 1e4 the fitted
+#: structures keep the theory geometry's own spread (<= 0.022 mA) on all nine
+#: benchmark molecules and the six validation molecules (T-79).
+_SYMMETRY_STIFFNESS = 1.0e4
+
 
 def corrected_targets(mol, isos, ctbl, bob_params=None,
                       coords_ang=None, defect_bias_scale=None):
@@ -202,11 +217,37 @@ def mixed_estimation_fit(mol, targets, theory_coords, sigma_p_ang):
     choice, and the same warm start the hybrid uses, so neither method gets an
     initialisation advantage.
     """
-    x0 = np.asarray(theory_coords, dtype=float).ravel()
-    ref_int = mol.internal_coordinates(np.asarray(theory_coords, dtype=float))
+    theory = np.asarray(theory_coords, dtype=float)
+    x0 = theory.ravel()
+    ref_int = mol.internal_coordinates(theory)
     bond_names = list(mol.bonds.keys())
     angle_names = list(mol.angles.keys())
     sigma_a = sigma_p_ang * _ANGLE_SIGMA_PER_ANG
+
+    def _members(coords):
+        """Each name's equivalent bonds (A) and angles (deg), in order."""
+        b = {n: [float(np.linalg.norm(coords[j] - coords[i])) for i, j in mol.bonds[n]]
+             for n in bond_names}
+        a = {}
+        for n in angle_names:
+            vals = []
+            for i, j, k in mol.angles[n]:
+                u, v = coords[i] - coords[j], coords[k] - coords[j]
+                c = u @ v / (np.linalg.norm(u) * np.linalg.norm(v))
+                vals.append(float(np.degrees(np.arccos(np.clip(c, -1.0, 1.0)))))
+            a[n] = vals
+        return b, a
+
+    theory_b, theory_a = _members(theory)
+
+    def _equalities(got, ref, sigma):
+        # Each member's change from theory, held at its name's mean change.
+        out = []
+        for n, vals in got.items():
+            if len(vals) > 1:
+                d = np.asarray(vals) - np.asarray(ref[n])
+                out.extend(_SYMMETRY_STIFFNESS * (d - d.mean()) / sigma)
+        return out
 
     def residuals(flat):
         coords = flat.reshape(-1, 3)
@@ -219,10 +260,13 @@ def mixed_estimation_fit(mol, targets, theory_coords, sigma_p_ang):
             res.append((got[name] - ref_int[name]) / sigma_p_ang)
         for name in angle_names:
             res.append((got[name] - ref_int[name]) / sigma_a)
+        got_b, got_a = _members(coords)
+        res += _equalities(got_b, theory_b, sigma_p_ang)
+        res += _equalities(got_a, theory_a, sigma_a)
         return np.asarray(res, dtype=float)
 
     sol = least_squares(residuals, x0, method="trf", xtol=1e-12, ftol=1e-12,
-                        max_nfev=2000)
+                        max_nfev=4000)
     return sol.x.reshape(-1, 3), float(np.sum(sol.fun ** 2))
 
 
