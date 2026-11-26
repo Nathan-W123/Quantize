@@ -50,7 +50,7 @@ Request: Find more validation molecules (published equilibrium structures + isot
 - HF: hybrid beats theory 12/12, ME 8/12 (ME ahead on H2CO and SO2). Symmetric ME moved SO2 4.18 -> 0.59 and pyrimidine offsets 3.45 -> 5.25. Every structure's bond_pair_spread_ma at the theory's own (<= 0.013 mA).
 - B3LYP so far (base / offsets): H2CO 7.02 / 3.70 / 2.57, 5.42 / 4.70 / 3.60; H2CS 8.34 / 2.85 / 2.47, 6.67 / 2.25 / 1.17; ketene 7.70 / 4.71 / 4.68, 2.15 / 2.88 / 1.57; SO2 32.85 / 0.42 / 0.52, 32.85 / 0.38 / 0.41. Pyrimidine, thiophene running.
 - D-161 verified: the committed ME equals the study's 'sym' variant on all 18 nine-molecule HF rows (diff 0.0000). CI at d711d99: 1861 passed, 13 skipped.
-- Thin-data study archived (scripts/archive/validation_thin_data.py, a86826b/6679d00), rerunning at 6679d00 (t80/).
+- Thin-data study archived (scripts/archive/validation_thin_data.py, a86826b/6679d00), rerun at 6679d00 (t80/thin_hf.json, full_hf.json). Hybrid bonds vs r_e^SE, theory -> thin: H2CO 14.15 -> 8.57 / 5.88 -> 3.13; H2CS 24.67 -> 6.89 / 23.21 -> 1.90; ketene 7.36 -> 5.37 / 3.12 -> 3.71 (worse); pyrimidine 8.84 -> 8.62 / 12.88 -> 3.80; thiophene 38.85 -> 20.41 / 40.10 -> 13.83: 9 of 10 better. One species puts part of the correction in the angles (H2CO base 0.15 -> 1.48 deg, H2CS 0.13 -> 1.47). Widths: small molecules |z| <= 1.89 thin, <= 0.89 full (SO2 included). Rings miss in thin and full alike, so not a thin-data effect: pyrimidine offsets ring angles 1.5-2.0 deg off at widths 0.25-0.34 (|z| 5.9; base 2.1 at 0.72 deg widths), thiophene S-C +17..+28 mA and C2-C3 -21..-31 at 5-8 mA widths (|z| 3.2-3.7, base and offsets). -> N42.
 ## Progress
 - 5 of 6 molecules wired and tested; validation runs relaunched on the committed code.
 ## Observations
