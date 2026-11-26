@@ -28,6 +28,10 @@ Request: Find more validation molecules (published equilibrium structures + isot
 - N11 note: the first runs (e60af78, five molecules) were stopped to rerun all six on one vintage after T-76; partial HF rows kept in t75/n11/partial_e60af78
 ## Side task T-76 (focus item 1, run while N11 waited)
 - Fix the internal prior's angle units (N29): done in a scratch worktree, measured (t76/pre, t76/post: equals the prototype to 4.5e-11), tests dev/tests/test_internal_prior_units.py (fail without the fix), README note rewritten, D-159.
+## Next task T-77 (focus item 3, N16: molecules the data cannot pin down) · measuring
+- Brief: cut each validation molecule to a few isotopologues so its constants leave structure directions undetermined (as CH2ClF's two Cl species do), score with the benchmark's own machinery against the r_e^SE, and compare hybrid / mixed estimation / theory with the full-data rows. Measurement only (scratch t77/sparse.py, own root and cache copies, no lock contention); a remedy is proposed only if the evidence supports one.
+- Sets: H2CO, H2CS parent only; ketene parent + [18O]; pyrimidine parent + [1-15N] + [2-13C]; thiophene parent + [34S] + [2-13C]; SO2 left out (parent alone determines it).
+- First HF rows (vs full data): H2CO hybrid 8.57 (base) / 3.13 (offsets) mA vs theory 14.15 / 5.88; H2CS 6.89 / 1.90 vs 24.67 / 23.21; ketene 5.37 / 3.71 vs 7.36 / 3.12 (offsets hybrid worse than theory). Mixed estimation leaves the bonds at theory with one species: its predicates keep bonds tighter than angles, so it fits the constants through the H-C-O angle (checked, t77/me_debug.py; not a guard).
 ## Progress
 - 5 of 6 molecules wired and tested; validation runs relaunched on the committed code.
 ## Observations
