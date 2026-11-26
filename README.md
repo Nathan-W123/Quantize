@@ -201,18 +201,22 @@ against r_e^SE in mÅ, code vintage d711d99; the best of the three in bold:
 | thioformaldehyde | 8.34 | 2.85 | **2.47** | 6.67 | 2.25 | **1.17** |
 | ketene | 7.70 | 4.71 | **4.68** | 2.15 | 2.88 | **1.57** |
 | sulfur dioxide | 32.85 | **0.42** | 0.52 | 32.85 | **0.38** | 0.41 |
+| pyrimidine | 6.00 | **2.83** | 2.98 | 2.10 | **1.51** | 1.57 |
+| thiophene | 12.25 | 5.94 | **3.01** | 11.25 | 6.12 | **3.47** |
 
 † RHF's force field is flagged for SO2 (the multireference diagnostic fires).
-Pyrimidine and thiophene at B3LYP are still running.
+Thiophene's B3LYP rows were run at e2b4903 and are identical at d711d99.
 
-The hybrid beats theory alone on all 20 rows and mixed estimation on 14:
-mixed estimation is ahead on formaldehyde at RHF and on sulfur dioxide at both
-levels. Two things to know when reading the offsets columns. At RHF the pool's
+The hybrid beats theory alone on all 24 rows and mixed estimation on 16:
+mixed estimation is ahead on formaldehyde at RHF, on sulfur dioxide at both
+levels, and narrowly (0.06–0.15 mÅ) on pyrimidine at B3LYP. Two things to
+know when reading the offsets columns. At RHF the pool's
 C–N offset comes from isocyanic acid's and hydrogen cyanide's multiple bonds,
 so it lengthens pyrimidine's aromatic C–N bonds by 23 mÅ and makes the theory
 row worse (8.84 → 12.88); the offsets ignore bond order (backlog N41). And
 thiophene's S–C bond has no offsets class at all: at RHF/6-31G (no d functions
-on sulfur) it starts 80 mÅ long.
+on sulfur) it starts 80 mÅ long. At B3LYP the offsets help pyrimidine's hybrid
+(2.98 → 1.57) but not thiophene's (3.01 → 3.47).
 
 **When the data cannot pin the structure down.** Cut to one to three
 isotopologues each (fewer independent constants than structural parameters,

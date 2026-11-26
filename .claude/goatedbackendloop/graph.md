@@ -173,6 +173,8 @@ the decisions record; tasks before T-01 live in git history only.
 - T-82 --produced--> L-32 · 2026-11-26
 - T-82 --produced--> L-15 (learnings) · 2026-11-26
 - T-82 --proposed--> page item 13 (N42), page item 14 (N41) · 2026-11-26 (user's call)
+- T-82 --measured--> page item 13 (N42) · 2026-11-26 (B3LYP held-out six complete: option A better on 12 of 12)
+- T-75 --touched--> C:readme · 2026-11-26 (N11 done: validation table, both levels, six molecules)
 - T-83 --decided--> D-168 · 2026-11-26
 - T-83 --touched--> C:uncertainty · 2026-11-26 (posterior labels 'fixed by symmetry', 'undefined at this geometry')
 - T-83 --touched--> C:internal-coords · 2026-11-26 (structural prior rows at the current geometry)
