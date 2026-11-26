@@ -2570,7 +2570,10 @@ def write_outputs(result: dict[str, Any]) -> dict[str, Path | list[Path]]:
         coord_set = InternalCoordinateSet(
             coords_best, result["elems"], use_dihedrals=bool(_dih))
         B_active = coord_set.active_B_matrix(coords_best)
-        if B_active.shape[0] > 0 and list(coord_set.active_names()) == names:
+        _set_names = list(coord_set.active_names())
+        # The posterior appends bend rows after the set's own coordinates
+        # (near-linear angles), so the set is its leading entries.
+        if B_active.shape[0] > 0 and _set_names == names[:len(_set_names)]:
             damping = max(float(ic_cfg.get("damping", 1e-6)), 1e-14)
             Bplus = InternalCoordinateSet.damped_pseudoinverse(B_active, damping)
             J_spectral, _rw = SpectralEngine(iso_snapshot).stacked(coords_best)

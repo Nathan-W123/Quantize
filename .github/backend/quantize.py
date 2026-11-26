@@ -4634,12 +4634,19 @@ class MolecularOptimizer:
         principal axes of their covariance, so the widths do not depend on the
         lab frame, and each is signed so its value is not negative.
 
-        Returns [(row (3N,), value, name)], nothing for an angle whose bends
-        the point group fixes (its own row then reads 'fixed by symmetry').
+        Returns [(row (3N,), value, name)]; nothing for an angle whose bends
+        the point group fixes (its own row then reads 'fixed by symmetry'), or
+        whose second bend is a rigid rotation (a bent triatomic).
         """
         xyz = np.asarray(x, dtype=float).reshape(-1, 3)
         lim = np.radians(self._LINEAR_ANGLE_DEG)
         out = []
+        P = None
+        if self._rigid_ref_masses is not None and any(
+                ic.kind == "angle" and qv >= lim
+                for ic, qv in zip(cs.active_coords(), q)):
+            P = np.asarray(self._rigid_mode_projector(x, self._rigid_ref_masses), dtype=float)
+            P = 0.5 * (P + P.T)
         for ic, qv in zip(cs.active_coords(), q[:len(cs.active_coords())]):
             if ic.kind != "angle" or not qv >= lim:
                 continue
@@ -4662,6 +4669,16 @@ class MolecularOptimizer:
                 R.append(d.ravel())
                 v.append(float(e @ (u + w)))
             R, v = np.asarray(R), np.asarray(v)
+            if P is not None:
+                # Off 180 degrees a triatomic has one bend: three atoms
+                # always lie in a plane, so its other 'bend' is a rotation
+                # of the whole molecule, and reported as 'fixed by symmetry'
+                # at width 0 (HCN bent 1e-4 deg, T-84 review). Nothing is
+                # added then; the angle's own row is that one bend.
+                Rv = R @ P
+                g = np.linalg.eigvalsh(Rv @ Rv.T)
+                if g[0] <= self._FIXED_BY_SYMMETRY_REL * max(float(g[-1]), 1e-300):
+                    continue
             pr = basis.T @ R.T
             if np.all(np.einsum("ij,ij->j", pr, pr)
                       <= self._FIXED_BY_SYMMETRY_REL * np.einsum("ij,ij->i", R, R)):
@@ -4752,16 +4769,23 @@ class MolecularOptimizer:
         # Where the symmetry lets it bend, both bends are appended after the
         # set's own coordinates (so index k < n_set still means the set's k-th
         # coordinate), along the principal axes of their covariance. Ketene
-        # fitted without symmetry (HF/6-31G) quoted 2.04 deg, its in-plane
-        # bend, while the out-of-plane one is 3.23 (T-83, N40).
+        # fitted without symmetry (HF/6-31G) quoted 2.06 deg for C=C=O on its
+        # own row; its two bends are 3.23 and 2.01 (T-84, N40).
+        C_q = Bq @ cov_x @ Bq.T
+        C_q = 0.5 * (C_q + C_q.T)
         extra = self._linear_bend_rows(x, cs, q, cov_x, basis)
         if extra:
-            Bq = np.vstack([Bq] + [r for r, _v, _n in extra])
+            # The set's block stays the product it always was: one product
+            # over the longer matrix sums in a different order and moved its
+            # off-diagonal entries by ~1e-16 (T-84 review).
+            R = np.asarray([r for r, _v, _n in extra], dtype=float)
+            C_xr = Bq @ cov_x @ R.T
+            C_rr = R @ cov_x @ R.T
+            C_q = np.block([[C_q, C_xr], [C_xr.T, 0.5 * (C_rr + C_rr.T)]])
+            Bq = np.vstack([Bq, R])
             q = np.concatenate([q, [v for _r, v, _n in extra]])
             names += [n for _r, _v, n in extra]
             kinds += ["linear_bend"] * len(extra)
-        C_q = Bq @ cov_x @ Bq.T
-        C_q = 0.5 * (C_q + C_q.T)
         # A coordinate none of the allowed directions moves is fixed by the
         # point group the fit imposes: a 180-degree angle (fluoroacetylene,
         # ketene's C=C=O), whose bends all break the symmetry. Its width is
