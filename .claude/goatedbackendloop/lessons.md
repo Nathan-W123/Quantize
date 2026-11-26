@@ -141,4 +141,4 @@ once by a container swap).
 - Adjustment: when a mechanism is offered as the cause of a measured effect, compute its size (here a 20-line script on cached Hessians) before stating it; say "a candidate" until then.
 - Scope: project (likely general)
 - Status: provisional
-- Outcomes:
+- Outcomes: -2026-11-26 (T-83: a code comment stated 'measured' shares before they were measured; caught and corrected within the hour, the real figures 1e-31 / 0.167 differed from the guessed 1e-22 / 0.25)
