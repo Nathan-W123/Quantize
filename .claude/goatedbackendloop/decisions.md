@@ -1425,3 +1425,17 @@
 - Alternatives considered: fluorine only; accept 1 mA now; accept SE100 without stated uncertainty.
 - Source: auto-picked, no answer in 15 min (Q-105, Q-106)
 - Revisit if: the user answers otherwise; the fit sigmas prove to understate real error (N3 search: HNCO's two structures differ 1.0-2.9 mA beyond their sigmas).
+
+### D-154 · Six validation molecules, as a separate validation set (2026-11-26)
+- Decision: Q-107 option 1: formaldehyde, thioformaldehyde, ketene, SO2, thiophene, pyrimidine. Q-108 option 1: a separate validation set, scored with bond-class offsets pooled from the benchmark molecules only; the nine benchmark rows unchanged.
+- Why: open data for all six, 3-10 atoms; a held-out test leaves the published table as it is.
+- Alternatives considered: all eight tier-1 (adds thiazole, pyridine); the four smallest only; merging into the benchmark pool.
+- Source: auto-picked, no answer in 15 min (Q-107, Q-108; the wake-up fired at 00:57, two minutes before the stated 00:59)
+- Revisit if: the user answers otherwise.
+
+### D-155 · Reference uncertainties are compared at 1-sigma; SO2 uses its three species with stated sigmas (2026-11-26)
+- Decision: RE_REFERENCE_MAX_UNCERTAINTY_MA (0.5 mA) applies to the 1-sigma bond uncertainty; a source quoting 2-sigma is halved and the entry says so (ketene: 0.69 -> 0.345 mA). SO2 is wired with 32S, 33S, 34S16O2 (fitted constants with sigmas); the Kivelson-Wilson species without sigmas are recorded in the draft but not scored.
+- Why: the existing references (ozone, vinyl fluoride, CH2ClF) quote 1-sigma; mixing constant types with and without sigmas would weight unknown-quality values by their printed digits.
+- Alternatives considered: compare at 2-sigma (ketene fails the bar); include all 19 SO2 species.
+- Source: assumption, unconfirmed
+- Revisit if: the user prefers 2-sigma, or more SO2 species are needed to locate O.
