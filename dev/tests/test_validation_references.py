@@ -386,3 +386,23 @@ def test_main_refuses_a_pool_that_holds_a_validation_molecule(tmp_path, monkeypa
         return {**pool, "formaldehyde": {"C-O": [0.001]}}
     with pytest.raises(SystemExit, match="validation molecules in the offsets pool"):
         _run_validation_main(tmp_path, monkeypatch, pool_spy=leak)
+
+
+def test_bond_pair_spread_sees_what_the_averaged_score_cannot():
+    """A ring broken antisymmetrically scores as well as an intact one on the
+    symmetry-averaged bonds; bond_pair_spread_ma is the number that shows it
+    (T-78: the offsets prior once broke pyrimidine's ring by 217 mA)."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import test_calibration_references as TC
+    b = TC._bench("scored=validation")
+    mol = VAL.PYRIMIDINE
+    ref = np.asarray(mol.geometry, dtype=float)
+    assert b.bond_pair_spread_ma(mol, ref) < 1e-6
+    # Lengthen one C-H of an equivalent pair, shorten its partner.
+    (i, j), (k, m) = mol.bonds["C4-H"]
+    broken = ref.copy()
+    for (a, h), d in (((i, j), 0.01), ((k, m), -0.01)):
+        u = broken[h] - broken[a]
+        broken[h] = broken[a] + u * (1.0 + d / np.linalg.norm(u))
+    assert b.rms_bond_error(mol, broken)[0] < 1e-6
+    assert b.bond_pair_spread_ma(mol, broken) == pytest.approx(20.0, abs=1e-6)

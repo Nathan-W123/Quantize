@@ -102,6 +102,53 @@ def test_correction_moves_the_named_class_and_leaves_the_others_alone():
         assert after[name] == pytest.approx(before[name], abs=0.05)
 
 
+@pytest.mark.parametrize("key", ["pyrimidine", "thiophene"])
+def test_correction_keeps_symmetry_equivalent_bonds_equal(key):
+    """Rings with several equivalent bond pairs must stay symmetric.
+
+    The correction used to target only the symmetry-averaged bond of each
+    name, which left every antisymmetric distortion (one equivalent bond
+    longer, its partner shorter) to the weak rigid-body tether. On the HF/6-31G
+    theory geometries, whose equivalent bonds agree to 0.01 mA, it returned
+    pyrimidine and thiophene rings 217 and 165 mA from symmetric while every
+    averaged bond sat on target. Here the start is the r_e^SE geometry with
+    1e-5 A of seeded noise, which reproduces it (old code: spread > 40 mA).
+    """
+    from dev.validation_references import PYRIMIDINE, THIOPHENE
+
+    mol = {"pyrimidine": PYRIMIDINE, "thiophene": THIOPHENE}[key]
+    rng = np.random.default_rng(7)
+    theory = np.asarray(mol.geometry, dtype=float) + 1e-5 * rng.standard_normal(
+        np.shape(mol.geometry))
+    offsets = {"C-N": 0.02, "C-C": -0.012, "C-H": -0.011, "C-S": 0.03}
+    fixed = offset_corrected_geometry(mol, theory, offsets)
+
+    def spread(x):
+        return max(max(v) - min(v) for v in (
+            [np.linalg.norm(x[j] - x[i]) for i, j in pairs]
+            for pairs in mol.bonds.values()))
+
+    assert spread(fixed) < spread(theory) + 1e-6
+    before = mol.internal_coordinates(theory)
+    after = mol.internal_coordinates(fixed)
+    classes = bond_classes_of(mol)
+    for name in mol.bonds:
+        shift = -offsets[classes[name]]
+        moved = after[name] - before[name]
+        if "H" in classes[name]:
+            # Outside the ring nothing stops a bond taking its full offset.
+            assert moved == pytest.approx(shift, abs=1e-4)
+        else:
+            # A ring cannot take unequal offsets with every angle held, so
+            # the weak angle terms share the change: measured 44-68% of each
+            # ring offset taken, angles moved <= 0.74 deg. The old code took
+            # 100% with no angle moving -- by breaking the ring's symmetry.
+            assert 0.4 * abs(shift) < abs(moved) <= abs(shift) + 1e-4
+            assert np.sign(moved) == np.sign(shift)
+    for name in mol.angles:
+        assert after[name] == pytest.approx(before[name], abs=1.0)
+
+
 def test_an_empty_offset_table_is_the_identity():
     theory = np.asarray(_VF.geometry, dtype=float)
     fixed = offset_corrected_geometry(_VF, theory, {})

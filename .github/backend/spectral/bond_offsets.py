@@ -112,22 +112,45 @@ def offset_corrected_geometry(mol, theory_coords, offsets_ang,
     reference set gives no usable per-class angle bias (the angle errors are
     small and change sign within a class).
 
+    Each symmetry-equivalent pair (and angle triple) is held separately, to
+    its own theory value, weighted 1/sqrt(n) for a name with n members, so a
+    symmetric solution scores exactly as the symmetry-averaged targets did.
+    The averaged targets alone left every antisymmetric distortion -- one
+    equivalent bond longer, the other shorter by the same amount -- to the
+    1e-4 tether: in pyrimidine and thiophene, whose rings have four such pairs,
+    the solver went along it and returned rings 96-217 mA from symmetric
+    (N1-C6 pair -86 and +131 mA from r_e at HF/6-31G) while every averaged
+    bond sat on its target, so a symmetry-averaged score could not see it.
+
     Returns Cartesians in Angstrom, shaped like ``theory_coords``.
     """
     x0 = np.asarray(theory_coords, dtype=float)
-    theory_int = mol.internal_coordinates(x0)
     classes = bond_classes_of(mol)
-    bond_names = list(mol.bonds.keys())
-    angle_names = list(mol.angles.keys())
 
-    target_bond = {n: theory_int[n] - float(offsets_ang.get(classes[n], 0.0))
-                   for n in bond_names}
+    def _length(x, i, j):
+        return float(np.linalg.norm(x[j] - x[i]))
+
+    def _angle(x, i, j, k):
+        u, v = x[i] - x[j], x[k] - x[j]
+        cos = u @ v / (np.linalg.norm(u) * np.linalg.norm(v))
+        return float(np.degrees(np.arccos(np.clip(cos, -1.0, 1.0))))
+
+    bond_terms = []      # (i, j, target length, weight)
+    for name, pairs in mol.bonds.items():
+        off = float(offsets_ang.get(classes[name], 0.0))
+        w = 1.0 / np.sqrt(len(pairs))
+        bond_terms += [(int(i), int(j), _length(x0, int(i), int(j)) - off, w)
+                       for i, j in pairs]
+    angle_terms = []     # (i, j, k, target angle, weight)
+    for name, triples in mol.angles.items():
+        w = angle_weight / np.sqrt(len(triples))
+        angle_terms += [(int(i), int(j), int(k), _angle(x0, int(i), int(j), int(k)), w)
+                        for i, j, k in triples]
 
     def residuals(flat):
         coords = flat.reshape(x0.shape)
-        got = mol.internal_coordinates(coords)
-        res = [got[n] - target_bond[n] for n in bond_names]
-        res += [angle_weight * (got[n] - theory_int[n]) for n in angle_names]
+        res = [w * (_length(coords, i, j) - t) for i, j, t, w in bond_terms]
+        res += [w * (_angle(coords, i, j, k) - t) for i, j, k, t, w in angle_terms]
         # Rigid-body tether. Weak enough not to fight the internal targets,
         # strong enough to remove the six flat directions.
         res += list(1e-4 * (coords - x0).ravel())

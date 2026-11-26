@@ -625,6 +625,21 @@ def electronic_shifted_isotopologues(isos, g_tensor, total_mass_amu):
     return out
 
 
+def bond_pair_spread_ma(mol, coords) -> float:
+    """Largest length difference (mA) between symmetry-equivalent bonds.
+
+    Zero for a structure with its reference's symmetry. The bond scores
+    (rms_bond_error) average each name's equivalent pairs, so a broken
+    structure can score well; this is the number that shows it.
+    """
+    x = np.asarray(coords, dtype=float)
+    spreads = [0.0]
+    for pairs in mol.bonds.values():
+        lengths = [float(np.linalg.norm(x[j] - x[i])) for i, j in pairs]
+        spreads.append(max(lengths) - min(lengths))
+    return 1000.0 * max(spreads)
+
+
 def residual_rms_sigma(isos, coords_ang) -> float:
     """How well does this geometry reproduce the constants, in sigma units?
 
@@ -1276,6 +1291,16 @@ def main() -> None:
                 "theory_rms_deg": rms_angle_error(mol, prior)[0],
                 "me_rms_deg": rms_angle_error(mol, me_geom)[0],
                 "hybrid_rms_deg": rms_angle_error(mol, hyb)[0],
+                # The bond scores above average each name's symmetry-equivalent
+                # pairs, so they cannot see a structure whose equivalent bonds
+                # differ. This is the largest such difference (mA) in each
+                # leg's structure; the theory geometries' own is <= 0.02.
+                # (The offsets prior once broke pyrimidine's and thiophene's
+                # rings by 96-217 mA, unseen by the scores; T-78.)
+                "bond_pair_spread_ma": {
+                    "theory": bond_pair_spread_ma(mol, prior),
+                    "me": bond_pair_spread_ma(mol, me_geom),
+                    "hybrid": bond_pair_spread_ma(mol, hyb)},
                 # The hybrid fit's chi-square rescale checks: a check near 4
                 # or 1/4 means the threshold could decide this row (N19).
                 "chi2_rescale_checks": fit_info.get("chi2_rescale_checks"),
