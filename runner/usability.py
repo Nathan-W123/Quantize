@@ -1885,6 +1885,11 @@ def generate_uncertainty_report_section(result: dict[str, Any]) -> str:
            " No prior carries any direction, so a coordinate the spectrum cannot "
            "see is reported as unidentifiable rather than given a width."),
     ])
+    if any(str(r.get("prior_dominance", "")) == "fixed by symmetry" for r in rows):
+        lines.append(
+            "- `fixed by symmetry`: the coordinate cannot change without breaking the "
+            "point group the fit imposes (a 180-degree angle, for one), so its width is "
+            "zero by construction, not a measurement.")
     chi2 = meta.get("chi2_per_observation")
     if chi2 is not None and np.isfinite(float(chi2)):
         chi2 = float(chi2)

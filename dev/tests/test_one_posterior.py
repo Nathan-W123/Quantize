@@ -190,7 +190,8 @@ def test_the_report_says_what_it_is_a_posterior_of():
     assert post["alpha_q"] > 0.0
     assert post["internal_prior_sigma"] is None      # the fit carried none
     assert all(lbl in {"data-constrained", "mixed information",
-                       "prior-dominated", "unidentifiable"} for lbl in post["labels"])
+                       "prior-dominated", "unidentifiable",
+                       "fixed by symmetry"} for lbl in post["labels"])
 
 
 def test_the_worker_returns_the_fit_s_posterior(tmp_path):

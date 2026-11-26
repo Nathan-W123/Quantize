@@ -1,6 +1,6 @@
 import numpy as np
 
-from backend.quantum import wilson_B
+from backend.quantum import wilson_B, _bond_deriv, _angle_deriv, _dihedral_deriv
 
 #: Degrees per radian. Angle and dihedral values, targets and sigmas here are
 #: in degrees; Wilson B gives their derivatives per radian.
@@ -37,6 +37,23 @@ def _internal_values(coords, labels):
         else:
             vals.append(np.nan)
     return np.asarray(vals, dtype=float)
+
+
+def _label_B_row(coords, label):
+    """Wilson B row of one 'bond i-j' / 'angle i-j-k' / 'dihedral i-j-k-l'
+    label at ``coords`` (per Angstrom; per radian for angles and dihedrals)."""
+    parts = label.split()
+    kind = parts[0].lower()
+    idx = [int(x) - 1 for x in parts[1].split("-")]
+    if kind == "bond":
+        d = _bond_deriv(coords, *idx)
+    elif kind == "angle":
+        d = _angle_deriv(coords, *idx)
+    elif kind == "dihedral":
+        d = _dihedral_deriv(coords, *idx)
+    else:
+        return np.zeros(coords.size, dtype=float)
+    return np.asarray(d, dtype=float).ravel()
 
 
 class InternalPriorEngine:
@@ -129,17 +146,15 @@ class InternalPriorEngine:
         rw = d / self.prior_sigmas
         if not want_jacobian:
             return None, rw
-        B, labels_all = wilson_B(xyz, self.elems)
-        label_to_idx = {lbl: i for i, lbl in enumerate(labels_all)}
-        rows = []
-        for i, lbl in enumerate(self.labels):
-            j = label_to_idx.get(lbl, None)
-            if j is not None:
-                rows.append(B[j])
-            else:
-                # Connectivity can change transiently in noisy optimization regions.
-                # Fall back to the initial Jacobian row so priors remain well-defined.
-                rows.append(self.B0[i])
+        # Each row from its own label's atoms at this geometry -- the same
+        # atoms the residual above reads. Rows used to be looked up in a fresh
+        # wilson_B(xyz) by label, and a label the current connectivity no
+        # longer produced (a bond stretched past the covalent cutoff) fell
+        # back to its row at the START geometry: a derivative of the wrong
+        # point while the residual was evaluated here (water O-H at 1.25 A:
+        # |Jw| 63.45 against a finite difference of 56.41, N40). Where the
+        # connectivity is unchanged the rows are the same numbers as before.
+        rows = [_label_B_row(xyz, lbl) for lbl in self.labels]
         Bk = np.asarray(rows, dtype=float)
         Jw = Bk * (self._row_unit / self.prior_sigmas)[:, None]
         return Jw, rw

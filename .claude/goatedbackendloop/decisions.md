@@ -1520,3 +1520,10 @@
 - Why: Q-167's recommended option.
 - Source: auto-picked, no answer in 15 min (Q-167)
 - Revisit if: the user picks N40 or ends the loop.
+
+### D-168 · Next after T-82: N40, straight-line angles (2026-11-26)
+- Decision: take backlog N40 as T-83: measure in scratch, fix, independent verify, report any moved rows before the README.
+- Why: Q-168's recommended option; N40 is a confirmed defect in what every report says about a 180-degree angle.
+- Source: auto-picked, no answer in 15 min (Q-168, 14:53 UTC).
+- Revisit if: the user picks another option.
+

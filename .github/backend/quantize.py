@@ -4608,6 +4608,13 @@ class MolecularOptimizer:
     #: is what the product reports).
     _DATA_FRACTION_LABELS = (0.8, 0.2)
 
+    #: A coordinate is reported as fixed by symmetry when the allowed
+    #: directions keep less than this share of its Wilson-B row's squared
+    #: length. Measured on the HF/6-31G validation fits (T-83): 1e-31 for
+    #: ketene's 180-degree C=C=O under C2v; 0.185 or more for every
+    #: coordinate the symmetry lets move (pyrimidine's ring-H angles lowest).
+    _FIXED_BY_SYMMETRY_REL = 1e-12
+
     def internal_coordinate_posterior(self):
         """The fit's posterior over its bonds, angles and dihedrals.
 
@@ -4678,6 +4685,22 @@ class MolecularOptimizer:
         q = np.asarray(cs.active_values(x), dtype=float)
         C_q = Bq @ cov_x @ Bq.T
         C_q = 0.5 * (C_q + C_q.T)
+        # A coordinate none of the allowed directions moves is fixed by the
+        # point group the fit imposes: a 180-degree angle (fluoroacetylene,
+        # ketene's C=C=O), whose bends all break the symmetry. Its width is
+        # zero by construction, not a measurement, and the data fraction has
+        # no meaning there. It used to come out as 0 or ~1e-12 from rounding
+        # and was labelled 'unidentifiable' or 'prior-dominated' depending on
+        # which (N40). Bq's rows are orthogonal to rigid motion, so only the
+        # symmetry constraint can take a row's whole length out of `basis`;
+        # an allowed coordinate keeps a sizeable share (half a bond's, in a
+        # pair of equivalent bonds).
+        pb = basis.T @ Bq.T
+        fixed = (np.einsum("ij,ij->j", pb, pb)
+                 <= self._FIXED_BY_SYMMETRY_REL * np.einsum("ij,ij->i", Bq, Bq))
+        if np.any(fixed):
+            C_q[fixed, :] = 0.0
+            C_q[:, fixed] = 0.0
         std, _info = std_err_from_covariance(
             C_q, context="internal_coordinate_posterior")
 
@@ -4688,7 +4711,11 @@ class MolecularOptimizer:
         tiny = 1e-12 * max(float(np.max(np.abs(w_p))) if w_p.size else 0.0, 1e-300)
         hi, lo = self._DATA_FRACTION_LABELS
         fractions, labels = [], []
-        for b in Bq:
+        for b, is_fixed in zip(Bq, fixed):
+            if is_fixed:
+                fractions.append(float("nan"))
+                labels.append("fixed by symmetry")
+                continue
             v_post = float(b @ cov_lap @ b)
             proj = V_p.T @ (basis.T @ b)
             nb = float(proj @ proj)
