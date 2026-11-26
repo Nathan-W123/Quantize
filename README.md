@@ -695,18 +695,20 @@ python -m cli run configs/example_water.yaml
 
 On Windows, you can instead set `orca_exe` in `BASE_SETTINGS` to your `orca.exe` path. If you do not have ORCA, either install it, point `ORCA_EXE` at it, or switch to **Psi4** (`quantum.backend: psi4` in the config and a Conda environment with `psi4` installed), or set `quantum.backend: none` for spectral-only mode.
 
-> **Known defect, not yet fixed: spectral-only Cartesian fits.** With
-> `quantum.backend: none` and `coordinate_mode: cartesian`, the `BALANCED`
-> (default) and `STRICT` presets add a prior that holds each fit near its
-> start geometry (0.04 Å per bond, 2° per angle). Its angle rows take their
-> residuals in degrees but their derivatives in radians, so the step and the
-> reported uncertainty see the angle prior 57.3 times weaker than the residuals
-> do. On the nine benchmark molecules (starts displaced from the reference) that
-> meant 58–67 rejected steps over the nine fits, no uncertainty at all for 3 of
-> them and angle widths of 38–64° for 3 others (5–7° for a fourth). The default
-> `coordinate_mode: internal` is not affected. Correcting it moves accuracy both
-> ways (autoconfig off: mean bond error 24.2 → 23.0 mÅ, mean angle error
-> 1.58 → 1.92°), so it waits for a decision.
+> **Spectral-only Cartesian fits: the start prior's angle units (fixed
+> 2026-11-26).** With `quantum.backend: none` and `coordinate_mode: cartesian`,
+> the `BALANCED` (default) and `STRICT` presets add a prior that holds each fit
+> near its start geometry (0.04 Å per bond, 2° per angle). Its angle rows took
+> their residuals in degrees but their derivatives in radians, so the step and
+> the reported uncertainty saw the angle prior 57.3 times weaker than the
+> residuals did. On the nine benchmark molecules (starts displaced 0.03 Å from
+> the reference, autoconfig off) the fix takes the rejected steps from 58 to 3
+> over the nine fits, and the angle widths from "none" for 3 fits and up to 64°
+> for others to 0.3–2.1°. Accuracy moves both ways, because the prior now holds
+> the start's angles as firmly as it says: mean bond error 24.16 → 23.00 mÅ,
+> mean angle error 1.578 → 1.922° (fluoroacetylene keeps its start's 4° bend,
+> 1.12 → 3.86°). Dihedral residuals are also wrapped to ±180° now. The default
+> `coordinate_mode: internal` was never affected.
 
 > **Free torsions in internal mode.** `coordinate_mode: internal` (the
 > default) steps in bonds and angles, and a torsion -- a methyl group's

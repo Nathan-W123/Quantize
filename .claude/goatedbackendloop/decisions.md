@@ -1461,3 +1461,10 @@
 - Source: assumption, unconfirmed
 - Revisit if: the 2025 SI's S-reduced constants with sigmas are obtained, or the user prefers the larger set.
 
+### D-159 · Fix the Cartesian internal prior's angle units (2026-11-26)
+- Decision: InternalPriorEngine scales its angle and dihedral Wilson B rows by 180/pi so each row's Jacobian is in the units of its residual and sigma (degrees), and wraps dihedral residuals to [-180, 180). Supersedes D-96 (documented, not fixed).
+- Why: the user put it first in the focus list (D-152, item 1; page item 1). Measured at HEAD (T-76, the T-39 harness): finite differences confirm the rows were 57.2958x small; the fix equals the T-39 prototype to 4.5e-11 on all 18 fits; rejections 58 -> 3 (autoconfig off), angle widths none / up to 64 deg -> 0.3-2.1 deg; accuracy both ways (bonds 24.16 -> 23.00 mA, angles 1.578 -> 1.922 deg; fluoroacetylene keeps its start's bend, 1.12 -> 3.86 deg, because the start-anchored prior now holds it at its stated 2 deg).
+- Alternatives considered: leave it (D-96); also re-tune the presets' 2-deg angle sigma (a separate calibration, not done).
+- Source: stated by user (focus item 1, D-152); the accuracy trade was on the page the user answered
+- Revisit if: the start-anchored angle prior's 2-deg sigma should be calibrated (fluoroacetylene).
+

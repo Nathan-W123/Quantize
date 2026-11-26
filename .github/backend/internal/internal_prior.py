@@ -2,6 +2,10 @@ import numpy as np
 
 from backend.quantum import wilson_B
 
+#: Degrees per radian. Angle and dihedral values, targets and sigmas here are
+#: in degrees; Wilson B gives their derivatives per radian.
+_DEG_PER_RAD = 180.0 / np.pi
+
 
 def _internal_values(coords, labels):
     coords = np.asarray(coords, dtype=float)
@@ -89,11 +93,24 @@ class InternalPriorEngine:
         self.prior_sigmas = np.maximum(np.asarray(prior_sigmas, dtype=float), 1e-12)
         if self.prior_sigmas.size != len(self.labels):
             raise ValueError("prior_sigmas length must match selected internal coordinates.")
+        kinds = [lbl.split()[0].lower() for lbl in self.labels]
+        #: Per-row factor turning Wilson B (per radian for angles and
+        #: dihedrals) into the units of the row's value and sigma (degrees).
+        self._row_unit = np.where(
+            np.isin(kinds, ("angle", "dihedral")), _DEG_PER_RAD, 1.0)
+        self._is_dihedral = np.asarray([k == "dihedral" for k in kinds], dtype=bool)
 
     def stacked(self, coords, want_jacobian: bool = True):
         """
         Returns weighted Jacobian and residual in prior space:
-        Jp = B/sigma, rp = (target - q(coords))/sigma
+        Jp = (dq/dx)/sigma, rp = (target - q(coords))/sigma
+
+        Both in the row's own units: Angstrom for a bond, degrees for an angle
+        or dihedral. Wilson B is per radian, so its angle and dihedral rows are
+        scaled by 180/pi (T-76; until then they were 57.3x too small against
+        their residuals, so the step and the reported uncertainty saw the
+        angle prior that much weaker than the acceptance test did). Dihedral
+        residuals are wrapped to [-180, 180).
 
         ``want_jacobian=False`` returns ``(None, rw)`` and skips the Wilson B
         matrix, which the residuals do not need. Callers that only want the
@@ -106,15 +123,10 @@ class InternalPriorEngine:
                     np.zeros(0, dtype=float))
         xyz = np.asarray(coords, dtype=float)
         q = _internal_values(xyz, self.labels)
-        # KNOWN DEFECT (T-39, backlog N29, not fixed): angle and dihedral
-        # values and sigmas are in degrees, so rw is dimensionless, but the
-        # Jacobian below is Wilson B (radians) over the same degree sigmas --
-        # 57.3x too small for those rows. The step, the posterior and the
-        # objective gradient see the angle prior that much weaker than the
-        # residuals (and the acceptance test) do. Fixing it moves accuracy both
-        # ways on the benchmark, so it waits for a decision. Dihedral residuals
-        # are also not wrapped to +-180.
-        rw = (self.prior_targets - q) / self.prior_sigmas
+        d = self.prior_targets - q
+        if np.any(self._is_dihedral):
+            d = np.where(self._is_dihedral, (d + 180.0) % 360.0 - 180.0, d)
+        rw = d / self.prior_sigmas
         if not want_jacobian:
             return None, rw
         B, labels_all = wilson_B(xyz, self.elems)
@@ -129,7 +141,7 @@ class InternalPriorEngine:
                 # Fall back to the initial Jacobian row so priors remain well-defined.
                 rows.append(self.B0[i])
         Bk = np.asarray(rows, dtype=float)
-        Jw = Bk / self.prior_sigmas[:, None]
+        Jw = Bk * (self._row_unit / self.prior_sigmas)[:, None]
         return Jw, rw
 
     def diagnostics(self, coords):

@@ -21,9 +21,13 @@ Request: Find more validation molecules (published equilibrium structures + isot
 - N12 · build · draft entries thiophene · after: N6 · done · handoff: t75/draft_thiophene: 2025 Table IV r_e^SE (46 iso, 2-sigma, 0.3 mA); 2025 Table II constants have NO sigmas (determinable, A/S average); 2021 S-reduced 26 species with sigmas kept as SPECIES_2021_S; paper-internal slip on [3,4-2H, 34S] defect
 - N13 · build · draft entries pyrimidine · after: N6 · done · handoff: t75/draft_pyrimidine: 16 species with sigmas, r_e^SE CCSD(T) 2-sigma (0.45 mA); checks clean
 - N9c-p · verify · independent re-read, pyrimidine · after: N13 · done · handoff: t75/verify_pyrimidine/REPORT.md: no error; one comment slip (3.7e-11 -> 3.7e-10), fixed
-- N9c-t · verify · independent re-read, thiophene · after: N12 · running
+- N9c-t · verify · independent re-read, thiophene · after: N12 · done · handoff: t75/verify_thiophene/REPORT.md: no error; bold != independent wording, fixed
 - N10 · build · wire the verified entries in as a separate validation set + tests · after: N9a, N9b, N9c-p · done for 5 (thiophene after N9c-t) · handoff: dev/validation_references.py (VALIDATION_SET, 1-sigma conversion, SO2 3 species), dev/validation_molecules/*.py + .numbers.json, benchmark scored=validation (own results file, never pooled), dev/tests/test_validation_references.py (34 pass)
 - N11 · verify · run the new molecules' benchmark rows (HF/6-31G and B3LYP/6-31G(d), base + offsets) · after: N10 · running
+- N10b · build · thiophene wired (2021 used species, D-158) · after: N9c-t · done · handoff: 39a9676; 38 validation tests pass
+- N11 note: the first runs (e60af78, five molecules) were stopped to rerun all six on one vintage after T-76; partial HF rows kept in t75/n11/partial_e60af78
+## Side task T-76 (focus item 1, run while N11 waited)
+- Fix the internal prior's angle units (N29): done in a scratch worktree, measured (t76/pre, t76/post: equals the prototype to 4.5e-11), tests dev/tests/test_internal_prior_units.py (fail without the fix), README note rewritten, D-159.
 ## Progress
 - 5 of 6 molecules wired and tested; validation runs relaunched on the committed code.
 ## Observations
