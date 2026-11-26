@@ -1890,6 +1890,11 @@ def generate_uncertainty_report_section(result: dict[str, Any]) -> str:
             "- `fixed by symmetry`: the coordinate cannot change without breaking the "
             "point group the fit imposes (a 180-degree angle, for one), so its width is "
             "zero by construction, not a measurement.")
+    if any(str(r.get("prior_dominance", "")) == "undefined at this geometry" for r in rows):
+        lines.append(
+            "- `undefined at this geometry`: the coordinate has no value here (a "
+            "dihedral through a straight-line segment), so its zero width is not a "
+            "measurement.")
     chi2 = meta.get("chi2_per_observation")
     if chi2 is not None and np.isfinite(float(chi2)):
         chi2 = float(chi2)

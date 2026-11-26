@@ -4610,9 +4610,12 @@ class MolecularOptimizer:
 
     #: A coordinate is reported as fixed by symmetry when the allowed
     #: directions keep less than this share of its Wilson-B row's squared
-    #: length. Measured on the HF/6-31G validation fits (T-83): 1e-31 for
-    #: ketene's 180-degree C=C=O under C2v; 0.185 or more for every
-    #: coordinate the symmetry lets move (pyrimidine's ring-H angles lowest).
+    #: length. Measured (T-83): at most 6e-31 for every coordinate a point
+    #: group fixes (ketene's C=C=O and HCN's 180-degree angles, BF3's
+    #: F-B-F angles under D3h, a planar molecule's dihedrals under Cs). Every
+    #: coordinate the symmetry lets move kept at least 0.167 on the HF/6-31G
+    #: validation fits and small test molecules, except an HCN start bent
+    #: 0.5 degrees and detected as C6v (6.6e-6: still far above the cut).
     _FIXED_BY_SYMMETRY_REL = 1e-12
 
     def internal_coordinate_posterior(self):
@@ -4695,9 +4698,15 @@ class MolecularOptimizer:
         # symmetry constraint can take a row's whole length out of `basis`;
         # an allowed coordinate keeps a sizeable share (half a bond's, in a
         # pair of equivalent bonds).
+        # A row of zeros is a coordinate with no value here -- a dihedral
+        # through a straight segment (_dihedral_deriv returns zeros) -- not a
+        # symmetry: without the first test it passed the second trivially and
+        # read 'fixed by symmetry' in a C1 fit (T-83 review).
         pb = basis.T @ Bq.T
-        fixed = (np.einsum("ij,ij->j", pb, pb)
-                 <= self._FIXED_BY_SYMMETRY_REL * np.einsum("ij,ij->i", Bq, Bq))
+        nb2 = np.einsum("ij,ij->i", Bq, Bq)
+        undefined = nb2 <= 1e-20 * max(float(np.max(nb2)) if nb2.size else 0.0, 1e-300)
+        fixed = ~undefined & (np.einsum("ij,ij->j", pb, pb)
+                              <= self._FIXED_BY_SYMMETRY_REL * nb2)
         if np.any(fixed):
             C_q[fixed, :] = 0.0
             C_q[:, fixed] = 0.0
@@ -4711,10 +4720,10 @@ class MolecularOptimizer:
         tiny = 1e-12 * max(float(np.max(np.abs(w_p))) if w_p.size else 0.0, 1e-300)
         hi, lo = self._DATA_FRACTION_LABELS
         fractions, labels = [], []
-        for b, is_fixed in zip(Bq, fixed):
-            if is_fixed:
+        for b, is_fixed, is_undefined in zip(Bq, fixed, undefined):
+            if is_fixed or is_undefined:
                 fractions.append(float("nan"))
-                labels.append("fixed by symmetry")
+                labels.append("fixed by symmetry" if is_fixed else "undefined at this geometry")
                 continue
             v_post = float(b @ cov_lap @ b)
             proj = V_p.T @ (basis.T @ b)

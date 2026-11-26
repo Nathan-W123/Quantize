@@ -120,3 +120,31 @@ def test_the_report_says_what_fixed_by_symmetry_means():
     other = dict(row, prior_dominance="data-constrained", std_err=0.1)
     assert "zero by construction" not in generate_uncertainty_report_section(
         {"uncertainty_rows": [other]})
+
+
+def test_a_dihedral_through_a_straight_line_is_undefined_not_fixed():
+    # H-C#C-F: its one dihedral has no value at a linear geometry, and its
+    # Wilson-B row is zero. That passed the symmetry test trivially and read
+    # 'fixed by symmetry' even in a C1 fit (T-83 review).
+    from backend.spectral.centrifugal_distortion import rotational_constants_mhz
+    m = {"H": 1.00782503207, "D": 2.0141017778, "C": 12.0, "F": 18.99840322}
+    elems = ["H", "C", "C", "F"]
+    ref = np.array([[0.0, 0.0, z] for z in (-2.255, -1.198, 0.0, 1.279)])
+    isos = []
+    for name, sub in [("HCCF", {}), ("DCCF", {0: "D"})]:
+        masses = [m[e] for e in elems]
+        for i, el in sub.items():
+            masses[i] = m[el]
+        isos.append({"name": name, "masses": masses, "component_indices": [1],
+                     "obs_constants": [float(rotational_constants_mhz(ref, masses)[1])],
+                     "sigma_constants": [0.05]})
+    with contextlib.redirect_stdout(io.StringIO()):
+        opt = MolecularOptimizer(elems=elems, coords=ref * 1.002, isotopologues=isos,
+                                 quantum_backend=None, spectral_only=True,
+                                 use_autoconfig=False, max_iter=0, symmetry="C1",
+                                 ic_use_dihedrals=True)
+        opt.run()
+        post = opt.internal_coordinate_posterior()
+    labels = dict(zip(post["names"], post["labels"]))
+    assert labels["dihedral 1-2-3-4"] == "undefined at this geometry"
+    assert "fixed by symmetry" not in post["labels"]
