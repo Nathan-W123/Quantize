@@ -44,6 +44,13 @@ Request: Find more validation molecules (published equilibrium structures + isot
 - pyrimidine's offsets fit showed |z| up to 24: the offsets prior itself was broken -- equivalent bonds 96-217 mA apart (N1-C6 pair -86 / +131 mA vs r_e at HF), every averaged bond on target, so the averaged scores (5-6 mA) hid it. Only rings (pyrimidine, thiophene) at both levels; every other molecule's prior equivalent bonds agree to <= 0.02 mA.
 - Fix 0f28ca9 (D-160): each pair and triple held separately, 1/sqrt(n) weights; rings symmetric; nine benchmark priors move <= 0.0015 mA (t78/compare.py). Rows now carry bond_pair_spread_ma. Tests fail on the old code. L-29.
 - The validation runs were stopped (HF done at 8bb625b, B3LYP mid-pyrimidine), old results archived in t75/n11/pre_t78, both relaunched at 0f28ca9 (Hessians cached). The T-77 pyrimidine/thiophene offsets coverage rows predate the fix; base rows stand (pyrimidine bond |z| rms 0.74, angles 1.49; thiophene base bond |z| rms 2.21, max 3.26 -- HF/6-31G thiophene's widths are too narrow by ~2x, S1-C2 theory error +80 mA).
+## N11 results at d711d99 (ring offsets D-160 + symmetric ME D-161), bonds mA vs r_e^SE, theory / ME / hybrid
+- HF base: H2CO 14.15 / 0.27 / 0.75; H2CS 24.67 / 0.67 / 0.22; ketene 7.36 / 3.97 / 3.80; SO2 123.84 / 0.59 / 0.86 (FF suspect); pyrimidine 8.84 / 8.15 / 6.79; thiophene 38.85 / 20.83 / 15.09.
+- HF offsets: H2CO 5.88 / 0.45 / 1.48; H2CS 23.21 / 0.39 / 0.21; ketene 3.12 / 1.74 / 1.13; SO2 123.84 / 0.49 / 0.59; pyrimidine 12.88 / 5.25 / 4.68; thiophene 40.10 / 22.15 / 12.27.
+- HF: hybrid beats theory 12/12, ME 8/12 (ME ahead on H2CO and SO2). Symmetric ME moved SO2 4.18 -> 0.59 and pyrimidine offsets 3.45 -> 5.25. Every structure's bond_pair_spread_ma at the theory's own (<= 0.013 mA).
+- B3LYP so far (base / offsets): H2CO 7.02 / 3.70 / 2.57, 5.42 / 4.70 / 3.60; H2CS 8.34 / 2.85 / 2.47, 6.67 / 2.25 / 1.17; ketene 7.70 / 4.71 / 4.68, 2.15 / 2.88 / 1.57; SO2 32.85 / 0.42 / 0.52, 32.85 / 0.38 / 0.41. Pyrimidine, thiophene running.
+- D-161 verified: the committed ME equals the study's 'sym' variant on all 18 nine-molecule HF rows (diff 0.0000). CI at d711d99: 1861 passed, 13 skipped.
+- Thin-data study archived (scripts/archive/validation_thin_data.py, a86826b/6679d00), rerunning at 6679d00 (t80/).
 ## Progress
 - 5 of 6 molecules wired and tested; validation runs relaunched on the committed code.
 ## Observations
