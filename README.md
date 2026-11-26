@@ -170,6 +170,65 @@ three on all four at B3LYP; at RHF mixed estimation is ahead on three.
 > Results are archived in
 > [`reports/accuracy_upgrades/`](reports/accuracy_upgrades/).
 
+### Validation set: six molecules nothing was tuned on
+
+Every default above was tuned on the nine benchmark molecules, so their rows
+partly score the tuning. Six more molecules, each with a semi-experimental
+equilibrium structure (r_e^SE, bond uncertainty at most 0.35 mÅ at 1σ), are
+held out of every calibration and of the offsets pool
+([`dev/validation_references.py`](dev/validation_references.py); sources and
+transcription checks in [`dev/validation_molecules/`](dev/validation_molecules/)).
+They are scored in a results file of their own
+(`scripts/accuracy_upgrades_benchmark.py scored=validation`). Bond RMS error
+against r_e^SE in mÅ, code vintage d711d99; the best of the three in bold:
+
+| Molecule (species) | RHF base: theory | ME | hybrid | RHF offsets: theory | ME | hybrid |
+|---|---:|---:|---:|---:|---:|---:|
+| formaldehyde (6) | 14.15 | **0.27** | 0.75 | 5.88 | **0.45** | 1.48 |
+| thioformaldehyde (8) | 24.67 | 0.67 | **0.22** | 23.21 | 0.39 | **0.21** |
+| ketene (16) | 7.36 | 3.97 | **3.80** | 3.12 | 1.74 | **1.13** |
+| sulfur dioxide (3) † | 123.84 | **0.59** | 0.86 | 123.84 | **0.49** | 0.59 |
+| pyrimidine (16) | 8.84 | 8.15 | **6.79** | 12.88 | 5.25 | **4.68** |
+| thiophene (24) | 38.85 | 20.83 | **15.09** | 40.10 | 22.15 | **12.27** |
+
+| Molecule | B3LYP base: theory | ME | hybrid | B3LYP offsets: theory | ME | hybrid |
+|---|---:|---:|---:|---:|---:|---:|
+| formaldehyde | 7.02 | 3.70 | **2.57** | 5.42 | 4.70 | **3.60** |
+| thioformaldehyde | 8.34 | 2.85 | **2.47** | 6.67 | 2.25 | **1.17** |
+| ketene | 7.70 | 4.71 | **4.68** | 2.15 | 2.88 | **1.57** |
+| sulfur dioxide | 32.85 | **0.42** | 0.52 | 32.85 | **0.38** | 0.41 |
+
+† RHF's force field is flagged for SO2 (the multireference diagnostic fires).
+Pyrimidine and thiophene at B3LYP are still running.
+
+The hybrid beats theory alone on all 20 rows and mixed estimation on 14:
+mixed estimation is ahead on formaldehyde at RHF and on sulfur dioxide at both
+levels. Two things to know when reading the offsets columns. At RHF the pool's
+C–N offset comes from isocyanic acid's and hydrogen cyanide's multiple bonds,
+so it lengthens pyrimidine's aromatic C–N bonds by 23 mÅ and makes the theory
+row worse (8.84 → 12.88); the offsets ignore bond order (backlog N41). And
+thiophene's S–C bond has no offsets class at all: at RHF/6-31G (no d functions
+on sulfur) it starts 80 mÅ long.
+
+**When the data cannot pin the structure down.** Cut to one to three
+isotopologues each (fewer independent constants than structural parameters,
+as chlorofluoromethane's two chlorine species are), the hybrid still moves the
+bonds toward r_e^SE on 9 of 10 RHF rows (formaldehyde 14.15 → 8.57 mÅ from the
+parent alone; ketene's offsets row, 3.12 → 3.71, is the exception), but with
+one species part of the correction goes into the angles (formaldehyde
+0.15 → 1.48°). Its reported widths grow (median 3.6–3.9× for formaldehyde and
+thioformaldehyde from the parent alone, 1.1–1.8× for the others) and the
+labels move from "data-constrained" to "mixed information"; on the four small
+molecules the
+errors stay within 1.9 of the reported 1σ widths (within 0.9 with every
+species). On the two rings the widths are too narrow with every species as
+with three, so the cause is not the data: pyrimidine's ring angles miss by
+1.5–2.0° at 0.25–0.34° widths in the offsets configuration, whose narrowed
+prior covers angles the offsets never correct, and thiophene's S–C and C–C
+bonds end 17–31 mÅ off at 5–8 mÅ widths (backlog N42)
+([`scripts/archive/validation_thin_data.py`](scripts/archive/validation_thin_data.py),
+code vintage 6679d00).
+
 Held-out prediction needs no reference structure at all. Fitted to every
 isotopologue but one, the hybrid predicts the withheld species' rotational
 constants better than theory alone on 5 of 5 molecules at B3LYP/6-31G(d), by a
