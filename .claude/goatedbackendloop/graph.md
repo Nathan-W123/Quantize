@@ -12,6 +12,9 @@ the decisions record; tasks before T-01 live in git history only.
 - C:benchmark · accuracy-upgrades benchmark and archived rows · scripts/accuracy_upgrades_benchmark.py, reports/accuracy_upgrades/, scripts/archive_benchmark_results.py
 - C:cli-config · CLI, config validation and builder · .github/runner/
 - C:readme · results tables and claims · README.md
+- C:uncertainty · Laplace posterior, Gauss-Newton check and exact-curvature correction, bootstrap and gate · quantize.py (laplace_approximation, gauss_newton_*, _exact_curvature_correction, distance_to_mode), .github/backend/uncertainty_v2/
+- C:multistart · starts, shared dihedral choice, per-start Hessian refresh, selection · .github/backend/multistart.py, runner/run_generic.py
+- C:internal-coords · internal-coordinate step, dihedral auto, reach rule · quantize.py (_resolve_ic_dihedrals, ic_reach_warnings), .github/backend/internal/
 
 ## Tasks
 - T-01 · N13: regenerate the benchmark results tables (best-of and base) · 2026-11-19 · done
@@ -28,6 +31,13 @@ the decisions record; tasks before T-01 live in git history only.
 - T-12 · chi2-rescale fragility count: 1 of 36 base / offsets rows (HF HNCO offsets); tightening side inert at the floor · 2026-11-20 · done
 - T-13 · chi2-threshold count on the other configurations: of 234 rows run, only HF HNCO's offsets-family fit (6 rows) flips, at 3.0; best-of 5.34 -> 5.93 · 2026-11-20 · done
 - T-14 · fluoroacetylene's tracked fits: Watson-term absolute I_a cut vs the module's linearity test; fixed, 3 RHF rows 19.16 -> 13.64 / 4.96 -> 4.36 / 19.17 -> 13.64 · 2026-11-20 · done
+
+- (T-15 to T-70 are not folded in; see decisions D-51 to D-144 and git history)
+- T-71 · exact curvature where Gauss-Newton is flagged, in step and report · 2026-11-23 · done
+- T-72 · Hessian refresh in quantize run; dihedrals auto default; multistart dihedrals; option removed; review fixes · 2026-11-23 · done
+- T-73 · ratio test on the corrected model (scratch): inert · 2026-11-23 · done
+- T-74 · profile the curvature check (scratch): 0.3-4% of a fit · 2026-11-23 · done
+- T-75 · find more validation molecules · 2026-11-26 · running
 
 ## Edges
 - C:quantum-prior --depends-on--> C:joint-optimizer · 2026-11-20
@@ -110,3 +120,21 @@ the decisions record; tasks before T-01 live in git history only.
 - T-14 --taught--> L-P04 · 2026-11-20
 - T-14 --taught--> L-06 · 2026-11-20
 - T-14 --taught--> L-10 · 2026-11-20
+- T-71 --touched--> C:uncertainty · 2026-11-23
+- T-71 --touched--> C:joint-optimizer · 2026-11-23
+- T-71 --decided--> D-145 · 2026-11-23
+- D-145 --governs--> C:uncertainty · 2026-11-23
+- T-71 --taught--> L-25 · 2026-11-23
+- T-72 --decided--> D-146 · 2026-11-23
+- T-72 --decided--> D-147 · 2026-11-23
+- T-72 --decided--> D-148 · 2026-11-23
+- T-72 --decided--> D-149 · 2026-11-23
+- D-146 --governs--> C:multistart · 2026-11-23
+- D-147 --governs--> C:internal-coords · 2026-11-23
+- D-148 --governs--> C:multistart · 2026-11-23
+- T-72 --touched--> C:cli-config · 2026-11-23
+- T-73 --decided--> D-150 · 2026-11-23
+- T-74 --decided--> D-151 · 2026-11-23
+- T-74 --taught--> L-27 · 2026-11-23
+- T-75 --decided--> D-152 · 2026-11-26
+- T-75 --touched--> C:references · 2026-11-26

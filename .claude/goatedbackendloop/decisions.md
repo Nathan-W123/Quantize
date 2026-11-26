@@ -1411,3 +1411,10 @@
 - Source: auto-picked, no answer in 15 min (Q-103)
 - Revisit if: the check is under 1% of a fit (nothing to save), or a saving needs a non-identical change (then it is the user's call).
 - Outcome (T-74, t74/profile.json): profiled, the check is 0.3-2.2% of a benchmark molecule's fit (chlorofluoromethane 0.3%, acetyl fluoride 0.4%, vinyl fluoride 1.1%, ozone 1.8%, formyl fluoride 2.2%) and 4.0-4.1% of the dimer's; of it, finite-difference residuals ~65-75%, the spectral Jacobian inside _posterior_blocks ~15-20%, the physical basis ~0. Reusing the step's own Jacobian (the only bit-identical reuse) would save 0.01-0.02 s per fit, under 1% of the dimer's and 0.3% elsewhere: not worth the code, not proposed. Correction to T-71: its +0.1% to +5% wall differences where the correction does not act are mostly not the check (chlorofluoromethane +4.3% against a 0.3% check); I had named the check as their cause without measuring it (L-27). Cause of the rest not measured; T-71 ran 'on' first in every pair.
+
+### D-152 · Focus on the four accuracy items, validation molecules first (2026-11-26)
+- Decision: answer to Q-104. Work items 1-4 of the production list in turn: (1) the Cartesian internal-prior angle-unit bug (page item 1, N29); (2) more validation molecules with true equilibrium structures, then a results-table rebuild; (3) molecules the data cannot pin down (N16); (4) the open defaults (page items 3, 5, 7). First task: find more validation molecules (T-75).
+- Why: the user, "We should focus on 1-4 ... can we find more validation molecules".
+- Alternatives considered: packaging, backend CI, scaling, user guide (items 5-9), left for later.
+- Source: stated by user
+- Revisit if: the user reorders.
