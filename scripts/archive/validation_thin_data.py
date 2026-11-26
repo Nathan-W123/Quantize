@@ -85,8 +85,9 @@ def main(argv=None):
         "accbench_thin", str(_ROOT / "scripts" / "accuracy_upgrades_benchmark.py"))
     bench = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(bench)
-    import dev.validation_references as val
     from backend.internal.internal_fit import InternalCoordinateSet
+
+    import dev.validation_references as val
 
     def chosen():
         out = []
@@ -144,6 +145,10 @@ def main(argv=None):
         return coords
 
     bench.hybrid_fit = recorded_fit
+    # The commit, read from the repository before _ROOT moves to the scratch
+    # copy (code_vintage asks git about _ROOT).
+    vintage = bench.code_vintage()
+    bench.code_vintage = lambda: vintage
     bench._ROOT = scratch
     bench.HESSIAN_CACHE_DIR = scratch / "output" / "hessian_cache"
     bench.scored_molecules = lambda scored_set=None: chosen()
