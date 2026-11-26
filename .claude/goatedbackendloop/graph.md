@@ -38,6 +38,9 @@ the decisions record; tasks before T-01 live in git history only.
 - T-73 · ratio test on the corrected model (scratch): inert · 2026-11-23 · done
 - T-74 · profile the curvature check (scratch): 0.3-4% of a fit · 2026-11-23 · done
 - T-75 · find more validation molecules · 2026-11-26 · running
+- T-76 · Cartesian internal prior angle units (focus item 1) · 2026-11-26 · done
+- T-77 · molecules the data cannot pin down: sparse sets + width coverage (focus item 3) · 2026-11-26 · done
+- T-78 · offsets prior broke ring symmetry; fixed, spread recorded per row · 2026-11-26 · done
 
 ## Edges
 - C:quantum-prior --depends-on--> C:joint-optimizer · 2026-11-20
@@ -138,3 +141,14 @@ the decisions record; tasks before T-01 live in git history only.
 - T-74 --taught--> L-27 · 2026-11-23
 - T-75 --decided--> D-152 · 2026-11-26
 - T-75 --touched--> C:references · 2026-11-26
+- T-76 --decided--> D-159 · 2026-11-26
+- T-76 --touched--> C:internal-coords · 2026-11-26
+- T-77 --touched--> C:uncertainty · 2026-11-26
+- T-77 --touched--> C:references · 2026-11-26
+- T-77 --found--> T-78 · 2026-11-26
+- T-78 --decided--> D-160 · 2026-11-26
+- T-78 --touched--> C:bond-offsets · 2026-11-26
+- T-78 --touched--> C:benchmark · 2026-11-26
+- T-78 --taught--> L-29 · 2026-11-26
+- T-75 --taught--> L-30 · 2026-11-26
+- D-160 --governs--> C:bond-offsets · 2026-11-26

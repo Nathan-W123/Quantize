@@ -1468,3 +1468,10 @@
 - Source: stated by user (focus item 1, D-152); the accuracy trade was on the page the user answered
 - Revisit if: the start-anchored angle prior's 2-deg sigma should be calibrated (fluoroacetylene).
 
+
+### D-160 · The offsets prior holds each equivalent bond and angle separately (2026-11-26)
+- Decision: offset_corrected_geometry targets every symmetry-equivalent pair (and angle triple) at its own theory value minus the class offset, weighted 1/sqrt(n) per name, instead of the name's average; benchmark rows record bond_pair_spread_ma (largest difference between equivalent bonds) for theory, mixed estimation and hybrid.
+- Why: found by the T-77 width-coverage check (|z| up to 24 on pyrimidine's offsets fit). The averaged targets left antisymmetric distortions to the 1e-4 tether, and on pyrimidine and thiophene (four equivalent pairs) the offsets prior came back 96-217 mA from symmetric while every averaged bond sat on target; the averaged score (5-6 mA) hid it. Measured (t78/compare.py): rings symmetric to the theory's own 0.003-0.013 mA; the nine benchmark molecules' priors move <= 0.0015 mA and the other four validation molecules' <= 0.0005, so no published row changes. A ring cannot take unequal class offsets with its angles held, so ring bonds now take 44-68% of their offsets and angles move <= 0.74 deg (the old code took 100% by breaking the ring).
+- Alternatives considered: guard only (refuse a broken prior, keep the builder); impose the theory's symmetry after the solve; score per pair instead of averaged (changes every row's convention).
+- Source: assumption (defect fix inside the validation work; no published number moves), unconfirmed
+- Revisit if: ring offsets should be taken in full (would need the angle terms to give way, a calibration question), or the scores should move to per-pair.

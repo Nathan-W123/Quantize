@@ -109,3 +109,19 @@ once by a container swap).
 - Scope: project
 - Status: provisional
 - Outcomes: +2026-11-23 (T-71: the real implementation reproduced the prototype's dimer answers bit for bit in both modes, and every benchmark answer the dihedral default leaves alone)
+
+### L-29 · A symmetry-averaged score cannot see a broken structure; check the pairs too
+- Observation: the benchmark scores each named bond as the mean of its equivalent pairs, so a ring with one N1-C6 bond 86 mA short and its partner 131 mA long scored 5-6 mA; only a per-coordinate check (the reported widths against the reference, T-77) exposed it.
+- Evidence: 2026-11-26 · T-77/T-78: pyrimidine and thiophene offsets priors 96-217 mA from symmetric at both levels, unseen by every row since the molecules were added.
+- Adjustment: wherever a score averages over equivalent members, record the spread across them beside it (bond_pair_spread_ma), and when a new kind of molecule (rings, several equivalent pairs) joins a benchmark, look at one structure per pair before trusting its averaged rows.
+- Scope: project
+- Status: provisional
+- Outcomes:
+
+### L-30 · An import that reads argv needs a fresh-import test
+- Observation: scripts/monofluoro_benchmark.py parses set= from sys.argv at import, which broke the new set= flag; the first test passed only because an earlier test had already imported that module.
+- Evidence: 2026-11-26 · T-75 (renamed to scored=; the new test deletes scripts.* from sys.modules first).
+- Adjustment: when a flag's test depends on module-level argv parsing anywhere in the import chain, clear those modules from sys.modules in the test.
+- Scope: project
+- Status: provisional
+- Outcomes:
