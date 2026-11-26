@@ -70,7 +70,7 @@ Sessions: 0 · Last consolidated: 2026-11-20
 - Evidence: 2026-11-21 · T-19: 7-14% reported; re-timed with exactly the change, 0% (formyl fluoride) and 4.5% (fluoroethane, repeats 4%). The wrong figure had already reached a gate question.
 - Adjustment: before quoting a time as a cost, read what the timed code does per call; time the exact change with nothing recording inside the loop, alternating with the baseline, at least two runs each, and state the repeats' spread beside it.
 - Scope: workflow · Status: provisional · Outcomes: -
-- Outcomes: +2026-11-23 (T-69: bit-identical fits varied 10-20% between sequential runs, so a cost under that is noise)
+- Outcomes: +2026-11-23 (T-69: bit-identical fits varied 10-20% between sequential runs, so a cost under that is noise) +2026-11-26 (T-83, T-84: verifiers handed the success criteria and their own experiments found 1 and 3 real defects, each with a repro)
 
 ### L-12 · Date a change from the full history, not a shallow clone
 - Observation: `git log --follow` in a shallow clone showed a default flipping at a grafted root commit; the real change was a day earlier on GitHub.
@@ -120,3 +120,4 @@ Sessions: 0 · Last consolidated: 2026-11-20
 - 2026-11-21 L-10 outcome + (T-24); project L-18 outcome -.
 - 2026-11-26 L-14 added (tracked wait during untracked jobs; container restart in T-79).
 - 2026-11-26 L-15 added (shared inputs across parallel variants); L-14 outcome + (T-82).
+- 2026-11-26 L-10 outcome + (T-83, T-84).

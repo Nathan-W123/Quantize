@@ -90,6 +90,7 @@ Request: Find more validation molecules (published equilibrium structures + isot
 ## Progress
 - 5 of 6 molecules wired and tested; validation runs relaunched on the committed code.
 ## Observations
+- T-84: second verify in a row found real defects (3), including one a test of mine passed on both versions (summation order): a guard test is not a failing test; say which a test is.
 - T-83: the independent verify found the one real defect (zero rows read 'fixed by symmetry' in C1) with a repro; my own tests had only straight-line angles. Giving the verifier the success criterion 'nothing fixed without a point group' is what it broke.
 - T-83: I again wrote 'measured' figures into a code comment before measuring them (L-32 outcome -).
 - T-82: the cause told to the user (stiff directions) was stated before it was sized; sized, it explains x1.3 of an effect that runs past x3 (L-32). Corrected on the page and in the next message.
@@ -102,7 +103,6 @@ Request: Find more validation molecules (published equilibrium structures + isot
 - Nine published molecules, HF/6-31G (t79/me_sym.py, three ME variants at every ME call of main(); out/me_hf_6-31g_benchmark_all.final.json): chlorofluoromethane ME C-H pair 964 mA apart, averaged score base 31.38 / offsets 4.26 mA; symmetry imposed 26.00 / 6.03 (the README's 'ME beats the hybrid on chlorofluoromethane, 4.26 against 5.43' rests on the broken structure). Fluoroethane spread 63-67 mA: base 12.66 -> 11.28, offsets 8.24 -> 9.07. Acetyl fluoride spread 8-17 mA, scores within 0.02. Water, ozone, vinyl fluoride, formyl fluoride, fluoroacetylene, HNCO unchanged. Soft (per-pair, D-160 recipe) equals sym except fluoroethane base (12.00, spread 7 mA).
 - The container restarted at 05:14 UTC and stopped the B3LYP validation run (cache kept, 155 B3LYP Hessians) and the B3LYP ME study; both relaunched on the D-161 commit with the HF validation run (its 0f28ca9 rows archived in t75/n11/pre_d161).
 ## Pending question
-- None. Q-169 auto-picked at 15:39 UTC (D-169).
-- (was) Q-169 (asked 15:24 UTC, deadline 15:39 UTC, wake-up trig_012t9VS3am6A1roDQgY4tVVc): what's next after T-83? 1 finish N40 for no-symmetry fits: report both bends of a near-linear angle (Recommended) · 2 N38 config key + N39 measured and proposed (N39 costs a Hessian per start: a flagged trade) · 3 decide page items 13 / 14 / 8 (user only) · 4 Done for now.
+- Q-170 (asked 16:3x UTC, no deadline: no option is Recommended, so nothing is auto-picked): what's next after T-84? 1 decide page items 13 / 14 / 8 (user only) · 2 N38 config key + N39 measured and proposed · 3 N43 near-linear molecules: symmetry detection and rigid-mode count, measured and proposed · 4 Done for now. Background follow-up continues regardless: thiophene B3LYP (672) -> item 13 check + README ring rows.
 
 ## Handoff

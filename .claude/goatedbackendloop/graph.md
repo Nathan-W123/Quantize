@@ -178,4 +178,9 @@ the decisions record; tasks before T-01 live in git history only.
 - T-83 --touched--> C:internal-coords · 2026-11-26 (structural prior rows at the current geometry)
 - T-83 --closed-part--> N40 · 2026-11-26
 - T-83 --found--> N43 · 2026-11-26
+- T-84 --decided--> D-169 · 2026-11-26
+- T-84 --touched--> C:uncertainty · 2026-11-26 (posterior bend rows; identifiability export guard)
+- T-84 --touched--> C:cli-config · 2026-11-26 (multistart between-start comparison skips bend rows)
+- T-84 --closed-part--> N40 · 2026-11-26
+- T-84 --extended--> N43 · 2026-11-26
 
