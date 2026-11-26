@@ -1439,3 +1439,10 @@
 - Alternatives considered: compare at 2-sigma (ketene fails the bar); include all 19 SO2 species.
 - Source: assumption, unconfirmed
 - Revisit if: the user prefers 2-sigma, or more SO2 species are needed to locate O.
+
+### D-156 · Keep the module's 18O mass for the validation entries (2026-11-26)
+- Decision: the validation entries use dev/monofluoro_references.py's M_O18 = 17.9991610 u, 1.39e-6 u above NIST's 17.99915961286; noted in the new module.
+- Why: it moves 18O species' constants by ~3.5e-8 relative (H2C18O B 0.0012 MHz), against fit sigmas floored at 0.5-1% model error (hundreds of MHz); updating the shared constant would change existing benchmark rows for no measurable gain. Both verifiers (T-75 N9a, N9b) found it and nothing else.
+- Alternatives considered: update M_O18 everywhere (changes archived rows at ~1e-6 mA); a separate NIST value for new entries only (two masses for one isotope).
+- Source: assumption, unconfirmed
+- Revisit if: a fit ever weights 18O constants at their measurement sigma.

@@ -17,7 +17,7 @@ Request: Find more validation molecules (published equilibrium structures + isot
 - N7 · build · draft entries (scratch only) H2CO + H2CS · after: N5 · done · handoff: t75/draft_h2co_h2cs/REPORT.md: H2CO 6 species (HDCO, D2CO without sigma), H2CS 8 with sigma; checks clean
 - N8 · build · draft entries (scratch only) ketene + SO2 · after: N5 · done · handoff: t75/draft_ketene_so2/REPORT.md: ketene 16 iso, SO2 3 with sigmas + 16 without; checks clean; doubts on sigma levels
 - N9a · verify · independent re-read, ketene + SO2 · after: N8 · done · handoff: t75/verify_ketene_so2/REPORT.md: every number matches; module M_O18 is 1.4e-6 u above NIST (3.5e-8 relative on 18O species, below the 0.5% model error: keep the module value); one docstring wording slip
-- N9b · verify · independent re-read, H2CO + H2CS · after: N7 · running
+- N9b · verify · independent re-read, H2CO + H2CS · after: N7 · done · handoff: t75/verify_h2co_h2cs/REPORT.md: every number matches; M_O18 again (D-156)
 - N12 · build · draft entries thiophene · after: N6 · running
 - N13 · build · draft entries pyrimidine · after: N6 · running
 - N9c · verify · independent re-read, thiophene + pyrimidine · after: N12, N13 · pending
