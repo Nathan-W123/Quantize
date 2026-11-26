@@ -84,6 +84,14 @@ Sessions: 0 · Last consolidated: 2026-11-20
 - Adjustment: before writing a figure into prose, compute it by script from the data files, for the configuration the reader will run, and name the population it covers (which fits, which coordinates, weight or sigma).
 - Scope: workflow · Status: provisional · Outcomes: -2026-11-22 (T-33: figures were computed by script, but the conclusion still outran them twice; the fact-checker caught it -- the lesson covers numbers, not the claim they are used for)
 
+### L-14 · In a cloud session, keep a tracked wait running while untracked jobs run
+- Observation: long jobs started with nohup survive between turns only while the session counts as active; with nothing harness-tracked running, an idle wait on a question let the container be reclaimed and restarted, stopping a 2-hour B3LYP run and a study mid-way.
+- Evidence: 2026-11-26 · T-79: uptime 2 min at 05:16 after a 15-minute question wait with no tracked task; earlier multi-hour waits with a run_in_background until-loop survived.
+- Adjustment: whenever untracked long jobs are running and the turn ends, have a run_in_background until-loop (harness timeout set) watching them, and re-arm it before it times out; keep expensive results in an on-disk cache so a restart costs only the job in flight.
+- Scope: general (cloud sessions)
+- Status: provisional
+- Outcomes:
+
 ## Retired
 ## Changelog
 - 2026-11-12 created; L-01 added.
@@ -104,3 +112,4 @@ Sessions: 0 · Last consolidated: 2026-11-20
 - 2026-11-21 L-12 added (shallow-clone history); L-10 outcome + (T-21); project L-22 added.
 - 2026-11-21 L-04 outcome + (T-22).
 - 2026-11-21 L-10 outcome + (T-24); project L-18 outcome -.
+- 2026-11-26 L-14 added (tracked wait during untracked jobs; container restart in T-79).
