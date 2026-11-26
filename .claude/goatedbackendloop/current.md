@@ -11,10 +11,11 @@ Request: Find more validation molecules (published equilibrium structures + isot
 - N1 · plan · inventory + criteria · after: none · done · handoff: 4 scored r_e (water, ozone, VF, CH2ClF) + 3 calibration-only (CH3Cl, HCN, H2O2); bar 0.5 mA
 - N2 · explore · search: fluorine/halogen small molecules · after: N1 · running
 - N3 · explore · search: classic small polyatomics with dipoles · after: N1 · done · handoff: t75/n3/REPORT.md: H2CS, ketene, H2CO, SO2, HNCO (B,C only), HNO, H2CCS; key open source Penocchio et al. Can J Chem 2016
-- N4 · explore · search: larger semirigid organics (<= 12 atoms) · after: N1 · running
+- N4 · explore · search: larger semirigid organics (<= 12 atoms) · after: N1 · done · handoff: t75/n4/REPORT.md: pyrimidine, thiophene, thiazole, ketene, pyridazine, pyridine, oxirane, acrolein, formic acid, triazole; McMahon/Woods 2-sigma papers + Piccardo 2015 SI
 - N5 · merge · rank, dedupe, spot-check two sources per tier · after: N2, N3, N4 · pending
 - N6 · gate · user picks which to wire in · after: N5 · pending
 ## Progress
 ## Observations
+- Spot-checks (N5, own downloads in t75/dl/): pyrimidine Table IV r_e^SE(CCSD(T)) C2-N1 1.33333(38) A (2-sigma) matches N4; H2CS Table 7 r_e^SE(CCSD(T)) CS 160.909(1), CH 108.531(2) pm matches N3. Same table: r_e^SE with B3LYP corrections gives CS 160.975, 0.66 mA longer -> least-squares sigmas understate the real (correction-model) uncertainty; rank by method spread too.
 ## Pending question
 ## Handoff
