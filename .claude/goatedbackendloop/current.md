@@ -32,6 +32,14 @@ Request: Find more validation molecules (published equilibrium structures + isot
 - Brief: cut each validation molecule to a few isotopologues so its constants leave structure directions undetermined (as CH2ClF's two Cl species do), score with the benchmark's own machinery against the r_e^SE, and compare hybrid / mixed estimation / theory with the full-data rows. Measurement only (scratch t77/sparse.py, own root and cache copies, no lock contention); a remedy is proposed only if the evidence supports one.
 - Sets: H2CO, H2CS parent only; ketene parent + [18O]; pyrimidine parent + [1-15N] + [2-13C]; thiophene parent + [34S] + [2-13C]; SO2 left out (parent alone determines it).
 - First HF rows (vs full data): H2CO hybrid 8.57 (base) / 3.13 (offsets) mA vs theory 14.15 / 5.88; H2CS 6.89 / 1.90 vs 24.67 / 23.21; ketene 5.37 / 3.71 vs 7.36 / 3.12 (offsets hybrid worse than theory). Mixed estimation leaves the bonds at theory with one species: its predicates keep bonds tighter than angles, so it fits the constants through the H-C-O angle (checked, t77/me_debug.py; not a guard).
+- HF results (all 10 rows, 8bb625b; t77/out/sparse_hf_6-31g.json), bonds mA vs r_e^SE (angles deg), theory / ME / hybrid:
+  H2CO base 14.15 / 14.15 / 8.57 (angles 0.15 / 0.15 / 1.48), offsets 5.88 / 5.88 / 3.13 (0.15 / 0.15 / 0.29);
+  H2CS base 24.67 / 24.67 / 6.89 (0.13 / 0.13 / 1.47), offsets 23.21 / 23.21 / 1.90 (0.13 / 0.13 / 0.50);
+  ketene base 7.36 / 7.22 / 5.37 (1.19 / 1.19 / 0.03), offsets 3.12 / 3.11 / 3.71 (1.19 / 1.19 / 0.82);
+  pyrimidine base 8.84 / 8.82 / 8.62, offsets 13.13 / 11.56 / 5.01 (full data: 6.04, ME 5.17);
+  thiophene base 38.85 / 35.08 / 20.41, offsets 39.08 / 30.08 / 13.38 (full data: 15.09 / 12.97).
+- Reading: with too few species the hybrid still moves bonds toward r_e in 9 of 10 rows (ketene offsets 3.12 -> 3.71 is the exception); with one species it puts part of the correction into the angles (H2CO base 0.15 -> 1.48 deg). Mixed estimation stays at theory (one species) or barely moves.
+- Coverage (t77/coverage.py: the fit's own internal_coordinate_posterior vs the r_e^SE error; t77/out/coverage_*_small.json): thin-data widths are 2-5x the full-data ones (H2CO C-H 10.0 vs 2.4 mA, angles 0.9-1.8 vs 0.2-0.4 deg) and cover the errors: bond |z| rms 0.24-1.28, angle 0.02-1.89, max 1.89 (ketene offsets angle); full data |z| <= 0.80 everywhere. Labels move from 'data-constrained' (full) to 'mixed information' (thin). So the engine says when the data cannot fix a coordinate; no remedy is called for by this evidence. One defect: ketene's linear C-C-O is quoted with width 0 (added to N40). Pyrimidine and thiophene coverage running (cov_sparse_big.log, cov_full_big.log).
 ## Progress
 - 5 of 6 molecules wired and tested; validation runs relaunched on the committed code.
 ## Observations
