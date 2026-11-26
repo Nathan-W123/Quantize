@@ -166,3 +166,10 @@ the decisions record; tasks before T-01 live in git history only.
 - T-81 --touched--> C:cli-config · 2026-11-26
 - D-163 --governs--> C:internal-coords · 2026-11-26
 - D-165 --governs--> C:uncertainty · 2026-11-26
+- T-82 --decided--> D-166 · 2026-11-26
+- T-82 --decided--> D-167 · 2026-11-26
+- T-82 --touched--> C:quantum-prior · 2026-11-26 (measured only: prior bond widths 0.77 sigma_x HF, 0.65 B3LYP)
+- T-82 --touched--> C:bond-offsets · 2026-11-26 (measured only: class splits, no rule wins at both levels)
+- T-82 --produced--> L-32 · 2026-11-26
+- T-82 --produced--> L-15 (learnings) · 2026-11-26
+- T-82 --proposed--> page item 13 (N42), page item 14 (N41) · 2026-11-26 (user's call)

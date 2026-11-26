@@ -56,7 +56,7 @@ Request: Find more validation molecules (published equilibrium structures + isot
 - Measured (t81/): fallback acts on fluoroacetylene and formyl fluoride only (FF 0.018 vs 0.072 mA from the Cartesian answer after the refresh); model error: water O-H 0.20 -> 1.76 mA, geometry identical, nine benchmark fits unchanged; DFT gradient vs FD 3.7e-7 vs 4.8e-6.
 - Found by the new default and fixed: indefinite-Laplace refusal bypassed by the systematic block; 'estimated model error is not used' warning on every corrected run; a test filter comparing degrees with Angstrom. Validator treats absent model_error.auto as on.
 - Observation: I stashed the tree for a lint diff while a test run was going; that run's result was discarded and rerun (use a worktree for old-vs-new comparisons, as the verifier brief says).
-## Next task T-82 (D-166: N41 + N42, measure and propose) · measuring
+## Task T-82 (D-166: N41 + N42, measure and propose) · done 14:37 UTC (follow-up: thiophene at B3LYP when 672 ends, then README ring rows)
 - N41 candidates: (a) classes by bond order where the reference names it; (b) a minimum class count (would undo D-35's second members: rejected up front unless the numbers say otherwise); (c) offsets transfer only between bonds of similar theory length. Measure: LOO offsets prior RMS vs reference for the nine (both levels) and vs r_e^SE for the six validation molecules; then HF hybrid rows for any molecule that moves.
 - N41 measured (t82/n41.py, offsets priors from the cached theory geometries; 'current' reproduces the benchmark: HF pyrimidine 12.88, thiophene 40.10, VF 5.71), prior bond RMS mA:
   HF   nine mean: theory 21.47, current 10.39, len<0.03 14.10, len<0.05 12.97, len<0.08 11.85, by order 12.31; validation mean 36.28 / 34.84 / 33.26 / 33.81 / 34.03 / 33.23; pyrimidine 8.84 / 12.88 / 2.34 / 2.34 / 5.93 / 2.34.
@@ -91,6 +91,6 @@ Request: Find more validation molecules (published equilibrium structures + isot
 - Nine published molecules, HF/6-31G (t79/me_sym.py, three ME variants at every ME call of main(); out/me_hf_6-31g_benchmark_all.final.json): chlorofluoromethane ME C-H pair 964 mA apart, averaged score base 31.38 / offsets 4.26 mA; symmetry imposed 26.00 / 6.03 (the README's 'ME beats the hybrid on chlorofluoromethane, 4.26 against 5.43' rests on the broken structure). Fluoroethane spread 63-67 mA: base 12.66 -> 11.28, offsets 8.24 -> 9.07. Acetyl fluoride spread 8-17 mA, scores within 0.02. Water, ozone, vinyl fluoride, formyl fluoride, fluoroacetylene, HNCO unchanged. Soft (per-pair, D-160 recipe) equals sym except fluoroethane base (12.00, spread 7 mA).
 - The container restarted at 05:14 UTC and stopped the B3LYP validation run (cache kept, 155 B3LYP Hessians) and the B3LYP ME study; both relaunched on the D-161 commit with the HF validation run (its 0f28ca9 rows archived in t75/n11/pre_d161).
 ## Pending question
-- None. Q-167 auto-picked at 09:59 UTC (D-167): HF factor scan f1.5 / f3 running (t82/nine_hf_f*.log, pids 9999/10000, ~45 min; vintage reads 683c6bf-dirty from the records edit only -- no code change since bbed5c4).
-- Never auto-picked: page items 8, 13, 14 (they change published numbers or what rows record).
+- Q-168 (asked 14:37 UTC, deadline 14:53 UTC, wake-up trig_014Xi8BshAqjpw2xBvuyEfno): what's next after T-82? 1 N40 linear-angle prior row: measure, fix, verify, report moved rows (Recommended) · 2 decide page items 13 / 14 / 8 (user only; never auto-picked) · 3 N38 + N39 small CLI consistency fixes · 4 Done for now. Recommended pick: 1.
+
 ## Handoff

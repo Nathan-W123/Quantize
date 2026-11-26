@@ -90,9 +90,15 @@ Sessions: 0 · Last consolidated: 2026-11-20
 - Adjustment: whenever untracked long jobs are running and the turn ends, have a run_in_background until-loop (harness timeout set) watching them, and re-arm it before it times out; keep expensive results in an on-disk cache so a restart costs only the job in flight.
 - Scope: general (cloud sessions)
 - Status: provisional
-- Outcomes:
+- Outcomes: +2026-11-26 (T-82: re-armed until-loops kept five detached runs alive for ~9 h across six 2 h limits)
 
 ## Retired
+### L-15 · Before running variants in parallel, check what they compute in common
+- Observation: three B3LYP variant runs (different prior widths) spent 2 h each on the same 36 Hessians: the correction tables sit at geometries the variant does not change, and each run had its own cache. They also ran with no thread limit, 16 runnable threads on 4 cores.
+- Evidence: 2026-11-26 · T-82: caches 357-358 files, all shared between v0, v2 and iw; after pausing two and sharing the cache, the paused ones finished in about 4 min.
+- Adjustment: before launching parallel variants of an expensive run, list which inputs the variant changes; point the rest at one shared cache (or run one variant first and the rest after), and set OMP_NUM_THREADS so threads x runs <= cores.
+- Scope: workflow · Status: provisional
+
 ## Changelog
 - 2026-11-12 created; L-01 added.
 - 2026-11-13 L-02 added (reproducible numbers).
@@ -113,3 +119,4 @@ Sessions: 0 · Last consolidated: 2026-11-20
 - 2026-11-21 L-04 outcome + (T-22).
 - 2026-11-21 L-10 outcome + (T-24); project L-18 outcome -.
 - 2026-11-26 L-14 added (tracked wait during untracked jobs; container restart in T-79).
+- 2026-11-26 L-15 added (shared inputs across parallel variants); L-14 outcome + (T-82).
