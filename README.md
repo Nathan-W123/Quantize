@@ -218,10 +218,9 @@ parent alone; ketene's offsets row, 3.12 → 3.71, is the exception), but with
 one species part of the correction goes into the angles (formaldehyde
 0.15 → 1.48°). Its reported widths grow (median 3.6–3.9× for formaldehyde and
 thioformaldehyde from the parent alone, 1.1–1.8× for the others) and the
-labels move from "data-constrained" to "mixed information"; on the four small
-molecules the
-errors stay within 1.9 of the reported 1σ widths (within 0.9 with every
-species). On the two rings the widths are too narrow with every species as
+labels move from "data-constrained" to "mixed information"; on the three
+small molecules the errors stay within 1.9 of the reported 1σ widths (within
+0.9 with every species, sulfur dioxide included). On the two rings the widths are too narrow with every species as
 with three, so the cause is not the data: pyrimidine's ring angles miss by
 1.5–2.0° at 0.25–0.34° widths in the offsets configuration, whose narrowed
 prior covers angles the offsets never correct, and thiophene's S–C and C–C
