@@ -23,5 +23,5 @@ Request: Find more validation molecules (published equilibrium structures + isot
 ## Observations
 - Spot-checks (N5, own downloads in t75/dl/): pyrimidine Table IV r_e^SE(CCSD(T)) C2-N1 1.33333(38) A (2-sigma) matches N4; H2CS Table 7 r_e^SE(CCSD(T)) CS 160.909(1), CH 108.531(2) pm matches N3. Same table: r_e^SE with B3LYP corrections gives CS 160.975, 0.66 mA longer -> least-squares sigmas understate the real (correction-model) uncertainty; rank by method spread too.
 ## Pending question
-- Q-107 (which: recommended six tier-1) / Q-108 (how: recommended separate validation set), asked 00:44 UTC, deadline 00:59, wake-up see send_later.
+- Q-107 (which: recommended six tier-1) / Q-108 (how: recommended separate validation set), asked 00:44 UTC, deadline 00:59, wake-up trig_01BYcV9tWkvA8ZeA7U5CqnTj (fires 00:57).
 ## Handoff
