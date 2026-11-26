@@ -134,3 +134,11 @@ once by a container swap).
 - Status: provisional
 - Outcomes:
 
+
+### L-32 · Size a proposed mechanism before naming it as the cause
+- Observation: T-82 told the user (and page v19) that the HF prior prefers a looser sigma_x because alpha_q's average-curvature mapping makes stiff directions much tighter than sigma_x. Measured afterwards (t82/implied_width.py), the mapping makes the prior's bond widths 0.77 sigma_x at HF (0.66 at B3LYP): it explains x1.3-1.5, while the nine keep improving past x3.
+- Evidence: 2026-11-26 · T-82: nine at x1 / x1.5 / x2 / x3 and the 'iw' variant (prior bond widths = sigma_x): 11.05 / 10.10 / 9.45 / 8.54 / 10.43 mA base. Page item 13 rewritten with a 'Corrected' note (v20).
+- Adjustment: when a mechanism is offered as the cause of a measured effect, compute its size (here a 20-line script on cached Hessians) before stating it; say "a candidate" until then.
+- Scope: project (likely general)
+- Status: provisional
+- Outcomes:
