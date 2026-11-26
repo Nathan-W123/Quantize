@@ -35,7 +35,20 @@ file.
     python scripts/accuracy_upgrades_benchmark.py [method=hf] [basis=6-31g]
                                                   [configs=base,offsets,all]
                                                   [calibration=extended|scored]
+                                                  [scored=benchmark|validation]
                                                   [molecule_key ...]
+
+Validation set
+--------------
+scored=validation scores dev.validation_references.VALIDATION_SET instead of the
+nine: molecules with a semi-experimental equilibrium structure inside the
+0.5 mA bar that no default or calibration here has seen (D-154). Their offsets
+come from the whole pool above, since none of them is in it, so a bond class
+the pool lacks (C-S, O-S) is left uncorrected. Rows go to
+accuracy_upgrades_<level>[_calscored]_validation.json and never share a file,
+or a summary table, with the nine; ``--table scored=validation`` prints theirs.
+(Not ``set=``: scripts/monofluoro_benchmark.py, imported here, reads that from
+the command line itself.)
 
 Results
 -------
@@ -267,6 +280,7 @@ from dev.monofluoro_references import (  # noqa: E402
     OZONE,
     WATER_SET,
 )
+from dev.validation_references import VALIDATION_SET  # noqa: E402
 from scripts.force_field_diagnostics import (  # noqa: E402
     frequency_disagreement,
     geometry_disagreement,
@@ -307,6 +321,10 @@ RUN_DIAGNOSTICS = True
 #: earlier pool, the scored molecules alone; its rows go to a separate results
 #: file (see main()), so the two pools' rows never share one.
 EXTENDED_CALIBRATION = True
+#: Which molecules are scored: "benchmark", the nine, or "validation",
+#: dev.validation_references.VALIDATION_SET. The offsets pool is the same
+#: either way; validation molecules are scored only, never pooled.
+SCORED_SET = "benchmark"
 _args: list[str] = []
 for _tok in sys.argv[1:]:
     if _tok.startswith("method="):
@@ -332,6 +350,10 @@ for _tok in sys.argv[1:]:
         if _cal not in ("extended", "scored"):
             raise SystemExit(f"calibration= must be extended or scored, got {_cal!r}")
         EXTENDED_CALIBRATION = _cal == "extended"
+    elif _tok.startswith("scored="):
+        SCORED_SET = _tok.split("=", 1)[1]
+        if SCORED_SET not in ("benchmark", "validation"):
+            raise SystemExit(f"scored= must be benchmark or validation, got {SCORED_SET!r}")
     elif _tok.startswith("configs="):
         WANT_CONFIGS = _tok.split("=", 1)[1].split(",")
     elif _tok.startswith("results="):
@@ -890,20 +912,41 @@ def offsets_pool(theory: dict, keys) -> dict:
             for k in keys}
 
 
+def benchmark_pool() -> list:
+    """The nine scored benchmark molecules, which are also the offsets pool."""
+    return (list(MOLECULES) + list(MOLECULES_SET2)
+            + [WATER_SET[0], OZONE, ISOCYANIC_ACID])
+
+
+def scored_molecules(scored_set: str | None = None) -> list:
+    """The molecules a run scores: the pool itself, or the validation set."""
+    which = SCORED_SET if scored_set is None else scored_set
+    return list(VALIDATION_SET) if which == "validation" else benchmark_pool()
+
+
+def results_path(root: Path, tag: str, extended: bool | None = None,
+                 scored_set: str | None = None) -> Path:
+    """Where one level's rows live. Rows fitted against a different offsets
+    pool, or of a different scored set, never share a file: nothing in a row
+    on its own would let a table tell them apart."""
+    ext = EXTENDED_CALIBRATION if extended is None else extended
+    which = SCORED_SET if scored_set is None else scored_set
+    cal_tag = "" if ext else "_calscored"
+    set_tag = "_validation" if which == "validation" else ""
+    return Path(root) / f"accuracy_upgrades_{tag}{cal_tag}{set_tag}.json"
+
+
 def main() -> None:
     global VINTAGE
     VINTAGE = code_vintage()
-    pool = (list(MOLECULES) + list(MOLECULES_SET2)
-            + [WATER_SET[0], OZONE, ISOCYANIC_ACID])
-    wanted = _args or [m.key for m in pool]
+    pool = benchmark_pool()
+    scored = scored_molecules()
+    wanted = _args or [m.key for m in scored]
     configs = [c for c in (WANT_CONFIGS or ["base", "offsets", "elec", "lam", "all"])
                if c in CONFIGS]
 
     tag = f"{METHOD}_{BASIS}".replace("/", "-").replace("(", "").replace(")", "")
-    # Rows fitted against a different offsets pool must never share a file
-    # with the default pool's rows: nothing in a row records which it used.
-    cal_tag = "" if EXTENDED_CALIBRATION else "_calscored"
-    out_path = _ROOT / "output" / f"accuracy_upgrades_{tag}{cal_tag}.json"
+    out_path = results_path(_ROOT / "output", tag)
 
     # ONE RUN PER RESULTS FILE. Every run loads the whole file at startup, adds
     # rows and writes the whole thing back after each molecule. Two runs on the
@@ -959,12 +1002,20 @@ def main() -> None:
     if calibration:
         print(f"  offsets pool adds (calibration only): "
               f"{', '.join(m.key for m in calibration)}")
-    theory = theory_geometries(pool + calibration)
+    pool_keys = {m.key for m in pool + calibration}
+    held_out = [m for m in scored if m.key not in pool_keys]
+    if held_out:
+        print(f"  scoring the validation set (never pooled): "
+              f"{', '.join(m.key for m in held_out)}")
+    theory = theory_geometries(pool + calibration + held_out)
     calibration = usable_calibration(calibration, theory)
     per_molecule_offsets = offsets_pool(
         theory, [m.key for m in pool + calibration])
+    leaked = set(per_molecule_offsets) & {m.key for m in held_out}
+    if leaked:
+        raise SystemExit(f"validation molecules in the offsets pool: {sorted(leaked)}")
 
-    for mol in pool:
+    for mol in scored:
         if mol.key not in wanted:
             continue
         rec = out.setdefault(mol.key, {})
@@ -1319,6 +1370,9 @@ def main() -> None:
                 # Which molecules the offsets were pooled from: rows of the
                 # two pools must never be compared as if they were one.
                 "offsets_pool": sorted(per_molecule_offsets) if cfg["offsets"] else None,
+                # "validation": a molecule outside the pool, scored with the
+                # whole pool's offsets rather than a leave-one-out table.
+                "scored_set": SCORED_SET,
             }
             rec[name] = entry
             out[mol.key] = rec
@@ -1348,11 +1402,18 @@ _TABLE_ORDER = [
     "isocyanic_acid",
 ]
 
+
+def table_order(scored_set: str | None = None) -> list[str]:
+    """Row order of the summary table for one scored set."""
+    which = SCORED_SET if scored_set is None else scored_set
+    return ([m.key for m in VALIDATION_SET] if which == "validation"
+            else list(_TABLE_ORDER))
+
 #: Levels the summary table reports, as (label, output-file tag).
 _TABLE_LEVELS = [("RHF/6-31G", "hf_6-31g"), ("B3LYP/6-31G(d)", "b3lyp_6-31gd")]
 
 
-def summary_rows(tables: dict, configs=None) -> dict:
+def summary_rows(tables: dict, configs=None, order=None) -> dict:
     """Per level and molecule, (theory, ME, hybrid) all-bond RMS in mA, each
     leg at its own best configuration among ``configs`` (every configuration
     on file when None), with the vintages and configuration count used."""
@@ -1360,7 +1421,7 @@ def summary_rows(tables: dict, configs=None) -> dict:
     out = {}
     for label, data in tables.items():
         rows, vintages, n_cfg = {}, set(), set()
-        for key in _TABLE_ORDER:
+        for key in (table_order() if order is None else order):
             recs = {c: v for c, v in (data.get(key) or {}).items()
                     if (configs is None or c in configs) and isinstance(v, dict)
                     and all(leg in v for leg in legs)}
@@ -1390,11 +1451,11 @@ def print_summary_table(configs=None, results_dir=None) -> None:
     root = Path(results_dir) if results_dir is not None else _ROOT / "output"
     tables = {}
     for label, tag in _TABLE_LEVELS:
-        cal_tag = "" if EXTENDED_CALIBRATION else "_calscored"
-        path = root / f"accuracy_upgrades_{tag}{cal_tag}.json"
+        path = results_path(root, tag)
         tables[label] = json.loads(path.read_text(encoding="utf-8")) \
             if path.exists() else {}
-    summary = summary_rows(tables, configs)
+    order = table_order()
+    summary = summary_rows(tables, configs, order)
 
     for label, _ in _TABLE_LEVELS:
         info = summary[label]
@@ -1408,7 +1469,7 @@ def print_summary_table(configs=None, results_dir=None) -> None:
     print(head)
     print(" " * 23 + 2 * f"{'theory':>8s}{'ME':>6s}{'hybrid':>8s}  ")
 
-    for key in _TABLE_ORDER:
+    for key in order:
         line = f"  {key.replace('_', ' '):<21s}"
         for label, _ in _TABLE_LEVELS:
             vals = summary[label]["rows"].get(key)

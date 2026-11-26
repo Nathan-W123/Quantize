@@ -1446,3 +1446,18 @@
 - Alternatives considered: update M_O18 everywhere (changes archived rows at ~1e-6 mA); a separate NIST value for new entries only (two masses for one isotope).
 - Source: assumption, unconfirmed
 - Revisit if: a fit ever weights 18O constants at their measurement sigma.
+
+### D-157 · Validation-set wiring: scored= flag, whole-pool offsets, cross-ring distances are not bonds (2026-11-26)
+- Decision: the benchmark scores the validation set with `scored=validation` into accuracy_upgrades_<level>[_calscored]_validation.json, with offsets from the whole pool (benchmark nine plus calibration), never leave-one-out on itself and never pooled; a run refuses if a validation key reaches the pool. Pyrimidine's cross-ring C2...C5 parameter is kept out of `bonds` (it would be scored as a bond and pooled as a C-C offset) and checked on the geometry in the tests; its 2-sigma 0.45 mA is read as 0.225 at 1-sigma (D-155).
+- Why: D-154's separate set; `set=` is already read at import by scripts/monofluoro_benchmark.py.
+- Alternatives considered: `set=validation` (collides); scoring C2...C5 as a bond.
+- Source: assumption, unconfirmed
+- Revisit if: a validation molecule should also calibrate (then it leaves the set).
+
+### D-158 · Thiophene is scored on the 2021 S-reduced constants of the species used in the 2021 structure (2026-11-26)
+- Decision: structure from Esselman et al. 2025 Table IV (46-isotopologue r_e^SE, 2-sigma 0.3 mA, read as 0.15 at 1-sigma); constants from Orr et al. 2021 Table II (S reduction, printed uncertainties), the 24 species that paper used, not the 2025 Table II constants (49 species, determinable A/S averages, no uncertainties printed).
+- Why: D-155's rule that scored constants carry stated sigmas; the 2021 set is the same group's fitted constants; 24 species for a 9-atom molecule is ample.
+- Alternatives considered: the 2025 49-species set floored at its printed digits; both sets.
+- Source: assumption, unconfirmed
+- Revisit if: the 2025 SI's S-reduced constants with sigmas are obtained, or the user prefers the larger set.
+

@@ -18,14 +18,18 @@ Request: Find more validation molecules (published equilibrium structures + isot
 - N8 · build · draft entries (scratch only) ketene + SO2 · after: N5 · done · handoff: t75/draft_ketene_so2/REPORT.md: ketene 16 iso, SO2 3 with sigmas + 16 without; checks clean; doubts on sigma levels
 - N9a · verify · independent re-read, ketene + SO2 · after: N8 · done · handoff: t75/verify_ketene_so2/REPORT.md: every number matches; module M_O18 is 1.4e-6 u above NIST (3.5e-8 relative on 18O species, below the 0.5% model error: keep the module value); one docstring wording slip
 - N9b · verify · independent re-read, H2CO + H2CS · after: N7 · done · handoff: t75/verify_h2co_h2cs/REPORT.md: every number matches; M_O18 again (D-156)
-- N12 · build · draft entries thiophene · after: N6 · running
-- N13 · build · draft entries pyrimidine · after: N6 · running
-- N9c · verify · independent re-read, thiophene + pyrimidine · after: N12, N13 · pending
-- N10 · build · wire the verified entries in as a separate validation set + tests · after: N9a, N9b, N9c · pending
-- N11 · verify · run the new molecules' benchmark rows · after: N10 · pending
+- N12 · build · draft entries thiophene · after: N6 · done · handoff: t75/draft_thiophene: 2025 Table IV r_e^SE (46 iso, 2-sigma, 0.3 mA); 2025 Table II constants have NO sigmas (determinable, A/S average); 2021 S-reduced 26 species with sigmas kept as SPECIES_2021_S; paper-internal slip on [3,4-2H, 34S] defect
+- N13 · build · draft entries pyrimidine · after: N6 · done · handoff: t75/draft_pyrimidine: 16 species with sigmas, r_e^SE CCSD(T) 2-sigma (0.45 mA); checks clean
+- N9c-p · verify · independent re-read, pyrimidine · after: N13 · done · handoff: t75/verify_pyrimidine/REPORT.md: no error; one comment slip (3.7e-11 -> 3.7e-10), fixed
+- N9c-t · verify · independent re-read, thiophene · after: N12 · running
+- N10 · build · wire the verified entries in as a separate validation set + tests · after: N9a, N9b, N9c-p · done for 5 (thiophene after N9c-t) · handoff: dev/validation_references.py (VALIDATION_SET, 1-sigma conversion, SO2 3 species), dev/validation_molecules/*.py + .numbers.json, benchmark scored=validation (own results file, never pooled), dev/tests/test_validation_references.py (34 pass)
+- N11 · verify · run the new molecules' benchmark rows (HF/6-31G and B3LYP/6-31G(d), base + offsets) · after: N10 · running
 ## Progress
+- 5 of 6 molecules wired and tested; validation runs relaunched on the committed code.
 ## Observations
 - Uncertainty convention not defined anywhere in the module: ketene's r_e^SE is quoted at 2-sigma (0.69 mA), 1-sigma 0.345 -- the 0.5 bar must say which; existing references quote 1-sigma.
 - Spot-checks (N5, own downloads in t75/dl/): pyrimidine Table IV r_e^SE(CCSD(T)) C2-N1 1.33333(38) A (2-sigma) matches N4; H2CS Table 7 r_e^SE(CCSD(T)) CS 160.909(1), CH 108.531(2) pm matches N3. Same table: r_e^SE with B3LYP corrections gives CS 160.975, 0.66 mA longer -> least-squares sigmas understate the real (correction-model) uncertainty; rank by method spread too.
+- The benchmark's `set=` option collided with scripts/monofluoro_benchmark.py, which reads set= at import; the test passed only because an earlier test had cached that import. Renamed to scored=; the new test re-imports every scripts.* module (L-29 candidate: argv-reading imports need fresh-import tests).
+- The inertial-defect lower bound in the new test (0.03) was a guess; pyrimidine's printed defects go to 0.0287. Bound set to the physical rule (small, positive).
 ## Pending question
 ## Handoff
