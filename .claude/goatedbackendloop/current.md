@@ -10,12 +10,11 @@ Request: Find more validation molecules (published equilibrium structures + isot
 ## Graph
 - N1 · plan · inventory + criteria · after: none · done · handoff: 4 scored r_e (water, ozone, VF, CH2ClF) + 3 calibration-only (CH3Cl, HCN, H2O2); bar 0.5 mA
 - N2 · explore · search: fluorine/halogen small molecules · after: N1 · running
-- N3 · explore · search: classic small polyatomics with dipoles · after: N1 · running
+- N3 · explore · search: classic small polyatomics with dipoles · after: N1 · done · handoff: t75/n3/REPORT.md: H2CS, ketene, H2CO, SO2, HNCO (B,C only), HNO, H2CCS; key open source Penocchio et al. Can J Chem 2016
 - N4 · explore · search: larger semirigid organics (<= 12 atoms) · after: N1 · running
 - N5 · merge · rank, dedupe, spot-check two sources per tier · after: N2, N3, N4 · pending
 - N6 · gate · user picks which to wire in · after: N5 · pending
 ## Progress
 ## Observations
 ## Pending question
-- Q-105/Q-106 (asked 00:18 UTC, deadline 00:33): scope (recommended: any semirigid <= 12 atoms with a dipole) and reference bar (recommended: keep 0.5 mA for headline scoring, list <= 1 mA as a second tier). Wake-up trig_01Va7sMh5HXd4G2we7kyLrTA.
 ## Handoff

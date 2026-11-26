@@ -1418,3 +1418,10 @@
 - Alternatives considered: packaging, backend CI, scaling, user guide (items 5-9), left for later.
 - Source: stated by user
 - Revisit if: the user reorders.
+
+### D-153 · Validation-molecule scope and reference bar (2026-11-26)
+- Decision: Q-105 option 1: any semirigid molecule of 12 atoms or fewer with a dipole (fluorine and non-fluorine). Q-106 option 1: keep RE_REFERENCE_MAX_UNCERTAINTY_MA = 0.5 mA on bonds for headline scoring; candidates within 1 mA listed as a second tier for the user.
+- Why: the most candidates without weakening the bar the code already enforces.
+- Alternatives considered: fluorine only; accept 1 mA now; accept SE100 without stated uncertainty.
+- Source: auto-picked, no answer in 15 min (Q-105, Q-106)
+- Revisit if: the user answers otherwise; the fit sigmas prove to understate real error (N3 search: HNCO's two structures differ 1.0-2.9 mA beyond their sigmas).
