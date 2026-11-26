@@ -1514,3 +1514,9 @@
 - Why: Q-166's recommended option.
 - Source: auto-picked, no answer in 15 min (Q-166)
 - Revisit if: the user picks the table rebuild or ends the loop.
+
+### D-167 · While B3LYP runs: the HF width-factor scan (2026-11-26)
+- Decision: run the nine at HF/6-31G with sigma_x (and the offsets configs' per-molecule widths) x1.5 and x3, scratch only (t82/n42_nine.py f1.5, f3), so page item 13 has x1 / x1.5 / x2 / x3 at HF. Measurement only; no default changes (item 13 stays the user's call).
+- Why: Q-167's recommended option.
+- Source: auto-picked, no answer in 15 min (Q-167)
+- Revisit if: the user picks N40 or ends the loop.
