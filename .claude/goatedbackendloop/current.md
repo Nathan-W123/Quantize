@@ -14,7 +14,7 @@ Request: Find more validation molecules (published equilibrium structures + isot
 - N4 · explore · search: larger semirigid organics (<= 12 atoms) · after: N1 · done · handoff: t75/n4/REPORT.md: pyrimidine, thiophene, thiazole, ketene, pyridazine, pyridine, oxirane, acrolein, formic acid, triazole; McMahon/Woods 2-sigma papers + Piccardo 2015 SI
 - N5 · merge · rank, dedupe, spot-check two sources per tier · after: N2, N3, N4 · done · handoff: tier 1 H2CO, H2CS, ketene, SO2, thiophene, pyrimidine, thiazole, pyridine; tier 2 pyridazine, triazole, oxirane, acrolein, formic acid, CH2=CFCl, HOF, HNO, HNCO(B,C); linear N2O, OCS, HC3N
 - N6 · gate · user picks which to wire in (Q-107) and how (Q-108) · after: N5 · done · handoff: auto-picked six tier-1, separate validation set (D-154); sigma convention D-155 (assumption)
-- N7 · build · draft entries (scratch only) H2CO + H2CS · after: N5 · running
+- N7 · build · draft entries (scratch only) H2CO + H2CS · after: N5 · done · handoff: t75/draft_h2co_h2cs/REPORT.md: H2CO 6 species (HDCO, D2CO without sigma), H2CS 8 with sigma; checks clean
 - N8 · build · draft entries (scratch only) ketene + SO2 · after: N5 · done · handoff: t75/draft_ketene_so2/REPORT.md: ketene 16 iso, SO2 3 with sigmas + 16 without; checks clean; doubts on sigma levels
 - N9a · verify · independent re-read, ketene + SO2 · after: N8 · running
 - N9b · verify · independent re-read, H2CO + H2CS · after: N7 · pending
