@@ -117,6 +117,9 @@ def test_the_report_says_what_fixed_by_symmetry_means():
            "chi2_scale": 1.0, "prior_dominance": "fixed by symmetry", "prior_sensitivity": ""}
     out = generate_uncertainty_report_section({"uncertainty_rows": [row]})
     assert "zero by construction, not a measurement" in out
+    bend = dict(row, name="bend 1-2-3 (wider)", prior_dominance="prior-dominated", std_err=2.0)
+    assert "these two rows give both" in generate_uncertainty_report_section(
+        {"uncertainty_rows": [bend]})
     other = dict(row, prior_dominance="data-constrained", std_err=0.1)
     assert "zero by construction" not in generate_uncertainty_report_section(
         {"uncertainty_rows": [other]})
@@ -148,3 +151,36 @@ def test_a_dihedral_through_a_straight_line_is_undefined_not_fixed():
     labels = dict(zip(post["names"], post["labels"]))
     assert labels["dihedral 1-2-3-4"] == "undefined at this geometry"
     assert "fixed by symmetry" not in post["labels"]
+
+
+def _hcn_pyscf(symmetry):
+    import dev.pyscf_backend  # noqa: F401  (registers pyscf_hf)
+    with contextlib.redirect_stdout(io.StringIO()):
+        opt = MolecularOptimizer(elems=["H", "C", "N"], coords=_HCN, isotopologues=_ISOS,
+                                 quantum_backend="pyscf_hf", orca_method="hf",
+                                 orca_basis="sto-3g", use_autoconfig=False, max_iter=6,
+                                 symmetry=symmetry)
+        opt.run()
+        return opt.internal_coordinate_posterior()
+
+
+def test_without_symmetry_a_linear_angle_reports_both_bends():
+    # Its own row covers one bend, in an arbitrary plane at exactly 180
+    # degrees; the two bends are appended after the set's coordinates.
+    post = _hcn_pyscf("C1")
+    assert post["names"][:3] == ["bond 1-2", "bond 2-3", "angle 1-2-3"]
+    assert post["names"][3:] == ["bend 1-2-3 (wider)", "bend 1-2-3 (narrower)"]
+    assert post["kinds"][3:] == ["linear_bend", "linear_bend"]
+    sd = post["std_err"]
+    assert sd[3] >= sd[4] > 0.0
+    assert min(post["values"][3:]) >= 0.0
+    # HCN is straight, so its two bends are the same bend turned 90 degrees.
+    assert np.isclose(sd[3], sd[4], rtol=1e-6) and np.isclose(sd[3], sd[2], rtol=1e-6)
+    assert np.asarray(post["covariance"]).shape == (5, 5)
+    assert "fixed by symmetry" not in post["labels"]
+
+
+def test_under_its_point_group_a_linear_angle_gets_no_bends():
+    post = _hcn_pyscf("auto")
+    assert not any(k == "linear_bend" for k in post["kinds"])
+    assert post["labels"][post["names"].index("angle 1-2-3")] == "fixed by symmetry"

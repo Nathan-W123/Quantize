@@ -4618,6 +4618,64 @@ class MolecularOptimizer:
     #: 0.5 degrees and detected as C6v (6.6e-6: still far above the cut).
     _FIXED_BY_SYMMETRY_REL = 1e-12
 
+    #: An angle at least this wide also gets its two bends reported.
+    _LINEAR_ANGLE_DEG = 175.0
+
+    def _linear_bend_rows(self, x, cs, q, cov_x, basis):
+        """Both bends of each near-linear angle the symmetry lets bend.
+
+        For an angle i-o-k at or above _LINEAR_ANGLE_DEG, the bend along a
+        unit vector e perpendicular to the i...k axis is e.(u + w), u and w the
+        unit vectors from o to i and to k: zero at 180 degrees, about the
+        deviation from linear (radians) in e's plane, and smooth through 180
+        where the angle itself is not. Its derivative is taken with the axes
+        held fixed at x, which agrees with axes that follow the atoms to first
+        order there, since u = -w. The two bends are rotated onto the
+        principal axes of their covariance, so the widths do not depend on the
+        lab frame, and each is signed so its value is not negative.
+
+        Returns [(row (3N,), value, name)], nothing for an angle whose bends
+        the point group fixes (its own row then reads 'fixed by symmetry').
+        """
+        xyz = np.asarray(x, dtype=float).reshape(-1, 3)
+        lim = np.radians(self._LINEAR_ANGLE_DEG)
+        out = []
+        for ic, qv in zip(cs.active_coords(), q[:len(cs.active_coords())]):
+            if ic.kind != "angle" or not qv >= lim:
+                continue
+            i, o, k = ic.atoms
+            u, w = xyz[i] - xyz[o], xyz[k] - xyz[o]
+            ru, rw_ = float(np.linalg.norm(u)), float(np.linalg.norm(w))
+            u, w = u / ru, w / rw_
+            e0 = xyz[k] - xyz[i]
+            e0 = e0 / np.linalg.norm(e0)
+            ref = np.eye(3)[int(np.argmin(np.abs(e0)))]
+            e1 = ref - (ref @ e0) * e0
+            e1 = e1 / np.linalg.norm(e1)
+            e2 = np.cross(e0, e1)
+            R, v = [], []
+            for e in (e1, e2):
+                d = np.zeros_like(xyz)
+                d[i] = (e - (e @ u) * u) / ru
+                d[k] = (e - (e @ w) * w) / rw_
+                d[o] = -(d[i] + d[k])
+                R.append(d.ravel())
+                v.append(float(e @ (u + w)))
+            R, v = np.asarray(R), np.asarray(v)
+            pr = basis.T @ R.T
+            if np.all(np.einsum("ij,ij->j", pr, pr)
+                      <= self._FIXED_BY_SYMMETRY_REL * np.einsum("ij,ij->i", R, R)):
+                continue
+            Cb = R @ cov_x @ R.T
+            lam, V = np.linalg.eigh(0.5 * (Cb + Cb.T))
+            atoms = f"{i + 1}-{o + 1}-{k + 1}"
+            for col, tag in ((1, "wider"), (0, "narrower")):
+                a = V[:, col]
+                if a @ v < 0.0:
+                    a = -a
+                out.append((a @ R, float(a @ v), f"bend {atoms} ({tag})"))
+        return out
+
     def internal_coordinate_posterior(self):
         """The fit's posterior over its bonds, angles and dihedrals.
 
@@ -4686,6 +4744,22 @@ class MolecularOptimizer:
         cs = InternalCoordinateSet(x, self.elems, self._ic_use_dihedrals)
         Bq = np.asarray(cs.active_B_matrix(x), dtype=float)
         q = np.asarray(cs.active_values(x), dtype=float)
+        names = list(cs.active_names())
+        kinds = [ic.kind for ic in cs.active_coords()]
+        n_set = len(names)
+        # A near-linear angle's own row covers one bend: the plane the
+        # molecule happens to bend in, or an arbitrary one at exactly 180.
+        # Where the symmetry lets it bend, both bends are appended after the
+        # set's own coordinates (so index k < n_set still means the set's k-th
+        # coordinate), along the principal axes of their covariance. Ketene
+        # fitted without symmetry (HF/6-31G) quoted 2.04 deg, its in-plane
+        # bend, while the out-of-plane one is 3.23 (T-83, N40).
+        extra = self._linear_bend_rows(x, cs, q, cov_x, basis)
+        if extra:
+            Bq = np.vstack([Bq] + [r for r, _v, _n in extra])
+            q = np.concatenate([q, [v for _r, v, _n in extra]])
+            names += [n for _r, _v, n in extra]
+            kinds += ["linear_bend"] * len(extra)
         C_q = Bq @ cov_x @ Bq.T
         C_q = 0.5 * (C_q + C_q.T)
         # A coordinate none of the allowed directions moves is fixed by the
@@ -4755,7 +4829,7 @@ class MolecularOptimizer:
         st = self._last_ic_prior
         ic_sigma = (st["sigma"].tolist()
                     if st is not None and st["weight"] > 0.0
-                    and st["sigma"].size == q.size else None)
+                    and st["sigma"].size == n_set else None)
         # Where each internal-prior centre and width came from, for the fit
         # that had one: the rule library's provenance, with the centre and
         # width overwritten by the ones the fit actually used.
@@ -4785,12 +4859,12 @@ class MolecularOptimizer:
             except Exception:  # provenance is a nicety; the widths are not
                 provenance = None
         return {
-            "names": list(cs.active_names()),
+            "names": names,
             # Whether the set includes dihedrals (stated, or added because
             # bonds and angles missed a direction: dihedrals_reason).
             "use_dihedrals": bool(self._ic_use_dihedrals),
             "dihedrals_reason": self._ic_dihedrals_reason,
-            "kinds": [ic.kind for ic in cs.active_coords()],
+            "kinds": kinds,
             "values": q.tolist(),
             "covariance": C_q.tolist(),
             "std_err": np.asarray(std, dtype=float).tolist(),

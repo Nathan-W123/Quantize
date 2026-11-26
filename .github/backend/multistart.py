@@ -459,6 +459,8 @@ def _reported_shift_in_sigma(post_best, post_other):
             s = float(s)
             if n not in other or not np.isfinite(s) or s <= 0.0:
                 continue
+            if k == "linear_bend":   # principal axes are each fit's own: not comparable
+                continue
             dq = other[n] - float(v)
             if k == "dihedral":                       # radians, periodic
                 dq = (dq + np.pi) % (2.0 * np.pi) - np.pi

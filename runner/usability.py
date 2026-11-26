@@ -1890,6 +1890,11 @@ def generate_uncertainty_report_section(result: dict[str, Any]) -> str:
             "- `fixed by symmetry`: the coordinate cannot change without breaking the "
             "point group the fit imposes (a 180-degree angle, for one), so its width is "
             "zero by construction, not a measurement.")
+    if any(str(r.get("name", "")).startswith("bend ") for r in rows):
+        lines.append(
+            "- `bend i-j-k (wider / narrower)`: an angle within 5 degrees of straight "
+            "can bend two ways, and its own row covers only one; these two rows give "
+            "both, along the directions where its width is largest and smallest.")
     if any(str(r.get("prior_dominance", "")) == "undefined at this geometry" for r in rows):
         lines.append(
             "- `undefined at this geometry`: the coordinate has no value here (a "

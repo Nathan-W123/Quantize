@@ -1527,3 +1527,9 @@
 - Source: auto-picked, no answer in 15 min (Q-168, 14:53 UTC).
 - Revisit if: the user picks another option.
 
+### D-169 · Next after T-83: report both bends of a near-linear angle (2026-11-26)
+- Decision: T-84 = N40 (a): the posterior appends both bends of a near-linear angle the symmetry lets bend.
+- Why: Q-169's recommended option; ketene without symmetry quoted one bend (2.04 deg) while the other is 3.23.
+- Source: auto-picked, no answer in 15 min (Q-169, 15:39 UTC).
+- Revisit if: the user picks another option.
+
