@@ -578,7 +578,10 @@ def resolve_corrections(
             corrected_vib = any(_is_vibrational(r) for r in records)
             if corrected_vib:
                 s_sys = None
-                if sigma_sys is not None and k < sigma_sys.size:
+                # The engine's own estimate (auto_systematic_sigma) is not
+                # part of the quoted sigma, so there is nothing to take out.
+                if (sigma_sys is not None and k < sigma_sys.size
+                        and not iso.get("sigma_systematic_estimated", False)):
                     s_sys = float(sigma_sys[k])
                 elif iso.get("sigma_constants") is None:
                     # Auto-derived sigma is model gap end to end.

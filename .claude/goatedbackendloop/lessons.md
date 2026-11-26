@@ -125,3 +125,12 @@ once by a container swap).
 - Scope: project
 - Status: provisional
 - Outcomes:
+
+### L-31 · Turning a setting on by default reaches paths its opt-in never ran
+- Observation: model_error.auto had been verified as an opt-in, but on by default it ran on every path, including ones no opt-in user took: the runner's dihedral probe building a second optimizer from the same isotopologue list (the engine wrote its fills into the caller's dicts), corrected rows that take the systematic part out of the quoted sigma, a validator rule keyed on the explicit flag, and a covariance guard that ran after the systematic block was added.
+- Evidence: 2026-11-26 · T-81: 10 tests failed on the flip, two of them real defects; the independent check found two more (the CLI warning, the geometry move) that no test covered.
+- Adjustment: before flipping a default, grep every consumer of the setting and of the fields it fills, and run the real CLI path (run_generic.main on a shipped config) with it on and off, comparing coordinates bit for bit and the report's warnings.
+- Scope: project
+- Status: provisional
+- Outcomes:
+

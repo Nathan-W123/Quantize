@@ -352,10 +352,16 @@ constraints, and published CO/H₂O constants — no Psi4 or ORCA needed).
 > molecules (0.2-2.5x as per-molecule medians), though 8.6x on ozone's A against
 > its r_e; the inertial-defect estimate it replaced ran 0.007-9.1x (medians
 > 0.04-8.9x), too small on B and C everywhere but water -- and `model_error.isotopologue_correlation` (default 0.99)
-> sets how much of it isotopologues share. The fitted structure does not
-> change, only the widths: raw $B_0$ fitted as $B_e$ on analytic water gives an
-> O–H width of 1.76 mÅ (angle 0.32°) with the estimate, 0.20 mÅ (0.03°)
-> without. `model_error: {auto: false}` (`auto_systematic_sigma=False`) asks
+> sets how much of it isotopologues share. It changes the widths, not the
+> fit: raw $B_0$ fitted as $B_e$ on analytic water gives an O–H width of
+> 1.76 mÅ (angle 0.32°) with the estimate, 0.20 mÅ (0.03°) without, at a
+> bit-identical structure, and so do the nine benchmark molecules and water
+> with a correction table. The one difference measured is a fit with no
+> quoted sigma whose χ² rescale would tighten it: the estimate is a floor the
+> rescale cannot lower, and the structure differs by 1.5×10⁻⁵ Å. A species
+> whose `sigma_mhz` already includes the model error
+> (`sigma_includes_systematic`) must say how much (`sigma_systematic_mhz`)
+> or ask for the estimate explicitly (`model_error: {auto: true}`). `model_error: {auto: false}` (`auto_systematic_sigma=False`) asks
 > for measurement precision only; a run whose rows then carry none says so in
 > its report and uncertainty bundle (`model_error`: null per isotopologue). A
 > B₀ → B_e correction with its own sigma takes the estimate's place on its
@@ -832,7 +838,9 @@ On Windows, you can instead set `orca_exe` in `BASE_SETTINGS` to your `orca.exe`
 > internal mode, dihedrals auto) it acts on fluoroacetylene and formyl
 > fluoride, whose answer then lands 0.018 mÅ from the Cartesian fit's after
 > the CLI's Hessian refresh (0.072 without the fallback; Cartesian restarts
-> differ by 0.05); the other seven are bit-identical. It applies to the
+> differ by 0.05; bond RMS 13.76 mÅ either way, while without the refresh the
+> two answers are 0.5 mÅ apart, 13.89 against 13.56); the other seven are
+> bit-identical. It applies to the
 > `joint` objective only; `cartesian_fallback: false` turns it off.
 
 > **Pieces the bond rule leaves apart.** Bonds come from the covalent-radii

@@ -1,4 +1,4 @@
-"""Auto-derived systematic sigmas: available, verified, and off by default.
+"""Auto-derived systematic sigmas: verified, and on by default since D-165.
 
 The B0-versus-Be model gap is the dominant error term in this engine, and
 until now a user who quoted honest measurement precision got intervals that
@@ -13,10 +13,11 @@ on water with the flat estimate, D-67) and it repairs a real under-coverage:
 the old angle interval of 0.0273 degrees was NINE TIMES too narrow to reach
 the 0.246-degree angle error the engine itself makes.
 
-It is still OFF by default. The reason these tests used to pin -- an
-interval that narrowed when more measurement error was admitted -- no longer
-occurs (test_the_interval_is_monotonic_in_sigma); turning it on would change
-every reported interval, which is a decision of its own.
+It was kept off by default until the user decided (decision page item 7,
+D-165): the reason these tests used to pin -- an interval that narrowed when
+more measurement error was admitted -- no longer occurs
+(test_the_interval_is_monotonic_in_sigma), and turning it on changes every
+reported interval without a stated model error, which was the user's call.
 """
 
 from __future__ import annotations
@@ -212,3 +213,62 @@ def test_with_the_floor_on_it_is_monotonic():
         widths.append(_widths(unc)[0])
     for lo, hi in zip(widths, widths[1:]):
         assert hi >= lo - 1e-9, widths
+
+
+def test_the_caller_s_isotopologues_are_not_written_into():
+    """The fills work on copies (T-81 review): writing into the caller's dicts
+    made a second optimizer built from the same list -- the runner's dihedral
+    probe, then the fit -- see the first one's estimate as stated."""
+    isos = [{"name": "H2-16O", "masses": MASSES_H2O,
+             "obs_constants": list(B0_H2O), "sigma_constants": [0.2] * 3}]
+    kw = {"elems": ["O", "H", "H"], "coords": _coords(), "isotopologues": isos,
+          "quantum_backend": "analytic_water", "use_autoconfig": False, "max_iter": 3,
+          "quantum_prior_sigma_ang": 0.02}
+    with contextlib.redirect_stdout(io.StringIO()):
+        first = MolecularOptimizer(**kw)
+        second = MolecularOptimizer(**kw)
+    assert "sigma_systematic_constants" not in isos[0]
+    assert first.model_error_sources() == second.model_error_sources() == {"H2-16O": "estimated"}
+
+
+def test_a_sigma_that_includes_the_model_error_gets_the_estimate_only_on_request():
+    """sigma_constants_include_systematic without a stated split: the flat
+    estimate (8358 MHz on A) would exceed the quoted 0.2 MHz and leave no
+    measurement part, so the default does not fill it; an explicit True does."""
+    def build(**extra):
+        isos = [{"name": "H2-16O", "masses": MASSES_H2O, "obs_constants": list(B0_H2O),
+                 "sigma_constants": [0.2] * 3, "sigma_constants_include_systematic": True}]
+        with contextlib.redirect_stdout(io.StringIO()):
+            return MolecularOptimizer(
+                elems=["O", "H", "H"], coords=_coords(), isotopologues=isos,
+                quantum_backend="analytic_water", use_autoconfig=False, max_iter=3,
+                quantum_prior_sigma_ang=0.02, **extra)
+    assert build().spectral.isotopologues[0].get("sigma_systematic_constants") is None
+    assert build(auto_systematic_sigma=True).spectral.isotopologues[0].get(
+        "sigma_systematic_constants") is not None
+
+
+
+def test_the_estimate_does_not_move_a_corrected_fit():
+    """A vibrational correction takes a stated model error out of the quoted
+    sigma (compute_corrected_targets); the engine's estimate is not part of
+    the quoted sigma, so it must not be taken out, or the default estimate
+    moves the weights: water with a 5 MHz-sigma correction table and a
+    2000 MHz quoted sigma moved 0.98 mA before (T-81 review)."""
+    deltas = {"H2-16O": {"A": 34000.0, "B": -4500.0, "C": 5600.0},
+              "D2-16O": {"A": 12000.0, "B": -1600.0, "C": 2400.0}}
+    table = {n: {c: {"delta_mhz": d[c], "sigma_mhz": 5.0, "method": "VPT2"} for c in "ABC"}
+             for n, d in deltas.items()}
+
+    def fit(auto):
+        isos = [{"name": n, "masses": m, "obs_constants": list(b), "sigma_constants": [2000.0] * 3}
+                for n, m, b in (("H2-16O", MASSES_H2O, B0_H2O), ("D2-16O", MASSES_D2O, B0_D2O))]
+        with contextlib.redirect_stdout(io.StringIO()):
+            opt = MolecularOptimizer(
+                elems=["O", "H", "H"], coords=_coords(), isotopologues=isos,
+                quantum_backend="analytic_water", use_autoconfig=False, max_iter=40,
+                quantum_prior_sigma_ang=0.02, auto_systematic_sigma=auto,
+                correction_table=table, correction_mode="user_only")
+            return np.asarray(opt.run())
+
+    np.testing.assert_array_equal(fit(True), fit(False))

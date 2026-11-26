@@ -120,9 +120,11 @@ def _indefinite_ratio(cov):
     except np.linalg.LinAlgError:
         return None
     hi, lo = float(np.max(eigs)), float(np.min(eigs))
-    if hi > 0.0 and lo / hi < -_COV_INDEFINITE_REL_TOL:
-        return lo / hi
-    return None
+    if lo >= 0.0:
+        return None
+    if hi <= 0.0:
+        return float("-inf")          # no positive direction at all
+    return lo / hi if lo / hi < -_COV_INDEFINITE_REL_TOL else None
 
 #: Fallback when the level of theory has no calibrated width. See
 #: spectral.prior_widths for the calibrated table and why an unmeasured level
@@ -398,25 +400,16 @@ class MolecularOptimizer:
         sigma_floor_mhz=0.0,
         sigma_floor_rel=DEFAULT_SIGMA_FLOOR_REL,
         sigma_cap_mhz=None,
-        # OPT-IN, not the default, and the reason is measured rather than
-        # cautious. Deriving the model gap and propagating it makes the
-        # reported interval ANTI-MONOTONIC in the quoted sigma whenever
-        # sigma_floor_rel is off: on water the bond width falls from 0.0455
-        # to 0.0180 Angstrom as the quoted sigma loosens by 1000x, because
-        # tighter data is weighted more heavily and a coherent model shift
-        # then moves the optimum further. That is defensible as physics and
-        # indefensible as a published uncertainty -- admitting more error
-        # must not narrow an interval.
-        #
-        # With the default floor on it happens to come out monotonic, because
-        # the floor pins the weighting sigma. A default that is sound only
-        # because another default masks it is not a default.
-        #
-        # The prerequisite is the other half of the note below: let the
-        # systematic weight the fit as well as the report, so the two sigmas
-        # cannot disagree by 1e5 in the first place. Until then this is
-        # available and verified, and off.
-        auto_systematic_sigma=True,
+        # On by default since D-165 (the user's call; None means the default,
+        # an explicit True/False the caller's). A caveat measured when it was
+        # opt-in: with sigma_floor_rel OFF, deriving the model gap makes the
+        # reported interval anti-monotonic in the quoted sigma (water: the
+        # bond width fell 0.0455 -> 0.0180 A as the quoted sigma loosened
+        # 1000x), because tighter data is weighted more and a coherent model
+        # shift then moves the optimum further. With the default floor on it
+        # comes out monotonic. Letting the systematic weight the fit as well
+        # (systematic_in_weighting) would remove the cause.
+        auto_systematic_sigma=None,
         systematic_in_weighting=False,
         # How the model error is shared between the stacked constants, for the
         # reported covariance (the fit's weights stay diagonal). The
@@ -710,7 +703,12 @@ class MolecularOptimizer:
         # uncertainty. Widths only; the fitted geometry is unchanged. Pass
         # auto_systematic_sigma=False (model_error: {auto: false}) for
         # measurement precision only.
-        self.auto_systematic_sigma = bool(auto_systematic_sigma)
+        # None is the default (on); an explicit True or False is the caller's.
+        # The difference matters only for a species whose sigma_constants
+        # include the model error without saying how much (below).
+        self._auto_systematic_explicit = auto_systematic_sigma is not None
+        self.auto_systematic_sigma = (True if auto_systematic_sigma is None
+                                      else bool(auto_systematic_sigma))
         self.systematic_in_weighting = bool(systematic_in_weighting)
         _rho = float(systematic_isotopologue_correlation)
         if not (np.isfinite(_rho) and 0.0 <= _rho <= 1.0):
@@ -733,6 +731,14 @@ class MolecularOptimizer:
                                  "positive semidefinite, so it is not a "
                                  "correlation matrix")
             self.systematic_component_correlation = _Qc
+        # The fills below write into each isotopologue, so they work on copies:
+        # writing into the caller's dicts made a second optimizer built from
+        # the same list (the runner's dihedral probe, then the fit) see the
+        # first one's estimate as stated, and warn "the stated model error is
+        # not used" on every corrected run once the estimate was on by
+        # default; the fill of an absent sigma_constants changed the second
+        # build's widths the same way (O-H 3.40 against 3.20 mA; T-81 review).
+        isotopologues = [dict(_iso) for _iso in isotopologues]
         _filled = []
         _sys_filled = []
         _both_from_model = set()
@@ -740,8 +746,14 @@ class MolecularOptimizer:
             _obs = np.asarray(_iso["obs_constants"], dtype=float)
             _ci = _iso.get("component_indices", list(range(len(_obs))))
             _needs_meas = _iso.get("sigma_constants") is None
+            # A species whose sigma_constants already include the model error
+            # gets the estimate only on request: the flat estimate can exceed
+            # the quoted sigma (8358 MHz against 0.2 on water), and taking it
+            # out of it would leave no measurement part (T-81 review).
             _needs_sys = (_iso.get("sigma_systematic_constants") is None
-                          and self.auto_systematic_sigma)
+                          and self.auto_systematic_sigma
+                          and (self._auto_systematic_explicit or not bool(
+                              _iso.get("sigma_constants_include_systematic", False))))
             if not (_needs_meas or _needs_sys):
                 continue
             _sig = np.asarray(default_sigma_constants(_obs, _ci), dtype=float)
@@ -757,6 +769,15 @@ class MolecularOptimizer:
                 # who quoted honest measurement precision -- the normal case --
                 # silently got intervals missing the dominant term.
                 _iso["sigma_systematic_constants"] = _sig.copy()
+                if not _needs_meas:
+                    # An estimate, not part of the quoted sigma: a vibrational
+                    # correction must not take it out of sigma_constants
+                    # (compute_corrected_targets), or the default estimate
+                    # would move the weights and the fitted structure (T-81
+                    # review: 0.98 mA on water with a 2000 MHz quoted sigma).
+                    # Where sigma_constants is filled from the same estimate
+                    # below, it IS the model error and is taken out as before.
+                    _iso["sigma_systematic_estimated"] = True
                 _sys_filled.append(f"{_iso.get('name', 'iso')} [{_how}]")
                 if _needs_meas:
                     # Both from one model estimate: sigma_constants IS the
@@ -2155,8 +2176,8 @@ class MolecularOptimizer:
                 "widths cover the stated measurement precision only, and the gap "
                 "usually dominates (analytic water: 0.28 mA without it, 6.9 with its "
                 "corrections' sigma). State sigma_systematic_mhz per isotopologue, apply "
-                "B0 -> Be corrections with a stated sigma, or set model_error: {auto: "
-                "true} for the engine's flat estimate (1% of A, 0.5% of B and C)")
+                "B0 -> Be corrections with a stated sigma, or leave model_error.auto on "
+                "(the default) for the engine's flat estimate (1% of A, 0.5% of B and C)")
         elif bare or part:
             msgs.append(
                 "the model-error term covers only part of the data: "
@@ -4409,10 +4430,11 @@ class MolecularOptimizer:
         # a negative direction -- on water a Laplace with a -1 A^2 eigenvalue
         # came out as 29214 A widths once the model error was on by default
         # (D-165), with no refusal.
-        if _indefinite_ratio(cov) is not None:
+        _neg = _indefinite_ratio(cov)
+        if _neg is not None:
             self._warn_once(
                 "geometry_uncertainty: the Laplace covariance is not positive "
-                f"semi-definite (min/max eigenvalue = {_indefinite_ratio(cov):.2e}), "
+                f"semi-definite (min/max eigenvalue = {_neg:.2e}), "
                 "so no width taken from it is meaningful, whatever model error "
                 "is added to it. Returning None rather than numbers.",
                 key="geometry_uncertainty_indefinite_laplace")

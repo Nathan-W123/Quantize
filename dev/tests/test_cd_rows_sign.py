@@ -883,9 +883,11 @@ def test_a_config_can_state_its_model_error_and_one_without_says_so():
     (lambda c: c.__setitem__("model_error", {"isotopologue_correlation": 1.5}), r"\[0, 1\]"),
     (lambda c: c.__setitem__("model_error", {"isotopologue_corelation": 0.5}), "unknown key"),
     # Alone the flag did nothing, and the report then said the widths carry
-    # no model error though sigma_mhz holds it. Since D-165 the engine's
-    # estimate is on by default, so the flag alone is refused only where the
-    # config turns the estimate off.
+    # no model error though sigma_mhz holds it. Still refused with the
+    # estimate on by default (D-165): only a stated value or an explicit
+    # auto: true says how much of sigma_mhz is model error.
+    (lambda c: c["isotopologues"][0].__setitem__("sigma_includes_systematic", True),
+     "nothing says how much"),
     (lambda c: (c["isotopologues"][0].__setitem__("sigma_includes_systematic", True),
                 c.__setitem__("model_error", {"auto": False})),
      "nothing says how much"),
@@ -901,7 +903,6 @@ def test_model_error_keys_are_validated(edit, said):
 @pytest.mark.parametrize("edit", [
     lambda c: c["isotopologues"][0].__setitem__("sigma_systematic_mhz", [1.0, 1.0, 1.0]),
     lambda c: c.__setitem__("model_error", {"auto": True}),
-    lambda c: None,       # the estimate is on by default (D-165)
 ])
 def test_the_includes_flag_with_something_to_act_on_validates(edit):
     from runner.usability import validate_config
