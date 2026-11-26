@@ -90,7 +90,7 @@ Sessions: 0 · Last consolidated: 2026-11-20
 - Adjustment: whenever untracked long jobs are running and the turn ends, have a run_in_background until-loop (harness timeout set) watching them, and re-arm it before it times out; keep expensive results in an on-disk cache so a restart costs only the job in flight.
 - Scope: general (cloud sessions)
 - Status: provisional
-- Outcomes: +2026-11-26 (T-82: re-armed until-loops kept five detached runs alive for ~9 h across six 2 h limits)
+- Outcomes: +2026-11-26 (T-82: re-armed until-loops kept five detached runs alive for ~9 h across six 2 h limits) -2026-11-26 (T-84: a waiter hit its limit with a harness note not to restart it; I scheduled an hourly send_later instead and ended the turn with nothing tracked; the container was reclaimed within minutes -- last cache write 16:39, uptime 0 at 17:37 -- and the 15 h validation run died mid-thiophene. Revision: when a waiter cannot be restarted, make the job itself tracked -- run it with run_in_background and a timeout under the limit, resuming from its on-disk cache across launches)
 
 ## Retired
 ### L-15 · Before running variants in parallel, check what they compute in common
@@ -121,3 +121,4 @@ Sessions: 0 · Last consolidated: 2026-11-20
 - 2026-11-26 L-14 added (tracked wait during untracked jobs; container restart in T-79).
 - 2026-11-26 L-15 added (shared inputs across parallel variants); L-14 outcome + (T-82).
 - 2026-11-26 L-10 outcome + (T-83, T-84).
+- 2026-11-26 L-14 outcome - and revised (make the job itself tracked when a waiter cannot be re-armed).
