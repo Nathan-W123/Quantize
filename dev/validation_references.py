@@ -18,6 +18,8 @@ of several isotopologues with their stated uncertainties.
     ketene            H2CCO  r_e^SE, Smith et al. 2023                16 species
     sulfur_dioxide    SO2    r_e, Flaud & Lafferty 1993 via Demaison   3 species
     pyrimidine        C4H4N2 r_e^SE, Heim et al. 2020                 16 species
+    thiophene         C4H4S  r_e^SE, Esselman et al. 2025;            24 species
+                             constants Orr et al. 2021
 
 The numbers live in dev/validation_molecules/<name>.py, transcribed from
 downloaded sources, with <name>.numbers.json beside each giving the table, row,
@@ -29,8 +31,8 @@ Conventions decided here, not in the sources
 --------------------------------------------
 * The reference bar (RE_REFERENCE_MAX_UNCERTAINTY_MA, 0.5 mA) is read at
   1-sigma, as the existing references quote it. A source that quotes 2-sigma is
-  halved: ketene's 0.69 mA becomes 0.345, pyrimidine's 0.45 becomes 0.225
-  (D-155). The entry modules keep the
+  halved: ketene's 0.69 mA becomes 0.345, pyrimidine's 0.45 becomes 0.225,
+  thiophene's 0.3 becomes 0.15 (D-155). The entry modules keep the
   figure as printed; the conversion is in ONE_SIGMA_UNCERTAINTY_MA below.
 * Sulfur dioxide is scored on its three species with fitted, stated-sigma
   constants (32S, 33S, 34S16O2). The other 16 ground-state species in its
@@ -39,6 +41,9 @@ Conventions decided here, not in the sources
   Formaldehyde's HDCO and D2CO also lack a printed sigma, but they are modern
   S-reduction fits of the same kind as the other species, so they are kept and
   floored at their quoted precision like any constant without a stated sigma.
+* Thiophene's 2025 study prints its constants without uncertainties, so its
+  entry scores the same group's 2021 S-reduced constants, which print them,
+  for the 24 species that study's structure used (D-158).
 """
 
 from __future__ import annotations
@@ -52,15 +57,18 @@ from dev.validation_molecules import (
     pyrimidine,
     sulfur_dioxide,
     thioformaldehyde,
+    thiophene,
 )
 
 #: The entry modules, in the order the set is reported.
-ENTRY_MODULES = (formaldehyde, thioformaldehyde, ketene, sulfur_dioxide, pyrimidine)
+ENTRY_MODULES = (formaldehyde, thioformaldehyde, ketene, sulfur_dioxide, pyrimidine,
+                 thiophene)
 
 #: The raw entries, with everything the ReferenceMolecule leaves out: each
 #: species' source and note, and a second equilibrium structure where the
 #: sources give one (formaldehyde's purely experimental r_e, ketene's 1995 one,
-#: pyrimidine's two other r_e^SE columns).
+#: pyrimidine's two other r_e^SE columns, thiophene's 2021 structure and its
+#: 2025 constants, SPECIES in its module).
 ENTRIES = {m.ENTRY["key"]: m.ENTRY for m in ENTRY_MODULES}
 
 #: 1-sigma bond uncertainty (mA) where the source quotes another level (D-155).
@@ -72,6 +80,10 @@ ONE_SIGMA_UNCERTAINTY_MA = {
     # abstract, Fig. 5 caption). The cross-ring C2...C5 parameter, 0.52 mA at
     # 2-sigma, is not a bond and not scored.
     "pyrimidine": 0.225,
+    # Esselman et al. 2025 Table IV, r(C3-C4) 1.4222(3) A (a dependent
+    # parameter; the largest independent one is r(C2-C3), 0.2), 2-sigma
+    # (footnote c).
+    "thiophene": 0.15,
 }
 
 #: Species scored, by label, where not every transcribed species is (D-155).
@@ -127,6 +139,8 @@ THIOFORMALDEHYDE = reference_molecule(thioformaldehyde.ENTRY)
 KETENE = reference_molecule(ketene.ENTRY)
 SULFUR_DIOXIDE = reference_molecule(sulfur_dioxide.ENTRY)
 PYRIMIDINE = reference_molecule(pyrimidine.ENTRY)
+THIOPHENE = reference_molecule(thiophene.ENTRY)
 
 #: The validation set, in report order. Never pooled into the offsets.
-VALIDATION_SET = [FORMALDEHYDE, THIOFORMALDEHYDE, KETENE, SULFUR_DIOXIDE, PYRIMIDINE]
+VALIDATION_SET = [FORMALDEHYDE, THIOFORMALDEHYDE, KETENE, SULFUR_DIOXIDE, PYRIMIDINE,
+                  THIOPHENE]

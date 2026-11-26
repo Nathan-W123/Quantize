@@ -46,6 +46,12 @@ PUBLISHED = {
     "pyrimidine": {"C2-N1": 1.33333, "C4-C5": 1.38675, "C2-H": 1.08165,
                    "C4-H": 1.08224, "C5-H": 1.07929, "N1-C2-H": 116.332,
                    "C4-C5-H": 121.665, "C5-C4-H": 121.261},
+    # Esselman et al. 2025, Table IV, r_e^SE (46 isotopologues), the eight
+    # independent parameters; r(C3-C4) 1.4222 is dependent (checked to its
+    # printed rounding below).
+    "thiophene": {"S1-C2": 1.7104, "C2-C3": 1.3658, "C2-H": 1.0770, "C3-H": 1.0786,
+                  "S1-C2-C3": 111.600, "S1-C2-H": 120.087, "C2-C3-H": 123.413,
+                  "C2-S1-C5": 92.056},
 }
 
 
@@ -95,6 +101,25 @@ def test_pyrimidine_cross_ring_distance_and_ring_closure():
     ring = (ang["N1-C2-N3"] + ang["C4-C5-C6"] + 2 * ang["C2-N1-C6"] + 2 * ang["N1-C6-C5"])
     assert ring == pytest.approx(720.0, abs=1e-9)
     assert "C2...C5" not in VAL.PYRIMIDINE.bonds
+
+
+def test_thiophene_dependent_parameters_come_out_as_printed():
+    got = VAL.THIOPHENE.internal_coordinates(VAL.THIOPHENE.geometry)
+    assert got["C3-C4"] == pytest.approx(1.4222, abs=0.5e-4)
+    assert got["C3-C2-H"] == pytest.approx(128.313, abs=0.5e-3)
+    assert got["C4-C3-H"] == pytest.approx(124.215, abs=0.5e-3)
+    assert got["C2-C3-C4"] == pytest.approx(112.372, abs=0.5e-3)
+
+
+def test_thiophene_scores_the_2021_constants_of_the_species_its_structure_used():
+    from dev.validation_molecules import thiophene
+    assert len(thiophene.SPECIES_2021_S) == 26
+    left_out = {s["label"] for s in thiophene.SPECIES_2021_S if not s["used_in_re_SE_2021"]}
+    assert left_out == {"[2,3,4,5-2H, 34S]", "[3-2H, 33S]"}
+    assert len(VAL.THIOPHENE.species) == 24
+    assert all(sp.measured_sigma_mhz is not None for sp in VAL.THIOPHENE.species)
+    # The 2025 set, kept for reference, prints no uncertainties at all.
+    assert all(s["measured_sigma_mhz"] is None for s in thiophene.SPECIES)
 
 
 @pytest.mark.parametrize("mol", VAL.VALIDATION_SET, ids=lambda m: m.key)
@@ -155,6 +180,8 @@ def test_every_reference_passes_the_bar_at_one_sigma():
     assert VAL.KETENE.geometry_re_uncertainty_ma == pytest.approx(0.345)
     assert VAL.ENTRIES["pyrimidine"]["geometry_re_uncertainty_ma"] == 0.45
     assert VAL.PYRIMIDINE.geometry_re_uncertainty_ma == pytest.approx(0.225)
+    assert VAL.ENTRIES["thiophene"]["geometry_re_uncertainty_ma"] == 0.3
+    assert VAL.THIOPHENE.geometry_re_uncertainty_ma == pytest.approx(0.15)
     assert 0.69 > REF.RE_REFERENCE_MAX_UNCERTAINTY_MA
 
 
