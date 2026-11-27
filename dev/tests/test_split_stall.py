@@ -39,8 +39,9 @@ def test_a_split_fit_that_stalls_says_so(mode):
     assert not any(h["accepted"] for h in opt.history[-2:]), "premise: its last steps are refused"
     assert opt.split_coupling() <= opt.SPLIT_COUPLING_TOL, "premise: the coupling cannot see it"
     widths, atom, n_neg = opt.split_stall()
-    # Measured: 30.88 widths, 10.03 mA (largest atom), in both modes.
-    assert widths == pytest.approx(30.88, rel=0.01) and atom == pytest.approx(0.01003, rel=0.01), (widths, atom)
+    # Measured: 27.91 widths, 10.03 mA (largest atom), in both modes (30.88
+    # widths before the bond-width-matched prior, D-170, widened them).
+    assert widths == pytest.approx(27.91, rel=0.01) and atom == pytest.approx(0.01003, rel=0.01), (widths, atom)
     assert n_neg == 0
     note = opt.split_inconsistency()
     assert note and _STALL in note and "step schedule" in note

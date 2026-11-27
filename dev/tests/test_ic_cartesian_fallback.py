@@ -78,13 +78,16 @@ def _fit(seed, fallback):
 
 
 def test_a_stalled_near_linear_fit_reaches_its_optimum():
-    stuck, _ = _fit(2, False)
+    # Seed 4: with the bond-width-matched prior (D-170) seed 2's start no
+    # longer stalls (1.8e-7 widths); seeds 4, 5, 10, 11 do (scratchpad
+    # t85/a/stall_seeds.py).
+    stuck, _ = _fit(4, False)
     # Premise: without it the fit stops short with refused steps.
-    # Measured: 4.1e-2 widths, 5 refused steps.
+    # Measured: 0.87 widths, 7 refused steps.
     assert stuck.distance_to_mode() > 1e-2
     assert sum(not r["accepted"] for r in stuck.history) >= 3
-    opt, x = _fit(2, True)
-    # Measured: 5.8e-8 widths, 11 Cartesian steps.
+    opt, x = _fit(4, True)
+    # Measured: 1.4e-7 widths, 7 Cartesian steps.
     assert opt._ic_fallback_steps > 0
     assert opt.distance_to_mode() < 1e-5
 

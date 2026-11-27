@@ -182,12 +182,15 @@ def test_water_chains_now_converge_under_the_imposed_symmetry(sampled):
     stretch and the chains wandered along it. That direction is fixed by the
     C2v the fit imposes, so it is no longer proposed, and the same four seeds
     give R-hat 1.018 to 1.054 with ESS 166 to 185. Pinned on one of them, at
-    a length long enough for ESS to clear its threshold.
+    a length long enough for ESS to clear its threshold: with the
+    bond-width-matched prior (D-170) seed 11 at 2000 steps gives min ESS 92
+    while seeds 3, 5, 7 give 140 to 187; at 3000 steps seed 11 gives 219
+    (scratchpad t85/a/mcmc_ess.py).
     """
     opt, _ = sampled
     with contextlib.redirect_stdout(io.StringIO()):
         summary = AdaptiveMetropolisV2(opt, MCMCConfig(
-            n_steps=2000, burn_in=500, n_chains=4, seed=11,
+            n_steps=3000, burn_in=500, n_chains=4, seed=11,
             persist_chain_samples=False)).run()
     assert summary.convergence is not None
     r_hat = float(summary.convergence.r_hat.max())

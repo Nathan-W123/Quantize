@@ -97,11 +97,12 @@ def _checks(opt):
 
 
 def test_each_check_is_kept_with_what_it_did():
-    # Measured: floored 0.1579 -> refit (factor 0.397) -> 0.1579 at floor;
-    # measurement-only 0.1579 -> refit -> 1.0426 in band.
+    # Measured (bond-width-matched prior, D-170): floored 0.1598 -> refit
+    # (factor 0.3997) -> 0.1598 at floor; measurement-only 0.1598 -> refit ->
+    # 1.0335 in band (0.1579 / 1.0426 before D-170; scratchpad t85/a/chi2_floor.py).
     floored, _, _ = _run(_isos(float(np.hypot(1e4, 0.2)), systematic=1e4))
     assert [c[0] for c in _checks(floored)] == ["refit", "at floor"]
-    assert floored.chi2_rescale_checks[0]["factor"] == pytest.approx(np.sqrt(0.1579), rel=1e-3)
+    assert floored.chi2_rescale_checks[0]["factor"] == pytest.approx(np.sqrt(0.1598), rel=1e-3)
     tight, _, _ = _run(_isos(1e4))
     assert [c[0] for c in _checks(tight)] == ["refit", "in band"]
     # The last check was made at the answer: recomputing there gives it back.
@@ -111,7 +112,7 @@ def test_each_check_is_kept_with_what_it_did():
 
 
 def test_an_in_band_fit_records_one_check_and_an_off_rescale_none():
-    one, n, _ = _run(_isos(1e4)[:1])          # 0.4322 on 1.27 dof: in band
+    one, n, _ = _run(_isos(1e4)[:1])          # 0.4537 on 1.21 dof: in band
     assert n == 1 and [c[0] for c in _checks(one)] == ["in band"]
     assert 0.25 <= one.chi2_rescale_checks[0]["chi2_nu"] <= 4.0
     one.chi2_rescale = False                  # a later run keeps only its own checks
