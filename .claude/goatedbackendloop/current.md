@@ -108,6 +108,9 @@ Request: Find more validation molecules (published equilibrium structures + isot
 - T-85 N9: page v24 (13, 14 done; 15 = N39, 16 = N43, user's call); README notes fbfdbab.
 ## Task T-86 (D-173: N46, say what the prior's weight was matched on) · done 19:2x UTC
 - Built: SubspaceOptimizer.last_prior_weight_match (matched, n_bonds, factor vs lambda_bar weight, reason); MolecularOptimizer.prior_weight_match() (+ bond names at the Hessian's geometry, sigma_x); posterior field prior_weight_match; run_generic uncertainty_meta; report.md line under Parameter Uncertainty. Verified: CLI run of the water config prints 'set so the RMS width of its 2 covalent bond(s) is sigma_x = 0.0200 A (0.72x ...); bonds: bond 1-2, bond 1-3' (t86/); 4 new tests (matched HCN, off, no bond, legacy None, report text both ways); full CI 1936 passed. Small, no numbers: no independent verify node.
+## Task T-87 (D-174: N44, rank starts / flag near ties by the fit's own objective) · measuring
+- One agent (t87/): (A) re-measure N39 at HEAD 815779f -- the page-15 figures were measured at 9bf5f25+N38, before D-170 changed alpha_q (0.6-0.75x); (B) per refreshed start: last-point energy (today's key), model energy at answer, true SCF energy, chi2, -2 log post on one common model; compare three ranking rules and near-tie detection; propose only (D-65 is the rule in force).
+- Observation: page item 15's numbers predate D-170; update them from (A) before the user decides.
 ## Progress
 - All six wired and tested; benchmark rows at both levels in the README (N11 done).
 ## Observations
@@ -127,6 +130,6 @@ Request: Find more validation molecules (published equilibrium structures + isot
 - Nine published molecules, HF/6-31G (t79/me_sym.py, three ME variants at every ME call of main(); out/me_hf_6-31g_benchmark_all.final.json): chlorofluoromethane ME C-H pair 964 mA apart, averaged score base 31.38 / offsets 4.26 mA; symmetry imposed 26.00 / 6.03 (the README's 'ME beats the hybrid on chlorofluoromethane, 4.26 against 5.43' rests on the broken structure). Fluoroethane spread 63-67 mA: base 12.66 -> 11.28, offsets 8.24 -> 9.07. Acetyl fluoride spread 8-17 mA, scores within 0.02. Water, ozone, vinyl fluoride, formyl fluoride, fluoroacetylene, HNCO unchanged. Soft (per-pair, D-160 recipe) equals sym except fluoroethane base (12.00, spread 7 mA).
 - The container restarted at 05:14 UTC and stopped the B3LYP validation run (cache kept, 155 B3LYP Hessians) and the B3LYP ME study; both relaunched on the D-161 commit with the HF validation run (its 0f28ca9 rows archived in t75/n11/pre_d161).
 ## Pending question
-- Q-172 (asked 19:22 UTC, deadline 19:37 UTC, wake-up trig_01QgrwUrZ2hdkW36EGDDSEzF): what's next after T-86? 1 N44: measure ranking starts and flagging near ties by the fit's own objective (Recommended; scratch only, propose) · 2 decide page items 15 / 16 / 8 (user only, never auto-picked) · 3 N45: check the acetaldehyde example's constants (inertial-defect mismatch) · 4 Done for now.
+- (none: Q-172 auto-picked at 19:37 UTC -> D-174)
 
 ## Handoff

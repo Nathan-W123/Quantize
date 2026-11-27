@@ -1560,3 +1560,9 @@
 - Why: Q-171's recommended option; the T-85 check found the fallbacks silent.
 - Source: auto-picked, no answer in 15 min (Q-171, 19:15 UTC)
 - Revisit if: the user picks items 15 / 16 / 8 or another option.
+
+### D-174 · Next after T-86: N44, measure ranking starts by the fit's own objective (2026-11-27)
+- Decision: T-87 = backlog N44, measure and propose only (scratch): rank multistart starts and flag near ties by the fit's own objective at each answer (model energy / joint objective) instead of the last-point quantum energy; compare winners, answers and near-tie flags with today's rule. No default changes (selection rule = D-65, the user's call to change).
+- Why: Q-172's recommended option.
+- Source: auto-picked, no answer in 15 min (Q-172, 19:37 UTC)
+- Revisit if: the user picks items 15 / 16 / 8 or another option.
