@@ -172,3 +172,56 @@ def test_a_bond_past_the_cutoff_at_the_start_is_matched_once_the_hessian_moves()
     _a, w, _H = _prior_bond_widths(opt)
     assert len(w) == 2
     assert np.sqrt(np.mean(w ** 2)) == pytest.approx(0.02, rel=1e-9)
+
+
+def test_the_posterior_says_what_the_weight_was_matched_on():
+    """N46: the bonds, the factor against the lambda_bar weight, and why not
+    when it was not matched."""
+    on = _hcn(True).internal_coordinate_posterior()["prior_weight_match"]
+    assert on["matched"] is True and on["bonds"] == ["bond 1-2", "bond 2-3"]
+    assert on["factor"] == pytest.approx(858.26 / 1182.17, rel=1e-3)
+    assert on["sigma_x_ang"] == 0.02 and on["reason"] is None
+    off = _hcn(False).internal_coordinate_posterior()["prior_weight_match"]
+    assert off["matched"] is False and "off" in off["reason"] and off["bonds"] == []
+    far = _water(1.25)
+    with contextlib.redirect_stdout(io.StringIO()):
+        far._update_orca()
+    rec = far.prior_weight_match()
+    assert rec["matched"] is False and rec["reason"] == "no covalent bond at the Hessian's geometry"
+
+
+def test_a_fit_without_a_calibrated_prior_reports_no_match():
+    import dev.analytic_water_backend  # noqa: F401
+    from backend.quantize import MolecularOptimizer
+    from dev.tests.test_bootstrap_targets import B0_H2O, MASSES_H2O
+    with contextlib.redirect_stdout(io.StringIO()):
+        legacy = MolecularOptimizer(elems=["O", "H", "H"], coords=_water(0.96).coords,
+                                    isotopologues=[{"name": "H2O", "masses": MASSES_H2O,
+                                                    "obs_constants": B0_H2O,
+                                                    "sigma_constants": [0.1] * 3}],
+                                    quantum_backend="analytic_water", use_autoconfig=False,
+                                    quantum_prior_sigma_ang=None, max_iter=3)
+        legacy.run()
+    assert legacy.prior_weight_match() is None
+
+
+@pytest.mark.parametrize("match", [True, False])
+def test_the_report_states_the_weight(match):
+    from runner.usability import generate_uncertainty_report_section
+    rows = [{"name": "bond 1-2", "value": 1.06, "value_unit": "A", "std_err": 0.001,
+             "ci_lo": 1.058, "ci_hi": 1.062, "prior_dominance": "data-constrained"}]
+    pw = ({"matched": True, "n_bonds": 2, "factor": 0.726, "reason": None,
+           "bonds": ["bond 1-2", "bond 2-3"], "sigma_x_ang": 0.02} if match else
+          {"matched": False, "n_bonds": 0, "factor": None, "bonds": [], "sigma_x_ang": 0.02,
+           "reason": "no covalent bond at the Hessian's geometry"})
+    txt = generate_uncertainty_report_section(
+        {"uncertainty_rows": rows, "uncertainty_meta": {"blocks": ["spectral data"],
+                                                        "prior_weight_match": pw}})
+    if match:
+        assert ("- Quantum prior weight: set so the RMS width of its 2 covalent bond(s) is "
+                "sigma_x = 0.0200 A (0.73x the 1/(1/2 lambda_bar sigma_x^2) weight); "
+                "bonds: bond 1-2, bond 2-3.") in txt
+    else:
+        assert ("- Quantum prior weight: the 1/(1/2 lambda_bar sigma_x^2) formula (sigma_x = "
+                "0.0200 A), not matched to bond widths: no covalent bond at the Hessian's "
+                "geometry.") in txt

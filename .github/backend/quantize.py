@@ -2091,6 +2091,31 @@ class MolecularOptimizer:
             rows[k, 3 * i:3 * i + 3] = -u
         self.optimizer.prior_bond_rows = rows
 
+    def prior_weight_match(self):
+        """What the calibrated quantum weight was matched on (D-170, N46).
+
+        A dict -- matched (bool), the bonds ("bond i-j", 1-based, at the
+        Hessian's geometry), the factor against the 1/(1/2 lambda_bar
+        sigma_x^2) weight, sigma_x, and the reason when it fell back to that
+        formula -- or None for a fit with no calibrated quantum prior
+        (spectral-only, the legacy weight). Read after the weight is taken,
+        so it describes the weight the fit and its posterior used.
+        """
+        if (self.spectral_only or self.quantum is None
+                or self.optimizer.quantum_prior_sigma_ang is None):
+            return None
+        self.quantum_prior_weight(refresh=True)
+        rec = dict(self.optimizer.last_prior_weight_match or {})
+        if not rec:
+            return None
+        bonds = []
+        if rec.get("matched") and self._hessian_ref_coords is not None:
+            x = np.asarray(self._hessian_ref_coords, dtype=float).reshape(-1, 3)
+            bonds = [f"bond {i + 1}-{j + 1}" for i, j in _detect_bonds(x, self.elems)]
+        rec["bonds"] = bonds
+        rec["sigma_x_ang"] = float(self.optimizer.quantum_prior_sigma_ang)
+        return rec
+
     def _force_hessian_refresh(self):
         """Make the next quantum update recompute the Hessian rather than reuse it."""
         self._since_hessian = None
@@ -4942,6 +4967,9 @@ class MolecularOptimizer:
             "hessian_distance_ang": self.hessian_distance(x),
             "alpha_q": (None if self.spectral_only or self.quantum is None
                         else float(self.quantum_prior_weight(refresh=True))),
+            # What that weight was matched on (D-170, N46); None without a
+            # calibrated quantum prior.
+            "prior_weight_match": self.prior_weight_match(),
             "chi2_per_observation": float(rw @ rw) / max(rw.size, 1),
             "n_observations": int(rw.size),
             # The observations behind that chi-square: the rotational rows and,

@@ -116,6 +116,9 @@ class SubspaceOptimizer:
         #: computed at, in the Hessian's frame; MolecularOptimizer sets them
         #: with each new Hessian. None: the lambda_bar formula is used.
         self.prior_bond_rows = None
+        #: What the last calibrated weight was matched on (N46): matched,
+        #: n_bonds, factor against the lambda_bar weight, reason when not.
+        self.last_prior_weight_match = None
 
     # ── Decomposition ─────────────────────────────────────────────────────────
 
@@ -419,28 +422,44 @@ class SubspaceOptimizer:
         """
         H = 0.5 * (hessian + hessian.T)
         rows = self.prior_bond_rows
-        use_bonds = (self.match_prior_bond_widths and rows is not None
-                     and rows.ndim == 2 and rows.shape[0] > 0
-                     and rows.shape[1] == H.shape[0])
+        if not self.match_prior_bond_widths:
+            why = "the match is off (match_prior_bond_widths: false)"
+        elif rows is None or rows.ndim != 2 or rows.shape[0] == 0:
+            why = "no covalent bond at the Hessian's geometry"
+        elif rows.shape[1] != H.shape[0]:
+            why = "the bond rows do not fit this Hessian"
+        else:
+            why = None
+        use_bonds = why is None
         if use_bonds:
             evals, evecs = np.linalg.eigh(H)
         else:
             evals = np.linalg.eigvalsh(H)
         keep = evals > _CURVATURE_FLOOR_REL * max(float(np.max(np.abs(evals))), 1.0)
         positive = evals[keep]
+        self.last_prior_weight_match = {"matched": False, "n_bonds": 0, "factor": None,
+                                        "reason": why}
         if positive.size == 0:
+            self.last_prior_weight_match["reason"] = "no positive curvature"
             return self.alpha_quantum
         sigma_x = float(self.quantum_prior_sigma_ang)
+        lam_bar = float(np.mean(positive))
+        e_scale = 0.5 * lam_bar * sigma_x * sigma_x
+        alpha_lam = None if e_scale <= 0.0 else float(self.alpha_quantum / e_scale)
         if use_bonds:
             proj = rows @ evecs[:, keep]
             mean_var = float(np.mean(np.sum(proj * proj / positive, axis=1)))
             if mean_var > 0.0 and sigma_x > 0.0:
-                return float(self.alpha_quantum * mean_var / (sigma_x * sigma_x))
-        lam_bar = float(np.mean(positive))
-        e_scale = 0.5 * lam_bar * sigma_x * sigma_x
-        if e_scale <= 0.0:
+                alpha = float(self.alpha_quantum * mean_var / (sigma_x * sigma_x))
+                self.last_prior_weight_match = {
+                    "matched": True, "n_bonds": int(rows.shape[0]),
+                    "factor": None if alpha_lam is None else alpha / alpha_lam,
+                    "reason": None}
+                return alpha
+            self.last_prior_weight_match["reason"] = "no positive curvature along the bonds"
+        if alpha_lam is None:
             return self.alpha_quantum
-        return float(self.alpha_quantum / e_scale)
+        return alpha_lam
 
     def step(self, J, residual, gradient, hessian, B=None,
              prior_displacement=None, weight_hessian=None,

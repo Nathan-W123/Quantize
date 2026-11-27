@@ -1890,6 +1890,23 @@ def generate_uncertainty_report_section(result: dict[str, Any]) -> str:
            " No prior carries any direction, so a coordinate the spectrum cannot "
            "see is reported as unidentifiable rather than given a width."),
     ])
+    pw = meta.get("prior_weight_match")
+    if isinstance(pw, dict):
+        sig = pw.get("sigma_x_ang")
+        sig_txt = f" = {float(sig):.4f} A" if sig is not None else ""
+        if pw.get("matched"):
+            fac = pw.get("factor")
+            bonds = list(pw.get("bonds") or [])
+            lines.append(
+                f"- Quantum prior weight: set so the RMS width of its {len(bonds) or pw.get('n_bonds')} "
+                f"covalent bond(s) is sigma_x{sig_txt}"
+                + (f" ({float(fac):.2f}x the 1/(1/2 lambda_bar sigma_x^2) weight)" if fac is not None else "")
+                + (f"; bonds: {', '.join(bonds)}." if bonds else "."))
+        else:
+            lines.append(
+                "- Quantum prior weight: the 1/(1/2 lambda_bar sigma_x^2) formula"
+                f"{(' (sigma_x' + sig_txt + ')') if sig_txt else ''}, not matched to bond widths: "
+                f"{pw.get('reason') or 'no bonds'}.")
     if any(str(r.get("prior_dominance", "")) == "fixed by symmetry" for r in rows):
         lines.append(
             "- `fixed by symmetry`: the coordinate cannot change without breaking the "

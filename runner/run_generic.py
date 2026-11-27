@@ -2550,7 +2550,7 @@ def main(cfg: dict[str, Any], refresh_hessian: bool = True) -> dict[str, Any]:
             k: (best.get("posterior") or {}).get(k)
             for k in ("blocks", "objective_mode", "chi2_per_observation",
                       "n_observations", "n_rotational_rows", "n_distortion_rows",
-                      "distortion_rows", "alpha_q", "warnings", "error")
+                      "distortion_rows", "alpha_q", "prior_weight_match", "warnings", "error")
         },
         "uncertainty_covariance_npy": _cov_path,
         "results": results,
