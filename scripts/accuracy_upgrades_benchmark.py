@@ -50,6 +50,21 @@ or a summary table, with the nine; ``--table scored=validation`` prints theirs.
 (Not ``set=``: scripts/monofluoro_benchmark.py, imported here, reads that from
 the command line itself.)
 
+What each offset was pooled from
+--------------------------------
+A bond class is an element pair, so a bond can take its offset from bonds of
+another kind (backlog N41: pyrimidine's aromatic C-N from isocyanic acid's N=C
+and hydrogen cyanide's C#N). Every offsets row therefore carries
+``offsets_class_diagnostic``, from
+backend.spectral.bond_offsets.leave_one_out_class_diagnostic: per class
+applied to the molecule, how many bonds the offset averaged and the range of
+their theory lengths, and per bond of the molecule its own theory length, its
+distance from the nearest and furthest of those members, how many lie within
+the tolerance, and whether none does. Each bond with none prints one line
+starting ``[offsets] <molecule key> <bond> (<class>)`` before the molecule's
+fits (wording in class_diagnostic_warnings). It is a record only: no offset,
+prior or fit changes.
+
 Results
 -------
 All-bond RMS in mA against the published references, each leg at its own best
@@ -254,8 +269,11 @@ import dev.pyscf_backend  # noqa: F401,E402  (registers "pyscf_hf")
 from backend.quantize import MolecularOptimizer  # noqa: E402
 from backend.registry import get_backend  # noqa: E402
 from backend.spectral.bond_offsets import (  # noqa: E402
+    class_diagnostic_warnings,
+    leave_one_out_class_diagnostic,
     leave_one_out_offsets,
     measure_offsets,
+    measure_theory_lengths,
     offset_corrected_geometry,
     prior_sigma_for_molecule,
 )
@@ -930,6 +948,17 @@ def offsets_pool(theory: dict, keys) -> dict:
             for k in keys}
 
 
+def pool_theory_lengths(theory: dict, mols) -> dict:
+    """Theory bond lengths of exactly ``mols``, from the theory cache's geometries.
+
+    Keyed like ``offsets_pool(theory, [m.key for m in mols])`` and aligned with
+    it entry for entry (backend.spectral.bond_offsets.measure_theory_lengths),
+    for the offsets class diagnostic. Computed from the cached coordinates; the
+    cache itself is not touched.
+    """
+    return {m.key: measure_theory_lengths(m, theory[m.key]["coords"]) for m in mols}
+
+
 def benchmark_pool() -> list:
     """The nine scored benchmark molecules, which are also the offsets pool."""
     return (list(MOLECULES) + list(MOLECULES_SET2)
@@ -1032,6 +1061,8 @@ def main() -> None:
     leaked = set(per_molecule_offsets) & {m.key for m in held_out}
     if leaked:
         raise SystemExit(f"validation molecules in the offsets pool: {sorted(leaked)}")
+    # The same pool's theory lengths, for the class diagnostic only.
+    per_molecule_lengths = pool_theory_lengths(theory, pool + calibration)
 
     for mol in scored:
         if mol.key not in wanted:
@@ -1123,6 +1154,13 @@ def main() -> None:
         # informed by the answer.
         sigma_x_offset = prior_sigma_for_molecule(
             mol, per_molecule_offsets, mol.key)
+        # What each class offset above was pooled from, by theory length. A
+        # record and a warning only: no offset, prior or width reads it.
+        offsets_diag = leave_one_out_class_diagnostic(
+            mol, theory_coords, per_molecule_lengths, mol.key)
+        if any(CONFIGS[c]["offsets"] for c in todo):
+            for line in class_diagnostic_warnings(mol.key, offsets_diag, loo):
+                print(f"  {line}", flush=True)
 
         # A correction table per (geometry, lam) pair actually needed. The
         # Hessian cache is shared, so the second lam variant is nearly free.
@@ -1398,6 +1436,10 @@ def main() -> None:
                 # Which molecules the offsets were pooled from: rows of the
                 # two pools must never be compared as if they were one.
                 "offsets_pool": sorted(per_molecule_offsets) if cfg["offsets"] else None,
+                # How many bonds each class offset averaged, their theory
+                # lengths against this molecule's own, and which bonds have no
+                # member within the tolerance (leave_one_out_class_diagnostic).
+                "offsets_class_diagnostic": offsets_diag if cfg["offsets"] else None,
                 # "validation": a molecule outside the pool, scored with the
                 # whole pool's offsets rather than a leave-one-out table.
                 "scored_set": SCORED_SET,

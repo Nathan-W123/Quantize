@@ -35,6 +35,21 @@ molecules alone. A class with no other member gets no correction, which is why
 chlorofluoromethane's C-Cl (+78 mA, the largest single error in the set) is
 left uncorrected under leave-one-out. That is the honest answer for a class
 seen once.
+
+Borrowed offsets
+----------------
+A class is an element pair, so a bond can take its offset from bonds of
+another kind. At RHF/6-31G pyrimidine's ring C-N bonds are 1.330 and 1.334 A
+in theory, and the pool's only C-N members are isocyanic acid's N-C (1.176 A)
+and hydrogen cyanide's C-N (1.144 A), whose mean offset moves pyrimidine's
+prior from 8.84 to 12.88 mA against its r_e^SE (both measured from the cached
+theory geometries, output/theory_geometries_hf_6-31g.json). Splitting the
+classes was measured and not adopted; instead
+:func:`leave_one_out_class_diagnostic` records, for each class applied to a
+molecule, how many bonds the offset was pooled from and how their theory
+lengths compare with the molecule's own, and flags a bond when no pooled
+member lies within :data:`MEMBER_LENGTH_WARN_ANG` of it. It reads theory
+lengths only and changes no offset.
 """
 
 from __future__ import annotations
@@ -99,6 +114,128 @@ def leave_one_out_offsets(per_molecule: dict[str, dict[str, list[float]]],
         for cls, errs in by_class.items():
             pooled[cls].extend(errs)
     return {cls: float(np.mean(errs)) for cls, errs in pooled.items() if errs}
+
+
+#: Theory-length distance, in Angstrom, beyond which a pooled bond does not
+#: count as like the bond whose offset it informs. A bond is flagged when
+#: EVERY member its class offset was pooled from is further than this from it
+#: (``|L_member - L_own| > MEMBER_LENGTH_WARN_ANG`` for all members, i.e. the
+#: nearest member is further): nothing in the pool resembles it, so its offset
+#: is borrowed whole from bonds of another kind. Every member rather than the
+#: members' mean, because a mean can land on a bond that sits between two
+#: unlike groups; and not "any member", because at RHF/6-31G the C-F members
+#: span 1.309 (fluoroacetylene) to 1.425 A (fluoroethane), so that reading
+#: would flag both of those C-F bonds although all six C-F errors at that
+#: level lie between +24.6 and +30.7 mA (both measured from
+#: output/theory_geometries_hf_6-31g.json). A flagged bond is one that a
+#: length-gated pool with this tolerance would leave with no members.
+MEMBER_LENGTH_WARN_ANG = 0.08
+
+
+def measure_theory_lengths(mol, theory_coords) -> dict[str, list[float]]:
+    """Theory bond lengths, in Angstrom, keyed by class.
+
+    One symmetry-averaged length per named bond, in ``mol.bonds`` order, so the
+    entries line up one for one with :func:`measure_offsets` on the same
+    molecule: ``measure_theory_lengths(m, x)[c][i]`` is the theory length of
+    the bond whose error is ``measure_offsets(m, x)[c][i]``.
+    """
+    got = mol.internal_coordinates(np.asarray(theory_coords, dtype=float))
+    out: dict[str, list[float]] = defaultdict(list)
+    for name, cls in bond_classes_of(mol).items():
+        out[cls].append(float(got[name]))
+    return dict(out)
+
+
+def leave_one_out_class_diagnostic(mol, theory_coords,
+                                   per_molecule_lengths: dict[str, dict[str, list[float]]],
+                                   exclude_key: str,
+                                   tol_ang: float = MEMBER_LENGTH_WARN_ANG) -> dict:
+    """What each of ``mol``'s class offsets was pooled from, by theory length.
+
+    ``per_molecule_lengths`` maps a molecule key to :func:`measure_theory_lengths`
+    and must hold the same molecules as the offsets table, so a class's members
+    here are exactly the bonds :func:`leave_one_out_offsets` averaged for it.
+    Only classes that got an offset (at least one member outside
+    ``exclude_key``) appear. Returns, lengths in Angstrom::
+
+        {"tol_ang": 0.08,
+         "classes": {"C-N": {"n_pooled": 2,           # bonds the offset averaged
+                             "pooled_min_ang": ...,   # their theory lengths
+                             "pooled_max_ang": ...,
+                             "bonds": {"C2-N1": {"theory_ang": ...,    # own length
+                                                 "nearest_ang": ...,   # min |member - own|
+                                                 "furthest_ang": ...,  # max |member - own|
+                                                 "n_within": 0,        # members within tol
+                                                 "flagged": True}}}},
+         "flagged": ["C2-N1", ...]}                   # mol.bonds order
+
+    A bond is flagged when ``n_within`` is 0, i.e. ``nearest_ang > tol_ang``
+    (see :data:`MEMBER_LENGTH_WARN_ANG`). Reads lengths only; no offset is
+    computed or changed here.
+    """
+    pooled: dict[str, list[float]] = defaultdict(list)
+    for key, by_class in per_molecule_lengths.items():
+        if key == exclude_key:
+            continue
+        for cls, lengths in by_class.items():
+            pooled[cls].extend(lengths)
+    own = mol.internal_coordinates(np.asarray(theory_coords, dtype=float))
+    classes: dict[str, dict] = {}
+    flagged: list[str] = []
+    for name, cls in bond_classes_of(mol).items():
+        members = pooled.get(cls)
+        if not members:
+            continue
+        arr = np.asarray(members, dtype=float)
+        dist = np.abs(arr - float(own[name]))
+        entry = classes.setdefault(cls, {
+            "n_pooled": int(arr.size),
+            "pooled_min_ang": float(arr.min()),
+            "pooled_max_ang": float(arr.max()),
+            "bonds": {},
+        })
+        n_within = int(np.count_nonzero(dist <= tol_ang))
+        entry["bonds"][name] = {
+            "theory_ang": float(own[name]),
+            "nearest_ang": float(dist.min()),
+            "furthest_ang": float(dist.max()),
+            "n_within": n_within,
+            "flagged": n_within == 0,
+        }
+        if n_within == 0:
+            flagged.append(name)
+    return {"tol_ang": float(tol_ang), "classes": classes, "flagged": flagged}
+
+
+def class_diagnostic_warnings(mol_key: str, diagnostic: dict,
+                              offsets_ang: dict[str, float]) -> list[str]:
+    """One warning line per flagged bond of :func:`leave_one_out_class_diagnostic`.
+
+    ``offsets_ang`` is the table the molecule was corrected with (from
+    :func:`leave_one_out_offsets`); it only supplies the value quoted. The
+    wording is fixed so the lines can be searched for::
+
+        [offsets] <key> <bond> (<class>): theory length L A, offset +x.xx mA
+        pooled from n bond(s) at lo-hi A, none within t A (nearest d A away)
+
+    on one line.
+    """
+    tol = float(diagnostic["tol_ang"])
+    lines: list[str] = []
+    for cls, entry in diagnostic["classes"].items():
+        for name, bond in entry["bonds"].items():
+            if not bond["flagged"]:
+                continue
+            off = offsets_ang.get(cls)
+            off_txt = "none" if off is None else f"{1000.0 * float(off):+.2f} mA"
+            lines.append(
+                f"[offsets] {mol_key} {name} ({cls}): theory length "
+                f"{bond['theory_ang']:.4f} A, offset {off_txt} pooled from "
+                f"{entry['n_pooled']} bond(s) at {entry['pooled_min_ang']:.4f}-"
+                f"{entry['pooled_max_ang']:.4f} A, none within {tol:.2f} A "
+                f"(nearest {bond['nearest_ang']:.4f} A away)")
+    return lines
 
 
 def offset_corrected_geometry(mol, theory_coords, offsets_ang,
