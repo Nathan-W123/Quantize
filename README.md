@@ -10,7 +10,7 @@ Quantize optimizes molecular structures (bond lengths and angles) for spectrosco
 - Map ground-state constants onto equilibrium targets via $B_e = B_0 + \Delta_\mathrm{vib} + \Delta_\mathrm{elec} + \Delta_\mathrm{BOB}$ (see [Ground state to equilibrium](#ground-state-to-equilibrium-b_0-to-b_e)).
 - Stack the σ-weighted spectral Jacobian $J$ and residuals $r$ across all isotopologues, and take the electronic-energy **gradient** $g$ and **Hessian** $H$ from Psi4 or ORCA.
 - Minimize one **joint objective**, the spectral $\tfrac12\chi^2$ plus $\alpha_q$ times the electronic energy, with damped Newton steps $`(J^TJ + \alpha_q H + \lambda I)\,\Delta p = J^T r - \alpha_q g`$. No direction is handed wholesale to either source: each carries weight in proportion to how well it determines that direction, so theory holds the structure where the data are silent and yields where they are informative.
-- Set $\alpha_q$ through `quantum_prior_sigma_ang`, the displacement over which the quantum surface is trusted (roughly the method's geometry error; `MolecularOptimizer` defaults to 0.020 Å).
+- Set $\alpha_q$ through `quantum_prior_sigma_ang`, the displacement over which the quantum surface is trusted (roughly the method's geometry error; `MolecularOptimizer` defaults to 0.020 Å). $\alpha_q$ is chosen so the prior's RMS bond-stretch width equals it, from each molecule's own Hessian (D-170); `optimizer.match_prior_bond_widths: false` restores $\alpha_q = 1/(\tfrac12\bar\lambda\sigma_x^2)$, whose bond widths came out 0.65–0.77 $\sigma_x$ on the nine benchmark molecules.
 
 An SVD-based `split` objective is also available; see [How data and theory share authority](#how-data-and-theory-share-authority).
 
@@ -167,6 +167,19 @@ three on all four at B3LYP; at RHF mixed estimation is ahead on three.
 > without (`dev/tests/test_dft_fit_gradient.py`). The benchmark rows above do
 > not move (their target prior does not use the gradient).
 >
+> *The prior's bond widths match σx* (D-170, 2026-11-27, the user's call,
+> decision page item 13). The tables in this README predate it and have not
+> been regenerated since. The weight 1/(½ λ̄ σx²) set a prior whose RMS bond width
+> was 0.77 σx at RHF/6-31G and 0.65 σx at B3LYP/6-31G(d) on the nine
+> molecules; the weight now makes it σx (nothing fitted: each molecule's
+> factor comes from its own Hessian). Measured at cd0365f (scratch rows),
+> hybrid mean bond RMS in mÅ, base / offsets configurations: the nine at
+> RHF 11.05 / 7.69 → 10.52 / 7.42, at B3LYP 4.58 / 4.10 → 4.55 / 4.13; the
+> six validation molecules against r_e^SE at RHF 4.59 / 3.39 → 4.19 / 3.28
+> (9 of 12 rows better), at B3LYP 2.71 / 1.96 → 2.41 / 1.82 (12 of 12).
+> Reported widths widen; the worst validation error in reported widths goes
+> 5.9 → 4.6 at RHF and 2.2 → 1.9 at B3LYP.
+>
 > Not run: the `elec` and `all` configurations (they need `pyscf.prop`, not
 > installed here), and at B3LYP the `torsion` and `offsets+torsion` rows of
 > fluoroethane and acetyl fluoride (a single scan outlasts the 2-hour job
@@ -206,6 +219,8 @@ against r_e^SE in mÅ, code vintage d711d99; the best of the three in bold:
 
 † RHF's force field is flagged for SO2 (the multireference diagnostic fires).
 Thiophene's B3LYP rows were run at e2b4903 and are identical at d711d99.
+Both tables predate D-170 (the prior's bond widths now match σx; its measured
+effect on these rows is in the provenance note under Results).
 
 The hybrid beats theory alone on all 24 rows and mixed estimation on 16:
 mixed estimation is ahead on formaldehyde at RHF, on sulfur dioxide at both
@@ -213,7 +228,11 @@ levels, and narrowly (0.06–0.15 mÅ) on pyrimidine at B3LYP. Two things to
 know when reading the offsets columns. At RHF the pool's
 C–N offset comes from isocyanic acid's and hydrogen cyanide's multiple bonds,
 so it lengthens pyrimidine's aromatic C–N bonds by 23 mÅ and makes the theory
-row worse (8.84 → 12.88); the offsets ignore bond order (backlog N41). And
+row worse (8.84 → 12.88); the offsets ignore bond order (backlog N41). Each
+offsets row now records what its class's offset was pooled from, and the
+benchmark warns when a bond borrows only from bonds more than 0.08 Å
+different in theory length (D-171): it flags this C–N, and also vinyl
+fluoride's C=C and fluoroacetylene's C≡C, whose offsets help them. And
 thiophene's S–C bond has no offsets class at all: at RHF/6-31G (no d functions
 on sulfur) it starts 80 mÅ long. At B3LYP the offsets help pyrimidine's hybrid
 (2.98 → 1.57) but not thiophene's (3.01 → 3.47).
@@ -663,10 +682,10 @@ through `run` at HF/6-31G on formyl fluoride and chlorofluoromethane, from
 their RHF minima and from 0.03 Å-displaced starts: 0.03-0.6 mÅ RMS (1.4 mÅ for
 one atom), moving the RMS bond error against the reference by up to 0.5 mÅ in
 either direction; one of the four varied by 0.5 mÅ between identical runs on
-four threads. `quantize uncertainty` recomputes the Hessian at the answer and
-re-converges, which reaches the optimum and removes that variation for one
-Hessian (+15-21% of the run here); `run` leaves it out for that cost (backlog
-N23).
+four threads. That was before D-146: `run` now recomputes the Hessian at
+each start's answer and re-converges before ranking, as `quantize uncertainty`
+does for its answer (below), which reaches the optimum and removes that
+variation for one Hessian per start (+15-21% of the run here).
 
 Other commands: `lam-scan`, `lam-fit`, `lam-diagnose`, `uncertainty`, `benchmark`.
 Run `python -m cli --help` for the full list.
