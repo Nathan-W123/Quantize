@@ -132,6 +132,6 @@ Request: Find more validation molecules (published equilibrium structures + isot
 - Nine published molecules, HF/6-31G (t79/me_sym.py, three ME variants at every ME call of main(); out/me_hf_6-31g_benchmark_all.final.json): chlorofluoromethane ME C-H pair 964 mA apart, averaged score base 31.38 / offsets 4.26 mA; symmetry imposed 26.00 / 6.03 (the README's 'ME beats the hybrid on chlorofluoromethane, 4.26 against 5.43' rests on the broken structure). Fluoroethane spread 63-67 mA: base 12.66 -> 11.28, offsets 8.24 -> 9.07. Acetyl fluoride spread 8-17 mA, scores within 0.02. Water, ozone, vinyl fluoride, formyl fluoride, fluoroacetylene, HNCO unchanged. Soft (per-pair, D-160 recipe) equals sym except fluoroethane base (12.00, spread 7 mA).
 - The container restarted at 05:14 UTC and stopped the B3LYP validation run (cache kept, 155 B3LYP Hessians) and the B3LYP ME study; both relaunched on the D-161 commit with the HF validation run (its 0f28ca9 rows archived in t75/n11/pre_d161).
 ## Pending question
-- (none: Q-172 auto-picked at 19:37 UTC -> D-174)
+- Q-173 (asked 20:09 UTC, deadline 20:25 UTC, wake-up trig_01E6R3G8K2kE71CpkCKqp3cU): what's next after T-87? 1 N45: why the acetaldehyde example's constants fail the inertial-defect check (Recommended; read and measure, propose a data fix) · 2 decide page items 15 / 16 / 17 / 8 (user only, never auto-picked) · 3 Done for now.
 
 ## Handoff
