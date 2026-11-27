@@ -1566,3 +1566,9 @@
 - Why: Q-172's recommended option.
 - Source: auto-picked, no answer in 15 min (Q-172, 19:37 UTC)
 - Revisit if: the user picks items 15 / 16 / 8 or another option.
+
+### D-175 · Next after T-87: N45, the acetaldehyde example's constants (2026-11-27)
+- Decision: T-88 = backlog N45: find why the acetaldehyde example config's rotational constants fail the engine's inertial-defect check (read the config, its sources and the check), and propose a data fix; no default changes.
+- Why: Q-173's recommended option; the example is where the fit wanders in T-85/T-87.
+- Source: auto-picked, no answer in 15 min (Q-173, 20:25 UTC)
+- Revisit if: the user picks items 15 / 16 / 17 / 8 or another option.
