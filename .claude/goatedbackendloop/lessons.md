@@ -150,3 +150,11 @@ once by a container swap).
 - Scope: project
 - Status: provisional
 - Outcomes:
+
+### L-34 · A changed default can stale an open proposal's numbers
+- Observation: page item 15 (N39) was measured at the old quantum weight; once D-170 changed the default, the proposal's motivating case vanished (acetaldehyde 30.8 -> 0.13 mA apart) and its cost rose (+18% -> +78% of the seed path).
+- Evidence: 2026-11-27 · T-87 re-measurement at HEAD.
+- Adjustment: when a default changes, list the open page items and backlog proposals whose figures it can move, say so on the page, and re-measure them before the user decides.
+- Scope: project
+- Status: provisional
+- Outcomes:

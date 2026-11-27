@@ -45,6 +45,7 @@ the decisions record; tasks before T-01 live in git history only.
 - T-81 · page items 3, 5, 7 made defaults; two exposed defects fixed · 2026-11-26 · done
 - T-85 · page items 13 + 14 built (D-170, D-171), N38 built, N39 + N43 measured and proposed (page 15, 16) · 2026-11-27 · done
 - T-86 · report says what the prior's weight was matched on (N46) · 2026-11-27 · done
+- T-87 · N44 measured (rank starts by model energy) and N39 re-measured at HEAD · 2026-11-27 · done
 
 ## Edges
 - C:quantum-prior --depends-on--> C:joint-optimizer · 2026-11-20
@@ -198,3 +199,7 @@ the decisions record; tasks before T-01 live in git history only.
 - T-86 --decided--> D-173 · 2026-11-27
 - T-86 --touched--> C:quantum-prior · 2026-11-27 (match record)
 - T-86 --touched--> C:cli-config · 2026-11-27 (report line)
+- T-87 --decided--> D-174 · 2026-11-27
+- T-87 --touched--> C:multistart · 2026-11-27 (measured only: ranking keys, near ties)
+- T-87 --proposed--> page item 17 (N44); page item 15 re-measured · 2026-11-27 (user's call)
+- T-87 --produced--> L-34 · 2026-11-27
