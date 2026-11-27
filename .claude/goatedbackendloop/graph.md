@@ -44,6 +44,7 @@ the decisions record; tasks before T-01 live in git history only.
 - T-79 · mixed-estimation baseline kept symmetry-averaged predicates only; now symmetric · 2026-11-26 · done
 - T-81 · page items 3, 5, 7 made defaults; two exposed defects fixed · 2026-11-26 · done
 - T-85 · page items 13 + 14 built (D-170, D-171), N38 built, N39 + N43 measured and proposed (page 15, 16) · 2026-11-27 · done
+- T-86 · report says what the prior's weight was matched on (N46) · 2026-11-27 · done
 
 ## Edges
 - C:quantum-prior --depends-on--> C:joint-optimizer · 2026-11-20
@@ -194,3 +195,6 @@ the decisions record; tasks before T-01 live in git history only.
 - T-85 --touched--> C:cli-config · 2026-11-27 (match_prior_bond_widths, exact_curvature_where_flagged keys; --no-exact-curvature)
 - T-85 --touched--> C:readme · 2026-11-27 (D-170/D-171 notes; stale refresh paragraph)
 - T-85 --proposed--> page item 15 (N39), page item 16 (N43) · 2026-11-27 (user's call)
+- T-86 --decided--> D-173 · 2026-11-27
+- T-86 --touched--> C:quantum-prior · 2026-11-27 (match record)
+- T-86 --touched--> C:cli-config · 2026-11-27 (report line)

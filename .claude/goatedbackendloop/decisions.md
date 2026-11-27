@@ -1554,3 +1554,9 @@
 - Why: the user said "same for both options" in reply to Q-170's options 2 and 3.
 - Source: stated by user
 - Revisit if: a measurement shows a fix that trades accuracy for time (flag, do not implement).
+
+### D-173 · Next after T-85: N46, say what the prior's weight was matched on (2026-11-27)
+- Decision: T-86 = backlog N46: the run report and posterior say which covalent bonds the calibrated weight was matched on (D-170), its factor against the lambda_bar weight, and when it fell back to that formula (no bond at the Hessian's geometry, match off). No number changes.
+- Why: Q-171's recommended option; the T-85 check found the fallbacks silent.
+- Source: auto-picked, no answer in 15 min (Q-171, 19:15 UTC)
+- Revisit if: the user picks items 15 / 16 / 8 or another option.
