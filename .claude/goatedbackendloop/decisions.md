@@ -1572,3 +1572,9 @@
 - Why: Q-173's recommended option; the example is where the fit wanders in T-85/T-87.
 - Source: auto-picked, no answer in 15 min (Q-173, 20:25 UTC)
 - Revisit if: the user picks items 15 / 16 / 17 / 8 or another option.
+
+### D-176 · The rigid acetaldehyde example takes the catalog's principal-axis constants (2026-11-27)
+- Decision: configs/example_acetaldehyde.yaml: obs_b0_mhz A 56799.051, B 10162.224, C 9089.087 MHz (JPL catalog 44003, data from Kleiner, Lovas & Godefroid JPCRD 25, 1113 (1996); rho-axis constants diagonalised with Dab -3677.76 as the catalog says); source comment corrected; torsion parameters marked unverified. The LAM example, its test and baseline are untouched.
+- Why: Q-174's recommended option. T-88: the old constants match no source read and give inertial defect -0.48 (catalog set -3.03, geometry -3.17); fitted at HF/6-31G they left 74 MHz RMS and a distorted structure, the catalog set 1.1 MHz and a sensible one.
+- Source: auto-picked, no answer in 15 min (Q-174, 20:47 UTC)
+- Revisit if: the primary paper's Table I (unread: the reprint PDF did not extract) gives different ground-state constants, or the user prefers the E-state effective set (JPL 44005).
