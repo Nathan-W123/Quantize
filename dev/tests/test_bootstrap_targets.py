@@ -413,8 +413,14 @@ def test_a_coupled_split_fit_is_bootstrapped_and_its_check_departs(strategy, tmp
     the split posterior leaves out. The refits are the split estimator, so
     their cloud measures what the posterior gets wrong (the angle at 0.04x
     the analytic column) -- refusing the bootstrap hid exactly that, and the
-    same refusal hit accurate C1 fits. The summary flags the departure."""
-    opt = _split_water((2,))
+    same refusal hit accurate C1 fits. The summary flags the departure.
+
+    Built at the lambda_bar weight (match_prior_bond_widths=False): the
+    departure's impact scales with the prior's pull, and with the bond-width
+    match (D-170, alpha_q 1891 -> 1369 here) it is -0.015 against the gate's
+    0.02, so the check rightly stays quiet (ratio unchanged, 0.030;
+    scratchpad t85/a/boot_split.py)."""
+    opt = _split_water((2,), match_prior_bond_widths=False)
     assert opt.split_coupling() > 0.01, "premise: a coupled split fit"
     assert BootstrapEngine.strategy_problem(opt, strategy) is None
     post = opt.internal_coordinate_posterior()
@@ -776,21 +782,22 @@ def test_a_split_restart_that_runs_out_of_iterations_certifies_nothing(tmp_path)
 
 def test_the_hessian_is_recomputed_at_the_answer_on_request(config_fit):
     """The water config's fit ends with the Hessian it computed 10.8 mA away;
-    its prior weight is then 2097, and the widths are up to 5.6% off.
+    its prior weight is then 1543 (2097 before the bond-width match, D-170),
+    and the widths are up to 5.6% off (measured before D-170).
     refresh_hessian_at_answer puts the Hessian there and re-converges. The
     config builds its B0 -> Be targets from the Hessian, so one pass is not
-    self-consistent (0.678, then 0.050, then 0.0036 mA): it repeats until the
+    self-consistent (0.718, then 0.055, then 0.0040 mA): it repeats until the
     answer settles, and a second refresh then barely moves it."""
     opt = deepcopy(config_fit)
     assert 1e3 * opt.hessian_distance() == pytest.approx(10.77, abs=0.05), "premise"
     before = opt.quantum_prior_weight()
     with contextlib.redirect_stdout(io.StringIO()):
         info = opt.refresh_hessian_at_answer()
-    assert before == pytest.approx(2097, rel=0.01)
+    assert before == pytest.approx(1543, rel=0.01)
     assert 1e3 * info["age_before_ang"] == pytest.approx(10.77, abs=0.05)
     assert info["passes"] >= 2 and info["last_move_ang"] <= 2e-5 and info["settled"]
     assert opt.hessian_distance() <= 2e-5
-    assert opt.quantum_prior_weight() == pytest.approx(1817, rel=0.005)
+    assert opt.quantum_prior_weight() == pytest.approx(1308, rel=0.005)
     assert opt.distance_to_mode() < 0.01
     with contextlib.redirect_stdout(io.StringIO()):
         again = opt.refresh_hessian_at_answer()
@@ -930,13 +937,13 @@ def test_the_detectable_bounds_include_the_impact_bar():
 
 
 def test_the_hessian_refresh_says_whether_the_answer_settled(config_fit):
-    """Three passes settle the water config (0.678, 0.050, 0.0036 mA); with
+    """Three passes settle the water config (0.718, 0.055, 0.0040 mA); with
     one pass allowed the answer is still moving and the result says so."""
     opt = deepcopy(config_fit)
     with contextlib.redirect_stdout(io.StringIO()):
         info = opt.refresh_hessian_at_answer(max_passes=1)
     assert info["passes"] == 1 and info["settled"] is False
-    assert 1e3 * info["last_move_ang"] == pytest.approx(0.678, abs=0.01)
+    assert 1e3 * info["last_move_ang"] == pytest.approx(0.718, abs=0.01)
     with contextlib.redirect_stdout(io.StringIO()):
         info = opt.refresh_hessian_at_answer()
     assert info["settled"] is True

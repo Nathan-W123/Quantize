@@ -85,6 +85,7 @@ class SubspaceOptimizer:
         use_internal_preconditioner=False,
         null_hessian_floor=1e-8,
         quantum_prior_sigma_ang=None,
+        match_prior_bond_widths=True,
     ):
         self.sv_threshold = sv_threshold
         self.sv_min_abs = max(0.0, float(sv_min_abs))
@@ -107,6 +108,14 @@ class SubspaceOptimizer:
         self.quantum_prior_sigma_ang = (
             None if quantum_prior_sigma_ang is None else float(quantum_prior_sigma_ang)
         )
+        #: Set the calibrated weight so the prior's RMS bond-stretch width is
+        #: sigma_x (decision D-170); False restores 1 / (1/2 lambda_bar sigma_x^2).
+        #: See _calibrated_alpha_q.
+        self.match_prior_bond_widths = bool(match_prior_bond_widths)
+        #: Unit bond-stretch rows (n_bonds, 3N) at the geometry the Hessian was
+        #: computed at, in the Hessian's frame; MolecularOptimizer sets them
+        #: with each new Hessian. None: the lambda_bar formula is used.
+        self.prior_bond_rows = None
 
     # ── Decomposition ─────────────────────────────────────────────────────────
 
@@ -392,14 +401,42 @@ class SubspaceOptimizer:
 
         so alpha_quantum becomes an interpretable statement about how good the
         electronic structure method is, in Angstroms.
+
+        BOND WIDTHS EQUAL SIGMA_X (match_prior_bond_widths, the default; D-170).
+        sigma_x is the level's typical bond error, but the prior the formula
+        above sets is tighter along bonds, which are stiffer than the typical
+        mode: the prior's RMS bond width sqrt(b^T (alpha_q H)^+ b) came out
+        0.77 sigma_x at HF/6-31G and 0.65 sigma_x at B3LYP/6-31G(d) on the nine
+        benchmark molecules (0.59-1.03 by molecule; scratchpad t82/
+        implied_width.py). With the bond rows set, alpha_q is chosen so that
+        the mean over bonds of b^T (alpha_q H)^+ b is sigma_x^2:
+
+            alpha_q = mean_b(b^T H^+ b) / sigma_x^2
+
+        (lambda_bar cancels), H^+ taken over the same positive-curvature
+        subspace lambda_bar averages. Nothing is fitted: each molecule's factor
+        comes from its own Hessian and connectivity.
         """
-        evals = np.linalg.eigvalsh(0.5 * (hessian + hessian.T))
-        positive = evals[evals > _CURVATURE_FLOOR_REL * max(
-            float(np.max(np.abs(evals))), 1.0)]
+        H = 0.5 * (hessian + hessian.T)
+        rows = self.prior_bond_rows
+        use_bonds = (self.match_prior_bond_widths and rows is not None
+                     and rows.ndim == 2 and rows.shape[0] > 0
+                     and rows.shape[1] == H.shape[0])
+        if use_bonds:
+            evals, evecs = np.linalg.eigh(H)
+        else:
+            evals = np.linalg.eigvalsh(H)
+        keep = evals > _CURVATURE_FLOOR_REL * max(float(np.max(np.abs(evals))), 1.0)
+        positive = evals[keep]
         if positive.size == 0:
             return self.alpha_quantum
-        lam_bar = float(np.mean(positive))
         sigma_x = float(self.quantum_prior_sigma_ang)
+        if use_bonds:
+            proj = rows @ evecs[:, keep]
+            mean_var = float(np.mean(np.sum(proj * proj / positive, axis=1)))
+            if mean_var > 0.0 and sigma_x > 0.0:
+                return float(self.alpha_quantum * mean_var / (sigma_x * sigma_x))
+        lam_bar = float(np.mean(positive))
         e_scale = 0.5 * lam_bar * sigma_x * sigma_x
         if e_scale <= 0.0:
             return self.alpha_quantum

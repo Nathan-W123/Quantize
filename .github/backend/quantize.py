@@ -541,6 +541,7 @@ class MolecularOptimizer:
         ic_micro_iter=20,
         ic_cartesian_fallback=True,
         exact_curvature_where_flagged=True,
+        match_prior_bond_widths=True,
         ic_prior_weight=None,
         ic_prior_sigma_bond=None,
         ic_prior_sigma_angle_deg=None,
@@ -1103,6 +1104,7 @@ class MolecularOptimizer:
             quantum_weight_min=quantum_weight_min,
             quantum_weight_max=quantum_weight_max,
             use_internal_preconditioner=use_internal_preconditioner,
+            match_prior_bond_widths=match_prior_bond_widths,
         )
         self._base_trust_radius = float(self.optimizer.trust_radius)
         self._base_null_trust_radius = float(self.optimizer.null_trust_radius)
@@ -1114,6 +1116,14 @@ class MolecularOptimizer:
             np.asarray(prior_target_coords, dtype=float).reshape(-1, 3)
             if prior_target_coords is not None else None)
         self._base_alpha_quantum = float(self.optimizer.alpha_quantum)
+        #: Covalent bonds the calibrated weight matches to sigma_x (D-170;
+        #: SubspaceOptimizer._calibrated_alpha_q), found once, at the prior's
+        #: centre when it has one, so the weight cannot jump mid-fit when a
+        #: bond crosses the covalent cutoff.
+        _bond_geom = (self._prior_target_coords if self._prior_target_coords is not None
+                      and self._prior_target_coords.shape == np.shape(self.coords)
+                      else np.asarray(self.coords, dtype=float))
+        self._prior_bond_pairs = [tuple(map(int, b)) for b in _detect_bonds(_bond_geom, self.elems)]
 
         self.use_autoconfig = bool(use_autoconfig)
         self.use_autoconfig_heuristic_bases = bool(use_autoconfig_heuristic_bases)
@@ -1543,6 +1553,7 @@ class MolecularOptimizer:
                 self.quantum = QuantumState(result.energy, result.gradient_bohr, hessian)
                 self._orca_ref_coords = self.coords.copy()
                 self._hessian_ref_coords = at.copy()
+                self._sync_prior_bond_rows()
                 self._quantum_prior_weight_cache = None
                 self._proj_ref_terms_cache = None
                 return
@@ -1550,6 +1561,7 @@ class MolecularOptimizer:
         self.quantum = QuantumState(result.energy, result.gradient_bohr, result.hessian_bohr)
         self._orca_ref_coords = self.coords.copy()
         self._hessian_ref_coords = self.coords.copy()
+        self._sync_prior_bond_rows()
         if self._target_prior_active():
             self._target_hessian = (np.asarray(self._prior_target_coords, dtype=float).tobytes(),
                                     self.coords.copy(),
@@ -2049,6 +2061,30 @@ class MolecularOptimizer:
                 self.spectral.set_hessian_for_cd(self.quantum._hessian_bohr,
                                                  coords=self._hessian_ref_coords)
 
+    def _sync_prior_bond_rows(self):
+        """Hand the optimizer unit bond-stretch rows at the Hessian's geometry.
+
+        The calibrated weight matches the prior's bond widths to sigma_x
+        (D-170), so it needs the bonds in the frame and at the geometry the
+        Hessian describes: _hessian_ref_coords, set beside every new Hessian.
+        """
+        x = getattr(self, "_hessian_ref_coords", None)
+        pairs = getattr(self, "_prior_bond_pairs", None)
+        if x is None or not pairs:
+            self.optimizer.prior_bond_rows = None
+            return
+        x = np.asarray(x, dtype=float).reshape(-1, 3)
+        rows = np.zeros((len(pairs), x.size))
+        for k, (i, j) in enumerate(pairs):
+            u = x[j] - x[i]
+            n = float(np.linalg.norm(u))
+            if n <= 0.0:
+                continue
+            u = u / n
+            rows[k, 3 * j:3 * j + 3] = u
+            rows[k, 3 * i:3 * i + 3] = -u
+        self.optimizer.prior_bond_rows = rows
+
     def _force_hessian_refresh(self):
         """Make the next quantum update recompute the Hessian rather than reuse it."""
         self._since_hessian = None
@@ -2064,6 +2100,7 @@ class MolecularOptimizer:
         self.quantum = QuantumState(eng.energy, eng._gradient_bohr.copy(), eng._hessian_bohr.copy())
         self._orca_ref_coords = self.coords.copy()
         self._hessian_ref_coords = self.coords.copy()
+        self._sync_prior_bond_rows()
         self._quantum_prior_weight_cache = None
         self._proj_ref_terms_cache = None
         print(f"Loaded ORCA files.  Energy = {self.quantum.energy:.10f} Hartree")
