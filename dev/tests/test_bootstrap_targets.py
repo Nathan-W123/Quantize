@@ -415,12 +415,13 @@ def test_a_coupled_split_fit_is_bootstrapped_and_its_check_departs(strategy, tmp
     the analytic column) -- refusing the bootstrap hid exactly that, and the
     same refusal hit accurate C1 fits. The summary flags the departure.
 
-    Built at the lambda_bar weight (match_prior_bond_widths=False): the
-    departure's impact scales with the prior's pull, and with the bond-width
-    match (D-170, alpha_q 1891 -> 1369 here) it is -0.015 against the gate's
-    0.02, so the check rightly stays quiet (ratio unchanged, 0.030;
-    scratchpad t85/a/boot_split.py)."""
-    opt = _split_water((2,), match_prior_bond_widths=False)
+    At sigma_x 0.017 A: the departure's impact scales with the prior's pull,
+    and the bond-width match (D-170) took alpha_q from 1891 to 1369 at
+    0.020 A, where the impact (-0.015) no longer clears the gate's 0.02 and
+    the check rightly stays quiet. 0.017 A gives alpha_q 1895 and impact
+    -0.021 at the default weight (ratio 0.030 either way; scratchpad
+    t85/a/boot_split.py, boot_split2.py)."""
+    opt = _split_water((2,), sigma=0.017)
     assert opt.split_coupling() > 0.01, "premise: a coupled split fit"
     assert BootstrapEngine.strategy_problem(opt, strategy) is None
     post = opt.internal_coordinate_posterior()

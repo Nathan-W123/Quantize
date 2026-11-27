@@ -105,6 +105,7 @@ def test_without_usable_bond_rows_the_weight_is_the_lambda_bar_formula(case):
 
 
 def test_config_false_reaches_the_optimizer_and_a_string_is_refused():
+    import dev.analytic_water_backend  # noqa: F401  (the config's backend; not left to test order)
     from runner.run_generic import build_run_inputs
     from runner.usability import ConfigError, load_config, validate_config
     cfg = load_config(_ROOT / "dev" / "configs" / "water_analytic_endtoend.yaml")
@@ -119,3 +120,55 @@ def test_config_false_reaches_the_optimizer_and_a_string_is_refused():
     cfg["optimizer"]["match_prior_bond_widths"] = "no"
     with pytest.raises(ConfigError):
         validate_config(cfg)
+
+
+def _water(r, **kw):
+    import dev.analytic_water_backend  # noqa: F401  (registers analytic_water)
+    from backend.quantize import MolecularOptimizer
+    from dev.tests.test_bootstrap_targets import B0_H2O, MASSES_H2O
+    th = np.radians(104.0) / 2
+    x = np.array([[0.0, 0.0, 0.0], [r * np.sin(th), 0.0, r * np.cos(th)],
+                  [-r * np.sin(th), 0.0, r * np.cos(th)]])
+    iso = [{"name": "H2O", "masses": MASSES_H2O, "obs_constants": B0_H2O,
+            "sigma_constants": [0.1] * 3}]
+    with contextlib.redirect_stdout(io.StringIO()):
+        opt = MolecularOptimizer(elems=["O", "H", "H"], coords=x, isotopologues=iso,
+                                 quantum_backend="analytic_water", use_autoconfig=False,
+                                 quantum_prior_sigma_ang=0.02, auto_systematic_sigma=False,
+                                 max_iter=60, symmetry="C1", **kw)
+    return opt
+
+
+@pytest.mark.parametrize("r", [1.20, 1.25, 1.30])
+def test_bonds_are_found_where_the_hessian_was_taken(r):
+    """Both O-H stretched past the covalent cutoff (1.164 A) at the Hessian's
+    geometry: no bond to match, so the weight is the lambda_bar formula's,
+    even with a prior target the internal-mode prior is not centred on.
+    Found at that target instead, the bonds set alpha_q 3.2x (1.25 A, near
+    the stretch's inflection) or 0.04x (1.30 A) the formula's, and the 1.30 A
+    fit ended 9 mA asymmetric (scratchpad t85/verify/c5c_eig.py)."""
+    target = _water(0.9578).coords
+    on = _water(r, coordinate_mode="internal", prior_target_coords=target)
+    off = _water(r, coordinate_mode="internal", prior_target_coords=target,
+                 match_prior_bond_widths=False)
+    with contextlib.redirect_stdout(io.StringIO()):
+        on._update_orca()
+        off._update_orca()
+    assert on.optimizer.prior_bond_rows is None
+    assert on.quantum_prior_weight(refresh=True) == off.quantum_prior_weight(refresh=True)
+
+
+def test_a_bond_past_the_cutoff_at_the_start_is_matched_once_the_hessian_moves():
+    """One O-H starts at 1.17 A, past the cutoff: the first Hessian matches the
+    other bond only; the Hessian at the answer matches both."""
+    opt = _water(1.0)
+    opt.coords[2] = opt.coords[0] + 1.17 * (opt.coords[2] - opt.coords[0]) / np.linalg.norm(
+        opt.coords[2] - opt.coords[0])
+    with contextlib.redirect_stdout(io.StringIO()):
+        opt._update_orca()
+        assert opt.optimizer.prior_bond_rows.shape[0] == 1
+        opt.run()
+        opt.refresh_hessian_at_answer()
+    _a, w, _H = _prior_bond_widths(opt)
+    assert len(w) == 2
+    assert np.sqrt(np.mean(w ** 2)) == pytest.approx(0.02, rel=1e-9)

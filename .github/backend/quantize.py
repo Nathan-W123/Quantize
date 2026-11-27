@@ -1116,14 +1116,6 @@ class MolecularOptimizer:
             np.asarray(prior_target_coords, dtype=float).reshape(-1, 3)
             if prior_target_coords is not None else None)
         self._base_alpha_quantum = float(self.optimizer.alpha_quantum)
-        #: Covalent bonds the calibrated weight matches to sigma_x (D-170;
-        #: SubspaceOptimizer._calibrated_alpha_q), found once, at the prior's
-        #: centre when it has one, so the weight cannot jump mid-fit when a
-        #: bond crosses the covalent cutoff.
-        _bond_geom = (self._prior_target_coords if self._prior_target_coords is not None
-                      and self._prior_target_coords.shape == np.shape(self.coords)
-                      else np.asarray(self.coords, dtype=float))
-        self._prior_bond_pairs = [tuple(map(int, b)) for b in _detect_bonds(_bond_geom, self.elems)]
 
         self.use_autoconfig = bool(use_autoconfig)
         self.use_autoconfig_heuristic_bases = bool(use_autoconfig_heuristic_bases)
@@ -2067,13 +2059,27 @@ class MolecularOptimizer:
         The calibrated weight matches the prior's bond widths to sigma_x
         (D-170), so it needs the bonds in the frame and at the geometry the
         Hessian describes: _hessian_ref_coords, set beside every new Hessian.
+        The covalent bonds are found there too, so the weight is a function of
+        the Hessian alone and changes only when it does. A bond stretched past
+        the covalent cutoff at that geometry is left out of the match, and with
+        no bond at all the weight is the lambda_bar formula. Found once
+        elsewhere -- at a prior target in internal mode, which does not centre
+        the prior there -- the bonds of a Hessian taken at a start with both
+        O-H stretched to 1.25 A (near the stretch's inflection, curvature
+        0.05 Eh/A^2) set alpha_q 3.2x the lambda_bar formula's, and at 1.30 A
+        (negative curvature) 0.04x, which left analytic water's fit 9 mA
+        asymmetric (independent check of D-170, scratchpad
+        t85/verify/c5c_eig.py).
         """
         x = getattr(self, "_hessian_ref_coords", None)
-        pairs = getattr(self, "_prior_bond_pairs", None)
-        if x is None or not pairs:
+        if x is None:
             self.optimizer.prior_bond_rows = None
             return
         x = np.asarray(x, dtype=float).reshape(-1, 3)
+        pairs = [tuple(map(int, b)) for b in _detect_bonds(x, self.elems)]
+        if not pairs:
+            self.optimizer.prior_bond_rows = None
+            return
         rows = np.zeros((len(pairs), x.size))
         for k, (i, j) in enumerate(pairs):
             u = x[j] - x[i]
