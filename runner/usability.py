@@ -473,7 +473,10 @@ _OPTIMIZER_NULLABLE_FLOATS = ("null_trust_radius", "quantum_prior_sigma_ang", "s
 _OPTIMIZER_INTS = ("max_iter", "hess_recalc_every", "hess_recalc_min", "hess_recalc_max")
 # match_prior_bond_widths: the calibrated quantum prior's RMS bond width is
 # sigma_x (default true, D-170); false restores 1 / (1/2 lambda_bar sigma_x^2).
-_OPTIMIZER_BOOLS = ("adaptive_hess_schedule", "dynamic_quantum_weight", "match_prior_bond_widths")
+# exact_curvature_where_flagged: false reproduces the Gauss-Newton fit and
+# report (D-145); absent, the constructor's default (true) applies.
+_OPTIMIZER_BOOLS = ("adaptive_hess_schedule", "dynamic_quantum_weight",
+                    "match_prior_bond_widths", "exact_curvature_where_flagged")
 #: Every key an optimizer: block may carry -- the builder passes exactly these
 #: to MolecularOptimizer (run_generic.build_run_inputs).
 _OPTIMIZER_KEYS = (_OPTIMIZER_FLOATS + _OPTIMIZER_NULLABLE_FLOATS + _OPTIMIZER_INTS

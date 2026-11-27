@@ -722,7 +722,9 @@ softest physical directions by finite differences, and along one where the
 exact curvature is over 50% from Gauss-Newton's, the reported widths, the
 distance to the optimum and the bootstrap's refusal limit use the exact
 value, and so does the fit's step where the exact value is the larger
-(`exact_curvature_where_flagged=False` turns this off). Beyond two widths from
+(`optimizer.exact_curvature_where_flagged: false` in a config, or
+`--no-exact-curvature` on `quantize run` and `quantize uncertainty`, turns this
+off and reproduces the Gauss-Newton fit and report). Beyond two widths from
 its optimum a fit keeps Gauss-Newton's widths, and the report says why. On the
 water dimer above (eight starts with no point group, both coordinate modes),
 Gauss-Newton keeps at most 2.2% of the curvature along the hydrogen-bond torsion: at

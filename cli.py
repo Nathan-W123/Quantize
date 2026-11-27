@@ -502,7 +502,7 @@ def _cmd_uncertainty(args) -> int:
     """Run Bayesian/Bootstrap uncertainty analysis from config."""
     import time
     _started = time.time()
-    from runner.run_from_config import build_optimizer_from_config
+    from runner.run_from_config import build_optimizer_from_config, use_gauss_newton_curvature
     from backend.uncertainty_v2 import (
         AdaptiveMetropolisV2,
         BootstrapConfig,
@@ -616,6 +616,14 @@ def _cmd_uncertainty(args) -> int:
         validate_config(cfg)
     except ConfigError as exc:
         return _refuse(f"config: {exc}", "config_error")
+    if args.no_exact_curvature:
+        use_gauss_newton_curvature(cfg)
+    _ec = (cfg.get("optimizer") or {}).get("exact_curvature_where_flagged")
+    if _ec is False:
+        # Recorded only when off, so a default run's summary is unchanged.
+        summary_bundle["exact_curvature"] = (
+            "off (--no-exact-curvature)" if args.no_exact_curvature
+            else "off (optimizer.exact_curvature_where_flagged: false)")
 
     boot_cfg = None
     if args.mode in ["bootstrap", "both"]:
@@ -1049,6 +1057,11 @@ def main(argv: list[str] | None = None) -> int:
     run_p.add_argument("--no-hessian-refresh", action="store_true",
                        help="Keep each start's own quantum Hessian instead of recomputing it at "
                             "the answer and re-converging (one Hessian per start).")
+    run_p.add_argument("--no-exact-curvature", action="store_true",
+                       help="Use Gauss-Newton curvature only, also along a direction the "
+                            "Gauss-Newton check flags, in the step, the widths, the distance "
+                            "to the optimum and the bootstrap gate; the same as "
+                            "optimizer.exact_curvature_where_flagged: false.")
 
     # --- validate ---
     check_p = sub.add_parser("validate", help="Validate a YAML or JSON config without running.")
@@ -1162,6 +1175,14 @@ def main(argv: list[str] | None = None) -> int:
               "far away it was."),
     )
     unc_p.add_argument(
+        "--no-exact-curvature",
+        action="store_true",
+        help=("Use Gauss-Newton curvature only, also along a direction the Gauss-Newton "
+              "check flags, in the fit's step, the widths, the distance to the optimum "
+              "and the bootstrap gate; the same as "
+              "optimizer.exact_curvature_where_flagged: false."),
+    )
+    unc_p.add_argument(
         "--no-laplace-persist",
         action="store_true",
         help="Disable posterior/laplace JSON persistence in v2 engine.",
@@ -1231,7 +1252,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "run":
         try:
             sys.argv = ([sys.argv[0], str(args.config)] + (["--no-run-dir"] if args.no_run_dir else [])
-                        + (["--no-hessian-refresh"] if args.no_hessian_refresh else []))
+                        + (["--no-hessian-refresh"] if args.no_hessian_refresh else [])
+                        + (["--no-exact-curvature"] if args.no_exact_curvature else []))
             run_from_config_main()
             return 0
         except SystemExit as exc:

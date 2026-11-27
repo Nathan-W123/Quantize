@@ -30,6 +30,17 @@ except ModuleNotFoundError:
 from runner.usability import ConfigError, load_config, prepare_run_directory, validate_config
 
 
+def use_gauss_newton_curvature(cfg: dict) -> dict:
+    """``--no-exact-curvature``: the config with
+    ``optimizer.exact_curvature_where_flagged: false`` (D-145 off), so the
+    flag and the key are one setting. Call it on a validated config: the
+    ``optimizer`` block is then absent, null or a mapping."""
+    block = cfg.get("optimizer")
+    cfg["optimizer"] = {**(block if isinstance(block, dict) else {}),
+                        "exact_curvature_where_flagged": False}
+    return cfg
+
+
 def build_optimizer_from_config(
     cfg: dict,
     *,
@@ -144,11 +155,18 @@ def main() -> None:
         action="store_true",
         help="Keep each start's own quantum Hessian instead of recomputing it at the answer.",
     )
+    parser.add_argument(
+        "--no-exact-curvature",
+        action="store_true",
+        help="Gauss-Newton curvature only (optimizer.exact_curvature_where_flagged: false).",
+    )
     args = parser.parse_args()
     cfg_path = args.config.resolve()
     try:
         cfg = load_config(cfg_path)
         validate_config(cfg)
+        if args.no_exact_curvature:
+            use_gauss_newton_curvature(cfg)
         if not args.no_run_dir:
             run_dir = prepare_run_directory(cfg, cfg_path)
             print(f"[run_from_config] run_dir={run_dir}")

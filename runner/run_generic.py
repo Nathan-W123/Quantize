@@ -2266,6 +2266,8 @@ def build_run_inputs(cfg: dict[str, Any], *, verbose: bool = True) -> dict[str, 
         print(f"[{name}] spectral model: {spectral_model}")
         print(f"[{name}] quantum      : {backend} / {orca_method} / {orca_basis}")
         print(f"[{name}] coord mode   : {coordinate_mode}")
+        if optimizer_kwargs.get("exact_curvature_where_flagged") is False:
+            print(f"[{name}] curvature    : Gauss-Newton only (exact_curvature_where_flagged off)")
         print(f"[{name}] preset       : {preset_name}")
         print(f"[{name}] n_starts     : {preset['n_starts']}  max_workers: {preset['max_workers']}")
         if conformer_workflow["summary"]["requested_enabled"]:
