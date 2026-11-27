@@ -1540,11 +1540,14 @@
 - Alternatives considered: B, one factor per level fitted on the nine; C, leave as is.
 - Source: stated by user
 - Revisit if: the engine form (all connectivity bonds, recomputed with each Hessian) moves the rows materially away from the scratch measurement.
+- Built (cd0365f, fa02137): SVD._calibrated_alpha_q = alpha_quantum * mean_b(b^T H+ b) / sigma_x^2; bonds and rows at the Hessian's geometry; optimizer.match_prior_bond_widths. Measured at cd0365f: nine HF 11.05 / 7.69 -> 10.52 / 7.42, B3LYP 4.58 / 4.10 -> 4.55 / 4.13; six HF 4.59 / 3.39 -> 4.19 / 3.28 (9/12 better), B3LYP 2.71 / 1.96 -> 2.41 / 1.82 (12/12); worst |z| 5.9 -> 4.6, 2.2 -> 1.9. Engine form tracks the scratch iw.
+- Review (independent check, t85/verify/): one defect (bonds found at the target in internal mode; stretched-start Hessian gave 0.04-3.2x weights), fixed in fa02137. Kept: alpha drift through the rigid projector (pre-existing), silent fallback with no bond.
 
 ### D-171 · Page item 14 yes: keep the offsets classes, record and warn (2026-11-27)
 - Decision: bond-offset classes stay element pairs; each offsets row records how many bonds its class pooled and their theory-length spread, and the benchmark warns when a bond borrows from members more than 0.08 A different in theory length. No number changes.
 - Why: the user said yes. T-82 (t82/n41.py): no split by order or length beats today's classes at both levels.
 - Source: stated by user
+- Built (agent, d116ce1): bond_offsets.leave_one_out_class_diagnostic, MEMBER_LENGTH_WARN_ANG; flagged when every pooled member is > 0.08 A from the bond. Dry benchmark old vs new: 60 rows, 2360 fields identical. Flags at HF: VF C=C, FA C#C (helped), pyrimidine C-N (hurt); B3LYP also ozone O-O.
 
 ### D-172 · Q-170: options 2 and 3 too (2026-11-27)
 - Decision: after items 13 and 14, (2) add a config key and CLI flag for exact_curvature_where_flagged (N38) and measure and propose N39 (quantize uncertainty's seeding multistart ranks before a Hessian refresh); (3) measure and propose a fix for N43 (near-linear molecules: symmetry detection and rigid-mode count). N39 costs a Hessian per start, so it is proposed, not implemented.

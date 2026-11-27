@@ -43,6 +43,7 @@ the decisions record; tasks before T-01 live in git history only.
 - T-78 · offsets prior broke ring symmetry; fixed, spread recorded per row · 2026-11-26 · done
 - T-79 · mixed-estimation baseline kept symmetry-averaged predicates only; now symmetric · 2026-11-26 · done
 - T-81 · page items 3, 5, 7 made defaults; two exposed defects fixed · 2026-11-26 · done
+- T-85 · page items 13 + 14 built (D-170, D-171), N38 built, N39 + N43 measured and proposed (page 15, 16) · 2026-11-27 · done
 
 ## Edges
 - C:quantum-prior --depends-on--> C:joint-optimizer · 2026-11-20
@@ -185,4 +186,11 @@ the decisions record; tasks before T-01 live in git history only.
 - T-84 --touched--> C:cli-config · 2026-11-26 (multistart between-start comparison skips bend rows)
 - T-84 --closed-part--> N40 · 2026-11-26
 - T-84 --extended--> N43 · 2026-11-26
-
+- T-85 --decided--> D-170 · 2026-11-27
+- T-85 --decided--> D-171 · 2026-11-27
+- T-85 --decided--> D-172 · 2026-11-27
+- T-85 --touched--> C:quantum-prior · 2026-11-27 (alpha_q matched to bond widths; bonds at the Hessian's geometry)
+- T-85 --touched--> C:bond-offsets · 2026-11-27 (borrowed-offset diagnostic, no number changes)
+- T-85 --touched--> C:cli-config · 2026-11-27 (match_prior_bond_widths, exact_curvature_where_flagged keys; --no-exact-curvature)
+- T-85 --touched--> C:readme · 2026-11-27 (D-170/D-171 notes; stale refresh paragraph)
+- T-85 --proposed--> page item 15 (N39), page item 16 (N43) · 2026-11-27 (user's call)

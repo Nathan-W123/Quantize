@@ -142,3 +142,11 @@ once by a container swap).
 - Scope: project (likely general)
 - Status: provisional
 - Outcomes: -2026-11-26 (T-83: a code comment stated 'measured' shares before they were measured; caught and corrected within the hour, the real figures 1e-31 / 0.167 differed from the guessed 1e-22 / 0.25)
+
+### L-33 · A test that loads a config with a dev backend must register the backend itself
+- Observation: a new config test (water_analytic_endtoend.yaml, quantum.backend analytic_water) passed in its file and in the suite only because an earlier test imported dev.analytic_water_backend; run alone it failed validation ("'quantum.backend' must be one of ...").
+- Evidence: 2026-11-27 · T-85: caught by running the new tests alone on the old tree (to see which fail without the change).
+- Adjustment: import the backend's registration module inside any test that validates a config naming a dev backend; run each new test file alone, and its new tests one by one, once.
+- Scope: project
+- Status: provisional
+- Outcomes:
