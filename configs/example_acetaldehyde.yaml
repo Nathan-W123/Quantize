@@ -1,10 +1,19 @@
 # Acetaldehyde (CH3CHO) — rigid spectral model, underconstrained demo
 # For the full torsional LAM pipeline see example_acetaldehyde_lam.yaml
 #
-# Literature source: Kleiner et al., J. Mol. Spectrosc. 175, 1-13 (1996)
-#   Effective rotational constants (internal rotor model, vt=0 A-state):
-#     A = 52842.4 MHz   B = 10240.6 MHz   C = 8648.0 MHz
-#   Torsion: F = 5.1724 cm^-1, rho = 0.0609, V3 = 163.4 cm^-1
+# Rotational constants: ground torsional state, JPL catalog entry 44003
+# (data from Kleiner, Lovas & Godefroid, J. Phys. Chem. Ref. Data 25, 1113
+# (1996)). The catalog gives rho-axis constants A = 56507.198, B = 10454.077,
+# C = 9089.087 MHz, to be diagonalised with Dab = -3677.76 MHz; the principal-
+# axis values below are that diagonalisation (axes 4.54 deg apart):
+#     A = 56799.051 MHz   B = 10162.224 MHz   C = 9089.087 MHz
+# Inertial defect -3.03 amu A^2 (the catalog's separate E-state fit, entry
+# 44005, gives -3.17). The values this file used before (A 52842.4,
+# B 10240.6, C 8648.0) match neither entry and give -0.48, which the
+# engine's inertial-defect check flags: fitted at HF/6-31G they left 74 MHz
+# RMS and a distorted structure (C=O 1.248 A, CCO 116 deg), against 1.1 MHz
+# and C=O 1.218 A, CCO 123.5 deg with these.
+#   Torsion (unverified here): F = 5.1724 cm^-1, rho = 0.0609, V3 = 163.4 cm^-1
 #
 # Known reference geometry (for validation):
 #   r(C=O)  ~ 1.210 A    r(C-C)  ~ 1.516 A
@@ -28,7 +37,7 @@ isotopologues:
     masses: [12.00000000000, 12.00000000000, 15.99491461957,
              1.00782503207, 1.00782503207, 1.00782503207, 1.00782503207]
     components: [A, B, C]
-    obs_b0_mhz: [52842.4, 10240.6, 8648.0]
+    obs_b0_mhz: [56799.051, 10162.224, 9089.087]
     alpha_mhz: [0.0, 0.0, 0.0]
     sigma_mhz: [5.0, 0.1, 0.1]
 
