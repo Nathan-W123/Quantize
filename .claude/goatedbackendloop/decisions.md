@@ -1533,3 +1533,21 @@
 - Source: auto-picked, no answer in 15 min (Q-169, 15:39 UTC).
 - Revisit if: the user picks another option.
 
+
+### D-170 · Page item 13 yes: the prior's bond widths mean sigma_x (option A) (2026-11-27)
+- Decision: the calibrated quantum prior's pull is set per molecule, from its own Hessian, so the prior's RMS bond-stretch width equals sigma_x (option A on the decision page); a config key turns it off. Every published row at both levels moves, and reported widths widen.
+- Why: the user said yes ("13 14 yes"). Measured in scratch (T-82, variant iw): HF nine base / offsets 11.05 / 7.69 -> 10.43 / 7.31; B3LYP nine 4.58 / 4.10 -> 4.59 / 4.21 (neutral; better on every r_e offsets row); held-out six HF 4.59 / 3.39 -> 4.15 / 3.26, B3LYP 2.71 / 1.96 -> 2.28 / 1.74 (12 of 12 rows better).
+- Alternatives considered: B, one factor per level fitted on the nine; C, leave as is.
+- Source: stated by user
+- Revisit if: the engine form (all connectivity bonds, recomputed with each Hessian) moves the rows materially away from the scratch measurement.
+
+### D-171 · Page item 14 yes: keep the offsets classes, record and warn (2026-11-27)
+- Decision: bond-offset classes stay element pairs; each offsets row records how many bonds its class pooled and their theory-length spread, and the benchmark warns when a bond borrows from members more than 0.08 A different in theory length. No number changes.
+- Why: the user said yes. T-82 (t82/n41.py): no split by order or length beats today's classes at both levels.
+- Source: stated by user
+
+### D-172 · Q-170: options 2 and 3 too (2026-11-27)
+- Decision: after items 13 and 14, (2) add a config key and CLI flag for exact_curvature_where_flagged (N38) and measure and propose N39 (quantize uncertainty's seeding multistart ranks before a Hessian refresh); (3) measure and propose a fix for N43 (near-linear molecules: symmetry detection and rigid-mode count). N39 costs a Hessian per start, so it is proposed, not implemented.
+- Why: the user said "same for both options" in reply to Q-170's options 2 and 3.
+- Source: stated by user
+- Revisit if: a measurement shows a fix that trades accuracy for time (flag, do not implement).
