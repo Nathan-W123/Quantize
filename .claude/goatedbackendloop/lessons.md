@@ -158,3 +158,11 @@ once by a container swap).
 - Scope: project
 - Status: provisional
 - Outcomes:
+
+### L-35 · An approved rule applies where it was measured, and no further
+- Observation: page item 17 was measured on starts refreshed at their answers; I implemented it for every start. The independent check found that unrefreshed the model energy was the worse key (highest true energy picked in 4 of 6 runs), so `--no-hessian-refresh` would have ranked worse than before.
+- Evidence: 2026-11-28 · T-89 verify (t89/verify/ms_energy_seed.py); fixed in 1a9d97e by gating the rule on a refresh record.
+- Adjustment: when building a measured proposal, write the measured conditions (mode, refresh, symmetry, level) into the rule's guard, and fall back to the old behaviour outside them.
+- Scope: project (likely general)
+- Status: provisional
+- Outcomes:

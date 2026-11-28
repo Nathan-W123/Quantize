@@ -1588,9 +1588,11 @@
 - Decision: N43 variant B: a geometry with every atom within 0.01 A of its principal axis has 5 rigid modes everywhere (rigid projector follows rigid_mode_count); detection relabels a finite axial group as Cinf_v / Dinf_h when its Cn (n >= 2) leaves every atom in place.
 - Why: the user: "Whatever u lean on do it" (item 16: I leaned yes). T-85 N43 measurement: fluoroacetylene's C1 bends become equal; benchmark molecules unchanged.
 - Source: stated by user
+- Built c35cc2d; review (independent): the relabel needed every end-swap operation, not inversion alone (V-bent CO2 lost its D3h end swap; fixed 1a9d97e). Harmonic alpha still steps at the threshold, as at the old one.
 
 ### D-179 · Page item 17 yes: rank starts by the model energy at each answer (2026-11-28)
 - Decision: select_best_result ranks gate-passing starts by energy_at_answer_model when every one has a finite value, else by the last-point energy as before. Supersedes D-65's ranking key.
 - Why: the user: "Whatever u lean on do it" (item 17: I leaned yes). T-87: lowest true energy 10/10 vs 6/10, zero cost.
 - Source: stated by user
+- Built c35cc2d; review (independent): measured on refreshed starts only; unrefreshed the model energy is the worse key, so since 1a9d97e it ranks only when every gated start was refreshed at its answer.
 - Item 8 (no lean) stays open.

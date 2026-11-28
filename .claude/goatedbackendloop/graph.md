@@ -47,6 +47,7 @@ the decisions record; tasks before T-01 live in git history only.
 - T-86 · report says what the prior's weight was matched on (N46) · 2026-11-27 · done
 - T-87 · N44 measured (rank starts by model energy) and N39 re-measured at HEAD · 2026-11-27 · done
 - T-88 · acetaldehyde example constants traced (N45): match no source; corrected set fits at 1.1 MHz · 2026-11-27 · done
+- T-89 · page items 15, 16, 17 built (D-177..D-179); verify found 1 regression + 1 gap, fixed · 2026-11-28 · done
 
 ## Edges
 - C:quantum-prior --depends-on--> C:joint-optimizer · 2026-11-20
@@ -206,3 +207,8 @@ the decisions record; tasks before T-01 live in git history only.
 - T-87 --produced--> L-34 · 2026-11-27
 - T-88 --decided--> D-175 · 2026-11-27
 - T-88 --touched--> C:references · 2026-11-27 (example data checked against JPL 44003; fix proposed)
+- T-89 --decided--> D-177, D-178, D-179 · 2026-11-28
+- T-89 --touched--> C:multistart · 2026-11-28 (ranking key; seeding refresh)
+- T-89 --touched--> C:cli-config · 2026-11-28 (uncertainty seeding refresh)
+- T-89 --touched--> C:uncertainty · 2026-11-28 (rigid count, linear bends)
+- T-89 --produced--> L-35 · 2026-11-28
