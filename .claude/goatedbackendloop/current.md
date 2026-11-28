@@ -158,6 +158,8 @@ Request: Find more validation molecules (published equilibrium structures + isot
 - z = (delta_computed - (B_e(ref) - B0)) / sigma per constant; 8 molecules at HF/6-31G and 4 at B3LYP/6-31G(d), under both schemes. First result, water HF normal_mode: RMS z 0.46, all 6 within 2.
 ## Task T-95 (D-186: N50, the other H2-18O copies) · done 08:35 UTC
 - The repo's 825366.1/435331.6/276950.5 is NIST SRD 117 (ref. 74005, +/-8 MHz); JPL 20003 has B 22.5 MHz higher. Theory isotope shift in B0: +12 (B3LYP/cc-pVTZ) to +20 MHz (HF), nearer JPL (+2.4) than NIST (-20.1); model-dependent at that level. Kept and cited; no fit is affected at today's correction sigmas.
+## Task T-96 (D-187: N3, equilibrium references for the five r_s rows) · done 08:52 UTC (nothing found; no change)
+- One extended search per molecule. HNCO: no open r_e^SE with uncertainties (arXiv 1607.03799 turned out to be HNCS). HCOF: Margules 1999, paywalled and ab initio. HCCF: 1993 mixed estimates, CC/CF disagree by about 10 mA. Fluoroethane and acetyl fluoride: none.
 ## Progress
 - All six wired and tested; benchmark rows at both levels in the README (N11 done).
 ## Observations
@@ -179,6 +181,6 @@ Request: Find more validation molecules (published equilibrium structures + isot
 - The container restarted at 05:14 UTC and stopped the B3LYP validation run (cache kept, 155 B3LYP Hessians) and the B3LYP ME study; both relaunched on the D-161 commit with the HF validation run (its 0f28ca9 rows archived in t75/n11/pre_d161).
 ## Pending question
 - Gate (still open): page item 18 (Q-180 a), switching the cubic_scheme default; waits for the user.
-- Q-182 (asked 08:35 UTC, deadline 08:51 UTC, wake-up trig_01SM1wn4tZmJT6xWyKxafVRv): what's next after T-95? 1) N3, search again for r_e / r_e^SE references for HNCO, fluoroacetylene, formyl fluoride, fluoroethane and acetyl fluoride (Recommended); 2) N47, smoothing alpha at the linear threshold; 3) Done for now.
+- Q-183 (asked 08:53 UTC, deadline 09:08 UTC, wake-up trig_01XZBpGxLhhDVfvs5NPQUpHN): what's next after T-96? 1) N47, make harmonic alpha continuous across the linearity threshold, measuring first (Recommended); 2) Done for now.
 
 ## Handoff

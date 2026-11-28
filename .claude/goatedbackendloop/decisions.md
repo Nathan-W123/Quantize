@@ -1644,3 +1644,13 @@
 - Why: two published compilations disagree by about 2.8 of NIST's own sigma in B, so no single source settles it. Theory (HF/6-31G, B3LYP/6-31G(d), B3LYP/cc-pVTZ; scratchpad t95/iso_shift.py) puts B0(18O) - B0(16O) at +12 to +20 MHz. That is nearer JPL's +2.4 than NIST's -20.1, but water's effective B depends on each fit's Hamiltonian by tens of MHz, so it is a hint, not proof. No fit is affected at today's correction sigmas (1.5-30 GHz). Q-181's option said to change only what the source settles.
 - Source: auto-picked, no answer in 15 min (Q-181, 08:26 UTC); the keep-and-cite outcome is my call under that instruction.
 - Revisit if: De Lucia et al. 1972 or a newer H2-18O fit (e.g. Golubiatnikov) is read; the configs' H2-18O sigma 0.2 MHz is also 40x below NIST's stated 8 MHz.
+
+### D-187 · N3 searched again: no new equilibrium references (2026-11-28)
+- Decision: nothing is wired in. A 2026-11-28 extended search, one per molecule, found:
+  - HNCO: no open r_e^SE with stated uncertainties. The arXiv 1607.03799 lead was HNCS, not HNCO.
+  - Formyl fluoride: Margules, Demaison & Boggs 1999 (JPCA 103, 7632), mostly ab initio and paywalled.
+  - Fluoroacetylene: 1993 and later CCSD(T)-mixed estimates whose CC and CF disagree by about 10 mA.
+  - Fluoroethane and acetyl fluoride: nothing.
+- Why: Q-182's recommended option said to wire in only what a primary source states, and to stop and report otherwise.
+- Source: auto-picked, no answer in 15 min (Q-182, 08:51 UTC)
+- Revisit if: the user can supply Penocchio et al. 2015 (JCTC) or Margules et al. 1999, or a new r_e^SE paper appears.
