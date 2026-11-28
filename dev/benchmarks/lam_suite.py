@@ -42,12 +42,16 @@ _V0_METHANOL = 186.117548
 _VCOS3_METHANOL = -186.777373
 _VCOS6_METHANOL = 0.659825
 
-_F_ACETALDEHYDE = 5.1724
-_RHO_ACETALDEHYDE = 0.0609
-_V3_ACETALDEHYDE = 163.4
-_A_ACETALDEHYDE = 1.7626
-_B_ACETALDEHYDE = 0.3413
-_C_ACETALDEHYDE = 0.2884
+# Kleiner, Lovas & Godefroid, J. Phys. Chem. Ref. Data 25, 1113 (1996), Table I
+# (rho-axis method, cm^-1; the last digits of A are unreadable in the scan).
+# These replace F 5.1724, rho 0.0609, V3 163.4, A 1.7626, which matched no source.
+_F_ACETALDEHYDE = 7.655853
+_RHO_ACETALDEHYDE = 0.329088
+_V3_ACETALDEHYDE = 407.94707
+_V6_ACETALDEHYDE = -12.91775
+_A_ACETALDEHYDE = 1.884874
+_B_ACETALDEHYDE = 0.348716329
+_C_ACETALDEHYDE = 0.303177697
 
 
 @dataclass(frozen=True)
@@ -116,9 +120,10 @@ def _methanol_spec(*, n_basis: int = 15, include_v6: bool = True) -> TorsionHami
 
 
 def _acetaldehyde_spec(*, n_basis: int = 12) -> TorsionHamiltonianSpec:
+    # V = V3/2 (1 - cos 3a) + V6/2 (1 - cos 6a)
     pot = TorsionFourierPotential(
-        v0=_V3_ACETALDEHYDE / 2.0,
-        vcos={3: -_V3_ACETALDEHYDE / 2.0},
+        v0=(_V3_ACETALDEHYDE + _V6_ACETALDEHYDE) / 2.0,
+        vcos={3: -_V3_ACETALDEHYDE / 2.0, 6: -_V6_ACETALDEHYDE / 2.0},
         vsin={},
         units="cm-1",
     )

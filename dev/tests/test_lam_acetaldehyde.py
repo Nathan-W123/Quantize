@@ -2,26 +2,21 @@
 Phase 4: Acetaldehyde benchmark and RAM-lite reliability scoring.
 
 Validates the torsion pipeline against acetaldehyde (CH3CHO) literature parameters:
-  Kleiner et al., J. Mol. Spectrosc. 175, 1–13 (1996)
-    F    = 5.1724 cm^-1    internal rotation constant
-    rho  = 0.0609           coupling parameter
-    V3   = 163.4 cm^-1     3-fold barrier height
+  Kleiner, Lovas & Godefroid, J. Phys. Chem. Ref. Data 25, 1113 (1996), Table I
+  (global rho-axis-method fit of v_t = 0, 1, 2), cm^-1:
+    V3 = 407.94707, V6 = -12.91775, F = 7.655853, rho = 0.329088,
+    A = 1.884874, B = 0.348716329, C = 0.303177697 (rho-axis constants)
+  The last digits of A are unreadable in the scanned table (JPL 44003: 1.884877).
+  These replace F 5.1724, rho 0.0609, V3 163.4, A 1.7626, which matched no
+  source and gave a splitting of 0.276 cm^-1.
 
-Fourier convention (this codebase):
-  V(α) = v0 + vcos_3 * cos(3α)
-  v0    = V3/2  = 81.7 cm^-1
-  vcos3 = -V3/2 = -81.7 cm^-1
+Fourier convention (this codebase), from V(α) = V3/2 (1 − cos 3α) + V6/2 (1 − cos 6α):
+  V(α) = v0 + vcos_3 cos(3α) + vcos_6 cos(6α)
+  v0 = (V3 + V6)/2, vcos3 = −V3/2, vcos6 = −V6/2
 
-RAM-lite vt=0 A/E tunneling splitting for these parameters: ~0.276 cm^-1 (E above A).
-
-This is the exact solution to the 1D torsional Hamiltonian H = F*m^2 + V(α), verified
-by three independent methods (Fourier matrix, DVR grid, Floquet/Mathieu analysis).
-It agrees with the Mathieu equation result for q = V3/(9*F) = 3.51.
-
-NOTE: Some literature sources cite ~1.18 cm^-1 for the acetaldehyde A-E splitting.
-This larger value is the *effective* splitting observed in the rotational spectrum,
-which includes torsion-rotation coupling contributions beyond the simple 1D model.
-The pure J=0 torsional splitting from RAM-lite is 0.276 cm^-1.
+RAM-lite vt=0 A/E tunneling splitting for these parameters: 0.0730 cm^-1 (E above
+A; 0.07317 at n_basis 12, 0.07305 at 16 and 24). RAM-lite is the diagonal model
+H = E_rot + F (m − ρK)^2 + V(α); Dab and the fit's higher terms are left out.
 """
 
 from __future__ import annotations
@@ -39,23 +34,24 @@ from backend.torsion.torsion_symmetry import c3_symmetry_block_energies, predict
 
 # ── Acetaldehyde literature parameters (Kleiner et al. 1996) ─────────────────
 
-_F_CH3CHO   = 5.1724    # cm^-1  internal rotation constant
-_RHO_CH3CHO = 0.0609    # dimensionless coupling
-_V3_CH3CHO  = 163.4     # cm^-1  3-fold barrier
+_F_CH3CHO   = 7.655853   # cm^-1  internal rotation constant
+_RHO_CH3CHO = 0.329088   # dimensionless coupling
+_V3_CH3CHO  = 407.94707  # cm^-1  3-fold barrier
+_V6_CH3CHO  = -12.91775  # cm^-1  6-fold term
 
-# Ground-state effective rotational constants (from spectroscopy)
-_A_CH3CHO = 1.7626      # cm^-1  (~52842 MHz)
-_B_CH3CHO = 0.3413      # cm^-1  (~10240 MHz)
-_C_CH3CHO = 0.2884      # cm^-1  (~8648 MHz)
+# Ground-state rho-axis rotational constants (same table)
+_A_CH3CHO = 1.884874     # cm^-1  (~56507 MHz)
+_B_CH3CHO = 0.348716329  # cm^-1  (~10454 MHz)
+_C_CH3CHO = 0.303177697  # cm^-1  (~9089 MHz)
 
-# RAM-lite vt=0 A/E splitting (exact 1D torsional solution, verified by 3 methods)
-_SPLIT_VT0_LIT = 0.276   # cm^-1 (E1 above A)
+# RAM-lite vt=0 A/E splitting for these parameters, converged (n_basis 16, 24)
+_SPLIT_VT0_LIT = 0.07305  # cm^-1 (E1 above A)
 
 
 def _acetaldehyde_spec(n_basis: int = 12) -> TorsionHamiltonianSpec:
-    v0    =  _V3_CH3CHO / 2.0
-    vcos3 = -_V3_CH3CHO / 2.0
-    pot = TorsionFourierPotential(v0=v0, vcos={3: vcos3}, vsin={}, units="cm-1")
+    v0    = (_V3_CH3CHO + _V6_CH3CHO) / 2.0
+    pot = TorsionFourierPotential(v0=v0, vcos={3: -_V3_CH3CHO / 2.0, 6: -_V6_CH3CHO / 2.0},
+                                  vsin={}, units="cm-1")
     return TorsionHamiltonianSpec(
         F=_F_CH3CHO, rho=_RHO_CH3CHO,
         A=_A_CH3CHO, B=_B_CH3CHO, C=_C_CH3CHO,
@@ -78,15 +74,14 @@ class TestAcetaldehydeBenchmark:
         )
 
     def test_vt0_splitting_matches_ram_lite_prediction(self):
-        """vt=0 A/E splitting within 0.01 cm^-1 of the converged RAM-lite value (0.276 cm^-1).
+        """vt=0 A/E splitting within 0.001 cm^-1 of the converged RAM-lite value (0.07305 cm^-1).
 
-        The RAM-lite value is the exact solution to H = F*m^2 + V(alpha) for the Kleiner
-        et al. (1996) parameters, verified by Fourier matrix, DVR grid, and Floquet analysis.
+        For the Kleiner, Lovas & Godefroid (1996) parameters; n_basis 12 gives 0.07317.
         """
         spec = _acetaldehyde_spec(n_basis=12)
         rows = predict_tunneling_splitting(spec, J=0, K=0, n_levels=1)
         split = abs(rows[0]["splitting_cm-1"])
-        tol = 0.01
+        tol = 0.001
         assert abs(split - _SPLIT_VT0_LIT) < tol, (
             f"vt=0 A/E splitting = {split:.4f} cm^-1; "
             f"RAM-lite prediction = {_SPLIT_VT0_LIT} cm^-1; "
@@ -195,7 +190,7 @@ class TestReliabilityScoring:
         """Acetaldehyde parameters trigger asymmetry flag → 'moderate'."""
         spec = _acetaldehyde_spec(n_basis=12)
         result = assess_ram_lite_reliability(spec)
-        # B=0.3413, C=0.2884 → B−C=0.0529 > 0.1×B=0.0341 → asymmetry flag
+        # B=0.348716, C=0.303178 → B−C=0.0455 > 0.1×B=0.0349 → asymmetry flag
         assert result.score == "moderate", (
             f"Expected 'moderate', got '{result.score}'; flags={result.flags}"
         )

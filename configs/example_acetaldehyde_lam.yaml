@@ -1,29 +1,35 @@
 # Acetaldehyde (CH3CHO) LAM worked example — RAM-lite torsion pipeline
 #
-# Literature parameters: Kleiner et al., J. Mol. Spectrosc. 175, 1-13 (1996)
-#   F    = 5.1724 cm^-1    internal rotation constant
-#   rho  = 0.0609           coupling parameter (I_alpha / I_zz)
-#   V3   = 163.4 cm^-1     3-fold barrier height
+# Literature parameters (the torsion block below):
+#   Kleiner, Lovas & Godefroid, J. Phys. Chem. Ref. Data 25, 1113 (1996),
+#   Table I (global rho-axis-method fit of the v_t = 0, 1, 2 states), cm^-1:
+#     V3 = 407.94707   V6 = -12.91775   F = 7.655853   rho = 0.329088
+#     A = 1.884874   B = 0.348716329   C = 0.303177697   Dab = -0.12270925
+#   (A, B, C are rho-axis constants; the last digits of A are unreadable in
+#   the scanned table; JPL catalog entry 44003 gives A 56507.198 MHz =
+#   1.884877 cm^-1, B and C agree with the table to 0.2 MHz).
+#   RAM-lite (this code) keeps V3, V6, F, rho, A, B, C; Dab and the fit's
+#   higher torsion-rotation terms are beyond its diagonal model.
 #
-# Rotational constants (effective B0, cm^-1):
-#   A = 1.7626  (~52842 MHz)
-#   B = 0.3413  (~10240 MHz)
-#   C = 0.2884  (~8648  MHz)
+# Principal-axis rotational constants for the structure fit (isotopologues
+# below): JPL 44003's rho-axis A, B diagonalised with its Dab = -3677.76 MHz,
+# as in example_acetaldehyde.yaml: A 56799.051, B 10162.224, C 9089.087 MHz.
 #
-# RAM-lite vt=0 A/E tunneling splitting ≈ 0.276 cm^-1 (E above A)
-# (Full RAM effective splitting ~1.18 cm^-1 includes torsion-rotation coupling beyond RAM-lite)
+# RAM-lite vt=0 A/E tunneling splitting with these parameters: 0.0730 cm^-1
+# (2190 MHz, E above A; converged at n_basis = 16). The values this file
+# used before (F 5.1724, rho 0.0609, V3 163.4, A 1.7626) matched no source
+# and gave 0.276 cm^-1.
 #
 # Fourier potential convention (this codebase):
-#   V(α) = v0 + vcos_3 * cos(3α)
-# Mapping from barrier height V3:
-#   v0    =  V3/2 = 81.7 cm^-1
-#   vcos3 = -V3/2 = -81.7 cm^-1
+#   V(α) = v0 + vcos_3 cos(3α) + vcos_6 cos(6α)
+# Mapping from V(α) = V3/2 (1 − cos 3α) + V6/2 (1 − cos 6α):
+#   v0    = (V3 + V6)/2 = 197.51466 cm^-1
+#   vcos3 = −V3/2       = −203.973535 cm^-1
+#   vcos6 = −V6/2       =    6.458875 cm^-1
 #
-# Acetaldehyde has lower V3/F (~31.6) than methanol (~13.5), but the barrier
-# is still well above the nearly-free-rotor limit (V3/F >> 2), so RAM-lite
-# gives a reliable result for the torsional levels.  The asymmetric-top
-# character (B − C = 0.053 cm^-1 ≈ 16% of B) means RAM-lite reliability
-# is 'moderate' — full RAM treatment would be needed for a precision global fit.
+# V3/F = 53, well above the nearly-free-rotor limit (V3/F >> 2). The
+# asymmetric-top character (B − C = 0.0455 cm^-1, 13% of B) makes RAM-lite's
+# reliability 'moderate': a precision global fit needs the full RAM.
 #
 # Run with:
 #   python Quantize/cli.py run configs/example_acetaldehyde_lam.yaml
@@ -55,7 +61,7 @@ isotopologues:
     masses: [12.0, 12.0, 15.99491461957,
              1.00782503207, 1.00782503207, 1.00782503207, 1.00782503207]
     components: [A, B, C]
-    obs_b0_mhz: [52842.4, 10240.6, 8648.0]
+    obs_b0_mhz: [56799.051, 10162.224, 9089.087]
     alpha_mhz: [0.0, 0.0, 0.0]
     sigma_mhz: [5.0, 0.1, 0.1]
 
@@ -72,15 +78,15 @@ write_xyz: true
 rovibrational_corrections:
   mode: hybrid_auto
 
-# ── Torsion Hamiltonian block (RAM-lite, Kleiner et al. 1996) ─────────────────
+# ── Torsion Hamiltonian block (RAM-lite, Kleiner, Lovas & Godefroid 1996) ────
 torsion_hamiltonian:
   enabled: true
-  F: 5.1724
-  rho: 0.0609
-  A: 1.7626
-  B: 0.3413
-  C: 0.2884
-  n_basis: 12    # 2*n_basis+1 = 25 basis functions; converged for V3=163 cm^-1
+  F: 7.655853
+  rho: 0.329088
+  A: 1.884874
+  B: 0.348716329
+  C: 0.303177697
+  n_basis: 16    # 2*n_basis+1 = 33 basis functions; the vt=0 splitting moves 1e-4 cm^-1 from 12 to 16, <1e-6 from 16 to 24
   n_levels: 8
   J_values: [0, 1, 2]
   K_values: [0, 1]
@@ -99,18 +105,17 @@ torsion_hamiltonian:
   d2: 0.0
 
   potential:
-    v0: 81.7        # V3/2 = 163.4/2
-    vcos: {3: -81.7}  # -V3/2
+    v0: 197.51466                            # (V3 + V6)/2
+    vcos: {3: -203.973535, 6: 6.458875}      # -V3/2, -V6/2
     vsin: {}
 
-  # RAM-lite torsional levels (exact solution to H = F*m^2 + V(alpha), converged).
-  # Zero of energy = vt=0 A ground state.
-  # Note: full RAM effective splitting ~1.18 cm^-1 includes torsion-rotation coupling.
+  # RAM-lite torsional levels for the parameters above (computed with this
+  # code, converged; not observed values). Zero of energy = vt=0 A.
   targets:
     # vt=0 A (ground state, by definition zero)
     - {J: 0, K: 0, level_index: 0, energy_cm-1: 0.0, symmetry: A}
-    # vt=0 E tunneling partner (≈0.276 cm^-1 above A in RAM-lite)
-    - {J: 0, K: 0, level_index: 1, energy_cm-1: 0.276, symmetry: E}
+    # vt=0 E tunneling partner (0.0730 cm^-1 above A in RAM-lite)
+    - {J: 0, K: 0, level_index: 1, energy_cm-1: 0.0730, symmetry: E}
 
   # Parameter fitting (disabled by default — enable to fit F and V3)
   fitting:

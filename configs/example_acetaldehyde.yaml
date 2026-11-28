@@ -13,7 +13,14 @@
 # engine's inertial-defect check flags: fitted at HF/6-31G they left 74 MHz
 # RMS and a distorted structure (C=O 1.248 A, CCO 116 deg), against 1.1 MHz
 # and C=O 1.218 A, CCO 123.5 deg with these.
-#   Torsion (unverified here): F = 5.1724 cm^-1, rho = 0.0609, V3 = 163.4 cm^-1
+# Torsion parameters:
+#   Kleiner, Lovas & Godefroid, J. Phys. Chem. Ref. Data 25, 1113 (1996),
+#   Table I (global rho-axis-method fit of the v_t = 0, 1, 2 states), cm^-1:
+#     V3 = 407.94707   V6 = -12.91775   F = 7.655853   rho = 0.329088
+#     A = 1.884874   B = 0.348716329   C = 0.303177697   Dab = -0.12270925
+#   (A, B, C are rho-axis constants; the last digits of A are unreadable in
+#   the scanned table; JPL catalog entry 44003 gives A 56507.198 MHz =
+#   1.884877 cm^-1, B and C agree with the table to 0.2 MHz).
 #
 # Known reference geometry (for validation):
 #   r(C=O)  ~ 1.210 A    r(C-C)  ~ 1.516 A
@@ -70,21 +77,23 @@ internal_priors:
     max_sigma_scale: 3.0
   user_priors: []
 
-# Torsion parameters from Kleiner et al. 1996 — disabled for this rigid demo.
-# V3 = 163.4 cm^-1 -> v0 = V3/2 = 81.7, vcos3 = -V3/2 = -81.7
-# Enable (and set spectral_model: internal_rotor_bc) for the full LAM pipeline.
+# Torsion parameters from Kleiner, Lovas & Godefroid 1996 (Table I) --
+# disabled for this rigid demo. V(alpha) = V3/2 (1 - cos 3a) + V6/2 (1 - cos 6a):
+#   v0 = (V3 + V6)/2 = 197.51466, vcos3 = -V3/2 = -203.973535, vcos6 = -V6/2 = 6.458875
+# Enable (and set spectral_model: internal_rotor_bc) for the full LAM pipeline;
+# configs/example_acetaldehyde_lam.yaml has it set up.
 torsion_hamiltonian:
   enabled: false
-  F: 5.1724
-  rho: 0.0609
-  n_basis: 12
+  F: 7.655853
+  rho: 0.329088
+  n_basis: 16
   n_levels: 8
   J_values: [0, 1, 2]
   K_values: [0, 1]
   units: cm-1
   potential:
-    v0: 81.7
-    vcos: {3: -81.7}
+    v0: 197.51466
+    vcos: {3: -203.973535, 6: 6.458875}
     vsin: {}
 
 output:

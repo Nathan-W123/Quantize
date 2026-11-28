@@ -68,11 +68,11 @@
       "id": "acetaldehyde_reference",
       "metrics": {
         "vt0_splitting_cm1": {
-          "value": 0.27594005560774093,
-          "max_abs_delta": 0.01
+          "value": 0.07316973468871879,
+          "max_abs_delta": 0.001
         },
         "basis_convergence_delta_cm1": {
-          "value": 1.4095973526195849e-05,
+          "value": 0.0001238190654078153,
           "max_abs_delta": 0.005
         },
         "vt0_a_below_barrier": {
