@@ -1661,3 +1661,8 @@
 - Measured: scratchpad t97/min_offaxis.py. The step itself, from t89/verify: HCCF alpha_B -4.57 -> -13.72, HCN -91.4 -> -256.8, HC3N +0.97 -> -2.36 MHz; alpha_C is unchanged.
 - Source: auto-picked, no answer in 15 min (Q-183, 09:08 UTC); "build only if..." was the option's own condition.
 - Revisit if: a quasi-linear molecule (e.g. HCNO, C3O2) joins the benchmark.
+
+### D-189 · N46's remaining part measured: no build (2026-11-28)
+- Decision: the rigid projector keeps using the current coordinates. N46 is closed.
+- Why: measured with scratchpad t98/drift.py, comparing the current code with a variant that projects the quantum terms at the Hessian's geometry. Analytic water config: final geometry identical to 4.6e-12 A. Formaldehyde HF/6-31G: the answer moves 2.9e-5 A and the final weight 7.5e-5 relative, but the fit needed 2.6x the weight evaluations (72 against 28). That is consistent with the step then projecting J and H at different geometries. The within-Hessian drift does not move answers measurably; the fix costs iterations and has no accuracy evidence. The alpha_q spread across a fit (16% water, 3.4% formaldehyde) comes from the Hessian refreshes, which is intended.
+- Source: auto-picked, no answer in 15 min (Q-184, 09:27 UTC); the option's own condition ("only if ... without moving any answer by more than noise") is not met.

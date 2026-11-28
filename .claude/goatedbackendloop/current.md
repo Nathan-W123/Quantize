@@ -162,6 +162,8 @@ Request: Find more validation molecules (published equilibrium structures + isot
 - One extended search per molecule. HNCO: no open r_e^SE with uncertainties (arXiv 1607.03799 turned out to be HNCS). HCOF: Margules 1999, paywalled and ab initio. HCCF: 1993 mixed estimates, CC/CF disagree by about 10 mA. Fluoroethane and acetyl fluoride: none.
 ## Task T-97 (D-188: N47, alpha's step at the linearity threshold) · done 09:11 UTC (measured; no build)
 - The theory minima of 5 linear molecules land <= 7.3e-5 A off axis from jittered starts, so held corrections never reach the step. Exposure is left only under the opt-out and for quasi-linear minima.
+## Task T-98 (D-189: N46, the rigid-projector drift in alpha_q) · done 09:29 UTC (measured; no build)
+- Projecting at the Hessian's geometry: water identical (4.6e-12 A); H2CO moves 2.9e-5 A with 2.6x the weight evaluations. Left as is.
 ## Progress
 - All six wired and tested; benchmark rows at both levels in the README (N11 done).
 ## Observations
@@ -183,6 +185,6 @@ Request: Find more validation molecules (published equilibrium structures + isot
 - The container restarted at 05:14 UTC and stopped the B3LYP validation run (cache kept, 155 B3LYP Hessians) and the B3LYP ME study; both relaunched on the D-161 commit with the HF validation run (its 0f28ca9 rows archived in t75/n11/pre_d161).
 ## Pending question
 - Gate (still open): page item 18 (Q-180 a), switching the cubic_scheme default; waits for the user. Page item 8 is the user's too.
-- Q-184 (asked 09:11 UTC, deadline 09:27 UTC, wake-up trig_01Rhfx9RFfPAkpLgkTGv8hCa): what's next after T-97? 1) the rest of N46, the rigid-projector drift in alpha_q, measuring first (Recommended); 2) N40 (b), the Cartesian structural prior at a linear angle in spectral-only C1 fits; 3) Done for now.
+- Q-185 (asked 09:29 UTC, deadline 09:45 UTC, wake-up trig_01DWxjYAdTD97w8FoFddACmo): what's next after T-98? 1) Done for now (Recommended): little self-directed work is left that is worth doing; 2) N40 (b), the linear-angle structural prior in spectral-only C1 fits; 3) N8, per-key distortion fractions (needs more validated data).
 
 ## Handoff
