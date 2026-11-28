@@ -44,9 +44,12 @@ def test_the_worked_example_carries_the_catalogue_constants():
 
 @pytest.mark.parametrize("path", WATER_CONFIGS)
 def test_an_18o_substitution_leaves_b_where_it_was(path):
-    """A copy whose H2-18O B is not within 50 MHz of H2-16O's is garbled:
-    configs/Water.yaml's 435331.6 is 20 MHz below, a reduction difference
-    from De Lucia et al. 1972 (backlog N50); the example's 411705 was 23.6 GHz."""
+    """A copy whose H2-18O B is not within 50 MHz of H2-16O's is garbled.
+    configs/Water.yaml carries NIST SRD 117's set (ref. 74005), B 20 MHz
+    below H2-16O's; JPL 20003's is 2.4 MHz above, and theory puts the shift
+    at +12 to +20 MHz (HF and B3LYP). The two published sets differ by more
+    than NIST's stated 8 MHz, a fitting-model difference this rule does not
+    try to settle. The example's 411705 was 23.6 GHz off."""
     got = _species(path)
     if "H2-18O" not in got:
         pytest.skip("no H2-18O")

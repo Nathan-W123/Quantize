@@ -46,6 +46,8 @@ sigma_table = {
 
 obs_b0_values = {
     "H2-16O": np.array([835840.3, 435351.7, 278138.7]),
+    # NIST SRD 117 (H2O table, ref. 74005); JPL 20003 has B 22 MHz higher
+    # (435354.05) -- see configs/Water.yaml.
     "H2-18O": np.array([825366.1, 435331.6, 276950.5]),
     "HDO":    np.array([701932.3, 272913.3, 192055.2]),
     "D2O":    np.array([462291.7, 217982.3, 145301.1]),

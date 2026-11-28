@@ -1638,3 +1638,9 @@
 - Decision: page item 18 (quantize run's cubic_scheme default to normal_mode) stays unapplied until the user says yes; it changes a default. T-94 = N51: for molecules with an equilibrium reference (water, ozone, vinyl fluoride, chlorofluoromethane, formaldehyde, SO2, ketene, thioformaldehyde), build the correction table at the HF/6-31G minimum (B3LYP/6-31G(d) for four) with each cubic scheme, and score z = (delta_computed - (B_e(ref) - B0)) / sigma per constant. This measures whether the stated correction sigmas are honest, separately from any fit. Change nothing.
 - Why: Q-180's recommended option; the gate on (a) per D-184.
 - Source: auto-picked, no answer in 15 min (Q-180, 07:55 UTC)
+
+### D-186 · N50: the other H2-18O copies keep NIST SRD 117's values, now cited (2026-11-28)
+- Decision: configs/Water.yaml, molecule_runners/run_water.py and the test fixture keep 825366.1 / 435331.6 / 276950.5 MHz, which are the NIST Triatomic Spectral Database values (H2O table, ref. 74005: 825366.08(8.7), 435331.59(8.0), 276950.46(8.0)). They now cite it, with JPL 20003's set (B 22.5 MHz higher) named as the alternative. No values changed.
+- Why: two published compilations disagree by about 2.8 of NIST's own sigma in B, so no single source settles it. Theory (HF/6-31G, B3LYP/6-31G(d), B3LYP/cc-pVTZ; scratchpad t95/iso_shift.py) puts B0(18O) - B0(16O) at +12 to +20 MHz. That is nearer JPL's +2.4 than NIST's -20.1, but water's effective B depends on each fit's Hamiltonian by tens of MHz, so it is a hint, not proof. No fit is affected at today's correction sigmas (1.5-30 GHz). Q-181's option said to change only what the source settles.
+- Source: auto-picked, no answer in 15 min (Q-181, 08:26 UTC); the keep-and-cite outcome is my call under that instruction.
+- Revisit if: De Lucia et al. 1972 or a newer H2-18O fit (e.g. Golubiatnikov) is read; the configs' H2-18O sigma 0.2 MHz is also 40x below NIST's stated 8 MHz.

@@ -53,6 +53,7 @@ the decisions record; tasks before T-01 live in git history only.
 - T-92 · N48: the worked water example's H2-18O constants from JPL 20003; sigma_x comment; N49 evidence · 2026-11-28 · done
 - T-93 · N49 measured: quantize run cartesian vs normal_mode cubic scheme on six cases; page item 18 · 2026-11-28 · done (proposal open)
 - T-94 · N51: correction sigmas scored against equilibrium references (z), both cubic schemes, 8 molecules · 2026-11-28 · done (no change)
+- T-95 · N50: H2-18O copies traced to NIST SRD 117 and cited; JPL 20003 named as the alternative; theory isotope shift computed · 2026-11-28 · done
 
 ## Edges
 - C:quantum-prior --depends-on--> C:joint-optimizer · 2026-11-20
@@ -236,3 +237,6 @@ the decisions record; tasks before T-01 live in git history only.
 - T-94 --decided--> D-185 · 2026-11-28
 - T-94 --touched--> C:correction-tables · 2026-11-28 (measured only: sigma honesty per scheme)
 - T-94 --touched--> C:references · 2026-11-28 (B_e(ref) - B0 as the true correction)
+- T-95 --decided--> D-186 · 2026-11-28
+- T-95 --touched--> C:references · 2026-11-28 (H2-18O provenance: NIST vs JPL)
+- T-95 --touched--> C:cli-config · 2026-11-28 (configs/Water.yaml comment)

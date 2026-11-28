@@ -73,6 +73,12 @@ isotopologues:
   - name: H2-18O
     masses:     [17.99915961286, 1.00782503207, 1.00782503207]
     components: [A, B, C]
+    # NIST Triatomic Spectral Database (SRD 117), H2O table, ref. 74005:
+    # 825366.08(8.7), 435331.59(8.0), 276950.46(8.0) MHz. The JPL catalogue
+    # (tag 20003, a 1988 refit with Johns 1985) has 825367.80 / 435354.05 /
+    # 276951.05, 22 MHz higher in B; theory puts B0(18O) - B0(16O) at +12 to
+    # +20 MHz (HF and B3LYP, T-95), nearer JPL's +2.4 than NIST's -20.1. The
+    # worked example (example_water_semi_experimental.yaml) uses JPL's.
     obs_b0_mhz: [825366.1, 435331.6, 276950.5]
     alpha_mhz:  [-29201.7, 3565.4, 14097.9]
     sigma_mhz:  [0.2, 0.2, 0.2]

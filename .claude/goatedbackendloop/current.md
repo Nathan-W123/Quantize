@@ -156,6 +156,8 @@ Request: Find more validation molecules (published equilibrium structures + isot
 - Per molecule, normal_mode at HF: ozone 1.65 and SO2 1.76 (worst 2.64, 2.09); the others 0.11-0.46. So cartesian overstates its uncertainty 3-10x, and normal_mode is about right at HF and conservative at B3LYP. No calibration proposed (pooled is already about 1, and a fit to these molecules would be tuning on the held-out set).
 - Caveat: "true" means B_e(r_e or r_e^SE) - B0, and the r_e^SE references carry their own higher-level corrections. Electronic corrections are ignored. Rows within one molecule are correlated.
 - z = (delta_computed - (B_e(ref) - B0)) / sigma per constant; 8 molecules at HF/6-31G and 4 at B3LYP/6-31G(d), under both schemes. First result, water HF normal_mode: RMS z 0.46, all 6 within 2.
+## Task T-95 (D-186: N50, the other H2-18O copies) · done 08:4x UTC
+- The repo's 825366.1/435331.6/276950.5 is NIST SRD 117 (ref. 74005, +/-8 MHz); JPL 20003 has B 22.5 MHz higher. Theory isotope shift in B0: +12 (B3LYP/cc-pVTZ) to +20 MHz (HF), nearer JPL (+2.4) than NIST (-20.1); model-dependent at that level. Kept and cited; no fit is affected at today's correction sigmas.
 ## Progress
 - All six wired and tested; benchmark rows at both levels in the README (N11 done).
 ## Observations
@@ -176,7 +178,6 @@ Request: Find more validation molecules (published equilibrium structures + isot
 - Nine published molecules, HF/6-31G (t79/me_sym.py, three ME variants at every ME call of main(); out/me_hf_6-31g_benchmark_all.final.json): chlorofluoromethane ME C-H pair 964 mA apart, averaged score base 31.38 / offsets 4.26 mA; symmetry imposed 26.00 / 6.03 (the README's 'ME beats the hybrid on chlorofluoromethane, 4.26 against 5.43' rests on the broken structure). Fluoroethane spread 63-67 mA: base 12.66 -> 11.28, offsets 8.24 -> 9.07. Acetyl fluoride spread 8-17 mA, scores within 0.02. Water, ozone, vinyl fluoride, formyl fluoride, fluoroacetylene, HNCO unchanged. Soft (per-pair, D-160 recipe) equals sym except fluoroethane base (12.00, spread 7 mA).
 - The container restarted at 05:14 UTC and stopped the B3LYP validation run (cache kept, 155 B3LYP Hessians) and the B3LYP ME study; both relaunched on the D-161 commit with the HF validation run (its 0f28ca9 rows archived in t75/n11/pre_d161).
 ## Pending question
-- Gate (still open): page item 18 (Q-180 a), switching the cubic_scheme default; waits for the user.
-- Q-181 (asked 08:10 UTC, deadline 08:26 UTC, wake-up trig_014z6vgoNY2wgDie2Rpoabzf): what's next after T-94? 1) N50, settle the other H2-18O copies from a primary source (Recommended); 2) N3, search again for r_e^SE references for the five r_s benchmark rows; 3) N47, smoothing alpha at the linear threshold; 4) Done for now.
+- Gate (still open): page item 18 (Q-180 a), switching the cubic_scheme default; waits for the user. Q-181 was auto-picked at 08:26 UTC (D-186).
 
 ## Handoff
