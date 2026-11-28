@@ -1596,3 +1596,9 @@
 - Source: stated by user
 - Built c35cc2d; review (independent): measured on refreshed starts only; unrefreshed the model energy is the worse key, so since 1a9d97e it ranks only when every gated start was refreshed at its answer.
 - Item 8 (no lean) stays open.
+
+### D-180 · Next after T-89: the LAM acetaldehyde example from the 1996 Table I (2026-11-28)
+- Decision: T-90 = fix configs/example_acetaldehyde_lam.yaml, dev/tests/test_lam_acetaldehyde.py and the LAM benchmark baseline from Kleiner, Lovas & Godefroid 1996 Table I (V3 407.94707, F 7.655853, rho 0.329088 cm-1; A, B, C, Dab cross-checked with JPL 44003), after checking how the LAM pipeline defines its parameters; measure and report what moves.
+- Why: Q-176's recommended option; every parameter in the example is wrong (V3 163.4 against 407.9).
+- Source: auto-picked, no answer in 15 min (Q-176, 05:11 UTC)
+- Revisit if: the LAM pipeline's parameter definitions differ from the paper's RAM ones in a way the example cannot express.
