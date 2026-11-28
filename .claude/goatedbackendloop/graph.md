@@ -51,6 +51,7 @@ the decisions record; tasks before T-01 live in git history only.
 - T-90 · acetaldehyde torsion parameters from the 1996 Table I (LAM example, test, suite, baseline) · 2026-11-28 · done
 - T-91 · N37: Hessian-built corrections built once at the fit level's own minimum and held (D-182) · 2026-11-28 · done (verify: 1 defect + 5 small, fixed)
 - T-92 · N48: the worked water example's H2-18O constants from JPL 20003; sigma_x comment; N49 evidence · 2026-11-28 · done
+- T-93 · N49 measured: quantize run cartesian vs normal_mode cubic scheme on six cases; page item 18 · 2026-11-28 · done (proposal open)
 
 ## Edges
 - C:quantum-prior --depends-on--> C:joint-optimizer · 2026-11-20
@@ -227,3 +228,7 @@ the decisions record; tasks before T-01 live in git history only.
 - T-92 --decided--> D-183 · 2026-11-28
 - T-92 --touched--> C:references · 2026-11-28 (example constants vs JPL 18003/20001/20003)
 - T-92 --touched--> C:readme · 2026-11-28 (the worked example the README points at)
+- T-93 --decided--> D-184 · 2026-11-28
+- T-93 --touched--> C:correction-tables · 2026-11-28 (measured only: cubic scheme, correction sigmas)
+- T-93 --touched--> C:cli-config · 2026-11-28 (measured only: runner default)
+- T-93 --proposed--> page item 18 (N49) · 2026-11-28 (user's call)
