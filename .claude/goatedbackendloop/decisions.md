@@ -1578,3 +1578,19 @@
 - Why: Q-174's recommended option. T-88: the old constants match no source read and give inertial defect -0.48 (catalog set -3.03, geometry -3.17); fitted at HF/6-31G they left 74 MHz RMS and a distorted structure, the catalog set 1.1 MHz and a sensible one.
 - Source: auto-picked, no answer in 15 min (Q-174, 20:47 UTC)
 - Revisit if: the primary paper's Table I (unread: the reprint PDF did not extract) gives different ground-state constants, or the user prefers the E-state effective set (JPL 44005).
+
+### D-177 · Page item 15 yes (option A): uncertainty refreshes every seeding start (2026-11-28)
+- Decision: quantize uncertainty's seeding multistart refreshes each start's Hessian at its answer before ranking, as quantize run does (D-146); --no-hessian-refresh skips it as before.
+- Why: the user: "Whatever u lean on do it" (item 15: I leaned A). T-87 at HEAD: only the water dimer disagreed (5.8 mA, widths 3.5x); A brings it within 2.3 mA and the others within 0.21 mA, for +36-108% of the seeding time.
+- Source: stated by user
+
+### D-178 · Page item 16 yes: one linearity rule (0.01 A) and the Cinf_v relabel (2026-11-28)
+- Decision: N43 variant B: a geometry with every atom within 0.01 A of its principal axis has 5 rigid modes everywhere (rigid projector follows rigid_mode_count); detection relabels a finite axial group as Cinf_v / Dinf_h when its Cn (n >= 2) leaves every atom in place.
+- Why: the user: "Whatever u lean on do it" (item 16: I leaned yes). T-85 N43 measurement: fluoroacetylene's C1 bends become equal; benchmark molecules unchanged.
+- Source: stated by user
+
+### D-179 · Page item 17 yes: rank starts by the model energy at each answer (2026-11-28)
+- Decision: select_best_result ranks gate-passing starts by energy_at_answer_model when every one has a finite value, else by the last-point energy as before. Supersedes D-65's ranking key.
+- Why: the user: "Whatever u lean on do it" (item 17: I leaned yes). T-87: lowest true energy 10/10 vs 6/10, zero cost.
+- Source: stated by user
+- Item 8 (no lean) stays open.

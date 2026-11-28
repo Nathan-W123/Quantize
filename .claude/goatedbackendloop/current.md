@@ -117,6 +117,10 @@ Request: Find more validation molecules (published equilibrium structures + isot
 - Measured (t88/, HF/6-31G, n39_acetaldehyde config, quantize run, 3 starts): config constants -> spectral RMS 74.0 MHz, energy -152.78168 Eh, C=O 1.2479, C-C 1.5524, C-H 1.050-1.105, CCO 116.1 deg; corrected -> 1.10 MHz, -152.84307 Eh (61 mHa lower), C=O 1.2176, C-C 1.5052, C-H 1.082-1.088, CCO 123.5 deg.
 - Proposed: replace the rigid example's constants and source comment; the LAM example/test/baseline need the paper's F, rho, V3 checked too (separate).
 - T-88 fix applied (D-176, 2fde361): example_acetaldehyde.yaml constants and source comment; validates; 326 tests that load example configs pass.
+## Task T-89 (D-177, D-178, D-179: page items 15, 16, 17) · building
+- 17: multistart.select_best_result ranks by energy_at_answer_model when every gated start has it. 15: build_optimizer_from_config(refresh_hessian=...) -> run_multistart; cli uncertainty passes not --no-hessian-refresh. 16: apply t85/n43/n43_variantB.patch (symmetry relabel + rigid_mode_count 0.01 A rule used by the projector), test bend 0.01 -> 1 deg.
+- Then: full CI, one independent verify of all three, page (15-17 done), README notes, records. Success: tests; fluoroacetylene C1 bends equal; benchmark fits unchanged (no multistart there); uncertainty on the dimer lands on run's answer.
+- T-89 built c35cc2d (15, 16, 17). New tests test_near_linear_and_ranking.py: 20 pass; 10 fail on the parent (the other 10 are guards). Two CLI tests adjusted (refreshed seeding). Running: full CI (t89/ci.txt), independent verify (t89/verify/).
 ## Progress
 - All six wired and tested; benchmark rows at both levels in the README (N11 done).
 ## Observations
@@ -137,6 +141,6 @@ Request: Find more validation molecules (published equilibrium structures + isot
 - Nine published molecules, HF/6-31G (t79/me_sym.py, three ME variants at every ME call of main(); out/me_hf_6-31g_benchmark_all.final.json): chlorofluoromethane ME C-H pair 964 mA apart, averaged score base 31.38 / offsets 4.26 mA; symmetry imposed 26.00 / 6.03 (the README's 'ME beats the hybrid on chlorofluoromethane, 4.26 against 5.43' rests on the broken structure). Fluoroethane spread 63-67 mA: base 12.66 -> 11.28, offsets 8.24 -> 9.07. Acetyl fluoride spread 8-17 mA, scores within 0.02. Water, ozone, vinyl fluoride, formyl fluoride, fluoroacetylene, HNCO unchanged. Soft (per-pair, D-160 recipe) equals sym except fluoroethane base (12.00, spread 7 mA).
 - The container restarted at 05:14 UTC and stopped the B3LYP validation run (cache kept, 155 B3LYP Hessians) and the B3LYP ME study; both relaunched on the D-161 commit with the HF validation run (its 0f28ca9 rows archived in t75/n11/pre_d161).
 ## Pending question
-- Q-175 (asked 20:5x UTC, no deadline: no option is Recommended, so nothing is auto-picked): what's next after T-88? 1 decide page items 15 / 16 / 17 / 8 (user only) · 2 the LAM acetaldehyde example, test and baseline (needs the 1996 paper's F, rho, V3; its reprint did not extract, so it may need a copy from the user) · 3 Done for now.
+- (none: Q-175 answered 2026-11-28 -> D-177..D-179)
 
 ## Handoff

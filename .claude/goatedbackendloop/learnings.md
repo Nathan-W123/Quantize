@@ -1,6 +1,7 @@
 # goatedbackendloop learning reference
 Sessions: 0 · Last consolidated: 2026-11-20
 ## Stated preferences
+- 2026-11-28: "Whatever u lean on do it stop breaking the goatedbackendloop" -- act on my own leans for page items (the user's approval in advance), and never end a what's-next without a Recommended option and a deadline, so the loop keeps running.
 - Accuracy and efficiency are both hard goals; anything trading one for the other is flagged, not implemented · scope: all projects · stated 2026-11-11
 - Use AskUserQuestion for choices; keep the loop running until told to stop · scope: all projects · stated 2026-11-11
 ## Workflow lessons
