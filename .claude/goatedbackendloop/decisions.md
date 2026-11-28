@@ -1622,3 +1622,9 @@
   - F5: a held table that lacks one of the fit's isotopologues is refused.
   - F6: the probe tries the next start after a saddle; the far-answer note also shows on the Gauss-Newton saddle return; the stale constructor comment is fixed.
 - Accepted as a change (F2): a separate correction_method level is now also built once for all starts and the uncertainty builder. A refresh no longer repeats passes for it, since its table never followed the Hessian. Old: 3 builds and 2 passes per start. New: 1 build and 1 pass, with targets within 0.22 MHz.
+
+### D-183 · Next after T-91: N48, the README's worked water example (2026-11-28)
+- Decision: T-92 = fix configs/example_water_semi_experimental.yaml's H2-18O constants from the published source (JPL 20003: A 825367.80, B 435354.05, C 276951.05 MHz; the example had 833931/411705/272914, B 24 GHz off). The example's forced quantum_prior_sigma_ang 0.005 is kept: its level (wB97X-D4/def2-TZVPP) is uncalibrated, the fallback is the loosest 0.020, and 0.005 sits beside the calibrated B3LYP/cc-pVTZ 0.004. The comment now says it is an estimate, and the stale "split is the default" text is gone. H2-16O and D2O checked against JPL 18003 and 20001 (within 0.2 MHz).
+- Why: Q-178's recommended option.
+- Source: auto-picked, no answer in 15 min (Q-178, 07:12 UTC)
+- Revisit if: wB97X-D4/def2-TZVPP gets calibrated, or the user prefers the fallback width.

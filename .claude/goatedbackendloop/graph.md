@@ -50,6 +50,7 @@ the decisions record; tasks before T-01 live in git history only.
 - T-89 · page items 15, 16, 17 built (D-177..D-179); verify found 1 regression + 1 gap, fixed · 2026-11-28 · done
 - T-90 · acetaldehyde torsion parameters from the 1996 Table I (LAM example, test, suite, baseline) · 2026-11-28 · done
 - T-91 · N37: Hessian-built corrections built once at the fit level's own minimum and held (D-182) · 2026-11-28 · done (verify: 1 defect + 5 small, fixed)
+- T-92 · N48: the worked water example's H2-18O constants from JPL 20003; sigma_x comment; N49 evidence · 2026-11-28 · done
 
 ## Edges
 - C:quantum-prior --depends-on--> C:joint-optimizer · 2026-11-20
@@ -223,3 +224,6 @@ the decisions record; tasks before T-01 live in git history only.
 - T-91 --touched--> C:cli-config · 2026-11-28 (corrections_at_theory_minimum key; uncertainty builder shares the table)
 - T-91 --touched--> C:readme · 2026-11-28 (B0 -> Be corrections paragraph)
 - T-91 --produced--> L-36 · 2026-11-28
+- T-92 --decided--> D-183 · 2026-11-28
+- T-92 --touched--> C:references · 2026-11-28 (example constants vs JPL 18003/20001/20003)
+- T-92 --touched--> C:readme · 2026-11-28 (the worked example the README points at)

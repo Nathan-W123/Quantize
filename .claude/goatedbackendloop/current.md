@@ -131,6 +131,11 @@ Request: Find more validation molecules (published equilibrium structures + isot
 - Measured (agent, scratchpad t91/, HF/6-31G through quantize run, 3 starts): held at the level's own minimum beats following the fit's Hessian (SO2 bond 2.37 -> 0.70 mA, H2CO C-H -7.49 -> -6.90, water cfg -1.55 -> 0.46) at 84-88% less time. Built as the default (D-182): one table per run (multistart probe, shared to every start and quantize uncertainty's builder), the fit's Hessian reused at the minimum, saddle fallback with a warning, a far-answer note (> 0.1 A), key corrections_at_theory_minimum (validated boolean).
 - Tests: 4 re-pinned (e2e water: bond 2.99 -> 0.37 mA, A/C toward B_e, B away by the analytic surface's own alpha_B sign; bootstrap refresh: one pass settles, the multi-pass case now under the opt-out fixture; CLI unsettled-refresh under the opt-out). New dev/tests/test_held_corrections.py (8): one build + held through the refresh, opt-out rebuilds, starts share one table (in-process: 1 build for 3 starts vs 12 opted out), uncertainty builder 1 build, saddle fallback, saddle detector on the analytic surface, far-answer note, key validation.
 - Agent follow-ups logged: N48 (water semi-experimental example's H2-18O constants wrong: B 411705 vs 435331.6 MHz; confirmed by grep), N49 (runner cubic_scheme default cartesian vs engine normal_mode).
+## Task T-92 (D-183: N48, the README's worked water example) · done 07:3x UTC
+- Measured on a pyscf B3LYP/6-31G(d) stand-in (ORCA is not installed; scratchpad n48/run_example.py). Old H2-18O constants: bond 6.93 mA and angle +0.280 deg from r_e. JPL constants: 5.91 mA and -0.003 deg. 45 s against 43 s.
+- New dev/tests/test_water_example_constants.py checks the constants against JPL, plus a rigid-rotor rule: the H2-18O B must be within 50 MHz of H2-16O's. It fails on the old example and passes on Water.yaml (20 MHz off; N50).
+- Side find, raising N49 to P1: under the runner's cartesian (cubic_fd) default, the correction sigma is 100% of the cubic term (27.8 GHz on A), so the example's data carry almost no weight (chi2/obs 0.29).
+- JPL docs extracted locally (scratchpad n48/dl_*): H2-18O tag 20003 A 825367.80 B 435354.05 C 276951.05; D2O 20001 462278.8 / 218038.4 / 145258.0; H2-16O 18003 835840.3 / 435351.7 / 278138.7. The example's H2-18O (833931/411705/272914) matches nothing; fixed. H2-16O, D2O agree.
 ## Progress
 - All six wired and tested; benchmark rows at both levels in the README (N11 done).
 ## Observations
@@ -151,6 +156,6 @@ Request: Find more validation molecules (published equilibrium structures + isot
 - Nine published molecules, HF/6-31G (t79/me_sym.py, three ME variants at every ME call of main(); out/me_hf_6-31g_benchmark_all.final.json): chlorofluoromethane ME C-H pair 964 mA apart, averaged score base 31.38 / offsets 4.26 mA; symmetry imposed 26.00 / 6.03 (the README's 'ME beats the hybrid on chlorofluoromethane, 4.26 against 5.43' rests on the broken structure). Fluoroethane spread 63-67 mA: base 12.66 -> 11.28, offsets 8.24 -> 9.07. Acetyl fluoride spread 8-17 mA, scores within 0.02. Water, ozone, vinyl fluoride, formyl fluoride, fluoroacetylene, HNCO unchanged. Soft (per-pair, D-160 recipe) equals sym except fluoroethane base (12.00, spread 7 mA).
 - The container restarted at 05:14 UTC and stopped the B3LYP validation run (cache kept, 155 B3LYP Hessians) and the B3LYP ME study; both relaunched on the D-161 commit with the HF validation run (its 0f28ca9 rows archived in t75/n11/pre_d161).
 ## Pending question
-- Q-178 (asked 06:56 UTC, deadline 07:12 UTC, wake-up trig_01WqGjuSUq76N5KJzpJSMFw7): what's next after T-91? 1) N48: fix the README's worked water example (H2-18O constants; check its forced sigma_x 0.005) (Recommended); 2) N49: measure the cubic_scheme default mismatch and propose; 3) N47: smooth harmonic alpha at the linearity threshold; 4) Done for now.
+- (none: Q-178 auto-picked at 07:12 UTC -> D-183)
 
 ## Handoff
