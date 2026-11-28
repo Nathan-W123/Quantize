@@ -121,6 +121,7 @@ Request: Find more validation molecules (published equilibrium structures + isot
 - 17: multistart.select_best_result ranks by energy_at_answer_model when every gated start has it. 15: build_optimizer_from_config(refresh_hessian=...) -> run_multistart; cli uncertainty passes not --no-hessian-refresh. 16: apply t85/n43/n43_variantB.patch (symmetry relabel + rigid_mode_count 0.01 A rule used by the projector), test bend 0.01 -> 1 deg.
 - Then: full CI, one independent verify of all three, page (15-17 done), README notes, records. Success: tests; fluoroacetylene C1 bends equal; benchmark fits unchanged (no multistart there); uncertainty on the dimer lands on run's answer.
 - T-89 built c35cc2d (15, 16, 17). New tests test_near_linear_and_ranking.py: 20 pass; 10 fail on the parent (the other 10 are guards). Two CLI tests adjusted (refreshed seeding). Running: full CI (t89/ci.txt), independent verify (t89/verify/).
+- T-89 full CI on c35cc2d: 1956 passed, 13 skipped. README: Running section names D-177 and D-179.
 ## Progress
 - All six wired and tested; benchmark rows at both levels in the README (N11 done).
 ## Observations
