@@ -136,6 +136,9 @@ Request: Find more validation molecules (published equilibrium structures + isot
 - New dev/tests/test_water_example_constants.py checks the constants against JPL, plus a rigid-rotor rule: the H2-18O B must be within 50 MHz of H2-16O's. It fails on the old example and passes on Water.yaml (20 MHz off; N50).
 - Side find, raising N49 to P1: under the runner's cartesian (cubic_fd) default, the correction sigma is 100% of the cubic term (27.8 GHz on A), so the example's data carry almost no weight (chi2/obs 0.29).
 - JPL docs extracted locally (scratchpad n48/dl_*): H2-18O tag 20003 A 825367.80 B 435354.05 C 276951.05; D2O 20001 462278.8 / 218038.4 / 145258.0; H2-16O 18003 835840.3 / 435351.7 / 278138.7. The example's H2-18O (833931/411705/272914) matches nothing; fixed. H2-16O, D2O agree.
+## Task T-93 (D-184: N49, the runner's cubic_scheme default) · measuring (scratchpad t92/, harness from t91 with OPT=follow = current default)
+- Cause found: fcc2067 (2026-11-09) moved the engine and the optimizer to normal_mode and left runner/run_generic.py at "cartesian", whose comment still says the defaults match. So quantize run never ran what the benchmarks published.
+- T-91 data (old code): H2CO HF/6-31G held, cartesian C-H -6.90 mA, angle -0.53 deg; normal_mode -0.50 mA, -0.06 deg, 17 s against 27 s. Water held: 0.46 against 0.85 mA. Re-measuring on HEAD.
 ## Progress
 - All six wired and tested; benchmark rows at both levels in the README (N11 done).
 ## Observations
@@ -156,6 +159,6 @@ Request: Find more validation molecules (published equilibrium structures + isot
 - Nine published molecules, HF/6-31G (t79/me_sym.py, three ME variants at every ME call of main(); out/me_hf_6-31g_benchmark_all.final.json): chlorofluoromethane ME C-H pair 964 mA apart, averaged score base 31.38 / offsets 4.26 mA; symmetry imposed 26.00 / 6.03 (the README's 'ME beats the hybrid on chlorofluoromethane, 4.26 against 5.43' rests on the broken structure). Fluoroethane spread 63-67 mA: base 12.66 -> 11.28, offsets 8.24 -> 9.07. Acetyl fluoride spread 8-17 mA, scores within 0.02. Water, ozone, vinyl fluoride, formyl fluoride, fluoroacetylene, HNCO unchanged. Soft (per-pair, D-160 recipe) equals sym except fluoroethane base (12.00, spread 7 mA).
 - The container restarted at 05:14 UTC and stopped the B3LYP validation run (cache kept, 155 B3LYP Hessians) and the B3LYP ME study; both relaunched on the D-161 commit with the HF validation run (its 0f28ca9 rows archived in t75/n11/pre_d161).
 ## Pending question
-- Q-179 (asked 07:17 UTC, deadline 07:32 UTC, wake-up trig_01MqPRmcxCbXtHLkNmjm81vh): what's next after T-92? 1) N49: measure the cubic_scheme default (cartesian vs normal_mode) and propose (Recommended); 2) N50: reconcile the other H2-18O copies (read De Lucia 1972); 3) N47: smooth harmonic alpha at the linearity threshold; 4) Done for now.
+- (none: Q-179 auto-picked at 07:32 UTC -> D-184)
 
 ## Handoff

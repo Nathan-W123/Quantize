@@ -1628,3 +1628,8 @@
 - Why: Q-178's recommended option.
 - Source: auto-picked, no answer in 15 min (Q-178, 07:12 UTC)
 - Revisit if: wB97X-D4/def2-TZVPP gets calibrated, or the user prefers the fallback width.
+
+### D-184 · Next after T-92: N49, measure the runner's cubic_scheme default (2026-11-28)
+- Decision: T-93 = measure quantize run with cubic_scheme cartesian (the runner's default) against normal_mode (the engine's and every benchmark's since fcc2067, 2026-11-09, which left run_generic at cartesian although its comment claims the defaults match). Cases: analytic water, water HF/6-31G (worked example as committed, and with the calibrated width), water on a B3LYP/6-31G(d) stand-in, formaldehyde and SO2 at HF/6-31G, all on the current code (held corrections, D-182). Report geometry against r_e, correction sigmas, chi2 and time; propose, and do not change the default without the user's yes.
+- Why: Q-179's recommended option.
+- Source: auto-picked, no answer in 15 min (Q-179, 07:32 UTC)
