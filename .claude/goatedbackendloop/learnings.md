@@ -105,6 +105,18 @@ Sessions: 0 · Last consolidated: 2026-11-20
 - Adjustment: in a worktree agent's brief, state the exact base sha and tell it to run `git switch -c <name> <sha>` first and confirm `git log -1` matches before editing.
 - Scope: workflow (cloud sessions with a non-default working branch) · Status: provisional
 
+### L-17 · Before building a refinement, measure whether the default path reaches it
+- Observation: three backlog refinements turned out not to need code once their exposure was measured. N47's alpha step is never reached: since D-182 the theory minima of linear molecules sit within 7.3e-5 A of the axis. N46's projector drift moved no answer, and the fix slowed fits 2.6x. N51 found the widths honest.
+- Evidence: 2026-11-28 · Quantize T-94, T-97, T-98 (scratchpad t94/, t97/, t98/). Each took one script and minutes, against a build-plus-verify cycle.
+- Adjustment: for a backlog item that refines a rare path, first measure how often the shipped default reaches it and what it moves. Build only when the measurement shows a reachable effect bigger than noise; otherwise close the item with the numbers.
+- Scope: workflow · Status: provisional · Outcomes:
+
+### L-18 · A search summary is a lead, not a fact; read the source before using it
+- Observation: a web search summary named arXiv 1607.03799 as giving HNCO's r_e^SE with uncertainties. The extracted PDF is about HNCS. An earlier summary also conflated formaldehyde (H2C18O) constants with water's.
+- Evidence: 2026-11-28 · Quantize T-96 (scratchpad t96/dl_arxiv), T-95.
+- Adjustment: before a number from a search result enters a record, a config or a message, read it in the source itself. For a PDF the fetch tool cannot read, extract the saved copy locally with pdftotext into its own directory.
+- Scope: workflow · Status: provisional · Outcomes:
+
 ## Retired
 
 ## Changelog
@@ -134,3 +146,4 @@ Sessions: 0 · Last consolidated: 2026-11-20
 - 2026-11-27 L-16 added (worktree agents' base commit); L-10 outcome + (T-85).
 - 2026-11-28 stated preference added (act on my leans; always a Recommended what's-next); L-10 outcome + (T-89).
 - 2026-11-28 L-10 outcome + (T-91).
+- 2026-11-28 L-17 (measure a refinement's reach before building) and L-18 (search summaries are leads) added. The stated preference to always give a Recommended option and a deadline held through Q-178..Q-185 (eight auto-picks; the loop never stalled); one default change (page item 18) stayed gated, as D-184 promised.

@@ -157,7 +157,7 @@ once by a container swap).
 - Adjustment: when a default changes, list the open page items and backlog proposals whose figures it can move, say so on the page, and re-measure them before the user decides.
 - Scope: project
 - Status: provisional
-- Outcomes:
+- Outcomes: +2026-11-28 (T-93: N49 re-measured on HEAD after D-182, not quoted from T-91's pre-change runs)
 
 ### L-35 · An approved rule applies where it was measured, and no further
 - Observation: page item 17 was measured on starts refreshed at their answers; I implemented it for every start. The independent check found that unrefreshed the model energy was the worse key (highest true energy picked in 4 of 6 runs), so `--no-hessian-refresh` would have ranked worse than before.

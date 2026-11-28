@@ -184,7 +184,15 @@ Request: Find more validation molecules (published equilibrium structures + isot
 - Nine published molecules, HF/6-31G (t79/me_sym.py, three ME variants at every ME call of main(); out/me_hf_6-31g_benchmark_all.final.json): chlorofluoromethane ME C-H pair 964 mA apart, averaged score base 31.38 / offsets 4.26 mA; symmetry imposed 26.00 / 6.03 (the README's 'ME beats the hybrid on chlorofluoromethane, 4.26 against 5.43' rests on the broken structure). Fluoroethane spread 63-67 mA: base 12.66 -> 11.28, offsets 8.24 -> 9.07. Acetyl fluoride spread 8-17 mA, scores within 0.02. Water, ozone, vinyl fluoride, formyl fluoride, fluoroacetylene, HNCO unchanged. Soft (per-pair, D-160 recipe) equals sym except fluoroethane base (12.00, spread 7 mA).
 - The container restarted at 05:14 UTC and stopped the B3LYP validation run (cache kept, 155 B3LYP Hessians) and the B3LYP ME study; both relaunched on the D-161 commit with the HF validation run (its 0f28ca9 rows archived in t75/n11/pre_d161).
 ## Pending question
-- Gate (still open): page item 18 (Q-180 a), switching the cubic_scheme default; waits for the user. Page item 8 is the user's too.
-- Q-185 (asked 09:29 UTC, deadline 09:45 UTC, wake-up trig_01DWxjYAdTD97w8FoFddACmo): what's next after T-98? 1) Done for now (Recommended): little self-directed work is left that is worth doing; 2) N40 (b), the linear-angle structural prior in spectral-only C1 fits; 3) N8, per-key distortion fractions (needs more validated data).
+- (none: Q-185 auto-picked at 09:45 UTC -> Done for now; loop ended)
 
 ## Handoff
+- 2026-11-28 09:46 UTC: loop ended (Done for now, auto-picked at the Q-185 deadline). HEAD on claude/repo-audit-calculations-gtotzw is pushed; full CI was last green at 4e8f3d3 (1975 + 63). Later commits touch configs, a docstring and a new data test (passing).
+- Open for the user:
+  - Page item 18: switch quantize run's cubic_scheme default to normal_mode. I recommend yes; it is gated and not applied.
+  - Page item 8.
+  - N3 needs Penocchio et al. 2015 (JCTC, HNCO) or Margules et al. 1999 (JPCA 103, 7632, HCOF) supplied.
+  - N16, N23, N25 and N36 are flagged as the user's calls.
+  - Results-table rebuild: still on hold (user's item 5).
+- Done this segment: D-182 (held corrections, verified, 2 commits), D-183 (worked example H2-18O), D-184..D-185 (N49 measured, page item 18; N51 widths honest), D-186 (H2-18O copies cited), D-187 (N3, nothing found), D-188 (N47 no build), D-189 (N46 no build).
+- Decision page: https://claude.ai/artifact/144eMMauzGEeS3WLmW51Db (v28).
