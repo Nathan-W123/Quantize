@@ -286,25 +286,50 @@ def _rotate_cartesian_hessian(hessian, rot):
 
 
 
-def _optimise_on_surface(backend, coords_ang, max_steps=200, gtol=2e-5, box_ang=0.5):
-    """The backend's own minimiser when it has one, else L-BFGS-B on its
-    gradient (Ha/Angstrom), boxed like pyscf_backend.optimise: where the
-    corrections built from the fit level's Hessian are evaluated (D-182)."""
+def _optimise_on_surface(backend, coords_ang, max_steps=200, gtol=2e-5, box_ang=0.5,
+                         rounds=4):
+    """Minimise on the backend's surface alone: where the corrections built
+    from that level's Hessian are evaluated (D-182).
+
+    The backend's own minimiser when it has one, else L-BFGS-B on its
+    gradient (Ha/Angstrom), boxed like pyscf_backend.optimise against a first
+    step that overshoots. A box is a guard, not an answer: a run that stops on
+    it, or before gtol, is re-centred and run again, up to ``rounds`` times
+    (analytic water from a start 0.52 A out along each bond stopped on the box
+    at 119 deg, |g| 4.4e-2 Ha/bohr, and the table was built there).
+
+    Returns (geometry, largest gradient component in Ha/bohr at it). The
+    caller decides whether that is stationary; for a backend with optimise()
+    it is read from its last_optimise record, else one gradient is computed.
+    """
+    from backend.quantum import ANG_TO_BOHR  # pylint: disable=import-outside-toplevel
     fn = getattr(backend, "optimise", None)
     if callable(fn):
-        return fn(coords_ang)
+        geom = np.asarray(fn(coords_ang), dtype=float)
+        rec = getattr(backend, "last_optimise", None)
+        if isinstance(rec, dict) and rec.get("g_max_ha_per_ang") is not None:
+            return geom, float(rec["g_max_ha_per_ang"]) / ANG_TO_BOHR
+        g = np.asarray(backend.run_gradient(geom).gradient_bohr, dtype=float)
+        return geom, float(np.max(np.abs(g)))
     from scipy.optimize import minimize  # pylint: disable=import-outside-toplevel
-    from backend.quantum import ANG_TO_BOHR  # pylint: disable=import-outside-toplevel
-    x0 = np.asarray(coords_ang, dtype=float)
+    x = np.asarray(coords_ang, dtype=float)
 
     def fun(flat):
-        r = backend.run_gradient(flat.reshape(x0.shape))
+        r = backend.run_gradient(flat.reshape(x.shape))
         return float(r.energy), np.asarray(r.gradient_bohr, dtype=float).ravel() * ANG_TO_BOHR
 
-    sol = minimize(fun, x0.ravel(), jac=True, method="L-BFGS-B",
-                   bounds=[(v - box_ang, v + box_ang) for v in x0.ravel()],
-                   options={"maxiter": max_steps, "gtol": gtol, "ftol": 1e-14})
-    return sol.x.reshape(x0.shape)
+    g_max = np.inf
+    for _ in range(max(int(rounds), 1)):
+        x0 = x.ravel()
+        sol = minimize(fun, x0, jac=True, method="L-BFGS-B",
+                       bounds=[(v - box_ang, v + box_ang) for v in x0],
+                       options={"maxiter": max_steps, "gtol": gtol, "ftol": 1e-14})
+        x = sol.x.reshape(x.shape)
+        g_max = float(np.max(np.abs(np.asarray(sol.jac, dtype=float))))
+        on_box = bool(np.any(np.abs(sol.x - x0) > box_ang - 1e-9))
+        if g_max <= gtol and not on_box:
+            break
+    return x, g_max / ANG_TO_BOHR
 
 
 class MolecularOptimizer:
@@ -613,9 +638,10 @@ class MolecularOptimizer:
         # could be scored by any benchmark, all of which run through this class.
         self._torsion_replacement = torsion_replacement
         # The level the Hessian-built corrections come from when it is not the
-        # fit's own: None keeps the fit's level, re-expanded at the current
-        # geometry on every Hessian refresh, as before. See
-        # _correction_level_table for what a separate level does and why.
+        # fit's own. None keeps the fit's level, evaluated at its own minimum
+        # and held (D-182, corrections_at_theory_minimum), or with that off
+        # re-expanded at the current geometry on every Hessian refresh. See
+        # _correction_level_table for what is done and why.
         self._correction_level = (
             None if correction_method is None and correction_basis is None
             else (None if correction_method is None else str(correction_method).strip(),
@@ -1456,7 +1482,17 @@ class MolecularOptimizer:
             self._corr_backend = self._backend
             self._corr_at_fit_level = True
         if held_correction_table is not None and self._corr_backend is not None:
-            self._corr_table = held_correction_table
+            # A table built for these atoms and these isotopologues: one
+            # missing a species would leave it silently uncorrected.
+            _geom, _raw = held_correction_table[0], held_correction_table[1] or {}
+            _names = [str(i.get("name")) for i in self.spectral.isotopologues] \
+                if getattr(self, "spectral", None) is not None else []
+            if (np.asarray(_geom, dtype=float).shape == self.coords.shape
+                    and all(n in _raw for n in _names)):
+                self._corr_table = held_correction_table
+            else:
+                print("  [correction-level] the held correction table does not cover these "
+                      "atoms and isotopologues; building this fit's own.")
 
     @staticmethod
     def _covalent_radius(elem):
@@ -1767,7 +1803,21 @@ class MolecularOptimizer:
         be = self._corr_backend
         label = f"{be.method}/{be.basis}" if hasattr(be, "method") else "the correction level"
         print(f"\n  [correction-level] Optimising at {label} for the corrections' own minimum...")
-        geom = np.asarray(_optimise_on_surface(be, np.asarray(self.coords, dtype=float)), dtype=float)
+        geom, g_max = _optimise_on_surface(be, np.asarray(self.coords, dtype=float))
+        geom = np.asarray(geom, dtype=float)
+        if g_max > self.CORRECTIONS_STATIONARY_HA_BOHR:
+            if getattr(self, "_corr_at_fit_level", False):
+                # Not stationary: alpha there is no property of the minimum,
+                # so fall back to building the corrections at the fit's own
+                # Hessian, as before D-182.
+                print(f"  [correction-level] WARNING: the {label} optimisation from this start "
+                      f"stopped at |g| {g_max:.1e} Ha/bohr, not at a stationary point; the "
+                      f"corrections follow the fit's Hessian instead.")
+                self._corr_backend = None
+                self._corr_at_fit_level = False
+                return None
+            print(f"  [correction-level] WARNING: the {label} optimisation stopped at "
+                  f"|g| {g_max:.1e} Ha/bohr; the corrections are built there.")
         # The fit level's own Hessian where the fit already holds one there
         # (a start at the theory minimum): one Hessian, not two.
         held = self.quantum is not None and be is self._backend \
@@ -1807,6 +1857,12 @@ class MolecularOptimizer:
               f"({1e3 * shift:.2f} mA RMS from the fit's geometry); kept for the whole fit.")
         self._corr_table = (geom, ctbl_raw, info)
         return ctbl_raw, info
+
+    #: Largest gradient component (Ha/bohr) at which the point the corrections
+    #: are evaluated at counts as stationary: 25x the minimiser's gtol (2e-5
+    #: Ha/A), above the SCF noise a converged L-BFGS-B stop was measured at
+    #: (2.7e-5 to 2.6e-4, 1.6e-4 A from the minimum at most).
+    CORRECTIONS_STATIONARY_HA_BOHR = 5e-4
 
     #: The answer this far (RMS over atoms, after alignment) from the geometry
     #: its held corrections were evaluated at is reported: the alpha then
@@ -4906,15 +4962,15 @@ class MolecularOptimizer:
         except Exception as exc:  # a diagnostic must not cost the report
             gn = [f"Gauss-Newton check unavailable: {type(exc).__name__}"]
         gn = gn + self.ic_reach_warnings(coords=x)
+        _held = self.held_corrections_note()
+        if _held:
+            gn = gn + [_held]
         saddle = getattr(self, "_gn_saddle", None)
         if saddle is not None and saddle[0] == x.tobytes():
             return {"error": "no Laplace width exists at this geometry -- " + saddle[1],
                     "warnings": gn}
         gn = gn + self.hessian_age_warnings(coords=x)
         gn = gn + self.distortion_warnings() + self.model_error_warnings()
-        _held = self.held_corrections_note()
-        if _held:
-            gn = gn + [_held]
         try:
             split_gap = self.split_inconsistency()
         except Exception as exc:  # a diagnostic must not cost the report

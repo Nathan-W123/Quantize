@@ -180,3 +180,133 @@ def test_the_key_must_be_a_boolean():
         validate_config(cfg)
     cfg["rovibrational_corrections"]["corrections_at_theory_minimum"] = False
     validate_config(cfg)
+
+
+# ── Found by the independent check (t91v) ───────────────────────────────────
+
+MASSES_H2O = [15.99491461956, 1.00782503207, 1.00782503207]
+MASSES_D2O = [15.99491461956, 2.0141017778, 2.0141017778]
+B0_H2O = [835840.29, 435351.72, 278138.70]
+B0_D2O = [462278.85, 218038.23, 145258.00]
+
+
+def _isos(*which):
+    data = {"H2-16O": (MASSES_H2O, B0_H2O), "D2-16O": (MASSES_D2O, B0_D2O)}
+    return [{"name": n, "masses": data[n][0], "obs_constants": list(data[n][1]),
+             "sigma_constants": [0.2] * 3} for n in which]
+
+
+def _direct(isos, coords=None, **kw):
+    th = np.radians(104.5)
+    x = np.array([[0.0, 0.0, 0.0], [0.0, 0.97 * np.sin(th / 2), 0.97 * np.cos(th / 2)],
+                  [0.0, -0.97 * np.sin(th / 2), 0.97 * np.cos(th / 2)]]) if coords is None else coords
+    with contextlib.redirect_stdout(io.StringIO()) as out:
+        opt = MolecularOptimizer(elems=["O", "H", "H"], coords=x, isotopologues=isos,
+                                 quantum_backend="analytic_water", use_autoconfig=False,
+                                 max_iter=60, harmonic_from_hessian=True, **kw)
+        opt.run()
+    return opt, out.getvalue()
+
+
+def test_a_start_past_the_box_still_reaches_the_minimum():
+    """The fallback minimiser is boxed at 0.5 A per coordinate. From a start
+    0.52 A out along each bond it stopped on the box at 119 deg, |g| 4.4e-2
+    Ha/bohr, and the table was built there, said to be "at its minimum"
+    (held A 814974 MHz against 831619). The box is now re-centred until the
+    run converges."""
+    from backend.quantize import _optimise_on_surface
+    from dev.analytic_water_backend import AnalyticWaterBackend
+    be = AnalyticWaterBackend(elems=["O", "H", "H"])
+    far = np.array([[0.0, 0.0, 0.0], [0.0, 1.357, 0.586], [0.0, -1.357, 0.586]])
+    geom, g_max = _optimise_on_surface(be, far)
+    g = np.asarray(be.run_gradient(geom).gradient_bohr, dtype=float)
+    assert np.max(np.abs(g)) < 1e-4 and g_max < 1e-4
+    cfg = _cfg()
+    cfg["geometry"]["coords_angstrom"] = far.tolist()
+    opt, _ = _fit(cfg, multistart=False)
+    assert opt._corr_at_fit_level
+    g = np.asarray(be.run_gradient(np.asarray(opt._corr_table[0])).gradient_bohr, dtype=float)
+    assert np.max(np.abs(g)) < opt.CORRECTIONS_STATIONARY_HA_BOHR
+
+
+def test_a_stop_short_of_stationary_falls_back(monkeypatch):
+    """A minimiser that ends above CORRECTIONS_STATIONARY_HA_BOHR is not at
+    the minimum the corrections describe: the run says so and follows the
+    fit's Hessian instead."""
+    import backend.quantize as q
+    monkeypatch.setattr(q, "_optimise_on_surface", lambda be, x, **k: (np.asarray(x), 1e-2))
+    opt, out = _direct(_isos("H2-16O"))
+    assert "not at a stationary point" in out
+    assert opt._corr_backend is None and not opt._corr_at_fit_level
+
+
+def test_the_saddle_branch_inside_one_optimizer(monkeypatch):
+    """Built directly (scripts, bayes_tune), with no multistart probe in front:
+    the optimizer's own saddle branch warns, drops the held table, and its
+    refresh then follows the Hessian (more than one pass, targets moving)."""
+    monkeypatch.setattr(MolecularOptimizer, "_stationary_point_is_saddle",
+                        lambda self, geom, hess: True)
+    calls = _builds(monkeypatch)
+    opt, out = _direct(_isos("H2-16O", "D2-16O"))
+    assert out.count("not a minimum") == 1
+    assert opt._corr_backend is None and not opt._corr_at_fit_level
+    n, targets = len(calls), _targets(opt)
+    with contextlib.redirect_stdout(io.StringIO()):
+        opt.refresh_hessian_at_answer()
+    assert len(calls) > n and not np.array_equal(_targets(opt), targets)
+
+
+def test_a_table_for_other_isotopologues_is_not_held():
+    """An H2O-only table handed to an H2O + D2O fit left D2O uncorrected
+    (target - B0 = -3.8 MHz against -1677 with its own table), silently."""
+    one, _ = _direct(_isos("H2-16O"))
+    two, out = _direct(_isos("H2-16O", "D2-16O"), held_correction_table=one._corr_table)
+    assert "does not cover" in out
+    assert two._corr_table is not one._corr_table
+    d2o = _targets(two)[1] - np.asarray(B0_D2O)
+    assert np.max(np.abs(d2o)) > 100.0, "D2O corrected"
+
+
+def test_the_probe_tries_the_next_start(monkeypatch, tmp_path):
+    """A symmetric first start can stop on a saddle (planar NH3 at
+    HF/STO-3G) where a jittered one need not; one saddle no longer turns the
+    held corrections off for the whole run."""
+    from backend.multistart import _shared_held_corrections
+    real = MolecularOptimizer._stationary_point_is_saddle
+    seen = []
+
+    def first_is_saddle(self, geom, hess):
+        seen.append(1)
+        return True if len(seen) == 1 else real(self, geom, hess)
+    monkeypatch.setattr(MolecularOptimizer, "_stationary_point_is_saddle", first_is_saddle)
+    from runner.run_generic import build_run_inputs
+    with contextlib.redirect_stdout(io.StringIO()):
+        inputs = build_run_inputs(_cfg(), verbose=False)
+    kw = {**inputs["optimizer_kwargs"], "base_workdir": str(tmp_path)}
+    with contextlib.redirect_stdout(io.StringIO()) as out:
+        got = _shared_held_corrections(inputs["starts"], inputs["elems"],
+                                       inputs["isotopologues"], kw)
+    assert "trying start 2" in out.getvalue()
+    assert got.get("held_correction_table") is not None and len(seen) == 2
+
+
+def test_the_probe_works_in_the_run_directory(tmp_path, monkeypatch):
+    """The probe ran its backend in the process's working directory, where a
+    file-writing backend (ORCA) would leave its jobs."""
+    from backend.multistart import _shared_held_corrections
+    from runner.run_generic import build_run_inputs
+    monkeypatch.chdir(tmp_path)
+    with contextlib.redirect_stdout(io.StringIO()):
+        inputs = build_run_inputs(_cfg(), verbose=False)
+    kw = {**inputs["optimizer_kwargs"], "base_workdir": str(tmp_path / "run"), "job_name": "w"}
+    with contextlib.redirect_stdout(io.StringIO()):
+        seen = []
+        real_init = MolecularOptimizer.__init__
+
+        def spy(self, *a, **k):
+            seen.append(k.get("workdir"))
+            real_init(self, *a, **k)
+        monkeypatch.setattr(MolecularOptimizer, "__init__", spy)
+        _shared_held_corrections(inputs["starts"], inputs["elems"], inputs["isotopologues"], kw)
+    assert seen and all(Path(w) == tmp_path / "run" / "multistart_runs" / "w" / "corrections"
+                        for w in seen)

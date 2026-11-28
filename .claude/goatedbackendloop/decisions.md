@@ -1614,3 +1614,11 @@
 - Source: assumed (my lean, under the user's standing instruction to act on it)
 - Analytic-water end-to-end config: bond 2.99 -> 0.37 mA (no refresh), 0.87 mA with the refresh; A and C targets toward B_e, B's away: this surface's own sum of alpha_B at its minimum is -5366 MHz where real water implies +3449 (a property of the surface). Tests re-pinned to the held behaviour; the multi-pass refresh tests keep the old behaviour through the opt-out.
 - Revisit if: a molecule's fit lands far (> 0.1 A) from the level's minimum, as HNCO did at HF/6-31G in the benchmark (0.32 A), where following looked better; or page item 8 settles alpha at another geometry.
+- Built 5cb125a. Independent review (t91v/) held criteria 1-3, 6 and 7. The opt-out is bit-identical to 2b41ad2. On pyscf water HF/6-31G (3 starts) it took 5.4 s against 32.3 s and 25 Hessians against 228, with the bond at -0.77 against -2.76 mA.
+- Fixes from the review:
+  - F1, confirmed: the fallback minimiser stopped on its box without saying so. It now re-centres until it converges, checks |g| at 5e-4 Ha/bohr, and falls back with a warning.
+  - F3: the direct-construction saddle branch is now tested.
+  - F4: the probe works in multistart_runs/<job>/corrections.
+  - F5: a held table that lacks one of the fit's isotopologues is refused.
+  - F6: the probe tries the next start after a saddle; the far-answer note also shows on the Gauss-Newton saddle return; the stale constructor comment is fixed.
+- Accepted as a change (F2): a separate correction_method level is now also built once for all starts and the uncertainty builder. A refresh no longer repeats passes for it, since its table never followed the Hessian. Old: 3 builds and 2 passes per start. New: 1 build and 1 pass, with targets within 0.22 MHz.

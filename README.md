@@ -316,14 +316,17 @@ its stationary point, not wherever the fit has got to. Through `quantize run`
 (HF/6-31G, three starts) this moved SO$_2$'s bond from 2.37 to 0.70 mÅ off
 $r_e$, formaldehyde's C–H from $-7.49$ to $-6.90$ mÅ and water's from $-1.55$ to
 $0.46$ mÅ, in 84–88% less time than rebuilding them at every Hessian, which
-`corrections_at_theory_minimum: false` restores. When the stationary point
-reached is a saddle, the corrections follow the fit's Hessian instead, with a
-warning; an answer more than 0.1 Å from where they were evaluated is flagged.
+`corrections_at_theory_minimum: false` restores. The starts are tried in turn
+until one reaches a minimum; when none does (a saddle, or an optimisation that
+stops short of a stationary point), the corrections follow the fit's Hessian
+instead, with a warning. An answer more than 0.1 Å from where they were
+evaluated is flagged.
 
 **The corrections' level can differ from the fit's.** `correction_method` /
 `correction_basis` in `rovibrational_corrections` (with
 `harmonic_from_hessian: true`; the `pyscf_hf` backend) take them from another
-level instead, optimised and held the same way. On water
+level instead, optimised and held the same way: once for every start and the
+uncertainty run, and a Hessian refresh does not rebuild it. On water
 (CCSD/cc-pVDZ fit and prior, H$_2$O + D$_2$O, against $r_e$) the bond went from
 $-0.58$ mÅ with the fit level's own corrections to $-0.03$ with them at
 MP2/cc-pVTZ (seven Hessians, 3.7 min) and $-0.08$ at CCSD/cc-pVTZ (33 min); the

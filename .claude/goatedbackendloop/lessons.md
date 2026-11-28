@@ -166,3 +166,11 @@ once by a container swap).
 - Scope: project (likely general)
 - Status: provisional
 - Outcomes:
+
+### L-36 · A guard copied from one path needs that path's check too
+- Observation: the new fallback minimiser copied pyscf_backend.optimise's ±0.5 A box but not its convergence and box-hit reporting, whose docstring says why it is needed. From a start 0.52 A out along each bond, it stopped on the box at |g| 4.4e-2 Ha/bohr, and the table was built there and reported as "at its minimum".
+- Evidence: 2026-11-28 · T-91 verify (t91v/t_box.py; held A 814974 against 831619 MHz). Fixed by re-centring the box until convergence and checking |g| (CORRECTIONS_STATIONARY_HA_BOHR); a non-stationary stop now falls back with a warning.
+- Adjustment: when reusing a safety mechanism (a box, a cap, a trust radius) in new code, reuse its failure check as well, and write the test from the case the guard exists for.
+- Scope: project (likely general)
+- Status: provisional
+- Outcomes:

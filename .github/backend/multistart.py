@@ -147,24 +147,42 @@ def _run_one_start(payload):
 
 
 def _shared_held_corrections(starts, elems, isotopologues, kwargs):
-    """Build the held correction table once, at the correction level's minimum
-    reached from the first start, and hand it to every start (D-182): one
-    optimisation and one cubic per run instead of one per start (water at
-    HF/6-31G, 3 starts: 29 Hessians against 228 when they followed the fit).
-    When that point is a saddle, every start builds its corrections at its own
-    Hessian instead, as before."""
+    """Build the held correction table once, at the correction level's minimum,
+    and hand it to every start (D-182): one optimisation and one cubic per run
+    instead of one per start (water at HF/6-31G, 3 starts: 25 Hessians against
+    228 when they followed the fit). The starts are tried in order until one
+    reaches a minimum: a symmetric start can stop on a saddle (planar NH3 at
+    HF/STO-3G) where a jittered one need not. When none does, every start
+    builds its corrections at its own Hessian instead, as before.
+
+    The probe works in the run's own directory (multistart_runs/<job>/
+    corrections), so a file-writing backend (ORCA) does not write to the
+    process's working directory.
+    """
     if not starts or kwargs.get("held_correction_table") is not None:
         return kwargs
     if not kwargs.get("harmonic_from_hessian") or kwargs.get("spectral_only"):
         return kwargs
-    probe_kw = {k: v for k, v in kwargs.items() if k not in ("base_workdir", "job_name")}
-    probe = MolecularOptimizer(coords=np.asarray(starts[0], dtype=float), elems=list(elems),
-                               isotopologues=isotopologues, **probe_kw)
-    if probe._corr_backend is None:
+    if not kwargs.get("corrections_at_theory_minimum", True) and not (
+            kwargs.get("correction_method") or kwargs.get("correction_basis")):
         return kwargs
-    if probe._correction_level_table() is None:
-        return {**kwargs, "corrections_at_theory_minimum": False}
-    return {**kwargs, "held_correction_table": probe._corr_table}
+    probe_kw = {k: v for k, v in kwargs.items() if k not in ("base_workdir", "job_name")}
+    probe_dir = os.path.join(kwargs.get("base_workdir", "."), "multistart_runs",
+                             str(kwargs.get("job_name", "multistart")), "corrections")
+    os.makedirs(probe_dir, exist_ok=True)
+    probe_kw["workdir"] = probe_dir
+    probe_kw.setdefault("psi4_output_file", os.path.join(probe_dir, "psi4.out"))
+    for k, start in enumerate(starts):
+        probe = MolecularOptimizer(coords=np.asarray(start, dtype=float), elems=list(elems),
+                                   isotopologues=isotopologues, **probe_kw)
+        if probe._corr_backend is None:
+            return kwargs
+        if probe._correction_level_table() is not None:
+            return {**kwargs, "held_correction_table": probe._corr_table}
+        if k + 1 < len(starts):
+            print(f"[multistart] no minimum reached from start {k + 1} for the held "
+                  f"corrections; trying start {k + 2}.")
+    return {**kwargs, "corrections_at_theory_minimum": False}
 
 
 def _shared_dihedral_choice(starts, elems, isotopologues, kwargs):
