@@ -1602,3 +1602,8 @@
 - Why: Q-176's recommended option; every parameter in the example is wrong (V3 163.4 against 407.9).
 - Source: auto-picked, no answer in 15 min (Q-176, 05:11 UTC)
 - Revisit if: the LAM pipeline's parameter definitions differ from the paper's RAM ones in a way the example cannot express.
+
+### D-181 · Next after T-90: N37, where Hessian-built corrections are evaluated (2026-11-28)
+- Decision: T-91 = backlog N37: measure (scratch) corrections built from the Hessian at (a) the refreshed Hessian's point, as now, (b) the fit's start / first Hessian, held, (c) the stationary theory geometry, on the analytic-water end-to-end config and real HF/6-31G CLI configs; implement only a clear accuracy win at no time cost (stated preference: act on my lean), otherwise propose. Item 8 (the benchmark's own alpha) stays the user's.
+- Why: Q-177's recommended option.
+- Source: auto-picked, no answer in 15 min (Q-177, 05:35 UTC)

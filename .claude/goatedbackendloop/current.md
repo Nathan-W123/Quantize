@@ -126,6 +126,7 @@ Request: Find more validation molecules (published equilibrium structures + isot
 - T-89 side find (t88/dl3/c.txt, local pdftotext of the JPCRD 25, 1113 reprint, OCR): Table I v_t=0: V3 407.94707(360) cm-1, F 7.655853(1234), rho 0.329088(472), A 1.88487?6 (digits garbled), B 0.348716329(914), C 0.303177697(272), Dab -0.12270925(584) cm-1. B and C match JPL 44003. The LAM example (V3 163.4, F 5.1724, rho 0.0609, A 52842) is wrong on every parameter.
 ## Task T-90 (D-180: LAM acetaldehyde from the 1996 Table I) · done 05:3x UTC (06101ee)
 - RAM-lite H = E_rot + F (m - rho K)^2 + V(alpha) is the paper's rho-axis form, so F, rho and the rho-axis A/B/C go in directly; Dab and higher terms are outside it. Kept V6 (v0 = (V3+V6)/2, vcos3 = -V3/2, vcos6 = -V6/2). vt=0 A/E splitting 0.276 -> 0.0730 cm^-1 (0.07317 at n_basis 12, 0.07305 at 16/24); LAM example n_basis 12 -> 16; ordering, below-barrier and 'moderate' reliability unchanged. Updated: example_acetaldehyde_lam.yaml (torsion + PAM structure constants), example_acetaldehyde.yaml (disabled torsion block + comment), test_lam_acetaldehyde.py (tolerance 0.01 -> 0.001), dev/benchmarks/lam_suite.py, baselines/lam.json (0.27594 -> 0.07317, tolerance 0.01 -> 0.001). Both configs validate; 65 LAM/benchmark-suite tests and the full CI set (1960) pass. No independent verify: data transcription cross-checked against JPL 44003 (B, C to 0.2 MHz).
+## Task T-91 (D-181: N37, where Hessian-built corrections are evaluated) · measuring (agent, t91/)
 ## Progress
 - All six wired and tested; benchmark rows at both levels in the README (N11 done).
 ## Observations
@@ -146,6 +147,6 @@ Request: Find more validation molecules (published equilibrium structures + isot
 - Nine published molecules, HF/6-31G (t79/me_sym.py, three ME variants at every ME call of main(); out/me_hf_6-31g_benchmark_all.final.json): chlorofluoromethane ME C-H pair 964 mA apart, averaged score base 31.38 / offsets 4.26 mA; symmetry imposed 26.00 / 6.03 (the README's 'ME beats the hybrid on chlorofluoromethane, 4.26 against 5.43' rests on the broken structure). Fluoroethane spread 63-67 mA: base 12.66 -> 11.28, offsets 8.24 -> 9.07. Acetyl fluoride spread 8-17 mA, scores within 0.02. Water, ozone, vinyl fluoride, formyl fluoride, fluoroacetylene, HNCO unchanged. Soft (per-pair, D-160 recipe) equals sym except fluoroethane base (12.00, spread 7 mA).
 - The container restarted at 05:14 UTC and stopped the B3LYP validation run (cache kept, 155 B3LYP Hessians) and the B3LYP ME study; both relaunched on the D-161 commit with the HF validation run (its 0f28ca9 rows archived in t75/n11/pre_d161).
 ## Pending question
-- Q-177 (asked 05:20 UTC, deadline 05:35 UTC, wake-up trig_012kwwj5h1HqReFqh63Kft44): what's next after T-90? 1 N37: where Hessian-built corrections are evaluated (Recommended; measure, act if a clear win at no time cost) · 2 N47: the near-linear alpha step · 3 decide page item 8 (user only) · 4 Done for now.
+- (none: Q-177 auto-picked at 05:35 UTC -> D-181)
 
 ## Handoff
