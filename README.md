@@ -733,10 +733,12 @@ fit's own Hessian was from the answer), and so, since D-177, does
 `quantize uncertainty` for the starts it seeds from: ranked before any
 refresh, the two commands picked different starts in 5 of 6 configs and a
 water dimer's answers ended 5.8 mÅ apart with widths 3.5× apart (one Hessian
-per start, +36–108% of the seeding time). Starts within the spectral gate
-are ranked by the fit's own model energy at each answer (D-179), which
-matched a fresh SCF energy there to 0.63 µHa on 36 starts, where the energy
-at a start's last quantum point missed by up to 333 µHa. Not only the widths depend on it: the
+per start, +36–108% of the seeding time). Refreshed starts within the
+spectral gate are ranked by the fit's own model energy at each answer
+(D-179), which matched a fresh SCF energy there to 0.63 µHa on 36 starts,
+where the energy at a start's last quantum point missed by up to 333 µHa;
+with `--no-hessian-refresh` they are ranked by that last-point energy as
+before (unrefreshed, the model energy was the worse of the two). Not only the widths depend on it: the
 Hessian sets the quantum weight, so on a hydrogen-bonded water dimer
 (HF/6-31G, eight starts) one refresh moved the answer by up to 14 mÅ (RMS) and
 the weight by up to 18%, and brought the internal- and Cartesian-coordinate

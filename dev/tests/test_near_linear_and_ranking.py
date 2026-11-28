@@ -48,6 +48,19 @@ def test_a_near_linear_centrosymmetric_start_is_dinf_h():
     assert detect_symmetry(["O", "C", "O"], _bent([-1.16, 0.0, 1.16], 179.5))[0] == "Dinf_h"
 
 
+def test_a_v_shaped_co2_start_keeps_its_end_swap():
+    """Both O moved +0.04 A off the axis: sigma_h swaps the ends, inversion
+    does not. The parent read D3h (projector rank 1); testing inversion alone
+    read Cinf_v (rank 3), and the fit split the two C-O bonds by 7.3 mA
+    (independent check of D-178, t89/verify/repro_co2_d3h.py)."""
+    from backend.symmetry import create_symmetry
+    x = np.array([[0.04, 0.0, -1.16], [0.0, 0.0, 0.0], [0.04, 0.0, 1.16]])
+    assert detect_symmetry(["O", "C", "O"], x)[0] == "Dinf_h"
+    with contextlib.redirect_stdout(io.StringIO()):
+        P = np.asarray(create_symmetry("auto", ["O", "C", "O"], x).projection)
+    assert int(round(np.trace(P))) == 1
+
+
 def test_a_bent_molecule_keeps_its_group():
     th = np.radians(104.5)
     water = np.array([[0, 0, 0], [0.9578 * np.sin(th / 2), 0.9578 * np.cos(th / 2), 0],
@@ -93,8 +106,12 @@ def test_a_c1_fit_a_hair_off_straight_reports_two_equal_bends():
     assert bends[0] == pytest.approx(bends[1], rel=1e-3)
 
 
-def _res(idx, freq, energy, model):
-    return {"idx": idx, "freq_rms": freq, "energy": energy, "energy_at_answer_model": model}
+_REFRESHED = {"passes": 1, "settled": True}
+
+
+def _res(idx, freq, energy, model, refresh=_REFRESHED):
+    return {"idx": idx, "freq_rms": freq, "energy": energy, "energy_at_answer_model": model,
+            "hessian_refresh": refresh}
 
 
 def test_starts_are_ranked_by_the_model_energy_at_each_answer():
@@ -106,6 +123,15 @@ def test_starts_are_ranked_by_the_model_energy_at_each_answer():
 @pytest.mark.parametrize("missing", [None, float("nan")])
 def test_without_every_model_energy_the_last_point_energy_ranks(missing):
     rs = [_res(1, 1.0, -100.0002, -100.0010), _res(2, 1.0, -100.0005, missing)]
+    assert select_best_result(rs)["idx"] == 2
+
+
+@pytest.mark.parametrize("refresh", [None, {"error": "RuntimeError: x"}, {"passes": 0}])
+def test_unrefreshed_starts_are_ranked_by_the_last_point_energy(refresh):
+    """Unrefreshed, the model energy is a quadratic about a stale point: it
+    picked the highest-true-energy start in 4 of 6 runs (t89/verify/)."""
+    rs = [_res(1, 1.0, -100.0002, -100.0010, refresh),
+          _res(2, 1.0, -100.0005, -100.0001, _REFRESHED)]
     assert select_best_result(rs)["idx"] == 2
 
 

@@ -467,7 +467,16 @@ def _linear_if_on_axis(pg: str, R: np.ndarray, c: np.ndarray, elems, tol: float)
         cs = c @ np.asarray(R, dtype=float).T
         perm = _atom_permutation(cs, elems, _Cn_z(order), tol)
         if perm is not None and np.array_equal(perm, np.arange(len(elems))):
-            apolar = _atom_permutation(cs, elems, _INV, tol) is not None
+            # Any operation that swaps the two ends makes it Dinf_h. On a
+            # straight molecule inversion, sigma_h and a perpendicular C2 are
+            # the same permutation; on a near-straight one only some of them
+            # pass the tolerance: CO2 bent into a V (O at x = +0.04 A) maps
+            # under sigma_h but not inversion, and testing inversion alone
+            # labelled it Cinf_v where the parent's D3h kept the two C-O
+            # bonds equal -- the fit then split them by 7.3 mA (independent
+            # check of D-178, scratchpad t89/verify/repro_co2_d3h.py).
+            apolar = any(_atom_permutation(cs, elems, op, tol) is not None
+                         for op in (_INV, _SH, _C2X, _C2Y))
             return ("Dinf_h" if apolar else "Cinf_v"), R
     return pg, R
 

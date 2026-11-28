@@ -323,7 +323,8 @@ def select_best_result(
     primary_objective : {"energy", "spectral"}
         * ``energy`` (default): within the spectral gate, pick the lowest
           energy: the model energy at each answer when every gated start has
-          one (D-179), otherwise the last quantum point's.
+          one and was refreshed at its answer (D-179), otherwise the last
+          quantum point's.
         * ``spectral``: pick **lowest effective spectral RMS** (optionally after
           ``penalize_stagnant``), then lowest energy as tie-breaker.
 
@@ -352,7 +353,8 @@ def select_best_result(
     separates -- the fit's own model energy at the answer (free) got 8 of 10.
     Left as it was then (decisions D-65). Since D-179 (the user's call, page
     item 17) the energy branch ranks by that model energy whenever every
-    gated start carries one, and by ``energy`` otherwise; a later measurement
+    gated start carries one and had its Hessian refreshed at its answer
+    (``hessian_refresh``), and by ``energy`` otherwise; a later measurement
     after the per-start Hessian refresh (T-87) found it the lowest true
     energy in 10 of 10 runs against ``energy``'s 6 of 10.
     """
@@ -383,14 +385,26 @@ def select_best_result(
         return min(gated, key=sort_key)
 
     # Lowest energy within the gate, by the fit's own model energy at each
-    # answer when every gated start has one (D-179): it matched a fresh SCF
+    # answer when every gated start has one and was refreshed (D-179): it matched a fresh SCF
     # at the answer to 0.63 uHa on 36 refreshed starts (HF/6-31G, six configs
     # and four reruns), where the last-point energy below missed by up to
     # 333 uHa, and it picked the lowest-true-energy start in 10 of 10 runs
     # against 6 of 10 (scratchpad t87/). Otherwise as before: the last-point
     # energy, then spectral RMS.
+    # Only for starts whose Hessian was refreshed at their answer, where it
+    # was measured: unrefreshed, the model energy (a quadratic about a stale
+    # point) missed by 3.8-172 uHa and picked the highest-true-energy gated
+    # start in 4 of 6 runs, where the last-point energy came within 0.054
+    # uHa of the best in 6 of 6 (formyl fluoride, 4 starts, HF/STO-3G;
+    # independent check of D-179, scratchpad t89/verify/ms_energy_seed.py).
+    # In split mode it is not the energy at the answer either until refreshed.
+    def _refreshed(r):
+        hr = r.get("hessian_refresh")
+        return isinstance(hr, dict) and "error" not in hr and int(hr.get("passes") or 0) >= 1
+
     model = [r.get("energy_at_answer_model") for r in gated]
-    if model and all(m is not None and np.isfinite(float(m)) for m in model):
+    if model and all(m is not None and np.isfinite(float(m)) for m in model) \
+            and all(_refreshed(r) for r in gated):
         return min(gated, key=lambda r: float(r["energy_at_answer_model"]))
     finite_energy = [r for r in gated if np.isfinite(float(r.get("energy", np.inf)))]
     if finite_energy:

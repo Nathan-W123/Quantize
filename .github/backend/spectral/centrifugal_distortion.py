@@ -131,8 +131,14 @@ def rigid_mode_count(coords_ang, masses_amu) -> int:
 #: function I_min / I_max < 1e-6, so a C1 fit of fluoroacetylene ending
 #: 2.6e-5 A off its axis kept six rigid modes and lost one of its two bends
 #: (6.53 / 5.58 deg H-C-C, HF/6-31G). 0.01 A is 33x below HNCO's 0.33 A, the
-#: least straight bent molecule in the reference sets; jittered C1 fits of
-#: HCN and HCCF end 1e-4 to 4.4e-3 A off axis (scratchpad t85/n43/).
+#: least straight bent molecule in the reference sets (SO2 0.36 A is the
+#: closest at its geometry); C1 fits of HCN and HCCF from jittered starts end
+#: within 3e-5 A of their axis once refreshed at the answer, 1e-4 to 4.4e-3 A
+#: before the refresh, and one unrefreshed HCN fit stopped 1.06e-2 A off
+#: (counted bent, as the old rule did; scratchpad t85/n43/, t89/verify/).
+#: The count steps at the threshold, so the harmonic alpha steps there too
+#: (fluoroacetylene alpha_B -4.57 -> -13.72 MHz across 0.01 A): it stepped
+#: as much at the old rule's threshold, which sat at 1e-3 to 7e-3 A.
 LINEAR_OFF_AXIS_ANG = 0.01
 
 
