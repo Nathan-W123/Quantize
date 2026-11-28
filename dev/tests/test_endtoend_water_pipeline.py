@@ -92,33 +92,27 @@ def test_full_chain_improves_the_bond_length_end_to_end(tmp_path):
     B_e should pull the corrected targets, and the recovered bond length,
     toward the equilibrium structure.
 
-    The corrections are built at the fit's current geometry, which on this
-    detuned surface is far from its minimum, so they used to see the molecule
-    rotate (decisions D-52). Measured 2026-11-20 with the rotation projected
-    out: bond 2.99 mA raw, 2.42 mA with the full chain (0.81x); B's target
-    253 MHz from B_e(r_e) against B_0's 1724, C's 382 against 7110. Before
-    the projection B's target was 2028 MHz off -- worse than B_0 -- and the
-    bond read 0.61 mA: a rotation-contaminated B offsetting A, which this
-    surface (no bend anharmonicity) gets wrong either way (target 17.7 GHz
-    from B_e(r_e) projected, 15.0 before, B_0 14.7). Bounds: 0.9 on the bond
-    ratio (measured 0.81); 0.25 and 0.10 of B_0's miss on B and C (measured
-    0.15 and 0.054; the old B, 1.18, fails by 4.7x). Those are the fit's own
-    Hessian, which `quantize run --no-hessian-refresh` keeps.
+    The corrections are built once at the surface's own minimum and held
+    (D-182): measured 2026-11-28, bond 2.99 mA from r_e raw, 0.37 mA with the
+    full chain (0.12x); A's target 10457 MHz from B_e(r_e) against B_0's
+    14679, C's 1094 against 7110. B's moves away (4414 against 1724): this
+    analytic surface's own sum of alpha_B at its minimum is -5366 MHz, where
+    real water's B_0 - B_e implies +3449, so its B correction has the wrong
+    sign -- a property of the surface, not of the engine. (Rebuilt at each
+    Hessian, as before D-182, B's target read 253 MHz off from one start,
+    whose table sat 36 mA from the minimum, and 4157 after the refresh.)
 
-    By default (D-146) every start recomputes the Hessian at its answer and
-    re-converges, and corrections built from the Hessian follow it there
-    (three passes, 1.37 mA): the bond comes out 0.77 mA from r_e against
-    2.42 with the fit's own Hessian, A's target 10.0 GHz from B_e(r_e)
-    (17.7), C's 1082 MHz (382), and B's 4157 MHz, further than B_0's 1724.
-    Measured 2026-11-23 (T-72). Without corrections the refresh moves the
-    bond by 5e-4 mA.
+    The held corrections do not depend on where the Hessian is: the default
+    refresh at the answer (D-146) leaves the targets bit-identical and
+    settles in one pass; the bond comes out 0.87 mA from r_e. Without
+    corrections the refresh moves the bond by 5e-4 mA.
     """
     from backend.spectral.centrifugal_distortion import rotational_constants_mhz
 
     r_raw, _ = _structure(_run(tmp_path / "a", False, False, refresh_hessian=False)["best"]["coords"])
     full = _run(tmp_path / "b", True, True, refresh_hessian=False)
     r_full, _ = _structure(full["best"]["coords"])
-    assert abs(r_full - R_E) < 0.9 * abs(r_raw - R_E)
+    assert abs(r_full - R_E) < 0.2 * abs(r_raw - R_E)                     # 0.37 against 2.99 mA
     assert abs(r_full - R_E) < 0.010
 
     th = np.radians(THETA_E)
@@ -130,20 +124,20 @@ def test_full_chain_improves_the_bond_length_end_to_end(tmp_path):
     b_0 = np.array([835840.29, 435351.72, 278138.70])
     target = np.asarray(full["best"]["spectral_isotopologues_snapshot"][0]["obs_constants"],
                         dtype=float)
-    assert abs(target[1] - b_e[1]) < 0.25 * abs(b_0[1] - b_e[1])
-    assert abs(target[2] - b_e[2]) < 0.10 * abs(b_0[2] - b_e[2])
+    assert abs(target[0] - b_e[0]) < 0.8 * abs(b_0[0] - b_e[0])           # A: 10457 vs 14679
+    assert abs(target[2] - b_e[2]) < 0.25 * abs(b_0[2] - b_e[2])          # C: 1094 vs 7110
+    assert abs(target[1] - b_e[1]) > abs(b_0[1] - b_e[1])                 # B: the surface's sign
 
     # The default, with the Hessian recomputed at the answer.
     r_raw_d, _ = _structure(_run(tmp_path / "c", False, False)["best"]["coords"])
     assert abs(r_raw_d - r_raw) < 1e-5
     dflt = _run(tmp_path / "d", True, True)
     r_d, _ = _structure(dflt["best"]["coords"])
-    assert abs(r_d - R_E) < 0.5 * abs(r_full - R_E)                     # 0.77 against 2.42 mA
+    assert abs(r_d - R_E) < 0.5 * abs(r_raw - R_E)                        # 0.87 against 2.99 mA
     assert dflt["best"]["hessian_refresh"]["settled"] is True
+    assert dflt["best"]["hessian_refresh"]["passes"] == 1
     t_d = np.asarray(dflt["best"]["spectral_isotopologues_snapshot"][0]["obs_constants"], dtype=float)
-    assert abs(t_d[0] - b_e[0]) < abs(target[0] - b_e[0])                # A nearer
-    assert abs(t_d[2] - b_e[2]) < 0.25 * abs(b_0[2] - b_e[2])            # C still corrected
-    assert abs(t_d[1] - b_e[1]) > abs(b_0[1] - b_e[1])                   # B is not (see above)
+    np.testing.assert_allclose(t_d, target, rtol=0.0, atol=1e-6)          # held, not rebuilt
 
 
 def test_hybrid_beats_both_theory_and_experiment_alone(tmp_path):

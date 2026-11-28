@@ -640,10 +640,19 @@ def test_an_unsettled_refresh_is_warned_about_on_stderr(tmp_path, monkeypatch):
     import runner.run_from_config as rfc
     # The seeding starts unrefreshed, as before D-177, so that the final
     # refresh has the fit's own stale Hessian to replace and one pass leaves
-    # the answer moving; refreshed seeding leaves it nothing to do.
+    # the answer moving; refreshed seeding leaves it nothing to do. The
+    # corrections follow the Hessian (the opt-out): held at the surface's
+    # minimum, as by default (D-182), one pass settles.
     real_build = rfc.build_optimizer_from_config
+
+    def _following(cfg):
+        cfg = dict(cfg)
+        cfg["rovibrational_corrections"] = {**(cfg.get("rovibrational_corrections") or {}),
+                                            "corrections_at_theory_minimum": False}
+        return cfg
     monkeypatch.setattr(rfc, "build_optimizer_from_config",
-                        lambda cfg, **kw: real_build(cfg, **{**kw, "refresh_hessian": False}))
+                        lambda cfg, **kw: real_build(_following(cfg),
+                                                     **{**kw, "refresh_hessian": False}))
     real = MolecularOptimizer.refresh_hessian_at_answer
     monkeypatch.setattr(MolecularOptimizer, "refresh_hessian_at_answer",
                         lambda self, max_passes=3: real(self, max_passes=1))

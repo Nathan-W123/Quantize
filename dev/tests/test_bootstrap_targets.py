@@ -83,6 +83,20 @@ def config_fit():
 
 
 @pytest.fixture(scope="module")
+def config_fit_following():
+    """The same, with the corrections rebuilt from each Hessian (the opt-out,
+    corrections_at_theory_minimum: false; the default before D-182)."""
+    from runner.run_from_config import build_optimizer_from_config
+    from runner.usability import load_config
+    cfg = load_config(CONFIG)
+    cfg.setdefault("rovibrational_corrections", {})["corrections_at_theory_minimum"] = False
+    with contextlib.redirect_stdout(io.StringIO()):
+        opt = build_optimizer_from_config(cfg, multistart=False, verbose=False)
+        opt.run()
+    return opt
+
+
+@pytest.fixture(scope="module")
 def fixture_fit():
     """Two species with a 2.4% model error: the correlated systematic is live."""
     isos = [{"name": n, "masses": m, "obs_constants": list(b), "sigma_constants": [0.2] * 3,
@@ -782,23 +796,24 @@ def test_a_split_restart_that_runs_out_of_iterations_certifies_nothing(tmp_path)
 
 
 def test_the_hessian_is_recomputed_at_the_answer_on_request(config_fit):
-    """The water config's fit ends with the Hessian it computed 10.8 mA away;
-    its prior weight is then 1543 (2097 before the bond-width match, D-170),
-    and the widths are up to 5.6% off (measured before D-170).
+    """The water config's fit ends with the Hessian it computed 10.2 mA away;
+    its prior weight is then 1543 (2097 before the bond-width match, D-170).
     refresh_hessian_at_answer puts the Hessian there and re-converges. The
-    config builds its B0 -> Be targets from the Hessian, so one pass is not
-    self-consistent (0.718, then 0.055, then 0.0040 mA): it repeats until the
-    answer settles, and a second refresh then barely moves it."""
+    config's B0 -> Be corrections are built once at the surface's minimum
+    and held (D-182), so they do not move with the Hessian: one pass settles
+    (the answer moves 0.14 mA, inside orca_update_thresh of the new
+    Hessian) and a second refresh moves it 3e-7 A."""
     opt = deepcopy(config_fit)
-    assert 1e3 * opt.hessian_distance() == pytest.approx(10.77, abs=0.05), "premise"
+    assert 1e3 * opt.hessian_distance() == pytest.approx(10.18, abs=0.05), "premise"
     before = opt.quantum_prior_weight()
     with contextlib.redirect_stdout(io.StringIO()):
         info = opt.refresh_hessian_at_answer()
     assert before == pytest.approx(1543, rel=0.01)
-    assert 1e3 * info["age_before_ang"] == pytest.approx(10.77, abs=0.05)
-    assert info["passes"] >= 2 and info["last_move_ang"] <= 2e-5 and info["settled"]
-    assert opt.hessian_distance() <= 2e-5
-    assert opt.quantum_prior_weight() == pytest.approx(1308, rel=0.005)
+    assert 1e3 * info["age_before_ang"] == pytest.approx(10.18, abs=0.05)
+    assert info["passes"] == 1 and info["settled"]
+    assert 1e3 * info["last_move_ang"] == pytest.approx(0.137, abs=0.01)
+    assert opt.hessian_distance() <= opt.orca_update_thresh
+    assert opt.quantum_prior_weight() == pytest.approx(1305, rel=0.005)
     assert opt.distance_to_mode() < 0.01
     with contextlib.redirect_stdout(io.StringIO()):
         again = opt.refresh_hessian_at_answer()
@@ -806,6 +821,25 @@ def test_the_hessian_is_recomputed_at_the_answer_on_request(config_fit):
     spectral = deepcopy(config_fit)
     spectral.spectral_only = True
     assert spectral.refresh_hessian_at_answer() is None
+
+
+def test_corrections_that_follow_the_hessian_take_more_passes(config_fit_following):
+    """With the corrections rebuilt from each Hessian (the opt-out) one pass
+    is not self-consistent (0.718, then 0.055, then 0.0040 mA): the refresh
+    repeats until the answer settles, and a second refresh barely moves it.
+    The Hessian starts 10.8 mA away; the widths were up to 5.6% off
+    (measured before D-170)."""
+    opt = deepcopy(config_fit_following)
+    assert 1e3 * opt.hessian_distance() == pytest.approx(10.77, abs=0.05), "premise"
+    with contextlib.redirect_stdout(io.StringIO()):
+        info = opt.refresh_hessian_at_answer()
+    assert info["passes"] >= 2 and info["last_move_ang"] <= 2e-5 and info["settled"]
+    assert opt.hessian_distance() <= 2e-5
+    assert opt.quantum_prior_weight() == pytest.approx(1308, rel=0.005)
+    assert opt.distance_to_mode() < 0.01
+    with contextlib.redirect_stdout(io.StringIO()):
+        again = opt.refresh_hessian_at_answer()
+    assert again["moved_ang"] < 2e-5, "self-consistent"
 
 
 def test_the_hessian_refresh_does_not_rescale_the_sigmas_again():
@@ -937,10 +971,12 @@ def test_the_detectable_bounds_include_the_impact_bar():
     assert "weak evidence" in txt
 
 
-def test_the_hessian_refresh_says_whether_the_answer_settled(config_fit):
-    """Three passes settle the water config (0.718, 0.055, 0.0040 mA); with
-    one pass allowed the answer is still moving and the result says so."""
-    opt = deepcopy(config_fit)
+def test_the_hessian_refresh_says_whether_the_answer_settled(config_fit, config_fit_following):
+    """With corrections that follow the Hessian, three passes settle the
+    water config (0.718, 0.055, 0.0040 mA); with one pass allowed the answer
+    is still moving and the result says so. Held corrections (the default,
+    D-182) settle in the one pass."""
+    opt = deepcopy(config_fit_following)
     with contextlib.redirect_stdout(io.StringIO()):
         info = opt.refresh_hessian_at_answer(max_passes=1)
     assert info["passes"] == 1 and info["settled"] is False
@@ -948,6 +984,10 @@ def test_the_hessian_refresh_says_whether_the_answer_settled(config_fit):
     with contextlib.redirect_stdout(io.StringIO()):
         info = opt.refresh_hessian_at_answer()
     assert info["settled"] is True
+    held = deepcopy(config_fit)
+    with contextlib.redirect_stdout(io.StringIO()):
+        info = held.refresh_hessian_at_answer(max_passes=1)
+    assert info["passes"] == 1 and info["settled"] is True
 
 
 def test_the_split_null_step_cannot_crowd_out_the_range_step():

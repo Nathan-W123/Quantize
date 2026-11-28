@@ -104,8 +104,12 @@ def build_optimizer_from_config(
     # quantize run decides it (D-148): left as "auto", the optimizer built
     # below would decide again at the selected start alone, and a start in a
     # higher point group could drop the dihedrals the others needed.
-    from backend.multistart import _shared_dihedral_choice
+    from backend.multistart import _shared_dihedral_choice, _shared_held_corrections
     kwargs = _shared_dihedral_choice(starts, elems, isotopologues, kwargs)
+    # One held correction table for the seeding starts and the optimizer
+    # returned (D-182), as quantize run shares it across its starts; built
+    # here so the returned optimizer does not optimise and build it again.
+    kwargs = _shared_held_corrections(starts, elems, isotopologues, kwargs)
 
     coords = np.asarray(starts[0], dtype=float)
     if multistart and len(starts) > 1:

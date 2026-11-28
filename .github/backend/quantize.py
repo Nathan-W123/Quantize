@@ -286,6 +286,27 @@ def _rotate_cartesian_hessian(hessian, rot):
 
 
 
+def _optimise_on_surface(backend, coords_ang, max_steps=200, gtol=2e-5, box_ang=0.5):
+    """The backend's own minimiser when it has one, else L-BFGS-B on its
+    gradient (Ha/Angstrom), boxed like pyscf_backend.optimise: where the
+    corrections built from the fit level's Hessian are evaluated (D-182)."""
+    fn = getattr(backend, "optimise", None)
+    if callable(fn):
+        return fn(coords_ang)
+    from scipy.optimize import minimize  # pylint: disable=import-outside-toplevel
+    from backend.quantum import ANG_TO_BOHR  # pylint: disable=import-outside-toplevel
+    x0 = np.asarray(coords_ang, dtype=float)
+
+    def fun(flat):
+        r = backend.run_gradient(flat.reshape(x0.shape))
+        return float(r.energy), np.asarray(r.gradient_bohr, dtype=float).ravel() * ANG_TO_BOHR
+
+    sol = minimize(fun, x0.ravel(), jac=True, method="L-BFGS-B",
+                   bounds=[(v - box_ang, v + box_ang) for v in x0.ravel()],
+                   options={"maxiter": max_steps, "gtol": gtol, "ftol": 1e-14})
+    return sol.x.reshape(x0.shape)
+
+
 class MolecularOptimizer:
     """
     Parameters
@@ -550,6 +571,8 @@ class MolecularOptimizer:
         ic_user_priors=None,
         ic_freeze_sigma_floor=1e-6,
         ic_prior_adaptive=None,
+        corrections_at_theory_minimum=True,
+        held_correction_table=None,
     ):
         self.coords = np.asarray(coords, dtype=float).copy()
         self.elems = list(elems)
@@ -1415,8 +1438,25 @@ class MolecularOptimizer:
                     charge=self.charge,
                     multiplicity=self.multiplicity,
                 )
+        self._corr_at_fit_level = False
         if self._correction_level is not None:
             self._corr_backend = self._make_correction_backend()
+        elif (corrections_at_theory_minimum and self._harmonic_from_hessian
+              and not self.spectral_only and self._backend is not None):
+            # The fit's own level, evaluated at its own minimum once and held,
+            # as a separate correction level is (D-182, backlog N37). alpha is
+            # a property of the force field at its stationary point; rebuilt
+            # at each Hessian it followed the fit to a non-stationary point.
+            # Measured through quantize run (HF/6-31G, 3 starts): SO2's bond
+            # error 2.37 -> 0.70 mA, its corrected A from 1.8x further from
+            # B_e than B0 to 0.69x; formaldehyde C-H -7.49 -> -6.90 mA, water
+            # (corrected config) -1.55 -> 0.46 mA; 84-88% less time, since the
+            # cubic is no longer rebuilt at every Hessian (scratchpad t91/).
+            # corrections_at_theory_minimum=False restores the old behaviour.
+            self._corr_backend = self._backend
+            self._corr_at_fit_level = True
+        if held_correction_table is not None and self._corr_backend is not None:
+            self._corr_table = held_correction_table
 
     @staticmethod
     def _covalent_radius(elem):
@@ -1707,9 +1747,13 @@ class MolecularOptimizer:
         protocol (scripts/accuracy_upgrades_benchmark.py), whose notes record
         that evaluating another level's Hessians at the fit's geometry, off
         that level's minimum, made the level look irrelevant: an artefact of
-        the protocol. And it is kept, not re-expanded at each refresh as the
-        fit's own corrections are: it describes the correction level's
-        surface, not where the fit has got to.
+        the protocol. And it is kept, not re-expanded at each refresh: it
+        describes the correction level's surface, not where the fit has got
+        to. Without a separate level the fit's own level is that level by
+        default (D-182, corrections_at_theory_minimum): its minimum is reached
+        from this start, the fit's Hessian is reused when the start is already
+        there, and a saddle (negative curvature outside the rigid motions)
+        returns None so the corrections follow the fit's Hessian instead.
 
         Measured on water (fit and prior CCSD/cc-pVDZ, sigma_x 0.020, H2O +
         D2O, against r_e): bond -0.58 mA with the fit level's own
@@ -1723,8 +1767,24 @@ class MolecularOptimizer:
         be = self._corr_backend
         label = f"{be.method}/{be.basis}" if hasattr(be, "method") else "the correction level"
         print(f"\n  [correction-level] Optimising at {label} for the corrections' own minimum...")
-        geom = np.asarray(be.optimise(np.asarray(self.coords, dtype=float)), dtype=float)
-        hess = np.asarray(be.run_hessian(geom).hessian_bohr, dtype=float)
+        geom = np.asarray(_optimise_on_surface(be, np.asarray(self.coords, dtype=float)), dtype=float)
+        # The fit level's own Hessian where the fit already holds one there
+        # (a start at the theory minimum): one Hessian, not two.
+        held = self.quantum is not None and be is self._backend \
+            and getattr(self, "_hessian_ref_coords", None) is not None \
+            and np.allclose(np.asarray(self._hessian_ref_coords, dtype=float).reshape(geom.shape),
+                            geom, rtol=0.0, atol=1e-10)
+        hess = (np.asarray(self.quantum._hessian_bohr, dtype=float) if held
+                else np.asarray(be.run_hessian(geom).hessian_bohr, dtype=float))
+        if getattr(self, "_corr_at_fit_level", False) and self._stationary_point_is_saddle(geom, hess):
+            # Not a minimum: alpha there describes a transition state, so fall
+            # back to building the corrections at the fit's own Hessian.
+            print(f"  [correction-level] WARNING: the {label} stationary point reached from "
+                  f"this start is not a minimum (a negative curvature remains); the "
+                  f"corrections follow the fit's Hessian instead.")
+            self._corr_backend = None
+            self._corr_at_fit_level = False
+            return None
         hessian_fn = None
         if self._anharmonic_from_hessian:
             def hessian_fn(coords_ang):
@@ -1739,6 +1799,7 @@ class MolecularOptimizer:
             cubic_scheme=self._cubic_scheme,
             freq_scale=self._freq_scale,
             lam_freq_cm=self._lam_freq_cm,
+            torsion_replacement=(self._torsion_replacement if be is self._backend else None),
         )
         here = np.asarray(self.coords, dtype=float)
         shift = float(np.sqrt(np.mean(np.sum((here - _kabsch_align(geom, here)) ** 2, axis=1))))
@@ -1747,29 +1808,71 @@ class MolecularOptimizer:
         self._corr_table = (geom, ctbl_raw, info)
         return ctbl_raw, info
 
+    #: The answer this far (RMS over atoms, after alignment) from the geometry
+    #: its held corrections were evaluated at is reported: the alpha then
+    #: describes a different region of the surface (D-182). Fits stay within
+    #: a few sigma_x (20 mA) of it; HNCO at HF/6-31G moved 0.32 A in the
+    #: benchmark, where tracking once looked better.
+    HELD_CORRECTIONS_FAR_ANG = 0.1
+
+    def _stationary_point_is_saddle(self, geom, hess_bohr):
+        """True when the Hessian at a stationary point has negative curvature
+        outside the rigid motions (below 1e-4 of its largest eigenvalue)."""
+        masses = self._rigid_ref_masses
+        if masses is None:
+            masses = np.ones(len(self.elems))
+        H = 0.5 * (np.asarray(hess_bohr, dtype=float) + np.asarray(hess_bohr, dtype=float).T)
+        P = self._rigid_mode_projector(np.asarray(geom, dtype=float), np.asarray(masses, dtype=float))
+        ev = np.linalg.eigvalsh(P @ H @ P)
+        scale = float(np.max(np.abs(ev))) if ev.size else 0.0
+        return bool(scale > 0.0 and float(ev.min()) < -1e-4 * scale)
+
+    def held_corrections_note(self):
+        """A warning when the answer lies far from where its held corrections
+        were evaluated (HELD_CORRECTIONS_FAR_ANG), else None."""
+        tbl = getattr(self, "_corr_table", None)
+        if tbl is None or self._corr_backend is None:
+            return None
+        geom = np.asarray(tbl[0], dtype=float)
+        here = np.asarray(self.coords, dtype=float)
+        if geom.shape != here.shape:
+            return None
+        d = float(np.sqrt(np.mean(np.sum((here - _kabsch_align(geom, here)) ** 2, axis=1))))
+        if d <= self.HELD_CORRECTIONS_FAR_ANG:
+            return None
+        return (f"The vibrational corrections were evaluated at the correction level's "
+                f"minimum, {d:.3f} A RMS from this answer (more than "
+                f"{self.HELD_CORRECTIONS_FAR_ANG} A): they describe a different region of "
+                f"the surface. rovibrational_corrections.corrections_at_theory_minimum: "
+                f"false rebuilds them at the fit's Hessian instead.")
+
     def _apply_harmonic_alpha_corrections(self):
-        """Recompute harmonic alpha from the current Hessian and update spectral targets.
+        """Apply the Hessian-built vibrational corrections to the spectral targets.
 
         Re-applies rovibrational + electronic corrections to the raw
-        (uncorrected) isotopologue data using the current harmonic alpha.
-
-        This fires on EVERY Hessian recalculation, not once. An earlier version
-        of this docstring claimed otherwise, and there is no guard that would
-        make it true. The distinction matters: self.coords is the CURRENT
-        geometry, so each rebuild re-expands alpha about wherever the optimiser
-        has reached. That is the expansion-point tracking the benchmark calls
-        the "direct" scheme -- measured there as the best of three, since it is
-        the wanted quantity rather than an extrapolation towards it -- and it
-        means hess_recalc_every, not a separate switch, is what controls how
-        closely the correction follows the fit.
+        (uncorrected) isotopologue data. This runs on every Hessian
+        recalculation. By default the table it applies is built once, at the
+        correction level's own minimum (a separate correction_method, or the
+        fit's own level), and held (D-182): alpha is a property of the force
+        field at its stationary point. With corrections_at_theory_minimum
+        false, or when that point is a saddle, each call rebuilds alpha from
+        the current Hessian about wherever the optimiser has reached -- the
+        benchmark's "direct" scheme, which it scored best of three at fixed
+        geometries; through quantize run (HF/6-31G, 3 starts) it followed
+        the fit off the stationary point and lost to the held table (SO2's
+        bond 2.37 against 0.70 mA from r_e; 84-88% more time).
         """
         from backend.spectral.harmonic_alpha import build_correction_table_from_hessian  # pylint: disable=import-outside-toplevel
 
         if self.quantum is None:
             return
+        built = None
         if self._corr_backend is not None:
-            # A separate correction level: its own minimum, built once.
-            ctbl_raw, _res_info = self._correction_level_table()
+            # A separate correction level, or the fit's own (D-182): its own
+            # minimum, built once. None: that point was a saddle.
+            built = self._correction_level_table()
+        if built is not None:
+            ctbl_raw, _res_info = built
         else:
             hess_bohr = self.quantum._hessian_bohr
 
@@ -2708,7 +2811,8 @@ class MolecularOptimizer:
             return None
         age = self.hessian_distance()
         start = np.asarray(self.coords, dtype=float).copy()
-        follows = bool(self._harmonic_from_hessian or self._harmonic_cd_from_hessian
+        follows = bool((self._harmonic_from_hessian and self._corr_backend is None)
+                       or self._harmonic_cd_from_hessian
                        or (self._fit_cd_constants and self._cd_weight > 0.0))
         passes, last = 0, None
         while passes < int(max_passes):
@@ -4808,6 +4912,9 @@ class MolecularOptimizer:
                     "warnings": gn}
         gn = gn + self.hessian_age_warnings(coords=x)
         gn = gn + self.distortion_warnings() + self.model_error_warnings()
+        _held = self.held_corrections_note()
+        if _held:
+            gn = gn + [_held]
         try:
             split_gap = self.split_inconsistency()
         except Exception as exc:  # a diagnostic must not cost the report

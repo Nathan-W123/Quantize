@@ -863,7 +863,8 @@ def _validate_rovibrational_corrections_block(cfg: dict[str, Any]) -> None:
                 ) from exc
 
     for flag_key in ("harmonic_from_hessian", "anharmonic_from_hessian",
-                     "harmonic_cd_from_hessian", "fit_cd_constants"):
+                     "harmonic_cd_from_hessian", "fit_cd_constants",
+                     "corrections_at_theory_minimum"):
         v = rc.get(flag_key)
         if v is not None and not isinstance(v, bool):
             raise ConfigError(

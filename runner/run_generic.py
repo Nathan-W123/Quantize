@@ -2016,6 +2016,10 @@ def build_run_inputs(cfg: dict[str, Any], *, verbose: bool = True) -> dict[str, 
     # level's own minimum, once.
     correction_method = _rc_block.get("correction_method")
     correction_basis = _rc_block.get("correction_basis")
+    # Without a separate level, the fit level's own corrections are built
+    # once at its minimum and held (D-182); false rebuilds them at each
+    # Hessian, as before.
+    corrections_at_theory_minimum = bool(_rc_block.get("corrections_at_theory_minimum", True))
     nonconvergent_policy = str(_rc_block.get("nonconvergent_policy", "warn")).strip().lower()
     # Scheme choices that previously existed only as arguments to
     # build_correction_table_from_hessian, so a benchmark script could pick
@@ -2185,6 +2189,7 @@ def build_run_inputs(cfg: dict[str, Any], *, verbose: bool = True) -> dict[str, 
         anharmonic_fd_delta_ang=anharmonic_fd_delta_ang,
         correction_method=correction_method,
         correction_basis=correction_basis,
+        corrections_at_theory_minimum=corrections_at_theory_minimum,
         nonconvergent_policy=nonconvergent_policy,
         harmonic_scheme=harmonic_scheme,
         cubic_scheme=cubic_scheme,

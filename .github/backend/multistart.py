@@ -146,6 +146,27 @@ def _run_one_start(payload):
     }
 
 
+def _shared_held_corrections(starts, elems, isotopologues, kwargs):
+    """Build the held correction table once, at the correction level's minimum
+    reached from the first start, and hand it to every start (D-182): one
+    optimisation and one cubic per run instead of one per start (water at
+    HF/6-31G, 3 starts: 29 Hessians against 228 when they followed the fit).
+    When that point is a saddle, every start builds its corrections at its own
+    Hessian instead, as before."""
+    if not starts or kwargs.get("held_correction_table") is not None:
+        return kwargs
+    if not kwargs.get("harmonic_from_hessian") or kwargs.get("spectral_only"):
+        return kwargs
+    probe_kw = {k: v for k, v in kwargs.items() if k not in ("base_workdir", "job_name")}
+    probe = MolecularOptimizer(coords=np.asarray(starts[0], dtype=float), elems=list(elems),
+                               isotopologues=isotopologues, **probe_kw)
+    if probe._corr_backend is None:
+        return kwargs
+    if probe._correction_level_table() is None:
+        return {**kwargs, "corrections_at_theory_minimum": False}
+    return {**kwargs, "held_correction_table": probe._corr_table}
+
+
 def _shared_dihedral_choice(starts, elems, isotopologues, kwargs):
     """Resolve ic_use_dihedrals="auto" once for every start: dihedrals for all
     of them when any one start's bonds and angles miss a direction dihedrals
@@ -220,6 +241,7 @@ def run_multistart(starts, elems, isotopologues, optimizer_kwargs, max_workers=1
 
     start_kwargs = {**optimizer_kwargs, "job_name": job_name}
     start_kwargs = _shared_dihedral_choice(starts, elems, isotopologues, start_kwargs)
+    start_kwargs = _shared_held_corrections(starts, elems, isotopologues, start_kwargs)
     payloads = [
         {
             "idx": i + 1,

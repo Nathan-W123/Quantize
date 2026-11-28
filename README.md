@@ -308,13 +308,22 @@ $+0.0175$; adding the cubic term reproduces the Dunham/Pekeris value to 0.1%.
 It costs $6N$ extra Hessian evaluations, so it is opt-in; when it is off, the
 reported $\alpha$ uncertainty is widened to 100%.
 
-**The corrections' level can differ from the fit's.** By default they come from
-the fit's own Hessian, re-expanded at the current geometry on each Hessian
-refresh. `correction_method` / `correction_basis` in `rovibrational_corrections`
-(with `harmonic_from_hessian: true`; the `pyscf_hf` backend) take them from
-another level instead: that level is optimised to its own minimum, the table is
-built there once, and it is kept for the whole fit, since $\alpha$ describes a
-force field at its stationary point, not wherever the fit has got to. On water
+**The corrections are built once, at the level's own minimum, and held.** By
+default they come from the fit's own level, optimised from the first start to
+its minimum; the table is built there once and kept for the whole fit, every
+start and the uncertainty run (D-182), since $\alpha$ describes a force field at
+its stationary point, not wherever the fit has got to. Through `quantize run`
+(HF/6-31G, three starts) this moved SO$_2$'s bond from 2.37 to 0.70 mÅ off
+$r_e$, formaldehyde's C–H from $-7.49$ to $-6.90$ mÅ and water's from $-1.55$ to
+$0.46$ mÅ, in 84–88% less time than rebuilding them at every Hessian, which
+`corrections_at_theory_minimum: false` restores. When the stationary point
+reached is a saddle, the corrections follow the fit's Hessian instead, with a
+warning; an answer more than 0.1 Å from where they were evaluated is flagged.
+
+**The corrections' level can differ from the fit's.** `correction_method` /
+`correction_basis` in `rovibrational_corrections` (with
+`harmonic_from_hessian: true`; the `pyscf_hf` backend) take them from another
+level instead, optimised and held the same way. On water
 (CCSD/cc-pVDZ fit and prior, H$_2$O + D$_2$O, against $r_e$) the bond went from
 $-0.58$ mÅ with the fit level's own corrections to $-0.03$ with them at
 MP2/cc-pVTZ (seven Hessians, 3.7 min) and $-0.08$ at CCSD/cc-pVTZ (33 min); the
