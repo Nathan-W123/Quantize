@@ -594,7 +594,8 @@ def compute_harmonic_alpha(
         # and no species should be fitting an A component there anyway.
         inv = np.where(np.isfinite(inertia) & (inertia > 1e-8), 1.0 / inertia, 0.0)
         # WHICH GEOMETRIES ARE LINEAR is decided once, by rigid_mode_count
-        # (is_linear: I_min / I_max < 1e-6), and the absolute 1e-8 cut above
+        # (every atom within LINEAR_OFF_AXIS_ANG of the axis, D-178; it was
+        # is_linear's I_min / I_max < 1e-6 before), and the absolute 1e-8 cut above
         # must not overrule it. Between the two -- fluoroacetylene bent by
         # ~1e-4 A has I_a 1e-8 to 5e-5 -- the modes are a linear molecule's
         # (3N-5, A dropped) while this term divided by I_a: alpha_B stepped

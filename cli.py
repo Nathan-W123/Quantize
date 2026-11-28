@@ -637,7 +637,8 @@ def _cmd_uncertainty(args) -> int:
         )
 
     try:
-        opt = build_optimizer_from_config(cfg)
+        # Seeding starts are refreshed and ranked as quantize run's are (D-177).
+        opt = build_optimizer_from_config(cfg, refresh_hessian=not args.no_hessian_refresh)
     except ConfigError as exc:   # the translation's; the starts' fits raise their own
         return _refuse(f"config: {exc}", "config_error")
     if boot_cfg is not None:
@@ -1169,10 +1170,11 @@ def main(argv: list[str] | None = None) -> int:
         "--no-hessian-refresh",
         action="store_true",
         help=("Skip recomputing the quantum Hessian at the converged geometry before "
-              "the widths. By default it is recomputed once (one extra Hessian) and "
-              "the fit re-converged on it; skipped, the widths use the fit's own "
-              "Hessian, usually from the start of the fit, and the report says how "
-              "far away it was."),
+              "the widths, and at each seeding start's answer before the starts are "
+              "ranked. By default each is recomputed (one extra Hessian per start, "
+              "as in quantize run, and one at the end) and the fit re-converged on "
+              "it; skipped, the widths use the fit's own Hessian, usually from the "
+              "start of the fit, and the report says how far away it was."),
     )
     unc_p.add_argument(
         "--no-exact-curvature",

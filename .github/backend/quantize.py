@@ -3082,6 +3082,14 @@ class MolecularOptimizer:
         if s.size == 0 or s[0] <= 0.0:
             return np.eye(3 * n)
         keep = int((s > 1e-8 * s[0]).sum())
+        # One definition of linear (D-178): a geometry rigid_mode_count calls
+        # linear has five rigid modes however bent it is numerically; the
+        # sixth singular direction (rotation about the axis) is a bend there,
+        # as in harmonic_alpha's projector.
+        if n >= 3 and keep == 6:
+            from backend.spectral.centrifugal_distortion import rigid_mode_count  # pylint: disable=import-outside-toplevel
+            if rigid_mode_count(coords, masses) == 5:
+                keep = 5
         if keep == 0:
             return np.eye(3 * n)
         Qk = U[:, :keep]

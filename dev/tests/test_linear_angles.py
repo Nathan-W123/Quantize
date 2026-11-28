@@ -220,7 +220,7 @@ def test_a_bent_triatomic_gets_no_bend_that_is_a_rotation():
     axis = (x[2] - x[0]) / np.linalg.norm(x[2] - x[0])
     perp = np.cross(axis, [1.0, 0.3, 0.2])
     perp /= np.linalg.norm(perp)
-    x[0] = x[0] + np.linalg.norm(x[0] - x[1]) * np.radians(0.01) * perp
+    x[0] = x[0] + np.linalg.norm(x[0] - x[1]) * np.radians(1.0) * perp
     opt.coords = x
     with contextlib.redirect_stdout(io.StringIO()):
         post = opt.internal_coordinate_posterior()

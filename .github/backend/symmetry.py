@@ -454,6 +454,24 @@ def _principal_order(pg: str) -> int:
     return int(m.group(1)) if m else 1
 
 
+def _linear_if_on_axis(pg: str, R: np.ndarray, c: np.ndarray, elems, tol: float):
+    """C-inf-v / D-inf-h in place of a finite axial group whose axis carries every atom.
+
+    D-178. A Cn (n >= 2) that maps each atom onto itself within `tol` puts
+    every atom on its axis, so the group's projector is the linear one
+    (measured identical to 1e-16 on HCN bent 0.5 deg, C6v vs Cinf_v); only the
+    label was wrong: HCN bent 0.5-3 deg read C6v, bent CO2 and HCCH D6h.
+    """
+    order = _principal_order(pg)
+    if order >= 2:
+        cs = c @ np.asarray(R, dtype=float).T
+        perm = _atom_permutation(cs, elems, _Cn_z(order), tol)
+        if perm is not None and np.array_equal(perm, np.arange(len(elems))):
+            apolar = _atom_permutation(cs, elems, _INV, tol) is not None
+            return ("Dinf_h" if apolar else "Cinf_v"), R
+    return pg, R
+
+
 def detect_symmetry(elements: List[str], coords,
                     tol: float = DETECT_TOL_ANG) -> Tuple[str, np.ndarray]:
     """Largest supported point group the geometry actually satisfies.
@@ -525,7 +543,7 @@ def detect_symmetry(elements: List[str], coords,
                 cs = c @ R.T
                 if all(_atom_permutation(cs, elems, op, tol) is not None
                        for op in ops):
-                    return pg, R
+                    return _linear_if_on_axis(pg, R, c, elems, tol)
     return "C1", np.eye(3)
 
 

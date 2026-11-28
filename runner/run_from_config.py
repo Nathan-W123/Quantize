@@ -46,6 +46,7 @@ def build_optimizer_from_config(
     *,
     multistart: bool | None = None,
     verbose: bool = True,
+    refresh_hessian: bool = True,
 ):
     """Build the :class:`MolecularOptimizer` a config describes, unrun.
 
@@ -66,6 +67,16 @@ def build_optimizer_from_config(
     ``multistart=False`` to skip that and seed from the config geometry alone,
     which is much cheaper and gives a posterior around whatever local minimum
     that start reaches -- not the engine's answer.
+
+    ``refresh_hessian`` (default True, D-177): each seeding start recomputes
+    its Hessian at its answer and re-converges before the starts are ranked,
+    as ``quantize run`` does (D-146), so both commands rank the same results
+    by the same rule. Ranked before any refresh, the two picked different
+    starts in 5 of 6 configs and a water dimer's answers ended 5.8 mA apart
+    with widths 3.5x apart; refreshed, within 0.21 mA in 5 of 6 and 2.3 mA on
+    the dimer, for one Hessian per start (+36-108% of the seeding time;
+    HF/6-31G, scratchpad t87/). ``quantize uncertainty --no-hessian-refresh``
+    passes False.
 
     The returned optimizer is *not* run: the caller decides when to spend the
     quantum chemistry.
@@ -105,6 +116,7 @@ def build_optimizer_from_config(
             optimizer_kwargs=kwargs,
             max_workers=min(int(preset["max_workers"]), int(preset["n_starts"])),
             job_name=name,
+            refresh_hessian=bool(refresh_hessian),
         )
         best = select_best_result(results, spectral_gate_abs=0.05, spectral_gate_rel=2.0)
         coords = np.asarray(best["coords"], dtype=float)

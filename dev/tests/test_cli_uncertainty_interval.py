@@ -385,7 +385,10 @@ def test_the_uncertainty_command_recomputes_the_hessian_at_the_answer(tmp_path, 
     code, out, err = _run(["--mode", "bootstrap", "--samples", "2"] + _QUIET, run_dir, monkeypatch)
     assert code == 0, err[-2000:]
     b1 = _bundle(run_dir)
-    assert b1["hessian_refresh"]["age_before_ma"] == pytest.approx(age, rel=1e-6)
+    # The seeding starts are refreshed and ranked as quantize run's (D-177), so
+    # the final fit starts at an answer whose Hessian is already there: 2.1e-4
+    # mA from it, where the unrefreshed seeding left 1.56 mA.
+    assert b1["hessian_refresh"]["age_before_ma"] < 0.01 * age
     assert b1["hessian_refresh"]["passes"] >= 1
     assert 1e3 * b1["bootstrap"]["analytic"]["hessian_distance_ang"] < 0.1 * age
     assert "quantum Hessian recomputed at the fit's final geometry" in out
@@ -634,6 +637,13 @@ def test_a_config_that_fails_normalization_replaces_the_last_bundle(tmp_path, mo
 
 def test_an_unsettled_refresh_is_warned_about_on_stderr(tmp_path, monkeypatch):
     from backend.quantize import MolecularOptimizer
+    import runner.run_from_config as rfc
+    # The seeding starts unrefreshed, as before D-177, so that the final
+    # refresh has the fit's own stale Hessian to replace and one pass leaves
+    # the answer moving; refreshed seeding leaves it nothing to do.
+    real_build = rfc.build_optimizer_from_config
+    monkeypatch.setattr(rfc, "build_optimizer_from_config",
+                        lambda cfg, **kw: real_build(cfg, **{**kw, "refresh_hessian": False}))
     real = MolecularOptimizer.refresh_hessian_at_answer
     monkeypatch.setattr(MolecularOptimizer, "refresh_hessian_at_answer",
                         lambda self, max_passes=3: real(self, max_passes=1))

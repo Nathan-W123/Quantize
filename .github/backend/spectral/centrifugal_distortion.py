@@ -110,11 +110,43 @@ CD_LINEAR_PIN_OFF_AXIS_ANG = 0.4
 
 
 def rigid_mode_count(coords_ang, masses_amu) -> int:
-    """Number of zero-frequency translation+rotation modes: 5 if linear else 6."""
+    """Number of zero-frequency translation+rotation modes: 5 if linear else 6.
+
+    Linear means every atom within LINEAR_OFF_AXIS_ANG of the smallest-moment
+    principal axis (D-178). The rigid-mode projector of the fit
+    (MolecularOptimizer._rigid_mode_projector), the posterior, normal modes
+    and the harmonic alpha all count by this one rule; the distortion
+    constants keep their own branch tests (CD_LINEAR_REL_TOL,
+    CD_LINEAR_PIN_OFF_AXIS_ANG).
+    """
     n_atoms = np.asarray(coords_ang, dtype=float).shape[0]
     if n_atoms < 2:
         return 3
-    return 5 if is_linear(coords_ang, masses_amu) else 6
+    return 5 if max_off_axis_ang(coords_ang, masses_amu) <= LINEAR_OFF_AXIS_ANG else 6
+
+
+#: A geometry whose atoms all lie within this many Angstrom of its
+#: smallest-moment principal axis is linear for mode counting (D-178). The
+#: projector used to need an exactly straight geometry (an SVD rank) and this
+#: function I_min / I_max < 1e-6, so a C1 fit of fluoroacetylene ending
+#: 2.6e-5 A off its axis kept six rigid modes and lost one of its two bends
+#: (6.53 / 5.58 deg H-C-C, HF/6-31G). 0.01 A is 33x below HNCO's 0.33 A, the
+#: least straight bent molecule in the reference sets; jittered C1 fits of
+#: HCN and HCCF end 1e-4 to 4.4e-3 A off axis (scratchpad t85/n43/).
+LINEAR_OFF_AXIS_ANG = 0.01
+
+
+def max_off_axis_ang(coords_ang, masses_amu) -> float:
+    """Largest distance of an atom from the smallest-moment principal axis (through the COM)."""
+    coords = np.asarray(coords_ang, dtype=float)
+    if coords.shape[0] < 3:
+        return 0.0
+    _w, V, _r = inertia_paf(coords, masses_amu)
+    masses = np.asarray(masses_amu, dtype=float)
+    r = coords - (masses[:, None] * coords).sum(0) / masses.sum()
+    a = V[:, 0]
+    perp = r - np.outer(r @ a, a)
+    return float(np.sqrt((perp * perp).sum(axis=1)).max())
 
 
 def normal_modes(hess_bohr, masses_amu, n_rigid=6, min_eigval=1e-6):

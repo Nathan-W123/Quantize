@@ -321,8 +321,9 @@ def select_best_result(
     Parameters
     ----------
     primary_objective : {"energy", "spectral"}
-        * ``energy`` (default): within the spectral gate, pick **lowest ORCA energy**
-          (original behaviour).
+        * ``energy`` (default): within the spectral gate, pick the lowest
+          energy: the model energy at each answer when every gated start has
+          one (D-179), otherwise the last quantum point's.
         * ``spectral``: pick **lowest effective spectral RMS** (optionally after
           ``penalize_stagnant``), then lowest energy as tie-breaker.
 
@@ -349,7 +350,11 @@ def select_best_result(
     between starts within 1.4e-6 Ha of each other, 0.15-12 mA apart along
     flat directions such as a methyl torsion, which no energy ranking
     separates -- the fit's own model energy at the answer (free) got 8 of 10.
-    Left as it is (decisions D-65).
+    Left as it was then (decisions D-65). Since D-179 (the user's call, page
+    item 17) the energy branch ranks by that model energy whenever every
+    gated start carries one, and by ``energy`` otherwise; a later measurement
+    after the per-start Hessian refresh (T-87) found it the lowest true
+    energy in 10 of 10 runs against ``energy``'s 6 of 10.
     """
     if not results:
         raise ValueError("No multistart results to select from.")
@@ -377,7 +382,16 @@ def select_best_result(
 
         return min(gated, key=sort_key)
 
-    # Legacy: lowest energy within gate, then spectral RMS fallback.
+    # Lowest energy within the gate, by the fit's own model energy at each
+    # answer when every gated start has one (D-179): it matched a fresh SCF
+    # at the answer to 0.63 uHa on 36 refreshed starts (HF/6-31G, six configs
+    # and four reruns), where the last-point energy below missed by up to
+    # 333 uHa, and it picked the lowest-true-energy start in 10 of 10 runs
+    # against 6 of 10 (scratchpad t87/). Otherwise as before: the last-point
+    # energy, then spectral RMS.
+    model = [r.get("energy_at_answer_model") for r in gated]
+    if model and all(m is not None and np.isfinite(float(m)) for m in model):
+        return min(gated, key=lambda r: float(r["energy_at_answer_model"]))
     finite_energy = [r for r in gated if np.isfinite(float(r.get("energy", np.inf)))]
     if finite_energy:
         return min(finite_energy, key=lambda r: float(r.get("energy", np.inf)))
