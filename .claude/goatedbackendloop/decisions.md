@@ -1654,3 +1654,10 @@
 - Why: Q-182's recommended option said to wire in only what a primary source states, and to stop and report otherwise.
 - Source: auto-picked, no answer in 15 min (Q-182, 08:51 UTC)
 - Revisit if: the user can supply Penocchio et al. 2015 (JCTC) or Margules et al. 1999, or a new r_e^SE paper appears.
+
+### D-188 · N47 measured: no build (2026-11-28)
+- Decision: no smoothing of harmonic alpha across the 0.01 A linearity threshold. N47 is closed.
+- Why: since D-182 the corrections are evaluated at the theory minimum. For HCCF, HCN, OCS, CO2 and HC3N at HF/6-31G, that minimum lands at most 7.3e-5 A off axis from quantize run's jittered starts (sigma 0.03 A; starts up to 0.078 A off axis), about 140x inside the threshold, so the default path never reaches the step. It is still reachable under corrections_at_theory_minimum false, and for a molecule whose true minimum lies 0.01-0.1 A off axis (quasi-linear). There VPT2 is ill-defined for bending this large anyway, so a blend would be a guess, not a fix.
+- Measured: scratchpad t97/min_offaxis.py. The step itself, from t89/verify: HCCF alpha_B -4.57 -> -13.72, HCN -91.4 -> -256.8, HC3N +0.97 -> -2.36 MHz; alpha_C is unchanged.
+- Source: auto-picked, no answer in 15 min (Q-183, 09:08 UTC); "build only if..." was the option's own condition.
+- Revisit if: a quasi-linear molecule (e.g. HCNO, C3O2) joins the benchmark.

@@ -160,6 +160,8 @@ Request: Find more validation molecules (published equilibrium structures + isot
 - The repo's 825366.1/435331.6/276950.5 is NIST SRD 117 (ref. 74005, +/-8 MHz); JPL 20003 has B 22.5 MHz higher. Theory isotope shift in B0: +12 (B3LYP/cc-pVTZ) to +20 MHz (HF), nearer JPL (+2.4) than NIST (-20.1); model-dependent at that level. Kept and cited; no fit is affected at today's correction sigmas.
 ## Task T-96 (D-187: N3, equilibrium references for the five r_s rows) · done 08:52 UTC (nothing found; no change)
 - One extended search per molecule. HNCO: no open r_e^SE with uncertainties (arXiv 1607.03799 turned out to be HNCS). HCOF: Margules 1999, paywalled and ab initio. HCCF: 1993 mixed estimates, CC/CF disagree by about 10 mA. Fluoroethane and acetyl fluoride: none.
+## Task T-97 (D-188: N47, alpha's step at the linearity threshold) · done 09:11 UTC (measured; no build)
+- The theory minima of 5 linear molecules land <= 7.3e-5 A off axis from jittered starts, so held corrections never reach the step. Exposure is left only under the opt-out and for quasi-linear minima.
 ## Progress
 - All six wired and tested; benchmark rows at both levels in the README (N11 done).
 ## Observations
@@ -180,7 +182,7 @@ Request: Find more validation molecules (published equilibrium structures + isot
 - Nine published molecules, HF/6-31G (t79/me_sym.py, three ME variants at every ME call of main(); out/me_hf_6-31g_benchmark_all.final.json): chlorofluoromethane ME C-H pair 964 mA apart, averaged score base 31.38 / offsets 4.26 mA; symmetry imposed 26.00 / 6.03 (the README's 'ME beats the hybrid on chlorofluoromethane, 4.26 against 5.43' rests on the broken structure). Fluoroethane spread 63-67 mA: base 12.66 -> 11.28, offsets 8.24 -> 9.07. Acetyl fluoride spread 8-17 mA, scores within 0.02. Water, ozone, vinyl fluoride, formyl fluoride, fluoroacetylene, HNCO unchanged. Soft (per-pair, D-160 recipe) equals sym except fluoroethane base (12.00, spread 7 mA).
 - The container restarted at 05:14 UTC and stopped the B3LYP validation run (cache kept, 155 B3LYP Hessians) and the B3LYP ME study; both relaunched on the D-161 commit with the HF validation run (its 0f28ca9 rows archived in t75/n11/pre_d161).
 ## Pending question
-- Gate (still open): page item 18 (Q-180 a), switching the cubic_scheme default; waits for the user.
-- Q-183 (asked 08:53 UTC, deadline 09:08 UTC, wake-up trig_01XZBpGxLhhDVfvs5NPQUpHN): what's next after T-96? 1) N47, make harmonic alpha continuous across the linearity threshold, measuring first (Recommended); 2) Done for now.
+- Gate (still open): page item 18 (Q-180 a), switching the cubic_scheme default; waits for the user. Page item 8 is the user's too.
+- Q-184 (asked 09:11 UTC, deadline 09:27 UTC, wake-up trig_01Rhfx9RFfPAkpLgkTGv8hCa): what's next after T-97? 1) the rest of N46, the rigid-projector drift in alpha_q, measuring first (Recommended); 2) N40 (b), the Cartesian structural prior at a linear angle in spectral-only C1 fits; 3) Done for now.
 
 ## Handoff

@@ -55,6 +55,7 @@ the decisions record; tasks before T-01 live in git history only.
 - T-94 · N51: correction sigmas scored against equilibrium references (z), both cubic schemes, 8 molecules · 2026-11-28 · done (no change)
 - T-95 · N50: H2-18O copies traced to NIST SRD 117 and cited; JPL 20003 named as the alternative; theory isotope shift computed · 2026-11-28 · done
 - T-96 · N3 re-searched: no open r_e^SE references for the five r_s benchmark rows · 2026-11-28 · done (nothing found)
+- T-97 · N47 measured: theory minima of linear molecules sit far inside the linearity threshold; no smoothing built · 2026-11-28 · done
 
 ## Edges
 - C:quantum-prior --depends-on--> C:joint-optimizer · 2026-11-20
@@ -243,3 +244,5 @@ the decisions record; tasks before T-01 live in git history only.
 - T-95 --touched--> C:cli-config · 2026-11-28 (configs/Water.yaml comment)
 - T-96 --decided--> D-187 · 2026-11-28
 - T-96 --touched--> C:references · 2026-11-28 (search only)
+- T-97 --decided--> D-188 · 2026-11-28
+- T-97 --touched--> C:correction-tables · 2026-11-28 (measured only: where the held table sits for linear molecules)
