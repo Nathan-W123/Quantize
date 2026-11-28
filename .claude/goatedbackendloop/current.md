@@ -156,6 +156,6 @@ Request: Find more validation molecules (published equilibrium structures + isot
 - Nine published molecules, HF/6-31G (t79/me_sym.py, three ME variants at every ME call of main(); out/me_hf_6-31g_benchmark_all.final.json): chlorofluoromethane ME C-H pair 964 mA apart, averaged score base 31.38 / offsets 4.26 mA; symmetry imposed 26.00 / 6.03 (the README's 'ME beats the hybrid on chlorofluoromethane, 4.26 against 5.43' rests on the broken structure). Fluoroethane spread 63-67 mA: base 12.66 -> 11.28, offsets 8.24 -> 9.07. Acetyl fluoride spread 8-17 mA, scores within 0.02. Water, ozone, vinyl fluoride, formyl fluoride, fluoroacetylene, HNCO unchanged. Soft (per-pair, D-160 recipe) equals sym except fluoroethane base (12.00, spread 7 mA).
 - The container restarted at 05:14 UTC and stopped the B3LYP validation run (cache kept, 155 B3LYP Hessians) and the B3LYP ME study; both relaunched on the D-161 commit with the HF validation run (its 0f28ca9 rows archived in t75/n11/pre_d161).
 ## Pending question
-- (none: Q-178 auto-picked at 07:12 UTC -> D-183)
+- Q-179 (asked 07:17 UTC, deadline 07:32 UTC, wake-up trig_01MqPRmcxCbXtHLkNmjm81vh): what's next after T-92? 1) N49: measure the cubic_scheme default (cartesian vs normal_mode) and propose (Recommended); 2) N50: reconcile the other H2-18O copies (read De Lucia 1972); 3) N47: smooth harmonic alpha at the linearity threshold; 4) Done for now.
 
 ## Handoff
