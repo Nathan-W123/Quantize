@@ -1633,3 +1633,8 @@
 - Decision: T-93 = measure quantize run with cubic_scheme cartesian (the runner's default) against normal_mode (the engine's and every benchmark's since fcc2067, 2026-11-09, which left run_generic at cartesian although its comment claims the defaults match). Cases: analytic water, water HF/6-31G (worked example as committed, and with the calibrated width), water on a B3LYP/6-31G(d) stand-in, formaldehyde and SO2 at HF/6-31G, all on the current code (held corrections, D-182). Report geometry against r_e, correction sigmas, chi2 and time; propose, and do not change the default without the user's yes.
 - Why: Q-179's recommended option.
 - Source: auto-picked, no answer in 15 min (Q-179, 07:32 UTC)
+
+### D-185 · Q-180: item 18 left for the user; next is N51, measured only (2026-11-28)
+- Decision: page item 18 (quantize run's cubic_scheme default to normal_mode) stays unapplied until the user says yes; it changes a default. T-94 = N51: for molecules with an equilibrium reference (water, ozone, vinyl fluoride, chlorofluoromethane, formaldehyde, SO2, ketene, thioformaldehyde), build the correction table at the HF/6-31G minimum (B3LYP/6-31G(d) for four) with each cubic scheme, and score z = (delta_computed - (B_e(ref) - B0)) / sigma per constant. This measures whether the stated correction sigmas are honest, separately from any fit. Change nothing.
+- Why: Q-180's recommended option; the gate on (a) per D-184.
+- Source: auto-picked, no answer in 15 min (Q-180, 07:55 UTC)

@@ -148,6 +148,8 @@ Request: Find more validation molecules (published equilibrium structures + isot
 - Scripts: t92/harness.py, run_all.sh, summarise.py, widths.py; outputs t92/out/.
 - Cause found: fcc2067 (2026-11-09) moved the engine and the optimizer to normal_mode and left runner/run_generic.py at "cartesian", whose comment still says the defaults match. So quantize run never ran what the benchmarks published.
 - T-91 data (old code): H2CO HF/6-31G held, cartesian C-H -6.90 mA, angle -0.53 deg; normal_mode -0.50 mA, -0.06 deg, 17 s against 27 s. Water held: 0.46 against 0.85 mA. Re-measuring on HEAD.
+## Task T-94 (D-185: N51, are the correction sigmas honest?) · measuring (scratchpad t94/zcheck.py)
+- z = (delta_computed - (B_e(ref) - B0)) / sigma per constant; 8 molecules at HF/6-31G and 4 at B3LYP/6-31G(d), under both schemes. First result, water HF normal_mode: RMS z 0.46, all 6 within 2.
 ## Progress
 - All six wired and tested; benchmark rows at both levels in the README (N11 done).
 ## Observations
@@ -168,8 +170,6 @@ Request: Find more validation molecules (published equilibrium structures + isot
 - Nine published molecules, HF/6-31G (t79/me_sym.py, three ME variants at every ME call of main(); out/me_hf_6-31g_benchmark_all.final.json): chlorofluoromethane ME C-H pair 964 mA apart, averaged score base 31.38 / offsets 4.26 mA; symmetry imposed 26.00 / 6.03 (the README's 'ME beats the hybrid on chlorofluoromethane, 4.26 against 5.43' rests on the broken structure). Fluoroethane spread 63-67 mA: base 12.66 -> 11.28, offsets 8.24 -> 9.07. Acetyl fluoride spread 8-17 mA, scores within 0.02. Water, ozone, vinyl fluoride, formyl fluoride, fluoroacetylene, HNCO unchanged. Soft (per-pair, D-160 recipe) equals sym except fluoroethane base (12.00, spread 7 mA).
 - The container restarted at 05:14 UTC and stopped the B3LYP validation run (cache kept, 155 B3LYP Hessians) and the B3LYP ME study; both relaunched on the D-161 commit with the HF validation run (its 0f28ca9 rows archived in t75/n11/pre_d161).
 ## Pending question
-- Q-180 (asked 07:39 UTC, deadline 07:55 UTC, wake-up trig_01SiqCnG2Vz6bTWgGosgcCLG):
-  - (a) Page item 18, switching quantize run's cubic_scheme default to normal_mode: yes (Recommended) or no. This is a GATE. The deadline does not apply it; it waits for the user.
-  - (b) What's next: 1) N51, measure whether normal_mode's widths are too tight (Recommended, measure only); 2) N50, the H2-18O copies; 3) N47, smoothing alpha at the linear threshold; 4) Done for now.
+- Gate (still open): page item 18 (Q-180 a), switching the cubic_scheme default; waits for the user. Q-180 b was auto-picked at 07:55 UTC (D-185).
 
 ## Handoff
