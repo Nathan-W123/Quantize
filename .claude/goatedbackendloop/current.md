@@ -148,7 +148,13 @@ Request: Find more validation molecules (published equilibrium structures + isot
 - Scripts: t92/harness.py, run_all.sh, summarise.py, widths.py; outputs t92/out/.
 - Cause found: fcc2067 (2026-11-09) moved the engine and the optimizer to normal_mode and left runner/run_generic.py at "cartesian", whose comment still says the defaults match. So quantize run never ran what the benchmarks published.
 - T-91 data (old code): H2CO HF/6-31G held, cartesian C-H -6.90 mA, angle -0.53 deg; normal_mode -0.50 mA, -0.06 deg, 17 s against 27 s. Water held: 0.46 against 0.85 mA. Re-measuring on HEAD.
-## Task T-94 (D-185: N51, are the correction sigmas honest?) · measuring (scratchpad t94/zcheck.py)
+## Task T-94 (D-185: N51, are the correction sigmas honest?) · done 08:10 UTC (no change; page item 18 card updated, v28)
+- Pooled RMS z, normal_mode against cartesian (honest is about 1):
+  - HF/6-31G, the nine (water, ozone, vinyl fluoride, CH2ClF; 51 constants): 0.93 against 0.17.
+  - HF/6-31G, held out (H2CO, SO2, ketene, H2CS; 147 constants): 1.12 against 0.31.
+  - B3LYP/6-31G(d), 4 molecules: 0.51-0.56 against 0.10-0.19.
+- Per molecule, normal_mode at HF: ozone 1.65 and SO2 1.76 (worst 2.64, 2.09); the others 0.11-0.46. So cartesian overstates its uncertainty 3-10x, and normal_mode is about right at HF and conservative at B3LYP. No calibration proposed (pooled is already about 1, and a fit to these molecules would be tuning on the held-out set).
+- Caveat: "true" means B_e(r_e or r_e^SE) - B0, and the r_e^SE references carry their own higher-level corrections. Electronic corrections are ignored. Rows within one molecule are correlated.
 - z = (delta_computed - (B_e(ref) - B0)) / sigma per constant; 8 molecules at HF/6-31G and 4 at B3LYP/6-31G(d), under both schemes. First result, water HF normal_mode: RMS z 0.46, all 6 within 2.
 ## Progress
 - All six wired and tested; benchmark rows at both levels in the README (N11 done).
@@ -170,6 +176,7 @@ Request: Find more validation molecules (published equilibrium structures + isot
 - Nine published molecules, HF/6-31G (t79/me_sym.py, three ME variants at every ME call of main(); out/me_hf_6-31g_benchmark_all.final.json): chlorofluoromethane ME C-H pair 964 mA apart, averaged score base 31.38 / offsets 4.26 mA; symmetry imposed 26.00 / 6.03 (the README's 'ME beats the hybrid on chlorofluoromethane, 4.26 against 5.43' rests on the broken structure). Fluoroethane spread 63-67 mA: base 12.66 -> 11.28, offsets 8.24 -> 9.07. Acetyl fluoride spread 8-17 mA, scores within 0.02. Water, ozone, vinyl fluoride, formyl fluoride, fluoroacetylene, HNCO unchanged. Soft (per-pair, D-160 recipe) equals sym except fluoroethane base (12.00, spread 7 mA).
 - The container restarted at 05:14 UTC and stopped the B3LYP validation run (cache kept, 155 B3LYP Hessians) and the B3LYP ME study; both relaunched on the D-161 commit with the HF validation run (its 0f28ca9 rows archived in t75/n11/pre_d161).
 ## Pending question
-- Gate (still open): page item 18 (Q-180 a), switching the cubic_scheme default; waits for the user. Q-180 b was auto-picked at 07:55 UTC (D-185).
+- Gate (still open): page item 18 (Q-180 a), switching the cubic_scheme default; waits for the user.
+- Q-181 (asked 08:10 UTC, deadline 08:26 UTC, wake-up trig_014z6vgoNY2wgDie2Rpoabzf): what's next after T-94? 1) N50, settle the other H2-18O copies from a primary source (Recommended); 2) N3, search again for r_e^SE references for the five r_s benchmark rows; 3) N47, smoothing alpha at the linear threshold; 4) Done for now.
 
 ## Handoff
